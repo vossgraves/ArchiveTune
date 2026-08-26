@@ -131,6 +131,7 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
@@ -279,6 +280,7 @@ fun LyricsV2(
     val (romanizeJapanese) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
     val (romanizeKorean) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (romanizeOtherLanguages) = rememberPreference(LyricsRomanizeOtherLanguagesKey, defaultValue = true)
+    val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
     val romanizationPreferences =
         remember(
             romanizeJapanese,
@@ -286,6 +288,7 @@ fun LyricsV2(
             romanizeChinese,
             romanizeHindi,
             romanizeOtherLanguages,
+            aiRomanizationSettings.active,
         ) {
             LyricsRomanizationPreferences(
                 romanizeJapanese = romanizeJapanese,
@@ -293,6 +296,7 @@ fun LyricsV2(
                 romanizeChinese = romanizeChinese,
                 romanizeHindi = romanizeHindi,
                 romanizeOther = romanizeOtherLanguages,
+                aiHandled = aiRomanizationSettings.active,
             )
         }
     val lyricsFontFamily = rememberArchiveTuneLyricsFontFamily()
@@ -366,9 +370,50 @@ fun LyricsV2(
     // detection on every 16 ms position tick for every visible line.
     val wordSyncCache = rememberWordSyncCache()
 
+    // ── AI romanisation ──
+    // One batched request per track (network + billed), so it cannot hang off the per-line pass
+    // below. Results are pushed into the same `romanizedTextFlow` the built-in engines write to, so
+    // the render path and the fade-in behaviour are identical whichever engine produced them.
+    val aiRomanizationSessionKey =
+        remember(mediaMetadata?.id, lyrics) { AiLyricsRomanization.sessionKey(mediaMetadata?.id, lyrics) }
+    val aiRomanizationResult by AiLyricsRomanization.results.collectAsStateWithLifecycle()
+    // Resolved by line text, not by index — this renderer's entry list carries a head entry and
+    // instrumental breaks that LyricsEnhanced's does not, and both derive the same session key. See
+    // AiLyricsRomanization.Result.
+    val aiRomanizedLines: List<String?> =
+        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, entriesWithWords) {
+            if (!aiRomanizationSettings.active) {
+                emptyList()
+            } else {
+                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, entriesWithWords.map { it.text })
+            }
+        }
+    LaunchedEffect(aiRomanizationSessionKey, entriesWithWords, aiRomanizationSettings) {
+        if (!aiRomanizationSettings.active || !aiRomanizationSettings.auto) return@LaunchedEffect
+        if (entriesWithWords.isEmpty()) return@LaunchedEffect
+        AiLyricsRomanization.request(
+            sessionKey = aiRomanizationSessionKey,
+            lines = entriesWithWords.map { it.text },
+            settings = aiRomanizationSettings,
+        )
+    }
+    LaunchedEffect(entriesWithWords, aiRomanizedLines, aiRomanizationSettings.active) {
+        if (!aiRomanizationSettings.active) return@LaunchedEffect
+        entriesWithWords.forEachIndexed { index, entry ->
+            val romanized = aiRomanizedLines.getOrNull(index)?.trim()?.takeIf { it.isNotEmpty() }
+            if (entry.romanizedTextFlow.value != romanized) {
+                entry.romanizedTextFlow.value = romanized
+            }
+        }
+    }
+
     // ── Romanization ──
     LaunchedEffect(entriesWithWords, romanizationPreferences) {
         if (!romanizationPreferences.isEnabled) {
+            // Guard against clobbering AI results: when the AI engine owns romanisation the effect
+            // above is the writer, and blanking the flows here would erase it on every recomposition
+            // that changed `entriesWithWords`.
+            if (aiRomanizationSettings.active) return@LaunchedEffect
             entriesWithWords.forEach { entry ->
                 if (entry.romanizedTextFlow.value != null) {
                     entry.romanizedTextFlow.value = null
@@ -517,12 +562,19 @@ fun LyricsV2(
     //
     // Hold the list transparent until the active line is placed — the first
     // placement is an instant scroll, since there is nothing on screen to
-    // animate — then fade in. Keyed on the line count so lyrics that land after
-    // the view is already open (slow provider, translation) are placed the same
-    // way instead of jumping.
+    // animate — then fade in.
+    //
+    // The key must NOT include the line count. `entriesWithWords` is derived from an off-thread
+    // parse, so it is always empty on the first composition and always grows one or two frames
+    // later; keying on its size re-ran this `remember` after the view was already visible and
+    // handed back a fresh `mutableStateOf(true)`, snapping the alpha from 1 back to 0 with a
+    // zero-duration tween. The lyrics blinked out and faded back in on every open — worst in the
+    // Apple Music player, which composes this view from scratch each time. `isSynced` is derived
+    // synchronously from the raw lyrics text, so arming on it is already correct on frame 1, and
+    // `playbackResetTick` still re-arms for a new track / repeat.
     var awaitingFirstFocus by
-        remember(playbackResetTick, entriesWithWords.size) {
-            mutableStateOf(isSynced && entriesWithWords.isNotEmpty())
+        remember(playbackResetTick) {
+            mutableStateOf(isSynced)
         }
     // Safety net: never leave the lyrics hidden because a placement never came.
     LaunchedEffect(awaitingFirstFocus) {
@@ -573,13 +625,26 @@ fun LyricsV2(
         onLyricsScroll(isManualScrolling)
     }
 
-    // Auto-scroll to active line
-    LaunchedEffect(currentLineIndex, isManualScrolling, lyricsScroll) {
+    // Auto-scroll to active line.
+    //
+    // `entriesWithWords.size` is part of the key so the first-focus placement below still runs when
+    // the off-thread parse publishes without changing `currentLineIndex` (the common case: the view
+    // opens mid-song, the index loop resolves the same line the list already thinks is current).
+    // Re-running this effect on content changes is cheap — unlike re-running the `remember` that
+    // owns `awaitingFirstFocus`, which is what caused the flicker.
+    LaunchedEffect(currentLineIndex, isManualScrolling, lyricsScroll, entriesWithWords.size) {
         if (!lyricsScroll || isManualScrolling || !isSynced) {
             awaitingFirstFocus = false
             return@LaunchedEffect
         }
-        if (currentLineIndex < 0 || currentLineIndex >= entriesWithWords.size) return@LaunchedEffect
+        if (currentLineIndex < 0 || currentLineIndex >= entriesWithWords.size) {
+            // Nothing to place yet: either the parse hasn't published (empty list) or playback
+            // hasn't reached the first line. Only release the gate in the second case — while the
+            // list is still empty the effect will re-run as soon as an index becomes valid, and
+            // releasing here would let line 0 draw and then visibly walk to the active line.
+            if (entriesWithWords.isNotEmpty()) awaitingFirstFocus = false
+            return@LaunchedEffect
+        }
 
         if (awaitingFirstFocus) {
             // Wait for the first measure so the 35% anchor is computed against a
@@ -646,7 +711,17 @@ fun LyricsV2(
         modifier =
             modifier
                 .fillMaxSize()
-                .padding(bottom = 12.dp),
+                .padding(bottom = 12.dp)
+                // Draw-phase read — holds everything back until the active line has been placed
+                // (see awaitingFirstFocus), then fades it in.
+                //
+                // The gate covers the whole subtree rather than just the LazyColumn because the
+                // branches below swap while it is armed: shimmer first, then the lines once the
+                // off-thread parse publishes. Gating only the list meant the shimmer drew at full
+                // opacity and then vanished the instant the lines took over — the "lyrics appear,
+                // blink out, come back" symptom. When nothing needs placing (no lyrics, plain
+                // lyrics, not-found) the gate is never armed and this is a no-op.
+                .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
         if (lyrics == LYRICS_NOT_FOUND) {
             Box(
@@ -698,9 +773,6 @@ fun LyricsV2(
                     .smoothFadingEdge(vertical = 80.dp)
                     .graphicsLayer {
                         compositingStrategy = CompositingStrategy.Offscreen
-                        // Draw-phase read — holds the lines back until the active
-                        // one has been placed (see awaitingFirstFocus).
-                        alpha = firstFocusAlpha.value
                     },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

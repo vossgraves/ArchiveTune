@@ -214,7 +214,19 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                             runCatching { TidalInstanceHealthManager.refresh(context, includeDiscovery = true, staggered = false) }
                                         }
                                         refreshingPool = false
-                                        Toast.makeText(context, context.getString(R.string.pool_refresh_done, PoolAccountManager.tidalAccounts().size, PoolAccountManager.qobuzAccounts().size), Toast.LENGTH_LONG).show()
+                                        val ok = PoolAccountManager.isEnabled
+                                        val message =
+                                            if (ok) {
+                                                context.getString(
+                                                    R.string.pool_refresh_done,
+                                                    PoolAccountManager.tidalAccounts().size,
+                                                    PoolAccountManager.qobuzAccounts().size,
+                                                    PoolAccountManager.deezerAccounts().size,
+                                                )
+                                            } else {
+                                                context.getString(R.string.pool_refresh_failed)
+                                            }
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                     }
                                 }
                             })

@@ -22,6 +22,7 @@ import moe.rukamori.archivetune.constants.TidalAccountFirstKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalCountryCodeKey
 import moe.rukamori.archivetune.constants.TidalInstancesKey
+import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
@@ -361,6 +362,69 @@ object LosslessStreamResolver {
         }.onFailure { error ->
             Timber.tag("LosslessResolver").w(error, "Qobuz backup resolve failed for %s", mediaId)
         }.getOrNull()
+
+    /**
+     * Resolves a **Deezer** stream for [mediaId].
+     *
+     * Mirrors `MusicService.resolveDeezerStream`, including the credential guard: the provider merges
+     * the manually signed-in ARL with the pool's shared accounts, so this must go through
+     * [DeezerAudioProvider.hasAccounts] rather than reading [PoolAccountManager] directly.
+     *
+     * The returned [DirectStream.uri] is a `deezer://` URI, not an HTTPS URL — the CDN bytes are
+     * Blowfish-encrypted and only become audio after `DeezerDecryptingDataSource` has run over them.
+     * `DownloadUtil` routes that scheme to a decrypting upstream, so what lands in the download cache
+     * is a plain FLAC/MP3 file that jaudiotagger can tag. This used to be a hard-coded `null` in the
+     * download chain, with a comment claiming the public Deezer API only exposes 30-second previews —
+     * true of `api.deezer.com`, but stale ever since full Premium streaming was ported: playback has
+     * resolved real Deezer streams through this exact provider since then, while downloads silently
+     * fell through to the YouTube fallback.
+     */
+    fun resolveDeezer(
+        mediaId: String,
+        title: String,
+        artists: List<String>,
+        album: String?,
+        durationMs: Long?,
+        format: String,
+    ): DirectStream? {
+        if (!DeezerAudioProvider.hasAccounts()) {
+            Timber.tag("LosslessResolver").d("Deezer skip: no manual or pooled accounts available")
+            return null
+        }
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                DeezerAudioProvider
+                    .resolve(
+                        query =
+                            DeezerAudioProvider.Query(
+                                mediaId = mediaId,
+                                title = title,
+                                artists = artists,
+                                album = album,
+                                durationMs = durationMs,
+                            ),
+                        format = format,
+                    )?.let { resolved ->
+                        DirectStream(
+                            uri = resolved.uri,
+                            mimeType = resolved.mimeType,
+                            codecs = resolved.codecs,
+                            contentLength = resolved.contentLength,
+                            label = resolved.label,
+                            source = AudioSourceType.DEEZER,
+                            matchedTitle = resolved.matchedTitle,
+                            matchedArtist = resolved.matchedArtist,
+                            matchedAlbum = resolved.matchedAlbum,
+                            matchedDurationMs = resolved.matchedDurationMs,
+                            sampleRate = resolved.sampleRate,
+                            bitDepth = resolved.bitDepth,
+                        )
+                    }
+            }
+        }.onFailure { error ->
+            Timber.tag("LosslessResolver").w(error, "Deezer resolve failed for %s", mediaId)
+        }.getOrNull()
+    }
 
     /**
      * Resolves a **JioSaavn** stream for [mediaId].

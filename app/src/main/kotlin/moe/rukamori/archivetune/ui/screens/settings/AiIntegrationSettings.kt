@@ -106,6 +106,9 @@ import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
+import moe.rukamori.archivetune.constants.AiRomanizeExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.DeeplApiKeyKey
@@ -165,6 +168,13 @@ fun AiIntegrationSettings(
     val (excludedLanguageCodes, onExcludedLanguageCodesChange) =
         rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
     var showExcludedLanguagesDialog by rememberSaveable { mutableStateOf(false) }
+    val (aiRomanizeLyrics, onAiRomanizeLyricsChange) =
+        rememberPreference(AiRomanizeLyricsKey, defaultValue = false)
+    val (autoAiRomanizeLyrics, onAutoAiRomanizeLyricsChange) =
+        rememberPreference(AutoAiRomanizeLyricsKey, defaultValue = false)
+    val (romanizeExcludedLanguageCodes, onRomanizeExcludedLanguageCodesChange) =
+        rememberPreference(AiRomanizeExcludedLanguagesKey, defaultValue = emptySet())
+    var showRomanizeExcludedLanguagesDialog by rememberSaveable { mutableStateOf(false) }
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showDeeplFormalityDialog by rememberSaveable { mutableStateOf(false) }
     var showTranslateModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -226,10 +236,25 @@ fun AiIntegrationSettings(
     if (showExcludedLanguagesDialog) {
         ExcludedLanguagesDialog(
             initialSelected = excludedLanguageCodes,
+            titleRes = R.string.auto_translate_excluded_languages,
+            descriptionRes = R.string.auto_translate_excluded_languages_desc,
             onDismiss = { showExcludedLanguagesDialog = false },
             onConfirm = { newSet ->
                 onExcludedLanguageCodesChange(newSet)
                 showExcludedLanguagesDialog = false
+            },
+        )
+    }
+
+    if (showRomanizeExcludedLanguagesDialog) {
+        ExcludedLanguagesDialog(
+            initialSelected = romanizeExcludedLanguageCodes,
+            titleRes = R.string.ai_romanize_excluded_languages,
+            descriptionRes = R.string.ai_romanize_excluded_languages_desc,
+            onDismiss = { showRomanizeExcludedLanguagesDialog = false },
+            onConfirm = { newSet ->
+                onRomanizeExcludedLanguageCodesChange(newSet)
+                showRomanizeExcludedLanguagesDialog = false
             },
         )
     }
@@ -592,6 +617,57 @@ fun AiIntegrationSettings(
                             ?: stringResource(R.string.auto_translate_excluded_languages_none),
                     icon = { Icon(painterResource(R.drawable.block), null) },
                     onClick = { showExcludedLanguagesDialog = true },
+                )
+            }
+
+            // ── AI romanisation ──
+            // Master switch. Turning it on also switches the built-in romanisers off (see
+            // `LyricsRomanizationPreferences.aiHandled`) so one song never mixes two schemes.
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("ai_romanize_lyrics"),
+                    title = { Text(stringResource(R.string.ai_romanize_lyrics)) },
+                    description = stringResource(R.string.ai_romanize_lyrics_desc),
+                    icon = { Icon(painterResource(R.drawable.language), null) },
+                    checked = aiRomanizeLyrics,
+                    onCheckedChange = onAiRomanizeLyricsChange,
+                    // Same reasoning as auto-translate: with no provider there is no engine to run.
+                    isEnabled = hasApiConfiguration,
+                )
+            }
+
+            // Separate from the master switch because these are billed network calls: enabling the
+            // feature should not commit the user to one request per track. With this off, the request
+            // is made from Lyrics menu → "Romanise with AI".
+            item(visible = aiRomanizeLyrics) {
+                SwitchPreference(
+                    modifier = positions.modifierFor("auto_ai_romanize_lyrics"),
+                    title = { Text(stringResource(R.string.auto_ai_romanize_lyrics)) },
+                    description = stringResource(R.string.auto_ai_romanize_lyrics_desc),
+                    icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                    checked = autoAiRomanizeLyrics,
+                    onCheckedChange = onAutoAiRomanizeLyricsChange,
+                    isEnabled = hasApiConfiguration,
+                )
+            }
+
+            item(visible = aiRomanizeLyrics) {
+                val languages = remember(context) { TranslatorLanguages.load(context) }
+                val selectedRomanizeNames =
+                    remember(romanizeExcludedLanguageCodes, languages) {
+                        languages
+                            .filter { it.code in romanizeExcludedLanguageCodes }
+                            .joinToString(", ") { it.name }
+                            .ifEmpty { null }
+                    }
+                PreferenceEntry(
+                    modifier = positions.modifierFor("ai_romanize_excluded_languages"),
+                    title = { Text(stringResource(R.string.ai_romanize_excluded_languages)) },
+                    description =
+                        selectedRomanizeNames
+                            ?: stringResource(R.string.ai_romanize_excluded_languages_none),
+                    icon = { Icon(painterResource(R.drawable.block), null) },
+                    onClick = { showRomanizeExcludedLanguagesDialog = true },
                 )
             }
         }
@@ -1064,14 +1140,19 @@ private fun ModelPickerPreference(
 }
 
 /**
- * Multi-select dialog for the "Don't auto translate these languages" preference.
+ * Multi-select dialog behind both "Don't auto translate these languages" and "Don't romanise these
+ * languages".
  *
  * Lists every language known to [TranslatorLanguages] with a checkbox. Toggling a checkbox
- * adds/removes its uppercase code in the persisted [AutoTranslateExcludedLanguagesKey] set.
+ * adds/removes its uppercase code in whichever persisted set the caller passed in — the two features
+ * share the code space (`TranslatorLang.code`) and the detector (`LyricsUtils.detectDominantLanguageCode`),
+ * so they can share the picker too.
  */
 @Composable
 private fun ExcludedLanguagesDialog(
     initialSelected: Set<String>,
+    titleRes: Int,
+    descriptionRes: Int,
     onDismiss: () -> Unit,
     onConfirm: (Set<String>) -> Unit,
 ) {
@@ -1082,7 +1163,7 @@ private fun ExcludedLanguagesDialog(
     DefaultDialog(
         onDismiss = onDismiss,
         icon = { Icon(painterResource(R.drawable.block), contentDescription = null) },
-        title = { Text(stringResource(R.string.auto_translate_excluded_languages)) },
+        title = { Text(stringResource(titleRes)) },
         buttons = {
             TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
                 Text(stringResource(android.R.string.cancel))
@@ -1097,7 +1178,7 @@ private fun ExcludedLanguagesDialog(
     ) {
         Column(modifier = Modifier.padding(top = 4.dp)) {
             Text(
-                text = stringResource(R.string.auto_translate_excluded_languages_desc),
+                text = stringResource(descriptionRes),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp),

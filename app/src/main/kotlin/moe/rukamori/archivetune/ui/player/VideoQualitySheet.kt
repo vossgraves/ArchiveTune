@@ -18,20 +18,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,9 +47,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -70,6 +74,15 @@ private data class SheetMetrics(
     val dividerVerticalPadding: Dp,
     val listMaxHeight: Dp,
     val showDescriptions: Boolean,
+    // Gap between two pills. Small enough that a run of pills still reads as one group, large
+    // enough that their rounded edges don't touch.
+    val pillSpacing: Dp,
+    // Inset from a pill's own edge to its text, on top of [horizontalPadding], which insets the
+    // pill itself from the sheet edges.
+    val pillInnerPadding: Dp,
+    // Floor on a pill's height so a title-only pill and a title+subtitle pill don't look like two
+    // different controls.
+    val pillMinHeight: Dp,
 )
 
 /**
@@ -89,6 +102,9 @@ private fun rememberSheetMetrics(): SheetMetrics {
                 dividerVerticalPadding = 2.dp,
                 listMaxHeight = 168.dp,
                 showDescriptions = false,
+                pillSpacing = 6.dp,
+                pillInnerPadding = 18.dp,
+                pillMinHeight = 44.dp,
             )
         } else {
             SheetMetrics(
@@ -98,6 +114,9 @@ private fun rememberSheetMetrics(): SheetMetrics {
                 dividerVerticalPadding = 8.dp,
                 listMaxHeight = 320.dp,
                 showDescriptions = true,
+                pillSpacing = 10.dp,
+                pillInnerPadding = 22.dp,
+                pillMinHeight = 60.dp,
             )
         }
     }
@@ -185,6 +204,7 @@ private fun VideoQualitySheetContent(
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(metrics.pillSpacing),
         ) {
             if (showAdvanced) {
                 AdvancedQualityPage(
@@ -263,13 +283,11 @@ private fun MainQualityPage(
         onClick = { onSelect(VideoQualityPreference.HIGH_QUALITY) },
     )
 
-    HorizontalDivider(
-        modifier =
-            Modifier.padding(
-                horizontal = metrics.horizontalPadding,
-                vertical = metrics.dividerVerticalPadding,
-            ),
-    )
+    // The three modes and the Advanced row are different kinds of thing, so they used to be
+    // separated by a HorizontalDivider. A divider drawn across a column of pills cuts through the
+    // gap between two rounded shapes and reads as a stray line; extra breathing room says the same
+    // thing without fighting the pills.
+    Spacer(modifier = Modifier.height(metrics.dividerVerticalPadding))
 
     val exactHeight = preferredHeight?.takeIf { VideoQualityPreference.isExactHeight(it) }
     QualityRow(
@@ -339,6 +357,7 @@ private fun AdvancedQualityPage(
                 Modifier
                     .heightIn(max = metrics.listMaxHeight)
                     .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(metrics.pillSpacing),
         ) {
             availableHeights.sortedDescending().forEach { height ->
                 QualityRow(
@@ -380,6 +399,7 @@ internal fun VideoAspectRatioSheet(
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(metrics.pillSpacing),
         ) {
             SheetTitle(stringResource(R.string.video_aspect_ratio), metrics)
             VideoAspectRatio.entries.forEach { ratio ->
@@ -419,17 +439,27 @@ private fun SheetTitle(
         fontWeight = FontWeight.SemiBold,
         modifier =
             Modifier.padding(
-                start = metrics.horizontalPadding,
-                end = metrics.horizontalPadding,
+                // +8dp so the title sits between the sheet edge and the pill text rather than
+                // lining up with neither.
+                start = metrics.horizontalPadding + 8.dp,
+                end = metrics.horizontalPadding + 8.dp,
                 top = 4.dp,
-                bottom = metrics.titleBottomPadding,
+                // The parent Column already spaces its children by pillSpacing; subtract it so the
+                // title-to-first-pill gap stays what it was before the pills landed.
+                bottom = (metrics.titleBottomPadding - metrics.pillSpacing).coerceAtLeast(0.dp),
             ),
     )
 }
 
 /**
- * One selectable row: title, optional subtitle, and a trailing checkmark (or [trailingIcon]) when
- * this row is the active choice.
+ * One selectable row, drawn as a rounded pill: title, optional subtitle, and a trailing checkmark
+ * (or [trailingIcon]) when this row is the active choice.
+ *
+ * The pill matches `PreferenceSelectionOption` in `ui/component/Preference.kt`, which is what every
+ * other option list in a bottom sheet uses — filled `surfaceContainerHigh` normally, filled
+ * `primary` when selected, `shapes.extraLarge` corners. Before this the rows were flat, full-bleed
+ * and separated only by a divider, which made these two sheets the odd ones out next to the video
+ * overflow sheet raised from the same button.
  */
 @Composable
 private fun QualityRow(
@@ -440,13 +470,43 @@ private fun QualityRow(
     onClick: () -> Unit,
     @DrawableRes trailingIcon: Int? = null,
 ) {
+    val containerColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        }
+    val contentColor =
+        if (selected) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    val subtitleColor =
+        if (selected) {
+            contentColor.copy(alpha = 0.78f)
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(
-                    horizontal = metrics.horizontalPadding,
+                .padding(horizontal = metrics.horizontalPadding)
+                .heightIn(min = metrics.pillMinHeight)
+                .clip(MaterialTheme.shapes.extraLarge)
+                .background(containerColor)
+                .then(
+                    // A row that navigates (Advanced) is a button, not one of the choices, so it
+                    // must not announce itself as a radio button.
+                    if (trailingIcon != null) {
+                        Modifier.clickable(onClick = onClick)
+                    } else {
+                        Modifier.selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
+                    },
+                ).padding(
+                    horizontal = metrics.pillInnerPadding,
                     vertical = metrics.rowVerticalPadding,
                 ),
         verticalAlignment = Alignment.CenterVertically,
@@ -459,18 +519,13 @@ private fun QualityRow(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color =
-                    if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+                color = contentColor,
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = subtitleColor,
                 )
             }
         }
@@ -480,7 +535,7 @@ private fun QualityRow(
                 Icon(
                     painter = painterResource(trailingIcon),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (selected) contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                 )
 
@@ -488,7 +543,7 @@ private fun QualityRow(
                 Icon(
                     painter = painterResource(R.drawable.check),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = contentColor,
                     modifier = Modifier.size(20.dp),
                 )
         }

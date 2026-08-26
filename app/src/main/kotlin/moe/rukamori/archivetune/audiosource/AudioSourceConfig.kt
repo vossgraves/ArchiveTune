@@ -341,23 +341,45 @@ object AudioSourceConfig {
 
     /**
      * Resolves the effective ordered list of ALL sources from the stored CSV, preserving the user's
-     * chosen order (including where they placed YouTube) and appending any sources missing from the
-     * stored order (e.g. after an app update introduces a new one) in default order. YouTube is
+     * chosen order (including where they placed YouTube) and slotting in any sources missing from
+     * the stored order (e.g. after an app update introduces a new one) *above* YouTube. YouTube is
      * guaranteed to be present, but its position is user-controlled: placing it earlier means the
      * app prefers YouTube's own stream over the lossless override sources listed after it.
+     *
+     * The "above YouTube" part matters more than it looks. This used to append the missing sources,
+     * which put every newly added source *after* YouTube for anyone who had ever touched the order
+     * picker on an older build. [moe.rukamori.archivetune.playback.MusicService] cuts the chain at
+     * YouTube (`takeWhile { it != YOUTUBE }`), so an appended source was silently dropped from
+     * playback entirely — Deezer, Qobuz backup and JioSaavn were all unreachable for those users,
+     * and in the order dialog they showed up below YouTube where the list looks like it ends. Since
+     * every override source sits above YouTube in [DEFAULT_ORDER], inserting there is both correct
+     * and the one placement that cannot perturb the choices the user did make.
      */
     fun parseOrder(rawOrder: String?): List<AudioSourceType> {
-        val parsed =
+        val stored =
             rawOrder
                 ?.split(',')
                 ?.mapNotNull { parseType(it) }
                 ?.distinct()
                 .orEmpty()
-        val merged = LinkedHashSet(parsed)
-        // Append any sources not present in the stored order in their default position. When nothing
-        // is stored this yields DEFAULT_ORDER (Tidal, Qobuz, Deezer, YouTube), i.e. YouTube stays last.
-        DEFAULT_ORDER.forEach { merged.add(it) }
-        return merged.toList()
+        if (stored.isEmpty()) return DEFAULT_ORDER
+
+        val missing = DEFAULT_ORDER.filterNot { it in stored }
+        if (missing.isEmpty()) return stored
+
+        val merged = mutableListOf<AudioSourceType>()
+        var inserted = false
+        for (source in stored) {
+            if (!inserted && source == AudioSourceType.YOUTUBE) {
+                merged.addAll(missing)
+                inserted = true
+            }
+            merged.add(source)
+        }
+        // No YouTube in the stored order: it is one of the missing sources, and it is last in
+        // DEFAULT_ORDER, so appending the whole missing block still leaves it as the final fallback.
+        if (!inserted) merged.addAll(missing)
+        return merged
     }
 
     /**

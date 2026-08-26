@@ -129,6 +129,7 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.rukamori.archivetune.lyrics.LyricsUtils.hasTrueWordSync
@@ -193,7 +194,25 @@ private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 private const val LYRIC_FIRST_FOCUS_FADE_MS = 200
 // Hard ceiling on how long the lines may stay hidden waiting for that placement.
 private const val LYRIC_FIRST_FOCUS_TIMEOUT_MS = 400L
+// A line-synced "syllable" is only a peg to hang a romanisation on, so it gets the shortest window
+// the library will accept rather than a share of the line's duration — see
+// buildWrappingKaraokeSyllables.
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
+
+// ── Line-synced (LRC) focus windows ──
+// KaraokeLyricsView resolves the focused line as "the line whose [start, end) contains the
+// position", and falls back to the *next* line whenever the position lands between two windows.
+// These constants exist to make sure that fallback only ever fires on a genuine instrumental
+// break; see the long comment in buildSyncedLyrics.
+//
+// How long a line may keep focus after its own timestamp before it is allowed to hand over to a
+// breathing-dots interlude. Below this the line simply holds until the next one starts.
+private const val LINE_SYNCED_MAX_FOCUS_HOLD_MS = 5_000L
+// Mirrors the library's own interlude threshold: it draws the breathing dots only when the silence
+// between two lines is strictly longer than this.
+private const val LINE_SYNCED_INTERLUDE_MIN_GAP_MS = 5_000L
+// The last line has no successor to butt against, so give it a fixed window.
+private const val LINE_SYNCED_TRAILING_LINE_DURATION_MS = 4_000L
 // Minimum backward position jump (in ms) that we treat as a "reset" trigger —
 // large enough to ride through ExoPlayer's normal position jitter (which is
 // well under 200ms even on a stuttering device) and minor playback corrections,
@@ -238,6 +257,8 @@ fun LyricsEnhanced(
     val (romanizeKorean) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (romanizeOtherLanguages) = rememberPreference(LyricsRomanizeOtherLanguagesKey, defaultValue = true)
 
+    val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
+
     val romanizationPreferences =
         remember(
             romanizeJapanese,
@@ -245,6 +266,7 @@ fun LyricsEnhanced(
             romanizeChinese,
             romanizeHindi,
             romanizeOtherLanguages,
+            aiRomanizationSettings.active,
         ) {
             LyricsRomanizationPreferences(
                 romanizeJapanese = romanizeJapanese,
@@ -252,6 +274,7 @@ fun LyricsEnhanced(
                 romanizeChinese = romanizeChinese,
                 romanizeHindi = romanizeHindi,
                 romanizeOther = romanizeOtherLanguages,
+                aiHandled = aiRomanizationSettings.active,
             )
         }
 
@@ -354,12 +377,42 @@ fun LyricsEnhanced(
         mutableStateOf(SyncedLyrics(emptyList()))
     }
 
-    LaunchedEffect(lyricsEntries, romanizationPreferences) {
+    // ── AI romanisation ──
+    // Runs once per track instead of once per line (network + billed), so it can't hang off the
+    // per-line pass below. Results arrive asynchronously through AiLyricsRomanization.results and are
+    // folded into the same romanizationMap the built-in engines feed, which means everything
+    // downstream — the wrapping-unit distribution, the karaoke phonetics, `showPhonetic` — is shared.
+    val aiRomanizationSessionKey =
+        remember(mediaMetadata?.id, lyrics) { AiLyricsRomanization.sessionKey(mediaMetadata?.id, lyrics) }
+    val aiRomanizationResult by AiLyricsRomanization.results.collectAsStateWithLifecycle()
+    // Resolved by line text, not by index — this renderer parses without the head entry and without
+    // instrumental breaks, LyricsV2 parses with both, and both derive the same session key. See
+    // AiLyricsRomanization.Result.
+    val aiRomanizedLines: List<String?> =
+        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, lyricsEntries) {
+            if (!aiRomanizationSettings.active) {
+                emptyList()
+            } else {
+                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, lyricsEntries.map { it.text })
+            }
+        }
+    LaunchedEffect(aiRomanizationSessionKey, lyricsEntries, aiRomanizationSettings) {
+        if (!aiRomanizationSettings.active || !aiRomanizationSettings.auto) return@LaunchedEffect
+        if (lyricsEntries.isEmpty()) return@LaunchedEffect
+        AiLyricsRomanization.request(
+            sessionKey = aiRomanizationSessionKey,
+            lines = lyricsEntries.map { it.text },
+            settings = aiRomanizationSettings,
+        )
+    }
+
+    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines) {
         // Everything below (scanning + romanizing every line, often one job per word for TTML)
         // used to inherit the main dispatcher and could stutter the karaoke animation on track
         // change; run the whole batch on Default and only publish the results back.
         withContext(Dispatchers.Default) {
-        syncedLyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, emptyMap())
+        val aiMap = aiRomanizationMap(lyricsEntries, isTtmlFormat, aiRomanizedLines)
+        syncedLyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, aiMap)
         if (!romanizationPreferences.isEnabled) return@withContext
 
         val toRomanize =
@@ -484,12 +537,25 @@ fun LyricsEnhanced(
     //
     // So: keep the lines invisible until the active one has been placed (the
     // first placement snaps instead of animating, since nothing is on screen to
-    // animate), then fade them in. Re-armed when the number of lines changes so
-    // lyrics that arrive after the view is already open — a slow provider, a
-    // translation — get the same treatment instead of jumping.
+    // animate), then fade them in.
+    //
+    // The key deliberately does NOT include the line count. `syncedLyrics` is built on
+    // Dispatchers.Default, so it is *always* empty on the first composition and always grows to N
+    // one or two frames later. Keying on the size therefore re-ran this `remember` after the view
+    // was already on screen, handing back a brand-new `mutableStateOf(true)` that snapped the alpha
+    // from 1 straight back to 0 (the hide has `durationMillis = 0`) and swallowed the collector's
+    // `awaitingFirstFocus = false` write — the lyrics blinked out for the full
+    // LYRIC_FIRST_FOCUS_TIMEOUT_MS and then faded back in. That is the "lyrics disappear for a
+    // split second right after opening" report, and it fired on every single open of the Apple
+    // Music player because that player composes this view from scratch each time.
+    //
+    // `isSynced` is derived synchronously from the raw lyrics text, so it is already correct on
+    // frame 1: the gate arms before anything is drawn and is only ever disarmed, never re-armed.
+    // A late-arriving *session* (new track, new lyrics text, repeat) still re-arms it, because
+    // lyricsSessionKey covers all three.
     var awaitingFirstFocus by
-        remember(lyricsSessionKey, positionResetCounter, syncedLyrics.lines.size) {
-            mutableStateOf(isSynced && syncedLyrics.lines.isNotEmpty())
+        remember(lyricsSessionKey, positionResetCounter) {
+            mutableStateOf(isSynced)
         }
     // Safety net: nothing may keep the lyrics hidden. If the placement hasn't
     // happened by the time this fires (no viewport, auto-scroll preference off,
@@ -739,10 +805,17 @@ fun LyricsEnhanced(
     // observes the first new active line. Keeping listState stable means the
     // collector always targets the list currently on screen.
     LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter) {
-        if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) {
+        if (!isSynced) {
             awaitingFirstFocus = false
             return@LaunchedEffect
         }
+        // An empty line list here means "the off-thread build hasn't published yet", not "this
+        // track has no synced lyrics" — buildSyncedLyrics runs on Dispatchers.Default and lands a
+        // frame or two after the first composition. Bailing out on it (which is what this used to
+        // do) disarmed the first-focus gate before there was anything to place, so the lines were
+        // drawn at line 0 and then visibly walked to the active one. Wait for the content instead;
+        // the LYRIC_FIRST_FOCUS_TIMEOUT_MS safety net above covers the case where it never arrives.
+        snapshotFlow { latestSyncedLyricsForScroll.value.lines.isNotEmpty() }.first { it }
         snapshotFlow {
             listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
         }.first { it }
@@ -759,6 +832,12 @@ fun LyricsEnhanced(
             .collectLatest { index ->
                 if (index == null) {
                     forceNextScroll = true
+                    // Nothing to place: either no line has started yet (song intro) or the user
+                    // took over the scroll. The list is already where it belongs in both cases, so
+                    // release the first-focus gate instead of letting it time out — otherwise the
+                    // lines would sit invisible for LYRIC_FIRST_FOCUS_TIMEOUT_MS on every track
+                    // whose first lyric starts a beat after playback does.
+                    awaitingFirstFocus = false
                     return@collectLatest
                 }
 
@@ -932,7 +1011,19 @@ fun LyricsEnhanced(
         modifier =
             modifier
                 .fillMaxSize()
-                .padding(bottom = 12.dp),
+                .padding(bottom = 12.dp)
+                // Draw-phase read: holds everything back until the active line is in place (see
+                // awaitingFirstFocus), then fades it in without recomposing anything.
+                //
+                // The gate lives on the whole Box, not just the karaoke branch, because the
+                // branches below swap while it is armed: the shimmer draws first, then (for one or
+                // two frames, between the two Dispatchers.Default hops that publish parsedEntries
+                // and syncedLyrics) possibly "lyrics not found", then the lines. Gating only the
+                // last of those meant the first two flashed at full opacity and then vanished when
+                // the lines took over — visible as the lyrics appearing, blinking out and coming
+                // back. When there is nothing to place (plain lyrics, no lyrics, not-found) the
+                // gate is never armed and this is a no-op.
+                .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
         when {
             lyrics == LYRICS_NOT_FOUND -> {
@@ -950,6 +1041,16 @@ fun LyricsEnhanced(
             // Shimmer on that state — without it the two "lyrics not found" branches below
             // would flash for the frames the parse takes.
             lyrics == null || parsedEntries == null -> {
+                ShimmerHost {
+                    repeat(6) { TextPlaceholder() }
+                }
+            }
+
+            // Same window, one hop later: the parse has landed but buildSyncedLyrics (also on
+            // Dispatchers.Default) hasn't published its result, so `lines` is empty even though
+            // this track definitely has synced lyrics. Keep the shimmer up rather than claiming
+            // they don't exist.
+            isSynced && syncedLyrics.lines.isEmpty() && lyricsEntries.isNotEmpty() -> {
                 ShimmerHost {
                     repeat(6) { TextPlaceholder() }
                 }
@@ -1006,11 +1107,7 @@ fun LyricsEnhanced(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .nestedScroll(nestedScrollConnection)
-                            // Draw-phase read: holds the lines back until the
-                            // active one is in place (see awaitingFirstFocus),
-                            // then fades them in without recomposing anything.
-                            .graphicsLayer { alpha = firstFocusAlpha.value },
+                            .nestedScroll(nestedScrollConnection),
                 ) {
                     val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
 
@@ -1054,7 +1151,7 @@ fun LyricsEnhanced(
                             // this view; drop it when animations are disabled (low-RAM default).
                             useBlurEffect = lyricsLineBlur && !animationsDisabled,
                             showTranslation = showTranslations,
-                            showPhonetic = romanizationPreferences.isEnabled,
+                            showPhonetic = romanizationPreferences.showsRomanization,
                             offset = lyricsViewportOffset,
                             // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
                             // many items outside the viewport are kept composed (not
@@ -1555,6 +1652,62 @@ private fun List<WordTimestamp>.toKaraokeSyllables(phonetics: List<String?>): Li
 
 private fun Double.toMilliseconds(): Int = (this * 1000.0).roundToInt().coerceAtLeast(0)
 
+/**
+ * Reshapes AI romanisation — one string per lyric line — into the per-word map [buildSyncedLyrics]
+ * expects.
+ *
+ * The built-in path romanises word by word for word-synced TTML, which an AI provider cannot do
+ * affordably: a three-minute song is a few hundred lines but a few thousand words, and asking for
+ * per-word output also loses the sentence context that makes a model's reading better than a table's
+ * in the first place. So the model gets whole lines, and for word-synced lines the returned words are
+ * distributed across the syllables proportionally — the same approximation
+ * [buildWrappingKaraokeSyllables] already makes for line-synced lyrics.
+ */
+private fun aiRomanizationMap(
+    entries: List<LyricsEntry>,
+    isTtml: Boolean,
+    aiLines: List<String?>,
+): Map<Int, List<String?>> {
+    if (aiLines.isEmpty() || entries.isEmpty()) return emptyMap()
+    val map = mutableMapOf<Int, List<String?>>()
+    entries.forEachIndexed { index, entry ->
+        val romanized = aiLines.getOrNull(index)?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEachIndexed
+        val words = entry.words?.filter { !it.isBackground }
+        map[index] =
+            if (isTtml && !words.isNullOrEmpty()) {
+                distributePhonetics(words.map { it.text }, romanized)
+            } else {
+                listOf(romanized)
+            }
+    }
+    return map
+}
+
+/**
+ * Spreads the whitespace-separated pieces of [romanized] across [words], keeping order.
+ *
+ * Proportional rather than one-to-one because the two sides rarely have the same count: "君の名は"
+ * arrives as four TTML words and comes back as "kimi no na wa", but "ありがとう" is one word and one
+ * token. Anchoring by relative position keeps a syllable's phonetic under roughly the right glyphs
+ * even when the counts differ, and merging surplus tokens onto the last anchor means none are lost.
+ */
+private fun distributePhonetics(
+    words: List<String>,
+    romanized: String,
+): List<String?> {
+    if (words.isEmpty()) return emptyList()
+    val tokens = romanized.split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (tokens.isEmpty()) return List(words.size) { null }
+    if (words.size == 1) return listOf(tokens.joinToString(" "))
+
+    val out = MutableList<String?>(words.size) { null }
+    tokens.forEachIndexed { tokenIndex, token ->
+        val anchor = (tokenIndex * words.size / tokens.size).coerceIn(0, words.size - 1)
+        out[anchor] = listOfNotNull(out[anchor], token).joinToString(" ")
+    }
+    return out
+}
+
 private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
     isTtml: Boolean,
@@ -1622,17 +1775,38 @@ private fun buildSyncedLyrics(
             )
         } else {
             val nextEntry = entries.getOrNull(index + 1)
+            // ── Why `end` must be exactly the next line's start ──
+            // KaraokeLyricsView picks the focused line with
+            //     lines.indices.firstOrNull { pos >= it.start && pos < effectiveEnd(it) }
+            //         ?: lines.indexOfFirst { it.start > pos }   // ← the *upcoming* line
+            //         ?: lines.lastIndex
+            // so any instant that falls in a gap between one line's end and the next line's start
+            // resolves to the line that has NOT started yet. This branch used to clamp `end` to
+            // start + 4s whenever the gap to the next line exceeded 3s, which manufactured exactly
+            // such a gap on every slow line and every verse boundary: 4s into a line with a 9s gap
+            // the focus, the scale-up and the spring placement all moved to the next line while the
+            // current one was still being sung. That is the "line-synced lyrics in Enhanced style
+            // scroll way too soon" report, and it is Enhanced-only because LyricsV2 resolves the
+            // active line itself (last line whose start has passed) instead of asking the library.
+            //
+            // Butting each line's end against the next line's start removes the gaps entirely, so
+            // the library's first predicate always matches and always agrees with
+            // findLastStartedLineIndex — which is what drives our own auto-scroll. The two can no
+            // longer disagree, and a line stays focused for as long as it is the most recent one,
+            // exactly like Apple Music holds the last sung line through an instrumental break.
             val lineEnd =
                 if (nextEntry != null && nextEntry.time > entry.time) {
-                    val gap = nextEntry.time - entry.time
-                    if (gap > 3000L) {
-                        minOf((nextEntry.time - 1L).toInt(), (entry.time + 4000L).toInt())
-                            .coerceAtLeast(entry.time.toInt() + 1)
+                    val handOver = entry.time + LINE_SYNCED_MAX_FOCUS_HOLD_MS
+                    if (nextEntry.time - handOver > LINE_SYNCED_INTERLUDE_MIN_GAP_MS) {
+                        // A real instrumental break. Hand focus over so the library's breathing-dots
+                        // interlude — which only triggers when `next.start - previous.end` exceeds
+                        // its own 5s threshold — still gets to run through the silence.
+                        handOver.toInt()
                     } else {
-                        (nextEntry.time - 1L).coerceAtLeast(entry.time + 1L).toInt()
+                        nextEntry.time.toInt()
                     }
                 } else {
-                    (entry.time + 4000L).toInt()
+                    (entry.time + LINE_SYNCED_TRAILING_LINE_DURATION_MS).toInt()
                 }
             lines.add(
                 buildLineSyncedLrcLine(
@@ -1671,7 +1845,6 @@ private fun buildLineSyncedLrcLine(
             content = entry.text,
             romanizedText = normalizedRomanizedText,
             start = start,
-            end = end,
         )
 
     return KaraokeLine.MainKaraokeLine(
@@ -1683,11 +1856,16 @@ private fun buildLineSyncedLrcLine(
     )
 }
 
+/**
+ * Wraps a line-synced lyric into karaoke syllables purely so a romanisation can sit above it.
+ *
+ * Takes no `end`, deliberately: a line-synced LRC file has no word timing, so there is nothing to
+ * spread across the line's duration and no reason for the syllables to know how long the line lasts.
+ */
 private fun buildWrappingKaraokeSyllables(
     content: String,
     romanizedText: String,
     start: Int,
-    end: Int,
 ): List<KaraokeSyllable> {
     val contentUnits = content.toLyricsWrappingUnits().ifEmpty { listOf(content) }
     val phoneticWords = romanizedText.split(Regex("\\s+")).filter(String::isNotEmpty)
@@ -1705,14 +1883,23 @@ private fun buildWrappingKaraokeSyllables(
         }
     }
 
-    val duration = (end - start).coerceAtLeast(contentUnits.size)
+    // ── Every unit shares one instant, deliberately ──
+    // These syllables exist only to hang a romanisation over the right glyphs. Staggering their
+    // windows across the line duration — which is what this used to do — invented per-word timing out
+    // of the line's *length*, and `KaraokeLineText` faithfully animated it. So turning romanisation on
+    // made plain LRC lyrics fill word by word, while the very same lines without romanisation just
+    // highlighted whole through `SyncedLine`. The sweep was pure fabrication and drifted against the
+    // vocal on any line whose words aren't evenly spaced, i.e. all of them.
+    //
+    // Collapsing every unit onto `[start, start + 1)` makes `KaraokeSyllable.progress` a step
+    // function: 0 before the line, 1 from its first millisecond. The whole line lights up at once,
+    // matching the `SyncedLine` path exactly, and each romanisation still sits above its own unit.
+    val syllableEnd = start + MIN_KARAOKE_SYLLABLE_DURATION_MS
     return contentUnits.mapIndexed { index, unit ->
-        val unitStart = start + (duration.toLong() * index / contentUnits.size).toInt()
-        val unitEnd = start + (duration.toLong() * (index + 1) / contentUnits.size).toInt()
         KaraokeSyllable(
             content = unit,
-            start = unitStart,
-            end = unitEnd.coerceAtLeast(unitStart + MIN_KARAOKE_SYLLABLE_DURATION_MS),
+            start = start,
+            end = syllableEnd,
             phonetic = phoneticsByUnit[index],
         )
     }

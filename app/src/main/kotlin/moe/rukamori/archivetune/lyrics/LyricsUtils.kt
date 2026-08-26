@@ -22,9 +22,25 @@ data class LyricsRomanizationPreferences(
     val romanizeChinese: Boolean,
     val romanizeHindi: Boolean,
     val romanizeOther: Boolean,
+    /**
+     * True when an AI provider is supplying romanisation instead (see [AiLyricsRomanization]).
+     *
+     * This is the single gate that turns the built-in engines off, and it lives here rather than at
+     * each call site because every one of them — the three renderers' romanisation effects, the
+     * `showPhonetic` render flags, `providedRomanizedTextForEntry`, `shouldRomanizeLyricsLine` — is
+     * already written in terms of [isEnabled]. Running both engines would mix Hepburn from Kuromoji
+     * with whatever scheme the model chose inside a single song.
+     */
+    val aiHandled: Boolean = false,
 ) {
     val isEnabled: Boolean
-        get() = romanizeJapanese || romanizeKorean || romanizeChinese || romanizeHindi || romanizeOther
+        get() =
+            !aiHandled &&
+                (romanizeJapanese || romanizeKorean || romanizeChinese || romanizeHindi || romanizeOther)
+
+    /** True when romanisation should be rendered at all, whichever engine produced it. */
+    val showsRomanization: Boolean
+        get() = aiHandled || isEnabled
 }
 
 @Suppress("RegExpRedundantEscape")
@@ -432,16 +448,59 @@ object LyricsUtils {
         return false
     }
 
+    /**
+     * True when [dominantCode] — a value from [detectDominantLanguageCode] — names a language the
+     * user put in an exclusion set ("Don't auto translate these languages" / "Don't romanise these
+     * languages").
+     *
+     * Shared by the translation and romanisation gates so the two can never disagree about what an
+     * exclusion means, and so the code-space mismatch below is fixed once rather than twice.
+     *
+     * The mismatch: [detectDominantLanguageCode] reports a *script*, while the picker lists
+     * *languages* out of `assets/translator_languages.json`, and the two do not line up one-to-one.
+     * Han is the case that actually bites — the detector can only ever say `"CHINESE"`, but the
+     * picker offers `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and no plain `CHINESE`, so
+     * ticking either of them did nothing whatsoever. [EXCLUSION_ALIASES] accepts any picker code in
+     * the family instead.
+     */
+    fun matchesExcludedLanguage(
+        dominantCode: String,
+        excludedLanguageCodes: Set<String>,
+    ): Boolean {
+        if (excludedLanguageCodes.isEmpty()) return false
+        val dominant = dominantCode.trim().uppercase()
+        if (dominant.isEmpty()) return false
+        val normalized = excludedLanguageCodes.mapTo(HashSet()) { it.trim().uppercase() }
+        if (dominant in normalized) return true
+        return EXCLUSION_ALIASES[dominant]?.any { it in normalized } == true
+    }
+
+    /**
+     * Picker codes that should satisfy an exclusion for a detected script that has no exact code of
+     * its own. See [matchesExcludedLanguage].
+     */
+    private val EXCLUSION_ALIASES: Map<String, List<String>> =
+        mapOf("CHINESE" to listOf("CHINESE_SIMPLIFIED", "CHINESE_TRADITIONAL"))
+
+    /**
+     * True when [lyrics] should be sent for automatic AI translation into [targetLanguage].
+     *
+     * [excludedLanguageCodes] has no default, deliberately. It used to default to `emptySet()`, and
+     * both live callers — the standalone lyrics screen and the Apple Music player's inline lyrics —
+     * simply left the argument off, so "Don't auto translate these languages" was written by the
+     * settings dialog and then never actually consulted: picking Hindi changed nothing. Making the
+     * parameter required turns that omission into a compile error rather than a silent no-op.
+     */
     fun shouldAutoTranslate(
         lyrics: String,
         targetLanguage: String,
-        excludedLanguageCodes: Set<String> = emptySet(),
+        excludedLanguageCodes: Set<String>,
     ): Boolean {
         if (lyrics.isBlank()) return false
         val dominant = detectDominantLanguageCode(lyrics)
         // If the lyrics' dominant language is in the user's "Don't auto translate these languages"
         // exclusion set, skip translation even when auto-translate is on.
-        if (dominant != null && dominant.uppercase() in excludedLanguageCodes.map { it.uppercase() }) {
+        if (dominant != null && matchesExcludedLanguage(dominant, excludedLanguageCodes)) {
             return false
         }
         val allowedScripts = allowedScriptsForLanguage(targetLanguage)
@@ -471,7 +530,15 @@ object LyricsUtils {
      * describes the dominant non-Latin script in [lyrics], or `null` if the lyrics are
      * predominantly Latin (so no exclusion can match).
      *
-     * The returned codes match `TranslatorLanguage.code` in `assets/translator_languages.json`.
+     * These name *scripts*, not languages, and they very nearly — but not quite — line up with
+     * `TranslatorLang.code` in `assets/translator_languages.json`. "CHINESE" is the exception: the
+     * asset has `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and nothing plain. Compare through
+     * [matchesExcludedLanguage] rather than against an exclusion set directly, or Han lyrics will
+     * silently never match.
+     *
+     * The mapping is also deliberately coarse — every Devanagari script reports "HINDI", every
+     * Cyrillic one "RUSSIAN", every Arabic one "ARABIC" — so excluding Hindi also excludes Marathi
+     * and Nepali, and ticking "Marathi", "Ukrainian" or "Urdu" can never match anything.
      */
     fun detectDominantLanguageCode(lyrics: String): String? {
         if (lyrics.isBlank()) return null
@@ -1557,6 +1624,23 @@ object LyricsUtils {
             preferences.romanizeOther && hasOtherRomanizableScript(text) -> true
             else -> false
         }
+    }
+
+    /**
+     * True when [text] contains any script a romanisation could apply to, regardless of which engines
+     * the user has enabled.
+     *
+     * [shouldRomanizeLyricsLine] answers "should the built-in romanisers touch this line", which is
+     * the wrong question for the AI path: that one has a single on/off switch and no per-language
+     * engine toggles, but still must not spend a request on lyrics that are already Latin script.
+     */
+    fun hasRomanizableScript(text: String): Boolean {
+        if (text.isBlank()) return false
+        return looksJapanese(text) ||
+            isKorean(text) ||
+            isHindi(text) ||
+            isChinese(text) ||
+            hasOtherRomanizableScript(text)
     }
 
     fun shouldUseProvidedRomanization(

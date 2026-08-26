@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
@@ -67,6 +68,14 @@ fun LyricsRomanisationSettings(
     val (lyricsRomanizeOtherLanguages, onLyricsRomanizeOtherLanguagesChange) =
         rememberPreference(LyricsRomanizeOtherLanguagesKey, defaultValue = true)
     val japaneseLanguagePackState by JapaneseLanguagePackManager.state.collectAsStateWithLifecycle()
+    // When AI romanisation is on it replaces every engine on this page (see
+    // `LyricsRomanizationPreferences.aiHandled`). Greying the switches out rather than leaving them
+    // looking live is the difference between "this setting is overridden" and "this setting is
+    // broken" — the toggles would otherwise flip happily and change nothing on screen.
+    val (aiRomanizeLyrics) = rememberPreference(AiRomanizeLyricsKey, defaultValue = false)
+    val builtInEnabled = !aiRomanizeLyrics
+    val overriddenDescription =
+        if (aiRomanizeLyrics) stringResource(R.string.romanization_overridden_by_ai) else null
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -114,15 +123,17 @@ fun LyricsRomanisationSettings(
                         modifier = positions.modifierFor("lyrics_romanize_japanese"),
                         title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
                         description =
-                            if (japaneseLanguagePackState is JapaneseLanguagePackState.Installed) {
-                                null
-                            } else {
-                                stringResource(R.string.language_pack_required)
-                            },
+                            overriddenDescription
+                                ?: if (japaneseLanguagePackState is JapaneseLanguagePackState.Installed) {
+                                    null
+                                } else {
+                                    stringResource(R.string.language_pack_required)
+                                },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeJapanese,
                         onCheckedChange = onLyricsRomanizeJapaneseChange,
-                        isEnabled = japaneseLanguagePackState is JapaneseLanguagePackState.Installed,
+                        isEnabled =
+                            builtInEnabled && japaneseLanguagePackState is JapaneseLanguagePackState.Installed,
                     )
                 }
 
@@ -130,9 +141,11 @@ fun LyricsRomanisationSettings(
                     SwitchPreference(
                         modifier = positions.modifierFor("lyrics_romanize_korean"),
                         title = { Text(stringResource(R.string.lyrics_romanize_korean)) },
+                        description = overriddenDescription,
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeKorean,
                         onCheckedChange = onLyricsRomanizeKoreanChange,
+                        isEnabled = builtInEnabled,
                     )
                 }
 
@@ -140,9 +153,11 @@ fun LyricsRomanisationSettings(
                     SwitchPreference(
                         modifier = positions.modifierFor("lyrics_romanize_chinese"),
                         title = { Text(stringResource(R.string.lyrics_romanize_chinese)) },
+                        description = overriddenDescription,
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeChinese,
                         onCheckedChange = onLyricsRomanizeChineseChange,
+                        isEnabled = builtInEnabled,
                     )
                 }
 
@@ -150,9 +165,11 @@ fun LyricsRomanisationSettings(
                     SwitchPreference(
                         modifier = positions.modifierFor("lyrics_romanize_hindi"),
                         title = { Text(stringResource(R.string.lyrics_romanize_hindi)) },
+                        description = overriddenDescription,
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeHindi,
                         onCheckedChange = onLyricsRomanizeHindiChange,
+                        isEnabled = builtInEnabled,
                     )
                 }
 
@@ -160,9 +177,11 @@ fun LyricsRomanisationSettings(
                     SwitchPreference(
                         modifier = positions.modifierFor("lyrics_romanize_other_languages", "lyrics_romanize_other"),
                         title = { Text(stringResource(R.string.lyrics_romanize_other_languages)) },
+                        description = overriddenDescription,
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeOtherLanguages,
                         onCheckedChange = onLyricsRomanizeOtherLanguagesChange,
+                        isEnabled = builtInEnabled,
                     )
                 }
             }

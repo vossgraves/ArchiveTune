@@ -48,6 +48,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.lyrics.LyricsUtils.displayLyricsText
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
@@ -300,6 +301,30 @@ class LyricsMenuViewModel
                     try {
                         val prefs = context.dataStore.data.first()
                         isAutomatic = prefs[AutoTranslateLyricsKey] ?: false
+                        // Second line of defence for "Don't auto translate these languages".
+                        //
+                        // The callers gate on this too, but the setting had already been shipped
+                        // broken once precisely because enforcement lived only in the UI layer: both
+                        // trigger sites omitted the argument and `shouldAutoTranslate`'s default
+                        // quietly accepted it. Every automatic translation funnels through here, so
+                        // checking again makes the guard structural rather than a convention new
+                        // call sites have to remember.
+                        //
+                        // Only for automatic runs: the setting says "don't *auto* translate", so a
+                        // deliberate tap on "Translate with AI" must still work on an excluded
+                        // language.
+                        if (isAutomatic) {
+                            val excluded = prefs[AutoTranslateExcludedLanguagesKey] ?: emptySet()
+                            val dominant = LyricsUtils.detectDominantLanguageCode(lyrics)
+                            if (dominant != null && LyricsUtils.matchesExcludedLanguage(dominant, excluded)) {
+                                Log.d(
+                                    TAG,
+                                    "AI translate skipped: song=${mediaMetadata.title} " +
+                                        "language=$dominant is excluded from auto-translation",
+                                )
+                                return@launch
+                            }
+                        }
                         Log.d(
                             TAG,
                             "AI translate start: song=${mediaMetadata.title} automatic=$isAutomatic " +

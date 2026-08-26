@@ -357,19 +357,40 @@ object DownloadSourceConfig {
         runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
 
     /**
-     * Resolves the effective ordered list of all download sources from the stored CSV,
-     * preserving the user's chosen order and appending any missing sources in default order.
+     * Resolves the effective ordered list of all download sources from the stored CSV, preserving
+     * the user's chosen order and slotting any missing sources in above [DownloadSource.YOUTUBE_MUSIC].
+     *
+     * Mirrors `AudioSourceConfig.parseOrder`, and for the same reason: appending meant that a user
+     * who had touched the order picker before a source existed got that source listed *below*
+     * YouTube Music, where the list reads as if it ends. Every real download source sits above
+     * YouTube Music in [DEFAULT_ORDER], so inserting there is both correct and the one placement
+     * that cannot disturb the order the user actually chose.
      */
     fun parseOrder(rawOrder: String?): List<DownloadSource> {
-        val parsed =
+        val stored =
             rawOrder
                 ?.split(',')
                 ?.mapNotNull { parseType(it) }
                 ?.distinct()
                 .orEmpty()
-        val merged = LinkedHashSet(parsed)
-        DEFAULT_ORDER.forEach { merged.add(it) }
-        return merged.toList()
+        if (stored.isEmpty()) return DEFAULT_ORDER
+
+        val missing = DEFAULT_ORDER.filterNot { it in stored }
+        if (missing.isEmpty()) return stored
+
+        val merged = mutableListOf<DownloadSource>()
+        var inserted = false
+        for (source in stored) {
+            if (!inserted && source == DownloadSource.YOUTUBE_MUSIC) {
+                merged.addAll(missing)
+                inserted = true
+            }
+            merged.add(source)
+        }
+        // YouTube Music absent from the stored order means it is itself missing, and it is last in
+        // DEFAULT_ORDER, so appending the block still leaves it as the final fallback.
+        if (!inserted) merged.addAll(missing)
+        return merged
     }
 
     /** Serialize an order back to the CSV form for storage. */
@@ -453,11 +474,31 @@ val LogcatPausedKey = booleanPreferencesKey("logcatPaused")
 // background translations don't fire a notification every time a new song starts.
 val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
 
-// Set of uppercase language codes (e.g. "JAPANESE", "KOREAN", "CHINESE") that should NOT be
-// auto-translated even when [AutoTranslateLyricsKey] is on. The user picks them via the
-// multi-select dialog in AiIntegrationSettings. Codes match `TranslatorLanguage.code` in
-// assets/translator_languages.json.
+// Set of uppercase language codes (e.g. "JAPANESE", "KOREAN", "CHINESE_SIMPLIFIED") that should NOT
+// be auto-translated even when [AutoTranslateLyricsKey] is on. The user picks them via the
+// multi-select dialog in AiIntegrationSettings. Codes match `TranslatorLang.code` in
+// assets/translator_languages.json — note that there is no plain "CHINESE" there, which is why the
+// comparison goes through `LyricsUtils.matchesExcludedLanguage` rather than a direct set lookup.
 val AutoTranslateExcludedLanguagesKey = stringSetPreferencesKey("autoTranslateExcludedLanguages")
+
+// ── AI romanisation ──
+// Master switch. When on, the configured AI provider supplies the romanisation shown above each
+// lyric line, and the built-in engines (Kuromoji for Japanese, the hand-written Korean/Hindi tables,
+// ICU for everything else) stop running entirely — see `LyricsRomanizationPreferences.aiHandled`.
+// Two engines at once would mix romanisation schemes within one song, and the whole reason to reach
+// for a model is that its output is better than the tables'.
+val AiRomanizeLyricsKey = booleanPreferencesKey("aiRomanizeLyrics")
+
+// Fetch the romanisation as soon as lyrics are shown, rather than waiting for the user to ask via
+// Lyrics menu → Romanise with AI. Separate from [AiRomanizeLyricsKey] because these are billed
+// network calls: switching the feature on should not commit the user to one request per track.
+val AutoAiRomanizeLyricsKey = booleanPreferencesKey("autoAiRomanizeLyrics")
+
+// Uppercase language codes (e.g. "JAPANESE", "KOREAN") to leave alone even when AI romanisation is
+// on — for scripts the user already reads. Same code space and same multi-select dialog as
+// [AutoTranslateExcludedLanguagesKey]; codes match `TranslatorLang.code` in
+// assets/translator_languages.json.
+val AiRomanizeExcludedLanguagesKey = stringSetPreferencesKey("aiRomanizeExcludedLanguages")
 
 // Set by the "Never show again" pill on the startup update popup. Stores the
 // "<versionName>|<versionCode>" of the version the user suppressed the popup for, so we

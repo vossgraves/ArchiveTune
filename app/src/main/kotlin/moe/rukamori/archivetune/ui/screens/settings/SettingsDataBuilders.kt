@@ -22,6 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
@@ -749,6 +751,9 @@ fun buildSettingsGroups(
                 SettingsChild("Hide AI mix", "hide_ai_mix", listOf("hide ai", "ai mix", "smart mix", "hide mix")) { SearchResultSwitch(HideAiMixKey, false) },
                 SettingsChild("Automatic translation", "auto_translate_lyrics", listOf("automatic translation", "auto translate", "auto translate lyrics", "translate automatically")),
                 SettingsChild("Don't auto translate these languages", "auto_translate_excluded_languages", listOf("excluded languages", "skip translation", "do not translate", "translation exclusions")),
+                SettingsChild("AI romanisation", "ai_romanize_lyrics", listOf("ai romanisation", "ai romanization", "romanise", "romanize", "romaji", "transliteration", "ai romaji")) { SearchResultSwitch(AiRomanizeLyricsKey, false) },
+                SettingsChild("Auto AI romanisation", "auto_ai_romanize_lyrics", listOf("auto ai romanisation", "auto ai romanization", "automatic romanisation", "auto romanize")) { SearchResultSwitch(AutoAiRomanizeLyricsKey, false) },
+                SettingsChild("Don't romanise these languages", "ai_romanize_excluded_languages", listOf("excluded languages", "skip romanisation", "do not romanise", "romanisation exclusions")),
                 SettingsChild("Target language", "translate_language", listOf("target language", "translate to", "translation language")),
                 SettingsChild("Translation mode", "translate_mode", listOf("translation mode", "translate mode", "translation style")),
                 SettingsChild("DeepL API key", "deepl_api_key", listOf("deepl", "deepl api key", "deepl key", "deepl token")),

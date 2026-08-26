@@ -135,6 +135,7 @@ import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
@@ -182,14 +183,18 @@ private val AppleMusicMiniArtworkSize = 56.dp
 // ─── Lyrics backdrop "moving blur" wander ────────────────────────────
 // The drift itself lives in [BlurWanderDrift], shared with MovingBlurBackground
 // in LyricsScreen.kt so both lyrics surfaces move identically. Offsets are in dp
-// and are applied as graphicsLayer translations (see driftGraphicsLayer below).
+// and are applied as graphicsLayer translations (see driftGraphicsLayer below);
+// the walk also rotates, which is what lets a colour reach the far side of the
+// screen at all.
 //
-// [AmLyricsBlurDriftScale] has to cover the drift plus the blur radius:
-//     (scale - 1) / 2 * screenWidthDp  >=  maxDrift + blurRadius
-// or the blurred artwork stops covering the parent at maximum drift and the blur
-// samples transparent pixels, which shows up as a dark band on the trailing
-// edge. For the narrowest common phone (360dp) that means
-//     (2.4 - 1) / 2 * 360 = 252dp  >=  150 + 64 = 214dp.  ✔
+// [AmLyricsBlurDriftScale] has to cover the drift plus the blur radius, measured
+// to the container's furthest *corner* because the layer rotates:
+//     1.2 * max(W, H) - blurRadius * scale  >=  hypot(W, H) / 2 + maxDrift
+// ContentScale.Crop renders the square artwork at side max(W, H), so at 2.4x its
+// inscribed circle has radius 1.2 * max(W, H) and the outer 64 * 2.4 = 154dp of
+// that is softened by the blur. For a 360x800 phone:
+//     1.2 * 800 - 154 = 806dp  >=  439 + 120 = 559dp.  ✔
+// (320x480, the smallest screen this could ever run on, still clears it: 422 vs 408.)
 private const val AmLyricsBlurDriftScale = 2.4f
 
 // Scale of the blurred backdrop in the COVER/QUEUE states. The LYRICS state
@@ -210,7 +215,7 @@ private const val AmLyricsBackdropMorphMs = 650
 // every frame of the zoom.
 private val AmBackdropBlurRadius = 64.dp
 
-private const val AppleMusicLyricsContentDeferMs = 350L
+private const val AppleMusicLyricsContentDeferMs = 160L
 
 // How far above the bottom of the artwork stage the blurred canvas starts dissolving into the
 // still blurred album art beneath it. See canvasSeamFade in AppleMusicPlayerContent.
@@ -479,9 +484,16 @@ fun AppleMusicPlayerContent(
             lyricsContentReady = false
             return@LaunchedEffect
         }
-        // Parse/building a large TTML/LRC model is synchronous during the first composition of
-        // LyricsEnhanced/LyricsV2. Let the artwork morph and canvas handoff render first so that
-        // this one-time CPU burst cannot land on the same frame as the shared-bounds animation.
+        // Composing LyricsEnhanced/LyricsV2 for the first time is the most expensive frame in the
+        // whole overlay. Let the artwork morph and the canvas handoff get a head start so that
+        // burst cannot land on the same frame as the shared-bounds animation.
+        //
+        // 350ms used to be needed because the TTML/LRC parse and buildSyncedLyrics both ran
+        // synchronously inside that first composition; both now run on Dispatchers.Default, so only
+        // the composition itself is left and a shorter head start is enough. Keeping it long also
+        // hurt: the AnimatedVisibility fadeIn below is 400ms, so almost all of it was spent on an
+        // empty box and the lyrics arrived as a pop rather than a fade. The renderers' own
+        // first-focus fade now covers the remainder.
         lyricsContentReady = false
         delay(AppleMusicLyricsContentDeferMs)
         lyricsContentReady = true
@@ -626,13 +638,18 @@ fun AppleMusicPlayerContent(
     // ─── Automatic AI translation ───────────────────────────────────────
     // Mirrors the same LaunchedEffect in LyricsScreen.kt. The Apple Music
     // player uses an inline LyricsV2/LyricsEnhanced view (not LyricsScreen),
-    // so without this effect, auto-translate only fires from the background
-    // MusicService.onLyricsFetched() path — which is skipped if lyrics were
-    // already cached before the user enabled auto-translate. This foreground
-    // trigger ensures translation fires when the user opens the inline lyrics
-    // view, matching the behavior of every other player style.
+    // so it needs its own trigger; these two effects are the whole of
+    // auto-translation. (There is no background path: an `AutoLyricsTranslator`
+    // used to sit in `ai/` looking like one, injected nowhere and called by
+    // nothing — it has been removed, because the only place that read the
+    // exclusion setting correctly being dead code is what made that setting
+    // appear implemented while doing nothing.)
     val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    // "Don't auto translate these languages". Read here and passed explicitly below — leaving it to
+    // shouldAutoTranslate's old default was exactly how this setting came to do nothing.
+    val (autoTranslateExcludedLanguages) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
     val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
     // Observe the set of media IDs the user has dismissed translation for.
     // When a user clicks "Undo Translation", the mediaId is added to this set;
@@ -646,6 +663,9 @@ fun AppleMusicPlayerContent(
         currentLyrics?.source,
         autoTranslateLyrics,
         translatorTargetLang,
+        // In the key list so unticking a language re-evaluates the current track instead of waiting
+        // for the next one.
+        autoTranslateExcludedLanguages,
         translationDismissedMediaIds,
     ) {
         if (!autoTranslateLyrics) return@LaunchedEffect
@@ -668,7 +688,14 @@ fun AppleMusicPlayerContent(
         // user manually triggers translation (which clears the dismissal).
         if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
 
-        if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+                excludedLanguageCodes = autoTranslateExcludedLanguages,
+            )
+        ) {
+            return@LaunchedEffect
+        }
         lyricsMenuViewModel.translateLyricsWithAi(
             mediaMetadata = mediaMetadata,
             lyrics = text,
@@ -837,25 +864,25 @@ fun AppleMusicPlayerContent(
                 // rather than the `if (lyricsOpen && lyricsContentReady)` step
                 // it replaced.
                 val progress = lyricsBackdropProgress.value
-                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) ensures the
-                // image extends 0.7*W beyond each edge — enough to cover
-                // drift(±150) + blur(64dp) = 214dp even on a 360dp-wide screen
-                // (252dp > 214dp). A smaller scale would let the trailing edge
-                // expose transparent areas at max drift, which the blur then
-                // sampled as a flickering dark band.
+                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) leaves the
+                // solid part of the rotated image covering a circle of radius
+                // 806dp on a 360x800 screen, against the 559dp the corner plus
+                // drift(±120) asks for — see the constant's own comment for the
+                // full budget. A smaller scale would let a corner expose
+                // transparent areas, which the blur then sampled as a flickering
+                // dark band.
                 //
-                // Drift amplitude scales with the same progress, so the drift
-                // never outruns the zoom that has to cover it: at progress p
-                // the image overhangs (0.2 + 1.2p) / 2 * W while the drift asks
-                // for 150p + 64. On a 360dp screen those cross at p ≈ 0.42 and
-                // the margin only widens from there to the 252 vs 214 above.
+                // Drift and rotation both scale with the same progress, so
+                // neither can outrun the zoom that has to cover them: at p = 0
+                // there is no translation and no rotation at all, and both reach
+                // full amplitude only once the zoom does.
                 //
-                // Below p ≈ 0.42 the overhang is short of the *blur radius*
-                // alone (36dp vs 64dp at p = 0) — but that is the COVER state,
-                // which has zero drift and looked exactly this way before the
-                // ramp existed (it was a 72dp blur at a fixed 1.2x, i.e. a
-                // slightly larger shortfall). What the ramp has to avoid is
-                // translation outrunning the zoom, and it does.
+                // At low p the overhang is short of the *blur radius* alone (36dp
+                // vs 64dp at p = 0) — but that is the COVER state, which has zero
+                // drift and zero rotation and looked exactly this way before the
+                // ramp existed (a 72dp blur at a fixed 1.2x, i.e. a slightly
+                // larger shortfall). What the ramp has to avoid is motion
+                // outrunning the zoom, and it does.
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
@@ -864,9 +891,15 @@ fun AppleMusicPlayerContent(
                     // wander from snapping in: the phase advances the whole
                     // time lyrics is open, so without the multiplier the very
                     // first drifted frame would teleport the artwork by
-                    // however far along the path the phase already was.
+                    // however far along the path the phase already was. The
+                    // rotation is ramped for exactly the same reason.
                     translationX = blurWander.xDp.floatValue * driftDpToPx * progress
                     translationY = blurWander.yDp.floatValue * driftDpToPx * progress
+                    // Rotation is what actually carries a colour from the top of
+                    // the screen to the bottom — translation alone moves every
+                    // colour by the same vector, so the arrangement stays rigid
+                    // and the top stays the top. See BlurWanderDrift.
+                    rotationZ = blurWander.rotationDeg.floatValue * progress
                 }
                 // Force an offscreen compositing layer so the (expensive)
                 // Modifier.blur RenderEffect applied to this same node is

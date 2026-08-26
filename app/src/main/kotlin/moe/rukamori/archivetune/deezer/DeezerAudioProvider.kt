@@ -124,6 +124,40 @@ object DeezerAudioProvider {
     fun hasAccounts(): Boolean = manualAccount != null || PoolAccountManager.deezerAccounts().isNotEmpty()
 
     /**
+     * What credentials exist right now, split by origin. Exists so diagnostics and settings copy can
+     * tell a user with their own ARL apart from one relying on the shared pool — reading
+     * [PoolAccountManager.deezerAccounts] directly gets that wrong and reports "no Deezer accounts"
+     * to somebody who just signed in successfully.
+     */
+    data class AccountAvailability(
+        val manual: Boolean,
+        val manualPremium: Boolean,
+        val pooled: Int,
+        val pooledPremium: Int,
+    ) {
+        val total: Int get() = pooled + if (manual) 1 else 0
+    }
+
+    /** Cheap snapshot of [AccountAvailability]; no network. */
+    fun accountAvailability(): AccountAvailability {
+        val manual = manualAccount
+        val pooled = PoolAccountManager.deezerAccounts().filter { it.arl != manual?.arl }
+        return AccountAvailability(
+            manual = manual != null,
+            manualPremium = manual?.premium == true,
+            pooled = pooled.size,
+            pooledPremium = pooled.count { it.premium },
+        )
+    }
+
+    /**
+     * Verifies the credential that [resolve] would reach for first, so a diagnostic can report
+     * whether the ARL is actually still good rather than just that one is stored. Blocking network
+     * I/O; returns null when there is no credential or the gateway rejects it.
+     */
+    fun verifyPreferredAccount(): AccountInfo? = accounts().firstOrNull()?.let { verifyArl(it.arl) }
+
+    /**
      * Every usable credential, manual first so a user's own (likely paid) account is tried before
      * shared pool entries.
      */
@@ -627,6 +661,58 @@ object DeezerAudioProvider {
                 }
             }.getOrNull()
         }
+
+    /**
+     * Free-text catalogue search, returning up to [limit] hits in Deezer's own relevance order.
+     *
+     * Separate from [lookup] because the two answer different questions: [lookup] is "which single
+     * track is this song?" and applies a match-score threshold, while this is "what does the user's
+     * typing find?" and must not filter anything out. Also unauthenticated, so the player's "Play
+     * from" picker can list Deezer rows before any ARL exists — the picker only needs title/artist to
+     * pin the per-song source override, not a playable URL.
+     */
+    suspend fun searchCandidates(
+        term: String,
+        limit: Int = SEARCH_LIMIT,
+    ): List<Metadata> {
+        val trimmed = term.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
+                val req =
+                    Request
+                        .Builder()
+                        .url("https://api.deezer.com/search?q=$encoded&limit=$limit")
+                        .header("Accept", "application/json")
+                        .build()
+                client.newCall(req).execute().use { res ->
+                    if (!res.isSuccessful) {
+                        Timber.tag(TAG).w("searchCandidates HTTP %d for '%s'", res.code, trimmed)
+                        return@use emptyList<Metadata>()
+                    }
+                    val data =
+                        JSONObject(res.body?.string() ?: return@use emptyList<Metadata>())
+                            .optJSONArray("data") ?: return@use emptyList<Metadata>()
+                    (0 until data.length()).mapNotNull { i ->
+                        val obj = data.optJSONObject(i) ?: return@mapNotNull null
+                        val title = obj.optString("title").ifBlank { return@mapNotNull null }
+                        Metadata(
+                            trackId = obj.optLong("id").toString(),
+                            title = title,
+                            artist = obj.optJSONObject("artist")?.optString("name")?.ifBlank { null },
+                            album = obj.optJSONObject("album")?.optString("title")?.ifBlank { null },
+                            isrc = obj.optString("isrc").ifBlank { null },
+                            durationMs = obj.optLong("duration", 0L).takeIf { it > 0 }?.times(1000L),
+                            previewUrl = obj.optString("preview").ifBlank { null },
+                            coverUrl = obj.optJSONObject("album")?.optString("cover_big")?.ifBlank { null },
+                        )
+                    }
+                }
+            }.onFailure { Timber.tag(TAG).w(it, "searchCandidates failed for '%s'", trimmed) }
+                .getOrDefault(emptyList())
+        }
+    }
 
     private fun buildSearchQuery(query: Query): String {
         val parts = mutableListOf<String>()

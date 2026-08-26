@@ -110,6 +110,7 @@ import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.db.entities.ArtistEntity
+import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.jiosaavn.SaavnService
@@ -1937,26 +1938,44 @@ private fun SongSourceDialog(
     // Strings fetched at the Composable scope so they can be referenced safely inside produceState.
     val aacLabel = stringResource(R.string.quality_badge_aac)
     val saavnLabel = stringResource(R.string.quality_badge_saavn)
+    val mp3Label = stringResource(R.string.quality_badge_mp3)
     val losslessLabel = stringResource(R.string.quality_badge_lossless)
     val noResultsText = stringResource(R.string.source_search_no_results)
     val noBackendText = stringResource(R.string.source_search_no_backend)
 
+    // Deezer's catalogue search says nothing about what an account may stream, and the FLAC tier
+    // needs a paid plan — so the badge has to come from the credential rather than the hit. Premium
+    // is the flag the pool and the manual sign-in both carry; without one the best Deezer will serve
+    // is 320kbps MP3, and labelling those rows "Lossless" would promise a quality resolve() cannot
+    // deliver.
+    val deezerLabel =
+        remember(losslessLabel, mp3Label) {
+            val availability = DeezerAudioProvider.accountAvailability()
+            if (availability.manualPremium || availability.pooledPremium > 0) losslessLabel else mp3Label
+        }
+
     // Provider filter → "search backend not yet available" empty state. These are the
     // providers with a usable list-search API: YTM, Tidal (searchCandidates), Qobuz
-    // (QobuzAudioProvider.searchCandidates), Qobuz Backup (QobuzBackupProvider.searchCandidates)
-    // and JioSaavn (SaavnService.searchSongs). Deezer still has no public list search.
+    // (QobuzAudioProvider.searchCandidates), Qobuz Backup (QobuzBackupProvider.searchCandidates),
+    // Deezer (DeezerAudioProvider.searchCandidates) and JioSaavn (SaavnService.searchSongs).
     //
     // Qobuz Backup used to be excluded here on the assumption that the kouzu.in mirror could
     // only be addressed by YouTube video id. It does expose `GET /api/search`, which returns
     // its own indexed catalogue, so its rows are searchable and pickable like any other
     // source's — which is what the "search and select tracks from the Qobuz backup source"
     // request was about.
+    //
+    // Deezer was excluded on the claim that it "has no public list search". `api.deezer.com/search`
+    // is public and unauthenticated; the provider only ever exposed a best-match `lookup` over it,
+    // which is why it looked absent. It now has `searchCandidates` too, so selecting the Deezer chip
+    // no longer shows "no backend" for a source the app can search and play.
     val searchableSources =
         setOf(
             AudioSourceType.YOUTUBE,
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,
+            AudioSourceType.DEEZER,
             AudioSourceType.JIOSAAVN,
         )
     val backendMissing = sourceFilter != null && sourceFilter !in searchableSources
@@ -1978,6 +1997,7 @@ private fun SongSourceDialog(
         val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
         val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
         val searchQobuzBackup = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ_BACKUP
+        val searchDeezer = sourceFilter == null || sourceFilter == AudioSourceType.DEEZER
         val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
 
         if (searchYtm) {
@@ -2098,6 +2118,26 @@ private fun SongSourceDialog(
                                 // omits it rather than showing a made-up length.
                                 durationMs = null,
                                 qualityLabel = if (candidate.isLossless) losslessLabel else aacLabel,
+                                songItem = null,
+                            ),
+                        )
+                    }
+            }
+        }
+        if (searchDeezer) {
+            withContext(Dispatchers.IO) {
+                DeezerAudioProvider
+                    .searchCandidates(searchQuery, limit = 8)
+                    .forEach { candidate ->
+                        out.add(
+                            SourceSearchResult(
+                                source = AudioSourceType.DEEZER,
+                                trackId = candidate.trackId,
+                                title = candidate.title,
+                                artist = candidate.artist.orEmpty(),
+                                thumbnailUrl = candidate.coverUrl,
+                                durationMs = candidate.durationMs,
+                                qualityLabel = deezerLabel,
                                 songItem = null,
                             ),
                         )
