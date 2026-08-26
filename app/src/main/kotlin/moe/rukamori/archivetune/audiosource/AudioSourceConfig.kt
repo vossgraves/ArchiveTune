@@ -173,22 +173,32 @@ object TitleMatch {
 
         val titleScore = ratio(wantedTitle, candidateTitle)
         val durationScore = durationScore(wantedDurationMs, stream.matchedDurationMs)
-        if (durationScore == 0.0) {
-            return Result(false, 0.0, titleScore, null, durationScore, "duration differs by more than 15s")
-        }
 
         val wantedArtist = wantedArtists.joinToString(", ").takeIf { it.isNotBlank() }
         val candidateArtist = stream.matchedArtist?.takeIf { it.isNotBlank() }
         val artistScore =
             if (wantedArtist != null && candidateArtist != null) artistRatio(wantedArtist, candidateArtist) else null
 
+        // Artist is gated before duration. Both gates reject, so this does not change
+        // WHETHER a stream is accepted — only the reason reported for it. That matters
+        // because "duration differs" was actively misleading for the exact case this
+        // matcher exists to catch: a same-title recording by a different artist almost
+        // always has a different length too, so the wrong-artist rejection was being
+        // blamed on the length instead of the artist.
+        if (artistScore != null && artistScore < MIN_ARTIST) {
+            return Result(false, 0.0, titleScore, artistScore, durationScore, "artist mismatch")
+        }
+        if (durationScore == 0.0) {
+            return Result(false, 0.0, titleScore, artistScore, durationScore, "duration differs by more than 15s")
+        }
+
+        // Deliberately AFTER the duration gate: with no artist to compare against, the
+        // duration is the only independent signal left, so a title-only acceptance must
+        // never be allowed to override an implausible length.
         if (artistScore == null) {
             val accepted = titleScore >= TITLE_ONLY_THRESHOLD
             val score = titleScore * 0.8 + (durationScore ?: 0.5) * 0.2
             return Result(accepted, score, titleScore, null, durationScore, if (accepted) "strict title fallback" else "artist metadata unavailable")
-        }
-        if (artistScore < MIN_ARTIST) {
-            return Result(false, 0.0, titleScore, artistScore, durationScore, "artist mismatch")
         }
         if (titleScore < MIN_TITLE_WITH_METADATA && !containsTokenRun(candidateTitle, wantedTitle)) {
             return Result(false, 0.0, titleScore, artistScore, durationScore, "title mismatch")
