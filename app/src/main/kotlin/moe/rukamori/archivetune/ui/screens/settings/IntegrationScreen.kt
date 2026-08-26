@@ -35,10 +35,13 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
 import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
+import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
+import moe.rukamori.archivetune.constants.TidalAccessTokenKey
 import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
@@ -64,6 +67,15 @@ fun IntegrationScreen(
     // "Manual source sign-in" experimental toggle. Off by default: the app auto-uses the community
     // source pool, so most users never need to see raw instance/token fields.
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
+    // …but a source the user has *already* signed into must stay reachable regardless, otherwise
+    // turning the toggle back off strands the account with no way to view or sign out of it — and
+    // "Check source" would keep pointing at a screen that is no longer in the list.
+    val (deezerArl, _) = rememberPreference(DeezerArlKey, "")
+    val (tidalAccessToken, _) = rememberPreference(TidalAccessTokenKey, "")
+    val (qobuzTokens, _) = rememberPreference(QobuzTokensKey, "")
+    val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
+    val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
+    val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
@@ -161,42 +173,40 @@ fun IntegrationScreen(
                 modifier = positions.modifierFor("music_sources"),
                 title = stringResource(R.string.music_sources),
             ) {
-                if (manualSourceLogin) {
-                    item {
-                        PreferenceEntry(
-                            modifier = positions.modifierFor("tidal"),
-                            title = { Text(stringResource(R.string.tidal_integration)) },
-                            description = stringResource(R.string.tidal_integration_description),
-                            icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
-                            onClick = {
-                                navController.navigate("settings/tidal")
-                            },
-                        )
-                    }
+                item(visible = showTidalRow) {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("tidal"),
+                        title = { Text(stringResource(R.string.tidal_integration)) },
+                        description = stringResource(R.string.tidal_integration_description),
+                        icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
+                        onClick = {
+                            navController.navigate("settings/tidal")
+                        },
+                    )
+                }
 
-                    item {
-                        PreferenceEntry(
-                            modifier = positions.modifierFor("qobuz"),
-                            title = { Text(stringResource(R.string.qobuz_integration)) },
-                            description = stringResource(R.string.qobuz_integration_description),
-                            icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
-                            onClick = {
-                                navController.navigate("settings/qobuz")
-                            },
-                        )
-                    }
+                item(visible = showQobuzRow) {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("qobuz"),
+                        title = { Text(stringResource(R.string.qobuz_integration)) },
+                        description = stringResource(R.string.qobuz_integration_description),
+                        icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
+                        onClick = {
+                            navController.navigate("settings/qobuz")
+                        },
+                    )
+                }
 
-                    item {
-                        PreferenceEntry(
-                            modifier = positions.modifierFor("deezer"),
-                            title = { Text(stringResource(R.string.deezer_integration)) },
-                            description = stringResource(R.string.deezer_integration_description),
-                            icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
-                            onClick = {
-                                navController.navigate("settings/deezer")
-                            },
-                        )
-                    }
+                item(visible = showDeezerRow) {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("deezer"),
+                        title = { Text(stringResource(R.string.deezer_integration)) },
+                        description = stringResource(R.string.deezer_integration_description),
+                        icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
+                        onClick = {
+                            navController.navigate("settings/deezer")
+                        },
+                    )
                 }
 
                 item {

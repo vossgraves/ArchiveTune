@@ -734,6 +734,16 @@
     <string name="auto_translate_excluded_languages">Don\'t auto translate these languages</string>
     <string name="auto_translate_excluded_languages_desc">Pick languages that should never be auto-translated even when automatic translation is on. Useful if you already understand a language and don\'t want it overridden.</string>
     <string name="auto_translate_excluded_languages_none">None — every foreign-language lyric will be translated</string>
+    <string name="ai_romanize_lyrics">AI romanisation</string>
+    <string name="ai_romanize_lyrics_desc">Use the configured AI provider to romanise lyrics instead of the built-in engines. Usually more accurate on names, slang and unusual readings. While this is on, the app\'s own romanisation is switched off so a song never mixes two schemes.</string>
+    <string name="auto_ai_romanize_lyrics">Auto AI romanisation</string>
+    <string name="auto_ai_romanize_lyrics_desc">Romanise automatically as soon as lyrics are shown. Off by default because each track costs one request — with it off, use Lyrics menu → \"Romanise with AI\" when you want it.</string>
+    <string name="ai_romanize_excluded_languages">Don\'t romanise these languages</string>
+    <string name="ai_romanize_excluded_languages_desc">Pick languages to leave in their original script even when AI romanisation is on. Useful for scripts you already read.</string>
+    <string name="ai_romanize_excluded_languages_none">None — every non-Latin lyric will be romanised</string>
+    <string name="romanization_overridden_by_ai">Overridden — AI romanisation is on (Settings → Integration → AI integration)</string>
+    <string name="ai_romanize_now">Romanise with AI</string>
+    <string name="ai_romanize_started">Romanising lyrics with AI…</string>
     <string name="update_remind_later">Remind me later</string>
     <string name="update_never_show_again">Never show again</string>
     <string name="settings_lyrics_providers_subtitle">Choose which lyrics providers are active and set priority</string>

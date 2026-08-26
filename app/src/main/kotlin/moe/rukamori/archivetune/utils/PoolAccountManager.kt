@@ -57,6 +57,12 @@ object PoolAccountManager {
     // being woken for nothing on every app start. `force = true` (the settings refresh button)
     // still bypasses this.
     private const val MIN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000L
+    // …but only once every service actually has something cached. The 24h throttle was gated on
+    // `hasAccounts()`, which is true as soon as *any one* service is populated — so a pool that
+    // served Tidal accounts locked Deezer and Qobuz out for a full day, and "Check source" (which
+    // refreshes without `force`) could never discover them however many times it was tapped. When
+    // any service is still empty, retry on this much shorter interval instead.
+    private const val MIN_PARTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000L
 
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
@@ -145,6 +151,18 @@ object PoolAccountManager {
 
     fun hasAccounts(): Boolean = tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty()
 
+    /** True when every pooled service has at least one account, i.e. nothing is left to discover. */
+    private fun hasEveryService(): Boolean =
+        tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty()
+
+    /**
+     * How long a non-forced [refresh] may be skipped for. Full caches are re-read once a day; a
+     * cache that is still missing a service is retried far more eagerly so that service can appear
+     * without the user having to hunt for the manual refresh button.
+     */
+    private fun refreshIntervalMs(): Long =
+        if (hasEveryService()) MIN_REFRESH_INTERVAL_MS else MIN_PARTIAL_REFRESH_INTERVAL_MS
+
     /**
      * Loads the persisted account cache into memory (cheap, no network). Safe to call repeatedly;
      * only reads the DataStore once. Call early on startup so resolvers have data before the first
@@ -188,13 +206,13 @@ object PoolAccountManager {
             loadCached(context)
 
             val now = System.currentTimeMillis()
-            if (!force && hasAccounts() && now - lastRefreshAt < MIN_REFRESH_INTERVAL_MS) {
+            if (!force && hasAccounts() && now - lastRefreshAt < refreshIntervalMs()) {
                 return@withContext true
             }
 
             refreshMutex.withLock {
                 // Re-check the throttle inside the lock in case another caller just refreshed.
-                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < MIN_REFRESH_INTERVAL_MS) {
+                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
                     return@withLock true
                 }
                 val url = sourcesUrl ?: return@withLock false

@@ -44,6 +44,8 @@ import moe.rukamori.archivetune.constants.DownloadSource
 import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
+import moe.rukamori.archivetune.constants.DeezerAudioQuality
+import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
@@ -51,11 +53,14 @@ import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.toFormatId
+import moe.rukamori.archivetune.constants.toFormatName
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.SongArtistMap
 import moe.rukamori.archivetune.db.entities.SongEntity
+import moe.rukamori.archivetune.deezer.DeezerCrypto
+import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
 import moe.rukamori.archivetune.innertube.YouTube
@@ -117,6 +122,7 @@ class DownloadUtil
         private val qobuzAudioQuality by enumPreference(context, QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
         private val tidalAudioQuality by enumPreference(context, TidalAudioQualityKey, TidalAudioQuality.FLAC)
         private val saavnAudioQuality by enumPreference(context, SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
+        private val deezerAudioQuality by enumPreference(context, DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
 
@@ -400,11 +406,38 @@ class DownloadUtil
         // everything else through the YouTube-resolving factory above.
         private val telegramDataSourceFactory = moe.rukamori.archivetune.telegram.TelegramDataSource.Factory()
 
+        /**
+         * Upstream for `deezer://` downloads.
+         *
+         * Deezer's CDN serves Blowfish-encrypted bytes, so the download cannot go through
+         * [youtubeDataSourceFactory]: that one runs the YouTube resolver over the DataSpec (which
+         * would rewrite our `deezer://` URI) and would store ciphertext even if it didn't. Decryption
+         * sits *below* the cache, exactly as it does for playback in `MusicService`, so what lands in
+         * [downloadCache] is a plain FLAC/MP3 file — which is what lets jaudiotagger embed tags and
+         * the exporter copy it out as playable audio.
+         */
+        private val deezerDownloadDataSourceFactory =
+            CacheDataSource
+                .Factory()
+                .setCache(downloadCache)
+                .setCacheKeyFactory(DownloadRequestCacheKeyFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .setUpstreamDataSourceFactory(
+                    DeezerDecryptingDataSource.Factory(okHttpDataSourceFactory),
+                ).setCacheWriteDataSinkFactory(
+                    CacheDataSink
+                        .Factory()
+                        .setCache(downloadCache)
+                        .setBufferSize(DOWNLOAD_WRITE_BUFFER_SIZE)
+                        .setFragmentSize(DOWNLOAD_FRAGMENT_SIZE),
+                )
+
         private val dataSourceFactory =
             DataSource.Factory {
                 DownloadSchemeRoutingDataSource(
                     youtubeFactory = youtubeDataSourceFactory,
                     telegramFactory = telegramDataSourceFactory,
+                    deezerFactory = deezerDownloadDataSourceFactory,
                 )
             }
 
@@ -757,10 +790,9 @@ class DownloadUtil
             for (source in sourceOrder) {
                 val resolved = runCatching { resolveSourceStream(source, mediaId, queryTitle, artists, album, durationMs) }
                     .getOrNull() ?: continue
-                // Deezer currently returns null (no full stream available
-                // without Premium) — but its lookup still enriches the song
-                // metadata (ISRC, album name, thumbnail) so the downloaded
-                // song has correct tags even when falling through to YT.
+                // Deezer's public catalogue lookup fills in ISRC / album name /
+                // thumbnail, which is worth doing whether or not the stream itself
+                // resolved: a fall-through to YouTube still gets correct tags.
                 if (source == DownloadSource.DEEZER) {
                     enrichSongMetadataFromDeezer(mediaId, queryTitle, artists, album, durationMs)
                 }
@@ -837,12 +869,17 @@ class DownloadUtil
                     ?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.DEEZER -> {
-                // Public Deezer API only exposes 30-second previews — full
-                // streaming requires Premium credentials. Return null so the
-                // AUTO chain falls through to the next source. The Deezer
-                // catalogue is still queried (via enrichSongMetadataFromDeezer)
-                // to populate the song's album/thumbnail/ISRC metadata.
-                null
+                // Returns a `deezer://` URI whose bytes are Blowfish-encrypted;
+                // downloadDataSourceFactory routes that scheme through
+                // DeezerDecryptingDataSource so the cache receives plain FLAC/MP3.
+                LosslessStreamResolver.resolveDeezer(
+                    mediaId = mediaId,
+                    title = title,
+                    artists = artists,
+                    album = album,
+                    durationMs = durationMs,
+                    format = deezerAudioQuality.toFormatName(),
+                )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.JIOSAAVN -> {
                 LosslessStreamResolver.resolveJioSaavn(
@@ -1100,12 +1137,14 @@ class DownloadUtil
         }
 
         /**
-         * Picks the download upstream by URI scheme: `telegram://` tracks go through TDLib (mirroring
-         * playback's SchemeRoutingDataSource), everything else through the YouTube-resolving factory.
+         * Picks the download upstream by URI scheme: `telegram://` tracks go through TDLib and
+         * `deezer://` through the Blowfish-decrypting chain (both mirroring playback's
+         * SchemeRoutingDataSource), everything else through the YouTube-resolving factory.
          */
         private class DownloadSchemeRoutingDataSource(
             private val youtubeFactory: DataSource.Factory,
             private val telegramFactory: DataSource.Factory,
+            private val deezerFactory: DataSource.Factory,
         ) : DataSource {
             private val transferListeners = mutableListOf<TransferListener>()
             private var delegate: DataSource? = null
@@ -1117,7 +1156,12 @@ class DownloadUtil
 
             override fun open(dataSpec: DataSpec): Long {
                 val scheme = dataSpec.uri.scheme?.lowercase(java.util.Locale.US)
-                val selected = if (scheme == "telegram") telegramFactory else youtubeFactory
+                val selected =
+                    when (scheme) {
+                        "telegram" -> telegramFactory
+                        DeezerCrypto.SCHEME -> deezerFactory
+                        else -> youtubeFactory
+                    }
                 val source = selected.createDataSource()
                 transferListeners.forEach(source::addTransferListener)
                 delegate = source
