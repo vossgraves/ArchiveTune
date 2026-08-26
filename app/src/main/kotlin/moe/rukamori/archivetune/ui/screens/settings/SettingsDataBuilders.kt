@@ -347,7 +347,6 @@ fun buildSettingsGroups(
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
                 SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")),
                 SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
-                SettingsChild("yt-dlp runtime", "ytdlp", listOf("yt-dlp", "ytdlp", "youtube-dl", "extractor", "downloader runtime", "yt dlp version")),
             ),
         )
     // Sources → JioSaavn sub-page.
@@ -392,17 +391,16 @@ fun buildSettingsGroups(
             title = stringResource(R.string.source_settings),
             subtitle = stringResource(R.string.source_settings_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("source", "music source", "youtube music", "spotify", "metadata source", "search source", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
+            keywords = listOf("sources", "playback sources", "youtube music", "spotify", "metadata catalog", "search catalog", "tidal", "qobuz", "deezer", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
-            // Moved to the Playback sub-page (Task 4). Kept in the search index so existing
-            // search shortcuts still work.
-            hidden = true,
             children = listOf(
                 SettingsChild("YouTube Music", "youtube_music", listOf("youtube", "youtube music", "yt music")),
-                SettingsChild("Default metadata source", "default_metadata_source", listOf("metadata", "spotify", "catalog", "artwork")),
-                SettingsChild("Default search source", "default_search_source", listOf("search", "spotify", "youtube", "provider")),
+                SettingsChild("Default metadata catalog", "default_metadata_source", listOf("metadata", "spotify", "catalog", "artwork")),
+                SettingsChild("Default search catalog", "default_search_source", listOf("search", "spotify", "youtube", "catalog")),
                 SettingsChild("Qobuz", "qobuz", listOf("qobuz", "hires", "hi-res", "flac", "lossless", "cd quality")),
                 SettingsChild("Tidal", "tidal", listOf("tidal", "lossless", "hifi", "master", "mq")),
+                SettingsChild("Deezer", "deezer", listOf("deezer", "lossless", "flac")),
+                SettingsChild("Telegram", "telegram", listOf("telegram", "telegram channel", "independent")),
             ),
         )
     val lyrics =
@@ -1007,63 +1005,33 @@ fun buildSettingsGroups(
 
     return listOf(
         SettingsGroup(
-            title = stringResource(R.string.settings),
-            items = listOf(account, stats),
+            title = stringResource(R.string.settings_section_account_sync),
+            items = listOf(account, sources, stats),
         ),
         SettingsGroup(
-            title = stringResource(R.string.settings_section_player_content),
-            items =
-                listOf(
-                    appearance,
-                    appearanceExtras,
-                    aodCustomization,
-                    navigationBar,
-                    lyricsAnimations,
-                    playback,
-                    sources,
-                    jioSaavn,
-                    deezer,
-                    lyrics,
-                    lyricsProviders,
-                    lyricsRomanisation,
-                    languagePacks,
-                    content,
-                    behavior,
-                ),
+            title = stringResource(R.string.settings_section_appearance),
+            items = listOf(appearance, playback),
         ),
         SettingsGroup(
-            title = stringResource(R.string.integration),
-            // Discord / Last.fm / Tidal / Qobuz / Telegram are intentionally NOT
-            // top-level items here — they live as children of `integration` (and
-            // also under their respective `sources` / `integration` screens).
-            // Surfacing them as separate rows on the main settings page was
-            // redundant noise per user feedback. The `hidden = true` entries below
-            // exist purely so their own sub-page settings are searchable.
-            items =
-                listOf(
-                    integration,
-                    aiIntegration,
-                    discordExperimental,
-                    tidalDetail,
-                    qobuzDetail,
-                    telegramDetail,
-                    internet,
-                    poToken,
-                ),
+            title = stringResource(R.string.settings_section_discovery_content),
+            items = listOf(content, behavior),
         ),
         SettingsGroup(
-            title = stringResource(R.string.storage),
-            items = listOf(storage, downloads, backupRestore, musicTogether),
+            title = stringResource(R.string.settings_section_data_network),
+            items = listOf(storage, downloads, internet),
         ),
         SettingsGroup(
-            title = stringResource(R.string.about),
-            items =
-                buildList {
-                    add(developerOptions)
-                    defaultLinks?.let(::add)
-                    updates?.let(::add)
-                    add(about)
-                },
+            title = stringResource(R.string.settings_section_connected_services),
+            items = listOf(integration),
+        ),
+        SettingsGroup(
+            title = stringResource(R.string.settings_section_advanced),
+            items = buildList {
+                add(backupRestore)
+                add(developerOptions)
+                updates?.let(::add)
+                add(about)
+            },
         ),
     )
 }

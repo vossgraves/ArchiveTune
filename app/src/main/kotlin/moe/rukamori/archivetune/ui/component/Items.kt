@@ -1512,42 +1512,57 @@ fun YouTubeGridItem(
             val playerConnection = LocalPlayerConnection.current ?: return@GridItem
             val shape = RoundedCornerShape(GridThumbnailCornerRadius)
 
-            ItemThumbnail(
-                thumbnailUrl = item.thumbnail,
-                isActive = isActive,
-                isPlaying = isPlaying,
-                shape = shape,
-                thumbnailRatio = resolvedThumbnailRatio,
-                sourceAspectRatio = item.thumbnailSourceRatio,
-            )
-
-            if (item is SongItem && !isActive) {
-                OverlayPlayButton(
-                    visible = true,
+            Box(Modifier.fillMaxSize()) {
+                ItemThumbnail(
+                    thumbnailUrl = item.thumbnail,
+                    isActive = isActive,
+                    isPlaying = isPlaying,
+                    shape = shape,
+                    thumbnailRatio = resolvedThumbnailRatio,
+                    sourceAspectRatio = item.thumbnailSourceRatio,
                 )
-            }
-
-            AlbumPlayButton(
-                visible = item is AlbumItem && !isActive,
-                onClick = {
-                    coroutineScope?.launch(Dispatchers.IO) {
-                        var albumWithSongs = database.albumWithSongs(item.id).first()
-                        if (albumWithSongs?.songs.isNullOrEmpty()) {
-                            YouTube
-                                .album(item.id)
-                                .onSuccess { albumPage ->
-                                    database.transaction { insert(albumPage) }
-                                    albumWithSongs = database.albumWithSongs(item.id).first()
-                                }.onFailure { reportException(it) }
-                        }
-                        albumWithSongs?.let {
-                            withContext(Dispatchers.Main) {
-                                playerConnection.playQueue(LocalAlbumRadio(it))
+                // Fixed badge slot for explicit content — always reserves space
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (item.explicit) Color.Black.copy(alpha = 0.55f) else Color.Transparent)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    if (item.explicit) {
+                        Text("E", style = MaterialTheme.typography.labelSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                    } else {
+                        Spacer(Modifier.size(width = 10.dp, height = 12.dp))
+                    }
+                }
+                if (item is SongItem && !isActive) {
+                    OverlayPlayButton(
+                        visible = true,
+                    )
+                }
+                AlbumPlayButton(
+                    visible = item is AlbumItem && !isActive,
+                    onClick = {
+                        coroutineScope?.launch(Dispatchers.IO) {
+                            var albumWithSongs = database.albumWithSongs(item.id).first()
+                            if (albumWithSongs?.songs.isNullOrEmpty()) {
+                                YouTube
+                                    .album(item.id)
+                                    .onSuccess { albumPage ->
+                                        database.transaction { insert(albumPage) }
+                                        albumWithSongs = database.albumWithSongs(item.id).first()
+                                    }.onFailure { reportException(it) }
+                            }
+                            albumWithSongs?.let {
+                                withContext(Dispatchers.Main) {
+                                    playerConnection.playQueue(LocalAlbumRadio(it))
+                                }
                             }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            }
         },
         thumbnailRatio = resolvedThumbnailRatio,
         fillMaxWidth = fillMaxWidth,

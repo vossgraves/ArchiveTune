@@ -83,35 +83,13 @@ fun DownloadsSettings(
     val context = LocalContext.current
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
         rememberPreference(AutoDownloadOnLikeKey, defaultValue = false)
-    // Legacy single-pick key is kept for backup compatibility, but the UI now drives the
-    // new drag-drop `DownloadSourceOrderKey` CSV. The order list is the source of truth.
-    val (downloadSourceOrderRaw, onDownloadSourceOrderChange) =
-        rememberPreference(DownloadSourceOrderKey, defaultValue = "")
-    val downloadSourceOrder =
-        remember(downloadSourceOrderRaw) {
-            DownloadSourceConfig.parseOrder(downloadSourceOrderRaw)
-        }
-    val poolEnabled = remember { PoolAccountManager.isEnabled }
     val (externalDownloaderEnabled, onExternalDownloaderEnabledChange) =
         rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage, onExternalDownloaderPackageChange) =
         rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
 
-    var showSourceOrderDialog by remember { mutableStateOf(false) }
     var showExternalDownloaderPackageDialog by remember { mutableStateOf(false) }
     var clearDownloads by remember { mutableStateOf(false) }
-
-    if (showSourceOrderDialog) {
-        DownloadSourceOrderDialog(
-            initialOrder = downloadSourceOrder,
-            poolEnabled = poolEnabled,
-            onDismiss = { showSourceOrderDialog = false },
-            onConfirm = { newOrder ->
-                onDownloadSourceOrderChange(DownloadSourceConfig.serialize(newOrder))
-                showSourceOrderDialog = false
-            },
-        )
-    }
 
     if (showExternalDownloaderPackageDialog) {
         TextFieldDialog(
@@ -231,21 +209,12 @@ fun DownloadsSettings(
                 }
 
                 item {
-                    // Description: arrow-joined names of the priority order, with the first
-                    // item being the preferred source. Tapping opens the drag-drop reorder dialog.
-                    val fallbackAuto = stringResource(R.string.download_source_auto)
-                    val description =
-                        remember(downloadSourceOrder, fallbackAuto) {
-                            downloadSourceOrder
-                                .joinToString(" → ") { source -> source.displayName() }
-                                .ifEmpty { fallbackAuto }
-                        }
                     PreferenceEntry(
                         modifier = positions.modifierFor("download_source"),
-                        title = { Text(stringResource(R.string.download_source_title)) },
-                        description = description,
-                        icon = { Icon(painterResource(R.drawable.download), null) },
-                        onClick = { showSourceOrderDialog = true },
+                        title = { Text(stringResource(R.string.manage_source_priority)) },
+                        description = stringResource(R.string.sources_priority_footer),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { navController.navigate("settings/sources?scrollTo=preferred_sources") },
                     )
                 }
             }
@@ -279,154 +248,4 @@ fun DownloadsSettings(
     }
 }
 
-@Composable
-private fun DownloadSourceOrderDialog(
-    initialOrder: List<DownloadSource>,
-    poolEnabled: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (List<DownloadSource>) -> Unit,
-) {
-    val context = LocalContext.current
-    val sources = remember { mutableStateListOf(*initialOrder.toTypedArray()) }
-    val lazyListState = rememberLazyListState()
-    val reorderableState =
-        rememberReorderableLazyListState(lazyListState) { from, to ->
-            val item = sources.removeAt(from.index)
-            sources.add(to.index, item)
-        }
 
-    DefaultDialog(
-        onDismiss = onDismiss,
-        buttons = {
-            TextButton(
-                onClick = onDismiss,
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Text(stringResource(android.R.string.cancel))
-            }
-            Spacer(Modifier.weight(1f))
-            TextButton(
-                onClick = { onConfirm(sources.toList()) },
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-    ) {
-        Column(modifier = Modifier.padding(top = 4.dp)) {
-            Text(
-                text = stringResource(R.string.set_source_priority),
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-            LazyColumn(
-                state = lazyListState,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 440.dp),
-            ) {
-                itemsIndexed(sources, key = { _, item -> item.name }) { index, source ->
-                    ReorderableItem(reorderableState, key = source.name) {
-                        val isFirst = index == 0
-                        val requiresPool = source in DownloadSourceConfig.REQUIRES_POOL
-                        val available = !requiresPool || poolEnabled
-                        val containerColor =
-                            if (isFirst) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerHigh
-                            }
-                        val contentColor =
-                            if (isFirst) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
-
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = if (index < sources.size - 1) 4.dp else 0.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(containerColor)
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(
-                                text = "${index + 1}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = contentColor.copy(alpha = 0.7f),
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Icon(
-                                painter = painterResource(source.iconRes()),
-                                contentDescription = null,
-                                tint = contentColor,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = source.displayName(context),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = contentColor,
-                                )
-                                if (!available) {
-                                    Text(
-                                        text = stringResource(R.string.download_source_requires_pool),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = contentColor.copy(alpha = 0.7f),
-                                    )
-                                }
-                            }
-                            Icon(
-                                painter = painterResource(R.drawable.drag_handle),
-                                contentDescription = null,
-                                tint = contentColor.copy(alpha = 0.6f),
-                                modifier =
-                                    Modifier
-                                        .size(20.dp)
-                                        .draggableHandle(),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun DownloadSource.displayName(context: android.content.Context): String =
-    when (this) {
-        DownloadSource.AUTO -> context.getString(R.string.download_source_auto)
-        DownloadSource.QOBUZ -> context.getString(R.string.download_source_qobuz)
-        DownloadSource.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
-        DownloadSource.TIDAL -> context.getString(R.string.download_source_tidal)
-        DownloadSource.DEEZER -> context.getString(R.string.download_source_deezer)
-        DownloadSource.JIOSAAVN -> context.getString(R.string.download_source_jiosaavn)
-        DownloadSource.YOUTUBE_MUSIC -> context.getString(R.string.download_source_youtube_music)
-    }
-
-private fun DownloadSource.displayName(): String =
-    when (this) {
-        DownloadSource.AUTO -> "Auto"
-        DownloadSource.QOBUZ -> "Qobuz"
-        DownloadSource.QOBUZ_BACKUP -> "Qobuz Backup"
-        DownloadSource.TIDAL -> "Tidal"
-        DownloadSource.DEEZER -> "Deezer"
-        DownloadSource.JIOSAAVN -> "JioSaavn"
-        DownloadSource.YOUTUBE_MUSIC -> "YouTube Music"
-    }
-
-private fun DownloadSource.iconRes(): Int =
-    when (this) {
-        DownloadSource.AUTO -> R.drawable.download
-        DownloadSource.QOBUZ -> R.drawable.provider_qobuz
-        DownloadSource.QOBUZ_BACKUP -> R.drawable.provider_qobuz
-        DownloadSource.TIDAL -> R.drawable.provider_tidal
-        DownloadSource.DEEZER -> R.drawable.provider_deezer
-        DownloadSource.JIOSAAVN -> R.drawable.provider_jiosaavn
-        DownloadSource.YOUTUBE_MUSIC -> R.drawable.play
-    }
