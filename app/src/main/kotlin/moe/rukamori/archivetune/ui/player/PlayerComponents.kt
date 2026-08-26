@@ -133,7 +133,6 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
 import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
-import moe.rukamori.archivetune.ui.utils.fadingEdge
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -209,15 +208,13 @@ internal fun PlayerTitleText(
 internal fun PlayerTextBackdrop(
     textColor: Color,
     modifier: Modifier = Modifier,
-    edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-    // Keep the fade on the bounded wrapper, not after basicMarquee(). The shared helper uses
-    // explicit viewport coordinates for both edges, so scrolling text fades into any backdrop
-    // instead of placing the gradient at the marquee's unbounded intrinsic width.
-    Box(
-        modifier = modifier.fadingEdge(left = edgeFadeWidth, right = edgeFadeWidth),
-    ) {
+    // Removed the blurred gradient + rounded background pill that was creating
+    // a visible dark "pill" behind song names. The text now sits directly on
+    // the player background with no container — matching the user's request
+    // to "remove the black background pill behind the song's name."
+    Box(modifier = modifier) {
         content()
     }
 }

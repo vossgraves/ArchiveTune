@@ -150,7 +150,7 @@ fun LyricsMenu(
     val context = LocalContext.current
     val showPlayerControls = showPlayerControlsState?.value ?: true
     val (autoHidePlayerControls, onAutoHidePlayerControlsPreferenceChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, true)
+        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
 
     var showEditDialog by rememberSaveable {
         mutableStateOf(false)
