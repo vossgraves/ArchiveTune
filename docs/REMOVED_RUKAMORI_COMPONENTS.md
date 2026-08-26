@@ -126,8 +126,10 @@ phantom dependency left after the playback stack moved to
 - `Koiverse.jks` + `Koiverse.jks.base64` — Rukamori's committed signing
   keystore. **Deliberately not preserved**: a committed keystore is a
   compromised credential. If a release signing key is ever needed, generate a
-  new one and store it in the GitHub `KEYSTORE`/`KEYSTORE_PASSWORD` secrets
-  (the CI already falls back to `app/persistent-debug.keystore` for forks).
+  new one and store it in the GitHub `KEYSTORE`/`KEY_ALIAS`/
+  `KEYSTORE_PASSWORD`/`KEY_PASSWORD` secrets; the committed
+  `app/persistent-debug.keystore` fallback has since been removed as well
+  (release-shaped CI fails closed without the secrets).
 - `DataServer.txt` (`https://archivetune-data.koiiverse.cloud`) — fed the
   unused `DATA_SERVER_URL` BuildConfig field.
 - `ArchiveTuneKoiverseServer.txt` (`https://archivetune-api.koiiverse.cloud`) —

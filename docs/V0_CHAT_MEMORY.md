@@ -166,19 +166,29 @@ future sessions (or contributors) can pick up with full context.
 - Start.io: `validateStartIoReleaseConfiguration` warns instead of hard-failing
   when `START_IO_APP_ID` is blank (identifier unused at runtime), so GMS release
   APKs build on forks/CI. Official builds still inject it via secret.
-- Debug builds sign with a committed `persistent-debug.keystore` for a stable
-  signature (no forced uninstall/reinstall between builds).
-- **Release APK signing (stable signature across builds/ABIs):** CI previously
-  ran `keytool -genkeypair` to create a fresh EPHEMERAL keystore whenever no
-  `KEYSTORE` secret was set (the fork case). Because each ABI variant
-  (arm64, x86_64, universal, TV, FOSS) is a separate matrix job, even variants
-  from the SAME run got different signatures → Android refused in-place updates
-  → forced uninstall+reinstall. Fixed: when no `KEYSTORE` secret is present,
-  both `.github/workflows/build.yml` and `release.yml` now sign with the
-  committed `app/persistent-debug.keystore` (standard `androiddebugkey` /
-  `android` creds), so every build and every ABI shares ONE stable signature
-  and installs over the previous one. Upstream's real-`KEYSTORE`-secret path is
-  unchanged; PR builds (lint-only) were left untouched.
+- **Signing (HARDENED 2026-08-26, supersedes everything below):** the committed
+  `app/persistent-debug.keystore` was removed from the tree (a committed key is
+  a supply-chain risk — anyone could sign a malicious "update"). The SAME key
+  (alias `androiddebugkey`, creds `android`/`android`, cert SHA-256
+  6D:B8:32:6A:…) now lives ONLY as GitHub Secrets on vossgraves/ArchiveTune
+  (`KEYSTORE`/`KEY_ALIAS`/`KEYSTORE_PASSWORD`/`KEY_PASSWORD`), so existing
+  users keep updating in place — maintainer decision 2026-08-26 to NOT rotate
+  (rotation would force-reinstall every user; the key being public in git
+  history is accepted residual risk). Release/nightly/build CI fails closed
+  when any secret is missing; no committed fallback may ever return (guard
+  lives in `scripts/upstream_sync.sh` + AGENTS.md). Local debug builds use
+  AGP's default debug keystore. Historical context, now obsolete:
+- Debug builds used to sign with the committed `persistent-debug.keystore`
+  for a stable signature (no forced uninstall/reinstall between builds).
+- **Release APK signing (stable signature across builds/ABIs, OBSOLETE):** CI
+  previously ran `keytool -genkeypair` to create a fresh EPHEMERAL keystore
+  whenever no `KEYSTORE` secret was set (the fork case). Because each ABI
+  variant (arm64, x86_64, universal, TV, FOSS) is a separate matrix job, even
+  variants from the SAME run got different signatures → Android refused
+  in-place updates → forced uninstall+reinstall. That was "fixed" at the
+  time by signing with the committed keystore — the 2026-08-26 hardening
+  moved that same key into secrets instead. Upstream's real-`KEYSTORE`-secret
+  path is unchanged; PR builds (lint-only) were left untouched.
 - Various release resource-link/merge fixes (duplicate color resource, Qobuz
   vector `?attr/colorControlNormal` tint moved to call site).
 

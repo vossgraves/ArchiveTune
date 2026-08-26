@@ -22,9 +22,10 @@ via `.github/workflows/upstream-sync.yml`.
 ## What the AI is instructed to protect
 
 1. Fork features always survive: Tidal (`tidal/` package), the multi-source
-   audio framework (`audiosource/`, `resolveMultiSourceDataSpec` in
-   `MusicService.kt`), and the fork's `persistent-debug.keystore` CI signing
-   patch.
+    audio framework (`audiosource/`, `resolveMultiSourceDataSpec` in
+    `MusicService.kt`), and the fork's secret-based release signing (GitHub
+    Secrets `KEYSTORE`/`KEY_ALIAS`/`KEYSTORE_PASSWORD`/`KEY_PASSWORD`; no
+    committed `app/persistent-debug.keystore` fallback).
 2. Integration seams are union-merged (both sides kept).
 3. Never-touch files are always kept at the fork version, even if upstream
    changes them (the change is dropped and flagged in the report):
