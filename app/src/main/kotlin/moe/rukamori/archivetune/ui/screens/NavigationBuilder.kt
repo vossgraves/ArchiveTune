@@ -76,6 +76,11 @@ import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TIDAL_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
+import moe.rukamori.archivetune.ui.screens.settings.APPLE_MUSIC_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
@@ -577,6 +582,14 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
+    }
+    composable(APPLE_MUSIC_LOGIN_ROUTE) {
+        AppleMusicLoginScreen(navController)
+    }
+    composable(
+        route = "settings/applemusic",
+    ) {
+        AppleMusicSettings(navController)
     }
     composable(LASTFM_LOGIN_ROUTE) {
         LastFmLoginScreen(navController)
