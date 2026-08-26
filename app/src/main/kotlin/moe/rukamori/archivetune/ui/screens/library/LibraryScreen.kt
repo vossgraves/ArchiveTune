@@ -81,7 +81,9 @@ import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
-internal val LibraryHeaderContentPadding = 64.dp
+// Top strip reserved inside each library page's list for the floating two-tier filter header
+// (origin row + content-type row). 64dp fit one row; two stacked rows need ~116dp.
+internal val LibraryHeaderContentPadding = 116.dp
 internal val LibraryPullToRefreshIndicatorOffset = 0.dp
 
 @Composable
@@ -309,75 +311,82 @@ fun LibraryScreen(navController: NavController) {
                 }
                 }
 
-                // Tier 1: origin segmented control (My Library vs Spotify)
-                var lastNonSpotify by rememberSaveable { mutableStateOf(LibraryFilter.LIBRARY) }
-                LaunchedEffect(currentFilter) { if (currentFilter != LibraryFilter.SPOTIFY) lastNonSpotify = currentFilter }
-                val isSpotifyOrigin = currentFilter == LibraryFilter.SPOTIFY
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                // Floating filter header: Tier 1 (origin) above Tier 2 (content type), stacked
+                // in ONE overlay column so the rows don't draw on top of each other. Pager
+                // pages reserve LibraryHeaderContentPadding for this block.
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    ExpressiveTabChip(
-                        label = stringResource(R.string.filter_library),
-                        iconRes = R.drawable.graphic_eq,
-                        selected = !isSpotifyOrigin,
-                        onClick = {
-                            coroutineScope.launch {
-                                val target = libraryFilters.indexOf(lastNonSpotify).takeIf { it >= 0 } ?: 0
-                                pagerState.animateScrollToPage(target)
-                            }
-                        },
-                    )
-                    if (LibraryFilter.SPOTIFY in libraryFilters) {
+                    // Tier 1: origin segmented control (My Library vs Spotify)
+                    var lastNonSpotify by rememberSaveable { mutableStateOf(LibraryFilter.LIBRARY) }
+                    LaunchedEffect(currentFilter) { if (currentFilter != LibraryFilter.SPOTIFY) lastNonSpotify = currentFilter }
+                    val isSpotifyOrigin = currentFilter == LibraryFilter.SPOTIFY
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         ExpressiveTabChip(
-                            label = stringResource(R.string.spotify_playlists),
-                            iconRes = R.drawable.spotify_icon,
-                            selected = isSpotifyOrigin,
+                            label = stringResource(R.string.filter_library),
+                            iconRes = R.drawable.graphic_eq,
+                            selected = !isSpotifyOrigin,
                             onClick = {
-                                val target = libraryFilters.indexOf(LibraryFilter.SPOTIFY)
-                                if (target >= 0) coroutineScope.launch { pagerState.animateScrollToPage(target) }
+                                coroutineScope.launch {
+                                    val target = libraryFilters.indexOf(lastNonSpotify).takeIf { it >= 0 } ?: 0
+                                    pagerState.animateScrollToPage(target)
+                                }
                             },
                         )
-                    }
-                }
-                // Tier 2: content-type chips scoped to selected origin
-                if (!isSpotifyOrigin) {
-                    val contentFilters = libraryFilters.filter { it != LibraryFilter.SPOTIFY }
-                    LazyRow(
-                        state = tabListState,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        contentPadding = PaddingValues(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        items(
-                            items = contentFilters,
-                            key = { filter -> filter.name },
-                            contentType = { "library_filter_chip" },
-                        ) { filter ->
-                            val page = libraryFilters.indexOf(filter)
-                            val label = when (filter) {
-                                LibraryFilter.LIBRARY -> stringResource(R.string.filter_library)
-                                LibraryFilter.PLAYLISTS -> stringResource(R.string.playlists)
-                                LibraryFilter.SONGS -> stringResource(R.string.songs)
-                                LibraryFilter.ARTISTS -> stringResource(R.string.artists)
-                                LibraryFilter.ALBUMS -> stringResource(R.string.albums)
-                                else -> filter.name
-                            }
-                            val iconRes = when (filter) {
-                                LibraryFilter.LIBRARY -> R.drawable.graphic_eq
-                                LibraryFilter.PLAYLISTS -> R.drawable.queue_music
-                                LibraryFilter.SONGS -> R.drawable.music_note
-                                LibraryFilter.ARTISTS -> R.drawable.person
-                                LibraryFilter.ALBUMS -> R.drawable.album
-                                else -> R.drawable.graphic_eq
-                            }
+                        if (LibraryFilter.SPOTIFY in libraryFilters) {
                             ExpressiveTabChip(
-                                label = label,
-                                iconRes = iconRes,
-                                selected = currentFilter == filter,
-                                onClick = { coroutineScope.launch { pagerState.animateScrollToPage(page) } },
+                                label = stringResource(R.string.spotify_playlists),
+                                iconRes = R.drawable.spotify_icon,
+                                selected = isSpotifyOrigin,
+                                onClick = {
+                                    val target = libraryFilters.indexOf(LibraryFilter.SPOTIFY)
+                                    if (target >= 0) coroutineScope.launch { pagerState.animateScrollToPage(target) }
+                                },
                             )
+                        }
+                    }
+                    // Tier 2: content-type chips scoped to selected origin (no "Library" entry —
+                    // that's the Tier-1 origin itself, not a content type)
+                    if (!isSpotifyOrigin) {
+                        val contentFilters =
+                            libraryFilters.filter { it != LibraryFilter.SPOTIFY && it != LibraryFilter.LIBRARY }
+                        LazyRow(
+                            state = tabListState,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            items(
+                                items = contentFilters,
+                                key = { filter -> filter.name },
+                                contentType = { "library_filter_chip" },
+                            ) { filter ->
+                                val page = libraryFilters.indexOf(filter)
+                                val label = when (filter) {
+                                    LibraryFilter.PLAYLISTS -> stringResource(R.string.playlists)
+                                    LibraryFilter.SONGS -> stringResource(R.string.songs)
+                                    LibraryFilter.ARTISTS -> stringResource(R.string.artists)
+                                    LibraryFilter.ALBUMS -> stringResource(R.string.albums)
+                                    else -> filter.name
+                                }
+                                val iconRes = when (filter) {
+                                    LibraryFilter.PLAYLISTS -> R.drawable.queue_music
+                                    LibraryFilter.SONGS -> R.drawable.music_note
+                                    LibraryFilter.ARTISTS -> R.drawable.person
+                                    LibraryFilter.ALBUMS -> R.drawable.album
+                                    else -> R.drawable.graphic_eq
+                                }
+                                ExpressiveTabChip(
+                                    label = label,
+                                    iconRes = iconRes,
+                                    selected = currentFilter == filter,
+                                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(page) } },
+                                )
+                            }
                         }
                     }
                 }

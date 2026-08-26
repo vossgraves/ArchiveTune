@@ -63,6 +63,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,14 +75,18 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -193,8 +198,10 @@ internal fun PlayerTitleText(
             }
         }
 
-    // Gradient edge fade ONLY while this title is long enough to marquee.
-    var titleLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // Gradient edge fade ONLY while this title is long enough to marquee. The
+    // state object (not its value) is passed to the modifier so layout updates
+    // never recompose or rebuild the modifier chain — see [marqueeEdgeFade].
+    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
     Text(
         text = annotatedTitle,
         inlineContent = inlineContent,
@@ -205,8 +212,8 @@ internal fun PlayerTitleText(
         textAlign = textAlign,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        onTextLayout = { titleLayout = it },
-        modifier = modifier.then(marqueeEdgeFade(titleLayout)),
+        onTextLayout = { titleLayout.value = it },
+        modifier = modifier.marqueeEdgeFade(titleLayout),
     )
 }
 
@@ -214,16 +221,57 @@ internal fun PlayerTitleText(
  * Edge-fade modifier for a marqueeing single-line [Text]: only applies once the
  * text actually overflows (i.e. it is scrolling). Short titles render with no
  * gradient at all. The artist line deliberately never fades.
+ *
+ * The layout result is passed as a [State] and read in the DRAW phase: the
+ * modifier instance stays stable across layout updates (no node rebuilds
+ * mid-marquee or mid-morph), no recomposition is triggered while the marquee
+ * animates, and the gradients are cached so the draw loop does not allocate
+ * per frame. The offscreen compositing layer is required for the DstIn blend
+ * to only affect this node.
  */
-internal fun marqueeEdgeFade(
-    layout: TextLayoutResult?,
+@Composable
+internal fun Modifier.marqueeEdgeFade(
+    layoutState: State<TextLayoutResult?>,
     width: Dp = 24.dp,
-): Modifier =
-    if (layout?.hasVisualOverflow == true) {
-        Modifier.fadingEdge(left = width, right = width)
-    } else {
-        Modifier
-    }
+): Modifier {
+    val fadePx = with(LocalDensity.current) { width.toPx() }
+    val leftBrush =
+        remember(fadePx) {
+            Brush.horizontalGradient(
+                0f to Color.Transparent,
+                1f to Color.Black,
+                startX = 0f,
+                endX = fadePx,
+            )
+        }
+    val rightStops =
+        remember {
+            arrayOf(
+                0f to Color.Black,
+                1f to Color.Transparent,
+            )
+        }
+    return this
+        .graphicsLayer(alpha = 0.99f)
+        .drawWithContent {
+            val layout = layoutState.value
+            if (layout == null || !layout.hasVisualOverflow) {
+                drawContent()
+                return@drawWithContent
+            }
+            drawContent()
+            drawRect(brush = leftBrush, blendMode = BlendMode.DstIn)
+            drawRect(
+                brush =
+                    Brush.horizontalGradient(
+                        colorStops = rightStops,
+                        startX = size.width - fadePx,
+                        endX = size.width,
+                    ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+}
 
 @Composable
 internal fun PlayerTextBackdrop(

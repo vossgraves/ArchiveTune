@@ -37,9 +37,14 @@ import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
 import moe.rukamori.archivetune.utils.potoken.PoTokenResult
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import timber.log.Timber
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
@@ -49,6 +54,37 @@ object YTPlayerUtils {
     private const val PLAYBACK_DATA_RESOLUTION_MUTEX_COUNT = 32
     const val STREAM_URL_EXPIRY_SAFETY_MS = 60_000L
     private val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)
+
+    /**
+     * Failsafe probe: proves a freshly resolved stream URL is actually fetchable before handing it
+     * to the player. YouTube sometimes returns URLs that are already throttled or rejected (403),
+     * which previously surfaced as a player error even though other clients in the chain had
+     * working URLs. A dead probe demotes the client for this video so the chain automatically
+     * tries the next one. Only runs on URLs that were just resolved (never on cache hits) and is
+     * bounded by short timeouts so it adds at most ~2s to a failing track.
+     */
+    private val streamProbeClient =
+        OkHttpClient
+            .Builder()
+            .connectTimeout(2, TimeUnit.SECONDS)
+            .readTimeout(2, TimeUnit.SECONDS)
+            .callTimeout(3, TimeUnit.SECONDS)
+            .build()
+
+    private suspend fun probeStreamUrl(
+        url: String,
+    ): Int? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val request =
+                    Request
+                        .Builder()
+                        .head()
+                        .url(url)
+                        .build()
+                streamProbeClient.newCall(request).execute().use { it.code }
+            }.getOrNull()
+        }
 
     private fun extractExpireTimestampMsFromUrl(url: String): Long? {
         val expireTimestamp =
@@ -1262,6 +1298,29 @@ object YTPlayerUtils {
                     continue
                 }
                 val candidateUrl = candidateResult.getOrThrow()
+                // Failsafe: verify a freshly resolved URL is fetchable before committing to it.
+                // Cache hits are skipped (they were validated when first resolved). A dead probe
+                // (403/410 or network rejection) demotes this client for the video and moves on
+                // to the next format candidate — playback no longer dead-ends on a throttled URL.
+                if (cached == null) {
+                    val probeCode = probeStreamUrl(candidateUrl)
+                    val probeAlive = probeCode != null && probeCode in 200..399
+                    if (!probeAlive) {
+                        Timber.tag(logTag).w(
+                            "Failsafe probe rejected stream URL for %s via %s (http=%s); trying next candidate",
+                            videoId,
+                            describeClient(client),
+                            probeCode ?: "no-response",
+                        )
+                        markStreamClientFailed(
+                            videoId = videoId,
+                            clientKey = StreamClientUtils.buildClientKey(client),
+                            httpStatusCode = probeCode,
+                            authFingerprint = authState.streamCacheFingerprint,
+                        )
+                        continue
+                    }
+                }
                 selectedFormat = candidate
                 selectedUrl = candidateUrl
                 break

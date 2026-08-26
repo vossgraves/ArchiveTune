@@ -490,13 +490,26 @@ fun SettingsScreen(
                         }
                     }
 
-                    item(key = "settings_group_${group.title}", contentType = "settings_group") {
-                        SettingsGroupCard(
-                            group = group,
+                    itemsIndexed(
+                        items = group.items,
+                        key = { _, item -> item.key },
+                        contentType = { _, _ -> "settings_segment" },
+                    ) { index, settingsItem ->
+                        SettingsSegmentedItem(
+                            item = settingsItem,
+                            index = index,
+                            count = group.items.size,
                             modifier =
-                                Modifier.padding(
-                                    horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
-                                ),
+                                Modifier
+                                    .padding(horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding)
+                                    .padding(
+                                        bottom =
+                                            if (index < group.items.lastIndex) {
+                                                SettingsDimensions.SegmentedItemGap
+                                            } else {
+                                                0.dp
+                                            },
+                                    ),
                         )
                     }
                 }

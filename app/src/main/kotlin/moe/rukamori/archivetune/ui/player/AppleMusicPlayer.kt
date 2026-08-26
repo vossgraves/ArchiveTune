@@ -1925,7 +1925,7 @@ private fun AppleMusicControlsColumn(
                 modifier = Modifier.weight(1f),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    var titleLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                     Text(
                         text = mediaMetadata.title,
                         style = MaterialTheme.typography.headlineSmall,
@@ -1933,12 +1933,12 @@ private fun AppleMusicControlsColumn(
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        onTextLayout = { titleLayout = it },
+                        onTextLayout = { titleLayout.value = it },
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .basicMarquee()
-                                .then(marqueeEdgeFade(titleLayout))
+                                .marqueeEdgeFade(titleLayout)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
@@ -2309,7 +2309,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             modifier = Modifier.weight(1f),
         ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            var miniTitleLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+            val miniTitleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
             Text(
                 text = mediaMetadata.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -2317,12 +2317,12 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                onTextLayout = { miniTitleLayout = it },
+                onTextLayout = { miniTitleLayout.value = it },
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .basicMarquee()
-                        .then(marqueeEdgeFade(miniTitleLayout))
+                        .marqueeEdgeFade(miniTitleLayout)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,

@@ -6,7 +6,7 @@
     <string name="source_deezer">Deezer</string>
     <string name="deezer_specific">Deezer</string>
     <string name="deezer_enable">Enable Deezer source</string>
-    <string name="deezer_enable_description">Route playback through shared Deezer accounts when a matching track is found</string>
+    <string name="deezer_enable_description">Use shared Deezer accounts for playback</string>
     <string name="deezer_audio_quality">Audio quality</string>
     <string name="deezer_quality_flac">FLAC (CD 16-bit)</string>
     <string name="deezer_quality_mp3_320">MP3 320 kbps</string>
@@ -22,7 +22,7 @@
     <string name="jiosaavn_specific">JioSaavn</string>
     <string name="jiosaavn_integration">JioSaavn integration</string>
     <string name="jiosaavn_enable">Enable JioSaavn source</string>
-    <string name="jiosaavn_enable_description">Route playback through JioSaavn\'s public API when a matching track is found (96/160/320 kbps AAC)</string>
+    <string name="jiosaavn_enable_description">Use JioSaavn for playback (up to 320 kbps)</string>
     <string name="jiosaavn_audio_quality">Audio quality</string>
     <string name="jiosaavn_open_settings">Open JioSaavn settings</string>
     <string name="jiosaavn_open_settings_description">Configure the JioSaavn streaming source</string>
@@ -84,7 +84,7 @@
     <string name="source_qobuz_backup">Qobuz Backup</string>
     <string name="qobuz_backup_specific">Qobuz backup (kouzu.in)</string>
     <string name="qobuz_backup_enable">Enable Qobuz backup server</string>
-    <string name="qobuz_backup_enable_description">Streams lossless audio from the community-hosted mlc.kouzu.in backup server using a YouTube video id. Separate from the regular Qobuz source — toggle, reorder and per-song pin each independently.</string>
+    <string name="qobuz_backup_enable_description">Lossless streams from the community backup mirror; independent of the Qobuz source</string>
 
     <!-- Check source — per-source health probe shown below each source pill in Source Settings. -->
     <string name="check_source">Check source</string>

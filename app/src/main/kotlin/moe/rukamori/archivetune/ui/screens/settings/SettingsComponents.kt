@@ -416,8 +416,7 @@ fun SettingsRow(
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale
-                    }.background(MaterialTheme.colorScheme.surfaceContainer)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = bgAlpha))
+                    }.background(MaterialTheme.colorScheme.primary.copy(alpha = bgAlpha))
                     .focusable()
                     .clickable(
                         interactionSource = interactionSource,

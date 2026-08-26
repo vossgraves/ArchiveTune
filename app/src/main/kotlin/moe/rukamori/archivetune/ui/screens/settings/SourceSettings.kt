@@ -297,6 +297,7 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                 val chipColor = when (it) {
                                     stringResource(R.string.sources_connected) -> MaterialTheme.colorScheme.primary
                                     stringResource(R.string.sources_needs_reauth) -> MaterialTheme.colorScheme.error
+                                    stringResource(R.string.sources_no_accounts) -> MaterialTheme.colorScheme.outline
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                                 AssistChip(onClick = {}, label = { Text(it, style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Box(Modifier.size(8.dp).clip(CircleShape).background(chipColor)) }, colors = AssistChipDefaults.assistChipColors(), shape = RoundedCornerShape(999.dp))
@@ -354,17 +355,26 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             if (connectedSources.isNotEmpty()) {
                 Text(stringResource(R.string.sources_connected), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp))
                 connectedSources.forEach { src ->
-                    val subtitle = when (src) {
-                        AudioSourceType.TIDAL -> if (tidalNeedsRelogin) stringResource(R.string.sources_needs_reauth) else if (tidalToken.isNotBlank()) stringResource(R.string.sources_connected) else stringResource(R.string.tidal_enable_description)
-                        AudioSourceType.QOBUZ -> if (qobuzTokens.isNotBlank()) stringResource(R.string.sources_connected) else stringResource(R.string.qobuz_enable_description)
-                        AudioSourceType.QOBUZ_BACKUP -> stringResource(R.string.qobuz_backup_enable_description)
-                        AudioSourceType.DEEZER -> if (deezerArl.isNotBlank()) stringResource(R.string.sources_connected) else stringResource(R.string.deezer_enable_description)
-                        AudioSourceType.JIOSAAVN -> stringResource(R.string.jiosaavn_enable_description)
-                        else -> ""
+                    // "Connected" must mean usable credentials exist RIGHT NOW (local or live pool
+                    // accounts) — not merely that the toggle is on. Enabled-but-empty shows the
+                    // amber "needs setup" chip instead.
+                    val hasCredentials = when (src) {
+                        AudioSourceType.TIDAL -> tidalToken.isNotBlank() && !tidalNeedsRelogin
+                        AudioSourceType.QOBUZ -> qobuzTokens.isNotBlank() || PoolAccountManager.qobuzAccounts().isNotEmpty()
+                        AudioSourceType.QOBUZ_BACKUP -> PoolAccountManager.isEnabled
+                        AudioSourceType.DEEZER -> deezerArl.isNotBlank() || PoolAccountManager.deezerAccounts().isNotEmpty()
+                        AudioSourceType.JIOSAAVN -> true
+                        else -> false
                     }
-                    val status = when (src) {
-                        AudioSourceType.TIDAL -> if (tidalNeedsRelogin) stringResource(R.string.sources_needs_reauth) else if (tidalToken.isNotBlank() || !tidalEnabled) stringResource(R.string.sources_connected) else null
-                        else -> if (isEnabled(src)) stringResource(R.string.sources_connected) else null
+                    val subtitle = when {
+                        src == AudioSourceType.TIDAL && tidalNeedsRelogin -> stringResource(R.string.sources_needs_reauth)
+                        hasCredentials -> stringResource(R.string.sources_connected)
+                        else -> stringResource(R.string.sources_no_accounts)
+                    }
+                    val status = when {
+                        src == AudioSourceType.TIDAL && tidalNeedsRelogin -> stringResource(R.string.sources_needs_reauth)
+                        hasCredentials -> stringResource(R.string.sources_connected)
+                        else -> stringResource(R.string.sources_no_accounts)
                     }
                     ServiceCard(src, isEnabled(src), { v ->
                         when (src) {

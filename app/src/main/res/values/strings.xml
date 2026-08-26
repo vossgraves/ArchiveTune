@@ -861,7 +861,7 @@
     <string name="tidal_integration">Tidal</string>
     <string name="tidal_integration_description">Log in and manage Tidal HiFi instances</string>
     <string name="tidal_enable">Enable Tidal source</string>
-    <string name="tidal_enable_description">Route playback through Tidal\'s lossless resolver when a matching track is found</string>
+    <string name="tidal_enable_description">Use Tidal for lossless playback</string>
     <string name="tidal_audio_quality">Audio quality</string>
     <string name="tidal_quality_aac_320">AAC 320 kbps</string>
     <string name="tidal_quality_flac">FLAC (Lossless)</string>
@@ -904,7 +904,7 @@
     <string name="deezer_login_description">Use your own Deezer account instead of the shared pool</string>
     <string name="deezer_login_success">Signed in to Deezer as %1$s</string>
     <string name="qobuz_enable">Enable Qobuz source</string>
-    <string name="qobuz_enable_description">Route playback through your Qobuz proxy instances when a matching track is found</string>
+    <string name="qobuz_enable_description">Use Qobuz proxy instances for playback</string>
     <string name="qobuz_audio_quality">Audio quality</string>
     <string name="qobuz_quality_flac">FLAC (CD 16-bit)</string>
     <string name="qobuz_quality_hires">Hi-Res (up to 96 kHz)</string>
@@ -1157,6 +1157,7 @@
     <string name="sources_disconnect">Disconnect</string>
     <string name="copy_token_masked">Copy token (masked)</string>
     <string name="sources_needs_reauth">Needs re-auth</string>
+    <string name="sources_no_accounts">No accounts — sign in or enable pool</string>
     <string name="manage_source_priority">Manage source priority</string>
     <string name="sources_priority_footer">This order drives both matching and downloads.</string>
     <string name="sources_reset_priority">Reset priority to default</string>
