@@ -448,16 +448,59 @@ object LyricsUtils {
         return false
     }
 
+    /**
+     * True when [dominantCode] — a value from [detectDominantLanguageCode] — names a language the
+     * user put in an exclusion set ("Don't auto translate these languages" / "Don't romanise these
+     * languages").
+     *
+     * Shared by the translation and romanisation gates so the two can never disagree about what an
+     * exclusion means, and so the code-space mismatch below is fixed once rather than twice.
+     *
+     * The mismatch: [detectDominantLanguageCode] reports a *script*, while the picker lists
+     * *languages* out of `assets/translator_languages.json`, and the two do not line up one-to-one.
+     * Han is the case that actually bites — the detector can only ever say `"CHINESE"`, but the
+     * picker offers `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and no plain `CHINESE`, so
+     * ticking either of them did nothing whatsoever. [EXCLUSION_ALIASES] accepts any picker code in
+     * the family instead.
+     */
+    fun matchesExcludedLanguage(
+        dominantCode: String,
+        excludedLanguageCodes: Set<String>,
+    ): Boolean {
+        if (excludedLanguageCodes.isEmpty()) return false
+        val dominant = dominantCode.trim().uppercase()
+        if (dominant.isEmpty()) return false
+        val normalized = excludedLanguageCodes.mapTo(HashSet()) { it.trim().uppercase() }
+        if (dominant in normalized) return true
+        return EXCLUSION_ALIASES[dominant]?.any { it in normalized } == true
+    }
+
+    /**
+     * Picker codes that should satisfy an exclusion for a detected script that has no exact code of
+     * its own. See [matchesExcludedLanguage].
+     */
+    private val EXCLUSION_ALIASES: Map<String, List<String>> =
+        mapOf("CHINESE" to listOf("CHINESE_SIMPLIFIED", "CHINESE_TRADITIONAL"))
+
+    /**
+     * True when [lyrics] should be sent for automatic AI translation into [targetLanguage].
+     *
+     * [excludedLanguageCodes] has no default, deliberately. It used to default to `emptySet()`, and
+     * both live callers — the standalone lyrics screen and the Apple Music player's inline lyrics —
+     * simply left the argument off, so "Don't auto translate these languages" was written by the
+     * settings dialog and then never actually consulted: picking Hindi changed nothing. Making the
+     * parameter required turns that omission into a compile error rather than a silent no-op.
+     */
     fun shouldAutoTranslate(
         lyrics: String,
         targetLanguage: String,
-        excludedLanguageCodes: Set<String> = emptySet(),
+        excludedLanguageCodes: Set<String>,
     ): Boolean {
         if (lyrics.isBlank()) return false
         val dominant = detectDominantLanguageCode(lyrics)
         // If the lyrics' dominant language is in the user's "Don't auto translate these languages"
         // exclusion set, skip translation even when auto-translate is on.
-        if (dominant != null && dominant.uppercase() in excludedLanguageCodes.map { it.uppercase() }) {
+        if (dominant != null && matchesExcludedLanguage(dominant, excludedLanguageCodes)) {
             return false
         }
         val allowedScripts = allowedScriptsForLanguage(targetLanguage)
@@ -487,7 +530,15 @@ object LyricsUtils {
      * describes the dominant non-Latin script in [lyrics], or `null` if the lyrics are
      * predominantly Latin (so no exclusion can match).
      *
-     * The returned codes match `TranslatorLanguage.code` in `assets/translator_languages.json`.
+     * These name *scripts*, not languages, and they very nearly — but not quite — line up with
+     * `TranslatorLang.code` in `assets/translator_languages.json`. "CHINESE" is the exception: the
+     * asset has `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and nothing plain. Compare through
+     * [matchesExcludedLanguage] rather than against an exclusion set directly, or Han lyrics will
+     * silently never match.
+     *
+     * The mapping is also deliberately coarse — every Devanagari script reports "HINDI", every
+     * Cyrillic one "RUSSIAN", every Arabic one "ARABIC" — so excluding Hindi also excludes Marathi
+     * and Nepali, and ticking "Marathi", "Ukrainian" or "Urdu" can never match anything.
      */
     fun detectDominantLanguageCode(lyrics: String): String? {
         if (lyrics.isBlank()) return null

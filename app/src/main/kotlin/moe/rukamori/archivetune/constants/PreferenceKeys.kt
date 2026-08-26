@@ -474,10 +474,11 @@ val LogcatPausedKey = booleanPreferencesKey("logcatPaused")
 // background translations don't fire a notification every time a new song starts.
 val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
 
-// Set of uppercase language codes (e.g. "JAPANESE", "KOREAN", "CHINESE") that should NOT be
-// auto-translated even when [AutoTranslateLyricsKey] is on. The user picks them via the
-// multi-select dialog in AiIntegrationSettings. Codes match `TranslatorLanguage.code` in
-// assets/translator_languages.json.
+// Set of uppercase language codes (e.g. "JAPANESE", "KOREAN", "CHINESE_SIMPLIFIED") that should NOT
+// be auto-translated even when [AutoTranslateLyricsKey] is on. The user picks them via the
+// multi-select dialog in AiIntegrationSettings. Codes match `TranslatorLang.code` in
+// assets/translator_languages.json — note that there is no plain "CHINESE" there, which is why the
+// comparison goes through `LyricsUtils.matchesExcludedLanguage` rather than a direct set lookup.
 val AutoTranslateExcludedLanguagesKey = stringSetPreferencesKey("autoTranslateExcludedLanguages")
 
 // ── AI romanisation ──

@@ -194,12 +194,15 @@ private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 private const val LYRIC_FIRST_FOCUS_FADE_MS = 200
 // Hard ceiling on how long the lines may stay hidden waiting for that placement.
 private const val LYRIC_FIRST_FOCUS_TIMEOUT_MS = 400L
+// A line-synced "syllable" is only a peg to hang a romanisation on, so it gets the shortest window
+// the library will accept rather than a share of the line's duration — see
+// buildWrappingKaraokeSyllables.
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 
 // ── Line-synced (LRC) focus windows ──
 // KaraokeLyricsView resolves the focused line as "the line whose [start, end) contains the
 // position", and falls back to the *next* line whenever the position lands between two windows.
-// These three constants exist to make sure that fallback only ever fires on a genuine instrumental
+// These constants exist to make sure that fallback only ever fires on a genuine instrumental
 // break; see the long comment in buildSyncedLyrics.
 //
 // How long a line may keep focus after its own timestamp before it is allowed to hand over to a
@@ -208,11 +211,7 @@ private const val LINE_SYNCED_MAX_FOCUS_HOLD_MS = 5_000L
 // Mirrors the library's own interlude threshold: it draws the breathing dots only when the silence
 // between two lines is strictly longer than this.
 private const val LINE_SYNCED_INTERLUDE_MIN_GAP_MS = 5_000L
-// The karaoke sweep for romanized line-synced lyrics is spread over at most this much time, so a
-// long focus hold doesn't turn into a crawling fill.
-private const val LINE_SYNCED_MAX_FILL_DURATION_MS = 4_000L
-// The last line has no successor to butt against, so give it a fixed window. The library already
-// falls back to `lines.lastIndex` past the end, so this only bounds the sweep.
+// The last line has no successor to butt against, so give it a fixed window.
 private const val LINE_SYNCED_TRAILING_LINE_DURATION_MS = 4_000L
 // Minimum backward position jump (in ms) that we treat as a "reset" trigger —
 // large enough to ride through ExoPlayer's normal position jitter (which is
@@ -1809,20 +1808,12 @@ private fun buildSyncedLyrics(
                 } else {
                     (entry.time + LINE_SYNCED_TRAILING_LINE_DURATION_MS).toInt()
                 }
-            // The karaoke sweep (only built when there is romanization to align) is a different
-            // question: spreading syllables across a multi-second hold would crawl. Cap the sweep at
-            // a musical line's worth of time and let the line simply sit finished afterwards.
-            val fillEnd =
-                minOf(lineEnd.toLong(), entry.time + LINE_SYNCED_MAX_FILL_DURATION_MS)
-                    .coerceAtLeast(entry.time + 1L)
-                    .toInt()
             lines.add(
                 buildLineSyncedLrcLine(
                     entry = entry,
                     romanizedText = romanizationMap[index]?.firstOrNull(),
                     start = entry.time.toInt(),
                     end = lineEnd,
-                    fillEnd = fillEnd,
                 ),
             )
         }
@@ -1836,9 +1827,6 @@ private fun buildLineSyncedLrcLine(
     romanizedText: String?,
     start: Int,
     end: Int,
-    // Where the karaoke sweep should finish. Equal to [end] for normal lines; shorter when [end]
-    // has been stretched to butt against a far-away next line (see buildSyncedLyrics).
-    fillEnd: Int = end,
 ): ISyncedLine {
     val translation = providedTranslationTextForEntry(entry)
     val normalizedRomanizedText = romanizedText?.trim()?.takeIf { it.isNotEmpty() }
@@ -1857,7 +1845,6 @@ private fun buildLineSyncedLrcLine(
             content = entry.text,
             romanizedText = normalizedRomanizedText,
             start = start,
-            end = fillEnd.coerceAtLeast(start + 1),
         )
 
     return KaraokeLine.MainKaraokeLine(
@@ -1869,11 +1856,16 @@ private fun buildLineSyncedLrcLine(
     )
 }
 
+/**
+ * Wraps a line-synced lyric into karaoke syllables purely so a romanisation can sit above it.
+ *
+ * Takes no `end`, deliberately: a line-synced LRC file has no word timing, so there is nothing to
+ * spread across the line's duration and no reason for the syllables to know how long the line lasts.
+ */
 private fun buildWrappingKaraokeSyllables(
     content: String,
     romanizedText: String,
     start: Int,
-    end: Int,
 ): List<KaraokeSyllable> {
     val contentUnits = content.toLyricsWrappingUnits().ifEmpty { listOf(content) }
     val phoneticWords = romanizedText.split(Regex("\\s+")).filter(String::isNotEmpty)
@@ -1891,14 +1883,23 @@ private fun buildWrappingKaraokeSyllables(
         }
     }
 
-    val duration = (end - start).coerceAtLeast(contentUnits.size)
+    // ── Every unit shares one instant, deliberately ──
+    // These syllables exist only to hang a romanisation over the right glyphs. Staggering their
+    // windows across the line duration — which is what this used to do — invented per-word timing out
+    // of the line's *length*, and `KaraokeLineText` faithfully animated it. So turning romanisation on
+    // made plain LRC lyrics fill word by word, while the very same lines without romanisation just
+    // highlighted whole through `SyncedLine`. The sweep was pure fabrication and drifted against the
+    // vocal on any line whose words aren't evenly spaced, i.e. all of them.
+    //
+    // Collapsing every unit onto `[start, start + 1)` makes `KaraokeSyllable.progress` a step
+    // function: 0 before the line, 1 from its first millisecond. The whole line lights up at once,
+    // matching the `SyncedLine` path exactly, and each romanisation still sits above its own unit.
+    val syllableEnd = start + MIN_KARAOKE_SYLLABLE_DURATION_MS
     return contentUnits.mapIndexed { index, unit ->
-        val unitStart = start + (duration.toLong() * index / contentUnits.size).toInt()
-        val unitEnd = start + (duration.toLong() * (index + 1) / contentUnits.size).toInt()
         KaraokeSyllable(
             content = unit,
-            start = unitStart,
-            end = unitEnd.coerceAtLeast(unitStart + MIN_KARAOKE_SYLLABLE_DURATION_MS),
+            start = start,
+            end = syllableEnd,
             phonetic = phoneticsByUnit[index],
         )
     }

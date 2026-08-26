@@ -236,8 +236,12 @@ object AiLyricsRomanization {
         // The exclusion list is checked against the whole lyric rather than per line: a single track
         // is one language for this purpose, and per-line detection would send a Japanese song's
         // occasional English hook to the model as if it were a different track.
+        //
+        // Comparison goes through LyricsUtils so this and the translation gate agree on what an
+        // exclusion means — including that a detected "CHINESE" has to match the picker's
+        // CHINESE_SIMPLIFIED / CHINESE_TRADITIONAL, which a direct string compare never did.
         val dominant = LyricsUtils.detectDominantLanguageCode(lines.joinToString("\n"))
-        if (dominant != null && settings.excludedLanguages.any { it.equals(dominant, ignoreCase = true) }) {
+        if (dominant != null && LyricsUtils.matchesExcludedLanguage(dominant, settings.excludedLanguages)) {
             Timber.tag(TAG).d("skipping %s: %s is excluded", sessionKey, dominant)
             return
         }

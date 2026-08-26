@@ -40,6 +40,7 @@ import kotlin.random.Random
  *
  *  * each leg carries the artwork from where it currently rests to a new
  *    waypoint drawn at random inside a disc of [WanderRadiusDp],
+ *  * each leg also turns the artwork by a random angle — see [rotationDeg],
  *  * the interpolation is a raised cosine, so speed starts and ends at zero —
  *    the artwork *finishes its path*, settles, and only then sets off again,
  *    which means no reversal ever happens while it is moving,
@@ -52,26 +53,51 @@ import kotlin.random.Random
  * The walk starts at the centre, so the first frame after the backdrop appears
  * has zero offset and the drift grows out of nothing.
  *
+ * ### Why translation alone was not enough
+ *
+ * Translating the backdrop moves every colour by the *same* vector, so their
+ * arrangement is rigid: whatever sits in the top third of the artwork stays in
+ * the top third of the screen, free to shuffle by at most [WanderRadiusDp] —
+ * under a fifth of a phone's height. That is why some colours "only spread at
+ * the top and never reach the bottom" however long you watch. No amount of
+ * panning can carry them there; it was never a matter of tuning the path.
+ *
+ * [rotationDeg] is what breaks the rigidity. Turning the artwork about its centre
+ * sweeps a colour from one edge to the opposite one over half a turn, so the
+ * whole surface genuinely gets visited — and it costs one more property on a
+ * layer that is already composited offscreen for the blur, so no extra pass and
+ * no second image. Rotation walks per leg like the offsets do, rather than
+ * spinning at a constant rate, which keeps the same "settle, then set off again"
+ * character and stops it reading as a turntable.
+ *
  * ### Bounds
  *
  * [WanderRadiusDp] is the largest offset this can ever produce, and callers rely
  * on that: the blurred artwork is drawn scaled up so that it still covers the
- * screen at maximum offset, and the blur (64dp) has to be covered too. At scale
- * 2.4 on a 360dp-wide screen the image overhangs 252dp per edge, against the
- * 150 + 64 = 214dp asked for here.
+ * screen at maximum offset, and the blur (64dp) has to be covered too.
+ *
+ * Rotation changes that sum, because a rotated square only reliably covers its
+ * own inscribed circle — so the budget must be measured to the container's
+ * furthest *corner* rather than its nearest edge. `ContentScale.Crop` of a square
+ * artwork renders a square of side `S = max(W, H)`, which callers then scale by
+ * 2.4, giving an inscribed circle of radius `1.2 S` whose outer `64 * 2.4 =
+ * 154dp` is softened by the blur. What has to fit inside the solid remainder is
+ * `hypot(W, H) / 2 + WanderRadiusDp`. On a 360x800 phone that is 806dp available
+ * against 559dp needed; even a 320x480 screen clears it, 422 against 408.
  *
  * ### Threading / recomposition
  *
- * [xDp] and [yDp] are [FloatState]s meant to be read **only** from draw-phase
- * lambdas (`Modifier.graphicsLayer { }`). Reading them during composition would
- * invalidate the whole player subtree on every animation frame, which is what
- * the lyrics views' frame budget cannot afford.
+ * [xDp], [yDp] and [rotationDeg] are [FloatState]s meant to be read **only**
+ * from draw-phase lambdas (`Modifier.graphicsLayer { }`). Reading them during
+ * composition would invalidate the whole player subtree on every animation
+ * frame, which is what the lyrics views' frame budget cannot afford.
  */
 internal class BlurWanderDrift(
     private val random: Random = Random.Default,
 ) {
     private val xState = mutableFloatStateOf(0f)
     private val yState = mutableFloatStateOf(0f)
+    private val rotationState = mutableFloatStateOf(0f)
 
     /** Horizontal offset in dp, in `-WanderRadiusDp..WanderRadiusDp`. */
     val xDp: FloatState get() = xState
@@ -79,10 +105,21 @@ internal class BlurWanderDrift(
     /** Vertical offset in dp, in `-WanderRadiusDp..WanderRadiusDp`. */
     val yDp: FloatState get() = yState
 
+    /**
+     * Rotation of the backdrop about its own centre, in degrees.
+     *
+     * Unbounded on purpose. It is an angle, so it wraps for free, and letting it
+     * accumulate is what lets a colour keep travelling the same way past a
+     * half-turn instead of being tugged back toward a nominal zero.
+     */
+    val rotationDeg: FloatState get() = rotationState
+
     private var fromX = 0f
     private var fromY = 0f
     private var toX = 0f
     private var toY = 0f
+    private var fromRotation = 0f
+    private var toRotation = 0f
     private var legAngle = random.nextFloat() * TwoPi
     private var legDurationMs = 0f
     private var legElapsedMs = 0f
@@ -107,11 +144,13 @@ internal class BlurWanderDrift(
         val eased = 0.5f - 0.5f * cos(PI.toFloat() * t)
         xState.floatValue = fromX + (toX - fromX) * eased
         yState.floatValue = fromY + (toY - fromY) * eased
+        rotationState.floatValue = fromRotation + (toRotation - fromRotation) * eased
     }
 
     private fun startNextLeg() {
         fromX = toX
         fromY = toY
+        fromRotation = toRotation
         // Turn by at least MinTurnRadians so the new leg is never a retread of
         // the one that just ended.
         val turn = MinTurnRadians + random.nextFloat() * (TwoPi - 2f * MinTurnRadians)
@@ -121,7 +160,21 @@ internal class BlurWanderDrift(
         // the outer half of the disc.
         val radius = WanderRadiusDp * (MinRadiusFraction + random.nextFloat() * (1f - MinRadiusFraction))
         toX = cos(legAngle) * radius
-        toY = sin(legAngle) * radius * VerticalSquash
+        // No vertical squash. It used to shave the vertical amplitude to 0.8 on
+        // the grounds that the covering budget was tighter horizontally, which
+        // was true while panning was the only motion and is not once the budget
+        // is measured to a corner. It also worked directly against the symptom
+        // rotation is here to fix, by making the axis that already struggled to
+        // reach the bottom of the screen the shorter of the two.
+        toY = sin(legAngle) * radius
+        // Rotation direction is drawn per leg rather than taken from the leg's
+        // own angle: tying the two together would make the backdrop appear to
+        // roll along its path, which reads as a mechanism instead of as drifting
+        // colour.
+        val rotationSign = if (random.nextBoolean()) 1f else -1f
+        val rotationSpan =
+            MinLegRotationDegrees + random.nextFloat() * (MaxLegRotationDegrees - MinLegRotationDegrees)
+        toRotation = fromRotation + rotationSign * rotationSpan
         val distance = hypot(toX - fromX, toY - fromY)
         legDurationMs =
             (distance / WanderSpeedDpPerSecond * 1000f)
@@ -129,21 +182,29 @@ internal class BlurWanderDrift(
     }
 
     internal companion object {
-        /** Largest offset the walk can reach, in dp. See the class docs. */
-        const val WanderRadiusDp = 150f
-
         /**
-         * Vertical amplitude is squashed a little: phones are taller than they
-         * are wide, so the same absolute offset reads as less movement
-         * vertically, and the covering budget is tighter horizontally.
+         * Largest offset the walk can ever produce, in dp. See the class docs.
+         *
+         * Was 150 while translation was the only motion. Rotation supplies far
+         * more travel than those 30dp ever did, and measures its covering budget
+         * to the container's corner rather than its edge, so trading a little pan
+         * for the headroom is the better deal.
          */
-        private const val VerticalSquash = 0.8f
+        const val WanderRadiusDp = 120f
 
         /** Average travel speed. Deliberately slow — this sits behind lyrics. */
         private const val WanderSpeedDpPerSecond = 26f
 
         private const val MinLegDurationMs = 6_000f
         private const val MaxLegDurationMs = 18_000f
+
+        /**
+         * Degrees of rotation one leg may add. Against the ~12s median leg that is
+         * roughly 3°/s, so a colour crosses the screen — half a turn — in about a
+         * minute: ambient, rather than something you notice while reading lyrics.
+         */
+        private const val MinLegRotationDegrees = 18f
+        private const val MaxLegRotationDegrees = 55f
 
         /** Waypoints are never closer to the centre than this fraction of the radius. */
         private const val MinRadiusFraction = 0.5f

@@ -139,6 +139,7 @@ import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
@@ -173,11 +174,13 @@ private val AppleMusicFallbackGradient =
 
 private val LyricsSwipeStartRegion = 144.dp
 
-// Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus
-// the 64dp blur: at 2.4x the artwork overhangs 0.7*W per edge (252dp on a 360dp screen)
-// against the 150 + 64 = 214dp needed. Kept in sync with AmLyricsBlurDriftScale in
-// AppleMusicPlayer.kt. Was 1.9x, which was sized for an older, smaller drift and let the
-// blur sample transparent pixels at full offset — a dark band along the trailing edge.
+// Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus the
+// 64dp blur — and, because the walk rotates, must do so out to the container's furthest corner
+// rather than its nearest edge. Crop renders the square artwork at side max(W, H), so at 2.4x the
+// solid (un-softened) coverage is a circle of radius 1.2*max(W,H) - 154dp: 806dp on a 360x800
+// screen, against hypot(360,800)/2 + 120 = 559dp needed. Kept in sync with AmLyricsBlurDriftScale
+// in AppleMusicPlayer.kt. Was 1.9x, which was sized for an older, smaller drift and let the blur
+// sample transparent pixels at full offset — a dark band along the trailing edge.
 private const val MovingBlurDriftScale = 2.4f
 private val LyricsSwipeDismissThreshold = 96.dp
 
@@ -367,6 +370,10 @@ fun LyricsScreen(
     // inside the ViewModel when this pref is on (see LyricsMenuViewModel).
     val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    // "Don't auto translate these languages". Read here and passed explicitly below — leaving it to
+    // shouldAutoTranslate's old default was exactly how this setting came to do nothing.
+    val (autoTranslateExcludedLanguages) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
     val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
     // Observe the set of media IDs the user has dismissed translation for.
     // When a user clicks "Undo Translation", the mediaId is added to this set;
@@ -380,6 +387,9 @@ fun LyricsScreen(
         currentLyrics?.source,
         autoTranslateLyrics,
         translatorTargetLang,
+        // In the key list so unticking a language re-evaluates the current track instead of waiting
+        // for the next one.
+        autoTranslateExcludedLanguages,
         translationDismissedMediaIds,
     ) {
         if (!autoTranslateLyrics) return@LaunchedEffect
@@ -403,7 +413,14 @@ fun LyricsScreen(
         // user manually triggers translation (which clears the dismissal).
         if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
 
-        if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+                excludedLanguageCodes = autoTranslateExcludedLanguages,
+            )
+        ) {
+            return@LaunchedEffect
+        }
 
         lyricsMenuViewModel.translateLyricsWithAi(
             mediaMetadata = mediaMetadata,
@@ -1028,6 +1045,12 @@ private fun MovingBlurBackground(
                                 // Deferred read — see blurWander above.
                                 translationX = blurWander.xDp.floatValue.dp.toPx()
                                 translationY = blurWander.yDp.floatValue.dp.toPx()
+                                // Rotation is the only part of the walk that can
+                                // carry a colour across the whole surface;
+                                // translation moves every colour by the same
+                                // vector, so on its own it leaves the top the top.
+                                // See BlurWanderDrift.
+                                rotationZ = blurWander.rotationDeg.floatValue
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
                             .blur(64.dp)
