@@ -1,0 +1,257 @@
+/*
+ * ArchiveTune (2026)
+ * © ArchiveTuneFork contributors — github.com/vossgraves/ArchiveTune
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
+package app.atf.media.ui.screens.settings
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+import kotlinx.coroutines.launch
+import app.atf.media.R
+import app.atf.media.constants.AppleMusicDevTokenKey
+import app.atf.media.constants.AppleMusicMediaUserTokenKey
+import app.atf.media.ui.component.IconButton
+import app.atf.media.ui.component.PreferenceEntry
+import app.atf.media.ui.utils.appBarScrollBehavior
+import app.atf.media.ui.utils.backToMain
+import androidx.datastore.preferences.core.edit
+import app.atf.media.utils.dataStore
+import app.atf.media.utils.rememberPreference
+
+/** JWT-ish shape check: three base64url segments. Good enough to catch paste errors. */
+private fun looksLikeJwt(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"))
+
+/**
+ * Apple Music sign-in — login-only by design: no pool, independent of Developer
+ * Options. Full-track streaming engages once BOTH tokens are present.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppleMusicSettings(navController: NavController) {
+    val scrollBehavior = appBarScrollBehavior()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val (mediaToken, onMediaTokenChange) = rememberPreference(AppleMusicMediaUserTokenKey, "")
+    val (devToken, onDevTokenChange) = rememberPreference(AppleMusicDevTokenKey, "")
+    val signedIn = mediaToken.isNotBlank() && devToken.isNotBlank()
+
+    var showTokenSheet by rememberSaveable { mutableStateOf(false) }
+
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = MaterialTheme.colorScheme.surface,
+        topBar = {
+            LargeFlexibleTopAppBar(
+                title = { Text(stringResource(R.string.applemusic_settings), fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
+                        Icon(painterResource(R.drawable.arrow_back), null)
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            Modifier
+                .padding(top = innerPadding.calculateTopPadding())
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.applemusic_helper),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Card(
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.applemusic_sign_in_web)) },
+                    description = stringResource(R.string.applemusic_sign_in_web_desc),
+                    icon = { Icon(painterResource(R.drawable.language), null) },
+                    onClick = { navController.navigate(APPLE_MUSIC_LOGIN_ROUTE) },
+                )
+            }
+
+            Card(
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.applemusic_tokens_title)) },
+                    description =
+                        if (signedIn) stringResource(R.string.applemusic_tokens_ready)
+                        else stringResource(R.string.applemusic_tokens_missing),
+                    icon = { Icon(painterResource(R.drawable.token), null) },
+                    onClick = { showTokenSheet = true },
+                )
+            }
+
+            if (signedIn) {
+                Card(
+                    shape = RoundedCornerShape(26.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.applemusic_disconnect)) },
+                        icon = { Icon(painterResource(R.drawable.close), null) },
+                        onClick = {
+                            scope.launch {
+                                context.dataStore.edit {
+                                    it.remove(AppleMusicMediaUserTokenKey)
+                                    it.remove(AppleMusicDevTokenKey)
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    if (showTokenSheet) {
+        TokenSheet(
+            currentMediaToken = mediaToken,
+            currentDevToken = devToken,
+            onSave = { media, dev ->
+                scope.launch {
+                    context.dataStore.edit {
+                        if (media.isNotBlank()) it[AppleMusicMediaUserTokenKey] = media.trim()
+                        if (dev.isNotBlank()) it[AppleMusicDevTokenKey] = dev.trim()
+                    }
+                    showTokenSheet = false
+                }
+            },
+            onDismiss = { showTokenSheet = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TokenSheet(
+    currentMediaToken: String,
+    currentDevToken: String,
+    onSave: (String, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var mediaToken by rememberSaveable { mutableStateOf(currentMediaToken) }
+    var devToken by rememberSaveable { mutableStateOf(currentDevToken) }
+    var showMedia by rememberSaveable { mutableStateOf(false) }
+    var showDev by rememberSaveable { mutableStateOf(false) }
+
+    val mediaValid = looksLikeJwt(mediaToken)
+    val devValid = looksLikeJwt(devToken)
+    val canSave = mediaValid && devValid
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Column(
+            Modifier.padding(16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(stringResource(R.string.applemusic_tokens_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(R.string.applemusic_tokens_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = mediaToken,
+                onValueChange = { mediaToken = it },
+                label = { Text(stringResource(R.string.applemusic_media_token)) },
+                visualTransformation = if (showMedia) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showMedia = !showMedia }) {
+                        Icon(if (showMedia) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null)
+                    }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isError = mediaToken.isNotBlank() && !mediaValid,
+                supportingText = { if (mediaToken.isNotBlank() && !mediaValid) Text(stringResource(R.string.applemusic_token_invalid)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = devToken,
+                onValueChange = { devToken = it },
+                label = { Text(stringResource(R.string.applemusic_dev_token)) },
+                visualTransformation = if (showDev) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showDev = !showDev }) {
+                        Icon(if (showDev) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null)
+                    }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isError = devToken.isNotBlank() && !devValid,
+                supportingText = { if (devToken.isNotBlank() && !devValid) Text(stringResource(R.string.applemusic_token_invalid)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(android.R.string.cancel)) }
+                FilledTonalButton(onClick = { onSave(mediaToken, devToken) }, enabled = canSave, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.youtube_session_save))
+                }
+            }
+        }
+    }
+}

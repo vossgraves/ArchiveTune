@@ -1,0 +1,476 @@
+/*
+ * ArchiveTune (2026)
+ * © ArchiveTuneFork contributors — github.com/vossgraves/ArchiveTune
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
+package app.atf.media.viewmodels
+
+import androidx.compose.runtime.Immutable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import app.atf.media.BuildConfig
+import app.atf.media.R
+import app.atf.media.constants.LastFmProvider
+import app.atf.media.lastfm.LastFM
+import app.atf.media.scrobbling.LastFmApiCredentials
+import app.atf.media.scrobbling.LastFmServiceConfig
+import app.atf.media.scrobbling.LastFmSettingsData
+import app.atf.media.scrobbling.LoginLastFmUseCase
+import app.atf.media.scrobbling.LogoutLastFmUseCase
+import app.atf.media.scrobbling.ObserveLastFmSettingsUseCase
+import app.atf.media.scrobbling.SaveLastFmServiceConfigUseCase
+import app.atf.media.scrobbling.UpdateLastFmScrobblingOptionsUseCase
+import timber.log.Timber
+import javax.inject.Inject
+
+sealed interface LastFmSettingsScreenState {
+    data object Loading : LastFmSettingsScreenState
+
+    data class Success(
+        val model: LastFmSettingsUiModel,
+    ) : LastFmSettingsScreenState
+
+    data object Empty : LastFmSettingsScreenState
+
+    data class Error(
+        val messageResId: Int,
+    ) : LastFmSettingsScreenState
+}
+
+@Immutable
+data class LastFmSettingsUiModel(
+    val provider: LastFmProvider,
+    val resolvedEndpoint: String,
+    val customEndpoint: String,
+    val apiKeyOverride: String,
+    val secretOverride: String,
+    val credentialsByProvider: Map<LastFmProvider, LastFmApiCredentials>,
+    val serviceConfigured: Boolean,
+    val endpointValid: Boolean,
+    val username: String,
+    val isLoggedIn: Boolean,
+    val scrobblingEnabled: Boolean,
+    val nowPlayingEnabled: Boolean,
+    val minTrackDurationSeconds: Int,
+    val scrobbleDelayPercent: Float,
+    val scrobbleDelaySeconds: Int,
+    val loginDialog: LastFmLoginDialogUiModel,
+    val serviceEditor: LastFmServiceEditorUiModel,
+    val timingEditor: LastFmTimingEditorUiModel,
+) {
+    val canLogin: Boolean
+        get() = serviceConfigured && endpointValid
+
+    val canEnableScrobbling: Boolean
+        get() = isLoggedIn && serviceConfigured && endpointValid
+}
+
+@Immutable
+data class LastFmLoginDialogUiModel(
+    val visible: Boolean = false,
+    val username: String = "",
+    val password: String = "",
+    val isLoggingIn: Boolean = false,
+    val errorMessageResId: Int? = null,
+)
+
+@Immutable
+data class LastFmServiceEditorUiModel(
+    val visible: Boolean = false,
+    val provider: LastFmProvider = LastFmProvider.LASTFM,
+    val customEndpoint: String = "",
+    val apiKeyOverride: String = "",
+    val secretOverride: String = "",
+    val credentialsByProvider: Map<LastFmProvider, LastFmApiCredentials> = emptyMap(),
+    val isSaving: Boolean = false,
+    val errorMessageResId: Int? = null,
+    // False on fork/CI builds that ship without the built-in Last.fm secret. When false, the user
+    // must supply their own Last.fm API key/secret, so the credential fields are shown for the
+    // official Last.fm provider too (not just LibreFM/Custom).
+    val builtInLastFmConfigured: Boolean =
+        BuildConfig.LASTFM_API_KEY.isNotBlank() && BuildConfig.LASTFM_SECRET.isNotBlank(),
+) {
+    val showCustomEndpoint: Boolean
+        get() = provider == LastFmProvider.CUSTOM
+
+    val showApiCredentials: Boolean
+        get() = provider != LastFmProvider.LASTFM || !builtInLastFmConfigured
+}
+
+enum class LastFmTimingSetting {
+    MIN_TRACK_DURATION,
+    DELAY_PERCENT,
+    DELAY_SECONDS,
+}
+
+@Immutable
+data class LastFmTimingEditorUiModel(
+    val setting: LastFmTimingSetting? = null,
+    val minTrackDurationSeconds: Int = LastFM.DEFAULT_SCROBBLE_MIN_SONG_DURATION,
+    val scrobbleDelayPercent: Float = LastFM.DEFAULT_SCROBBLE_DELAY_PERCENT,
+    val scrobbleDelaySeconds: Int = LastFM.DEFAULT_SCROBBLE_DELAY_SECONDS,
+) {
+    val visible: Boolean
+        get() = setting != null
+}
+
+@HiltViewModel
+class LastFmSettingsViewModel
+    @Inject
+    constructor(
+        observeSettings: ObserveLastFmSettingsUseCase,
+        private val loginLastFm: LoginLastFmUseCase,
+        private val logoutLastFm: LogoutLastFmUseCase,
+        private val saveServiceConfig: SaveLastFmServiceConfigUseCase,
+        private val updateOptions: UpdateLastFmScrobblingOptionsUseCase,
+    ) : ViewModel() {
+        private val loginDialog = MutableStateFlow(LastFmLoginDialogUiModel())
+        private val serviceEditor = MutableStateFlow(LastFmServiceEditorUiModel())
+        private val timingEditor = MutableStateFlow(LastFmTimingEditorUiModel())
+        private var loginJob: Job? = null
+
+        val state: StateFlow<LastFmSettingsScreenState> =
+            combine(
+                observeSettings(),
+                loginDialog,
+                serviceEditor,
+                timingEditor,
+            ) { settings, login, editor, timing ->
+                LastFmSettingsStatePayload(
+                    settings = settings,
+                    loginDialog = login,
+                    serviceEditor = editor,
+                    timingEditor = timing,
+                )
+            }.map<LastFmSettingsStatePayload, LastFmSettingsScreenState> { payload ->
+                LastFmSettingsScreenState.Success(payload.toUiModel())
+            }.catch { throwable ->
+                if (throwable is CancellationException) throw throwable
+                Timber.e(throwable, "Failed to load Last.fm settings")
+                emit(LastFmSettingsScreenState.Error(R.string.error_unknown))
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = LastFmSettingsScreenState.Loading,
+            )
+
+        fun openLoginDialog() {
+            loginDialog.value = LastFmLoginDialogUiModel(visible = true)
+        }
+
+        fun dismissLoginDialog() {
+            if (!loginDialog.value.isLoggingIn) {
+                loginDialog.value = LastFmLoginDialogUiModel()
+            }
+        }
+
+        fun updateLoginUsername(value: String) {
+            loginDialog.update { dialog ->
+                dialog.copy(username = value, errorMessageResId = null)
+            }
+        }
+
+        fun updateLoginPassword(value: String) {
+            loginDialog.update { dialog ->
+                dialog.copy(password = value, errorMessageResId = null)
+            }
+        }
+
+        fun login() {
+            if (loginJob?.isActive == true) return
+            val dialog = loginDialog.value
+            val model = currentModel()
+            if (dialog.username.isBlank() || dialog.password.isBlank()) {
+                loginDialog.update { it.copy(errorMessageResId = R.string.lastfm_login_missing_credentials) }
+                return
+            }
+            if (model?.canLogin != true) {
+                loginDialog.update { it.copy(errorMessageResId = R.string.lastfm_service_not_configured) }
+                return
+            }
+
+            loginJob =
+                viewModelScope.launch(Dispatchers.IO) {
+                    loginDialog.update {
+                        it.copy(isLoggingIn = true, errorMessageResId = null)
+                    }
+                    loginLastFm(dialog.username, dialog.password)
+                        .onSuccess {
+                            loginDialog.value = LastFmLoginDialogUiModel()
+                        }.onFailure { throwable ->
+                            if (throwable is CancellationException) throw throwable
+                            Timber.e(throwable, "Last.fm-compatible login failed")
+                            loginDialog.update {
+                                it.copy(
+                                    isLoggingIn = false,
+                                    errorMessageResId = throwable.loginErrorResId(),
+                                )
+                            }
+                        }
+                }
+        }
+
+        fun logout() {
+            viewModelScope.launch(Dispatchers.IO) {
+                logoutLastFm()
+            }
+        }
+
+        fun openServiceEditor() {
+            val model = currentModel() ?: return
+            serviceEditor.value =
+                LastFmServiceEditorUiModel(
+                    visible = true,
+                    provider = model.provider,
+                    customEndpoint =
+                        model.customEndpoint.ifBlank {
+                            if (model.provider == LastFmProvider.CUSTOM) model.resolvedEndpoint else ""
+                        },
+                    apiKeyOverride = model.apiKeyOverride,
+                    secretOverride = model.secretOverride,
+                    credentialsByProvider = model.credentialsByProvider,
+                )
+        }
+
+        fun dismissServiceEditor() {
+            if (!serviceEditor.value.isSaving) {
+                serviceEditor.value = LastFmServiceEditorUiModel()
+            }
+        }
+
+        fun updateServiceProvider(provider: LastFmProvider) {
+            serviceEditor.update { editor ->
+                val credentialsByProvider =
+                    editor.credentialsByProvider +
+                        (editor.provider to LastFmApiCredentials(editor.apiKeyOverride, editor.secretOverride))
+                val credentials = credentialsByProvider[provider] ?: LastFmApiCredentials()
+                editor.copy(
+                    provider = provider,
+                    apiKeyOverride = credentials.apiKey,
+                    secretOverride = credentials.secret,
+                    credentialsByProvider = credentialsByProvider,
+                    errorMessageResId = null,
+                )
+            }
+        }
+
+        fun updateCustomEndpoint(value: String) {
+            serviceEditor.update { editor ->
+                editor.copy(customEndpoint = value, errorMessageResId = null)
+            }
+        }
+
+        fun updateApiKeyOverride(value: String) {
+            serviceEditor.update { editor ->
+                editor.copy(apiKeyOverride = value, errorMessageResId = null)
+            }
+        }
+
+        fun updateSecretOverride(value: String) {
+            serviceEditor.update { editor ->
+                editor.copy(secretOverride = value, errorMessageResId = null)
+            }
+        }
+
+        fun saveServiceEditor() {
+            val editor = serviceEditor.value
+            if (editor.isSaving) return
+            if (editor.provider == LastFmProvider.CUSTOM &&
+                LastFmServiceConfig.normalizeEndpointOrNull(editor.customEndpoint) == null
+            ) {
+                serviceEditor.update { it.copy(errorMessageResId = R.string.lastfm_endpoint_invalid) }
+                return
+            }
+
+            viewModelScope.launch(Dispatchers.IO) {
+                serviceEditor.update {
+                    it.copy(isSaving = true, errorMessageResId = null)
+                }
+                val saved =
+                    saveServiceConfig(
+                        provider = editor.provider,
+                        customEndpoint = editor.customEndpoint,
+                        apiKeyOverride = editor.apiKeyOverride,
+                        secretOverride = editor.secretOverride,
+                    )
+                if (saved == null) {
+                    serviceEditor.update {
+                        it.copy(
+                            isSaving = false,
+                            errorMessageResId = R.string.lastfm_endpoint_invalid,
+                        )
+                    }
+                } else {
+                    serviceEditor.value = LastFmServiceEditorUiModel()
+                }
+            }
+        }
+
+        /**
+         * (Task 4) Persists a custom-endpoint config (provider pinned to
+         * CUSTOM, plus the entered endpoint URL / API key / shared secret)
+         * directly via [saveServiceConfig]. The dialog in LastFMSettings
+         * pre-validates the endpoint URL through [LastFM.normalizeEndpoint]
+         * before calling this, so by the time we get here the endpoint is
+         * well-formed — but we re-normalize defensively in case the user
+         * pasted something with a trailing slash that the dialog didn't
+         * trim. Clears the active session (if any) because the new provider
+         * almost certainly needs a fresh login.
+         */
+        fun saveCustomEndpoint(endpoint: String, apiKey: String, secret: String) {
+            viewModelScope.launch(Dispatchers.IO) {
+                saveServiceConfig(
+                    provider = LastFmProvider.CUSTOM,
+                    customEndpoint = endpoint,
+                    apiKeyOverride = apiKey,
+                    secretOverride = secret,
+                )
+            }
+        }
+
+        fun setScrobblingEnabled(enabled: Boolean) {
+            viewModelScope.launch(Dispatchers.IO) {
+                updateOptions.setScrobblingEnabled(enabled)
+            }
+        }
+
+        fun setNowPlayingEnabled(enabled: Boolean) {
+            viewModelScope.launch(Dispatchers.IO) {
+                updateOptions.setNowPlayingEnabled(enabled)
+            }
+        }
+
+        fun setMinTrackDurationSeconds(value: Int) {
+            viewModelScope.launch(Dispatchers.IO) {
+                updateOptions.setMinTrackDurationSeconds(value.coerceIn(10, 60))
+            }
+        }
+
+        fun setScrobbleDelayPercent(value: Float) {
+            viewModelScope.launch(Dispatchers.IO) {
+                updateOptions.setScrobbleDelayPercent(value.coerceIn(0.3f, 0.95f))
+            }
+        }
+
+        fun setScrobbleDelaySeconds(value: Int) {
+            viewModelScope.launch(Dispatchers.IO) {
+                updateOptions.setScrobbleDelaySeconds(value.coerceIn(30, 360))
+            }
+        }
+
+        fun openTimingEditor(setting: LastFmTimingSetting) {
+            val model = currentModel() ?: return
+            timingEditor.value =
+                LastFmTimingEditorUiModel(
+                    setting = setting,
+                    minTrackDurationSeconds = model.minTrackDurationSeconds,
+                    scrobbleDelayPercent = model.scrobbleDelayPercent,
+                    scrobbleDelaySeconds = model.scrobbleDelaySeconds,
+                )
+        }
+
+        fun dismissTimingEditor() {
+            timingEditor.value = LastFmTimingEditorUiModel()
+        }
+
+        fun updateTimingMinTrackDuration(value: Int) {
+            timingEditor.update { editor ->
+                editor.copy(minTrackDurationSeconds = value.coerceIn(10, 60))
+            }
+        }
+
+        fun updateTimingDelayPercent(value: Float) {
+            timingEditor.update { editor ->
+                editor.copy(scrobbleDelayPercent = value.coerceIn(0.3f, 0.95f))
+            }
+        }
+
+        fun updateTimingDelaySeconds(value: Int) {
+            timingEditor.update { editor ->
+                editor.copy(scrobbleDelaySeconds = value.coerceIn(30, 360))
+            }
+        }
+
+        fun saveTimingEditor() {
+            val editor = timingEditor.value
+            when (editor.setting) {
+                LastFmTimingSetting.MIN_TRACK_DURATION -> setMinTrackDurationSeconds(editor.minTrackDurationSeconds)
+                LastFmTimingSetting.DELAY_PERCENT -> setScrobbleDelayPercent(editor.scrobbleDelayPercent)
+                LastFmTimingSetting.DELAY_SECONDS -> setScrobbleDelaySeconds(editor.scrobbleDelaySeconds)
+                null -> return
+            }
+            timingEditor.value = LastFmTimingEditorUiModel()
+        }
+
+        private fun currentModel(): LastFmSettingsUiModel? = (state.value as? LastFmSettingsScreenState.Success)?.model
+
+        private fun LastFmSettingsStatePayload.toUiModel(): LastFmSettingsUiModel =
+            LastFmSettingsUiModel(
+                provider = settings.serviceConfig.provider,
+                resolvedEndpoint = settings.serviceConfig.endpoint,
+                customEndpoint = settings.serviceConfig.customEndpoint,
+                apiKeyOverride = settings.serviceConfig.apiKeyOverride,
+                secretOverride = settings.serviceConfig.secretOverride,
+                credentialsByProvider = settings.credentialsByProvider,
+                serviceConfigured = settings.serviceConfig.initialized,
+                endpointValid = settings.serviceConfig.endpointValid,
+                username = settings.username,
+                isLoggedIn = settings.isLoggedIn,
+                scrobblingEnabled = settings.scrobblingEnabled,
+                nowPlayingEnabled = settings.nowPlayingEnabled,
+                minTrackDurationSeconds = settings.minTrackDurationSeconds,
+                scrobbleDelayPercent = settings.scrobbleDelayPercent,
+                scrobbleDelaySeconds = settings.scrobbleDelaySeconds,
+                loginDialog = this.loginDialog,
+                serviceEditor = this.serviceEditor,
+                timingEditor = this.timingEditor,
+            )
+
+        private fun Throwable.loginErrorResId(): Int =
+            when (this) {
+                is LastFM.LastFmException -> {
+                    when (code) {
+                        4 -> R.string.lastfm_login_invalid_credentials
+                        10 -> R.string.lastfm_login_invalid_api_key
+                        13 -> R.string.lastfm_login_authentication_error
+                        26 -> R.string.lastfm_login_api_key_suspended
+                        else -> R.string.lastfm_login_failed
+                    }
+                }
+
+                else -> {
+                    val message = message.orEmpty()
+                    if (
+                        message.contains("network", ignoreCase = true) ||
+                        message.contains("connect", ignoreCase = true) ||
+                        message.contains("timeout", ignoreCase = true)
+                    ) {
+                        R.string.lastfm_login_network_error
+                    } else {
+                        R.string.lastfm_login_failed
+                    }
+                }
+            }
+    }
+
+private data class LastFmSettingsStatePayload(
+    val settings: LastFmSettingsData,
+    val loginDialog: LastFmLoginDialogUiModel,
+    val serviceEditor: LastFmServiceEditorUiModel,
+    val timingEditor: LastFmTimingEditorUiModel,
+)

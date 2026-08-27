@@ -93,11 +93,11 @@ tasks.configureEach {
 // GitHub Secrets) and must not be restored.
 
 android {
-    namespace = "moe.rukamori.archivetune"
+    namespace = "app.atf.media"
     compileSdk = 37
 
     defaultConfig {
-    applicationId = "moe.rukamori.archivetune"
+    applicationId = "app.atf.music"
         minSdk = 26
         targetSdk = 37
         // Version. Locally the committed base values are used. In CI, the release/canary
@@ -537,7 +537,7 @@ androidComponents {
                 metadataFile.set(rootProject.layout.projectDirectory.file("IconPack/metadata.json"))
                 svgDirectory.set(rootProject.layout.projectDirectory.dir("IconPack/svg"))
                 applicationId.set(variant.applicationId)
-                targetActivityClassName.set("moe.rukamori.archivetune.MainActivity")
+                targetActivityClassName.set("app.atf.media.MainActivity")
                 resourceOutputDirectory.set(
                     layout.buildDirectory.dir("generated/iconPack/${variant.name}/res"),
                 )
