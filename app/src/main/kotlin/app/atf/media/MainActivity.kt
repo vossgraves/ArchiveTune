@@ -220,6 +220,7 @@ import app.atf.media.constants.AodAutoOnScreenDimKey
 import app.atf.media.constants.AodAutoTimerSecondsKey
 import app.atf.media.constants.CustomFontUriKey
 import app.atf.media.constants.CustomThemeColorKey
+import app.atf.media.constants.WallpaperExtractionFailedKey
 import app.atf.media.constants.DarkModeKey
 import app.atf.media.constants.DefaultOpenTabKey
 import app.atf.media.constants.DisableAnimationsKey
@@ -340,6 +341,7 @@ import app.atf.media.ui.theme.ArchiveTuneTheme
 import app.atf.media.ui.theme.ColorSaver
 import app.atf.media.ui.theme.DefaultThemeColor
 import app.atf.media.ui.theme.extractThemeColor
+import app.atf.media.ui.theme.extractWallpaperThemeColor
 import app.atf.media.ui.utils.appBarScrollBehavior
 import app.atf.media.ui.utils.backToMain
 import app.atf.media.ui.utils.resetHeightOffset
@@ -1014,7 +1016,11 @@ class MainActivity : ComponentActivity() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             themeColor = DefaultThemeColor
                         } else {
-                            themeColor = customThemeColor
+                            val wallpaperColor = extractWallpaperThemeColor(this@MainActivity)
+                            themeColor = wallpaperColor ?: customThemeColor
+                            dataStore.edit { prefs ->
+                                prefs[WallpaperExtractionFailedKey] = wallpaperColor == null
+                            }
                         }
                     }
                 }

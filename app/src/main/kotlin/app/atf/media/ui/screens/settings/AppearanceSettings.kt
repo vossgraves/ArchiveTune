@@ -109,6 +109,7 @@ import app.atf.media.constants.SliderStyle
 import app.atf.media.constants.SliderStyleKey
 import app.atf.media.constants.TabletModeEnabledKey
 import app.atf.media.constants.ThumbnailCornerRadiusKey
+import app.atf.media.constants.WallpaperExtractionFailedKey
 import app.atf.media.constants.UiScaleFactorKey
 import app.atf.media.ui.component.DefaultDialog
 import app.atf.media.ui.component.EnumListPreference
@@ -132,6 +133,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
+    val (wallpaperExtractionFailed) =
+        rememberPreference(WallpaperExtractionFailedKey, defaultValue = false)
     val (dynamicTheme, onDynamicThemeChange) =
         rememberPreference(
             DynamicThemeKey,
@@ -497,7 +500,24 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                item(visible = dynamicTheme && Build.VERSION.SDK_INT < Build.VERSION_CODES.S && wallpaperExtractionFailed) {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("wallpaper_permission"),
+                        title = { Text(stringResource(R.string.wallpaper_permission)) },
+                        description = stringResource(R.string.wallpaper_permission_desc),
+                        icon = { Icon(painterResource(R.drawable.storage), null) },
+                        onClick = {
+                            val intent =
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", context.packageName, null),
+                                )
+                            context.startActivity(intent)
+                        },
+                    )
+                }
+
+                item(visible = !dynamicTheme) {
                     SwitchPreference(
                         modifier = positions.modifierFor("random_theme_on_startup"),
                         title = { Text(stringResource(R.string.random_theme_on_startup)) },

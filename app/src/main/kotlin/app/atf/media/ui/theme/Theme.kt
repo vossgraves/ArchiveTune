@@ -7,7 +7,10 @@
 
 package app.atf.media.ui.theme
 
+import android.app.WallpaperManager
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.util.Base64
 import androidx.compose.animation.animateColorAsState
@@ -408,6 +411,34 @@ fun Bitmap.extractThemeColor(): Color {
             ?: palette.darkMutedSwatch
 
     return swatch?.rgb?.toComposeColor() ?: DefaultThemeColor
+}
+
+/** Wallpaper-based dynamic theme on API < 31 (backport, rukamori PR #1219).
+ *  Returns null when extraction is impossible (no wallpaper / no permission), so
+ *  the caller can fall back to the custom theme color and flag it in settings. */
+fun extractWallpaperThemeColor(context: Context): Color? {
+    return try {
+        val wallpaperManager = WallpaperManager.getInstance(context)
+        val drawable = wallpaperManager.drawable ?: return null
+        val bitmap =
+            if (drawable is BitmapDrawable) {
+                drawable.bitmap
+            } else {
+                val bmp =
+                    Bitmap.createBitmap(
+                        drawable.intrinsicWidth.coerceAtLeast(1),
+                        drawable.intrinsicHeight.coerceAtLeast(1),
+                        Bitmap.Config.ARGB_8888,
+                    )
+                val canvas = android.graphics.Canvas(bmp)
+                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                drawable.draw(canvas)
+                bmp
+            }
+        bitmap.extractThemeColor()
+    } catch (e: Exception) {
+        null
+    }
 }
 
 fun Bitmap.extractGradientColors(): List<Color> {

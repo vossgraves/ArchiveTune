@@ -73,6 +73,15 @@ import app.atf.media.utils.rememberPreference
 private fun looksLikeJwt(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"))
 
 /**
+ * Media-user-token shape: Apple's iTunes-store token is NOT a JWT — it is a
+ * short version prefix (`0.`) followed by standard base64 (may contain `+`, `/`,
+ * `=`), e.g. `0.Ap7VmmO+s4RlV4F…==`. Accept either that or a JWT so panel-pasted
+ * tokens pass; the old JWT-only check rejected every real media token.
+ */
+private fun looksLikeMediaUserToken(value: String): Boolean =
+    looksLikeJwt(value) || value.matches(Regex("^0\\.[A-Za-z0-9+/=]{40,}$"))
+
+/**
  * Apple Music sign-in — login-only by design: no pool, independent of Developer
  * Options. Full-track streaming engages once BOTH tokens are present.
  */
@@ -201,7 +210,7 @@ private fun TokenSheet(
     var showMedia by rememberSaveable { mutableStateOf(false) }
     var showDev by rememberSaveable { mutableStateOf(false) }
 
-    val mediaValid = looksLikeJwt(mediaToken)
+    val mediaValid = looksLikeMediaUserToken(mediaToken)
     val devValid = looksLikeJwt(devToken)
     val canSave = mediaValid && devValid
 

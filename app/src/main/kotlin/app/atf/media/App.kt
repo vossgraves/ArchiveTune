@@ -101,6 +101,11 @@ class App :
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
+
+    // Latest Apple Music account tokens (see collector wired to AppleMusicProvider below).
+    @Volatile private var appleMusicDevTokenCache: String = ""
+    @Volatile private var appleMusicMediaUserTokenCache: String = ""
+
     private val didRunImageCacheTrim = AtomicBoolean(false)
 
     private fun currentProcessName(): String? =
@@ -175,6 +180,25 @@ class App :
         // as `I/System.out:` with no tag/level, bypassing the in-app log viewer.
         AppleMusicProvider.logger = { level, tag, message ->
             app.atf.media.utils.GlobalLog.append(level, tag, message)
+        }
+
+        // Feed the user's own Apple Music account tokens (pasted on the Apple
+        // Music settings page) into the canvas module's AMP requests: their
+        // dev JWT replaces the scraped web token, their media-user-token rides
+        // along as the Media-User-Token header. DataStore lives in the app
+        // layer; a collector keeps cached values current and the providers
+        // hand back the latest without ever blocking the caller's thread.
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data.collect { prefs ->
+                appleMusicDevTokenCache = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
+                appleMusicMediaUserTokenCache = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
+            }
+        }
+        AppleMusicProvider.devTokenProvider = {
+            appleMusicDevTokenCache.ifBlank { null }
+        }
+        AppleMusicProvider.mediaUserTokenProvider = {
+            appleMusicMediaUserTokenCache.ifBlank { null }
         }
 
         // Spotify Canvas. The canvas module deliberately has no dependency on the

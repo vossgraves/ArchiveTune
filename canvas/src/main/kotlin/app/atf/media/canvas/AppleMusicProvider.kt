@@ -64,6 +64,20 @@ object AppleMusicProvider {
 
     var logger: ((level: Int, tag: String, message: String) -> Unit)? = null
 
+    /**
+     * Account tokens supplied by the user on the Apple Music settings page.
+     * When a dev (bearer JWT) token is present it REPLACES the scraped/fallback
+     * web token; when a media-user-token is present every AMP request carries
+     * the `Media-User-Token` header, so lookups run against the user's own
+     * account (region + catalog access) instead of anonymous web access.
+     * Providers are installed by the app layer (DataStore lives there).
+     */
+    @Volatile
+    var devTokenProvider: (() -> String?)? = null
+
+    @Volatile
+    var mediaUserTokenProvider: (() -> String?)? = null
+
     private object Log {
         fun d(msg: String) {
             val logger = AppleMusicProvider.logger
@@ -181,9 +195,13 @@ object AppleMusicProvider {
     /**
      * Returns a usable Apple Music JWT, refreshing first if the cached one is
      * missing or past its expiry. Refresh failures fall back to whatever we
-     * have on hand (including the hardcoded fallback).
+     * have on hand (including the hardcoded fallback). A user-pasted dev token
+     * always wins over anything scraped or hardcoded.
      */
     private suspend fun ensureTokenFresh(): String {
+        devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { userDevToken ->
+            return userDevToken
+        }
         val nowSec = System.currentTimeMillis() / 1000L
         val isExpired = appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec <= nowSec
         val needsRefresh =
@@ -449,6 +467,7 @@ object AppleMusicProvider {
             var response =
                 client.get(searchUrl) {
                     header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                     header("Origin", "https://music.apple.com")
                     header("Referer", "https://music.apple.com/")
                     header("User-Agent", APPLE_MUSIC_WEB_UA)
@@ -466,6 +485,7 @@ object AppleMusicProvider {
                 response =
                     client.get(searchUrl) {
                         header("Authorization", "Bearer $token")
+                        mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                         header("Origin", "https://music.apple.com")
                         header("Referer", "https://music.apple.com/")
                         header("User-Agent", APPLE_MUSIC_WEB_UA)
@@ -575,6 +595,7 @@ object AppleMusicProvider {
             var response =
                 client.get(albumUrl) {
                     header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                     header("Origin", "https://music.apple.com")
                     header("Referer", "https://music.apple.com/")
                     header("User-Agent", APPLE_MUSIC_WEB_UA)
@@ -587,6 +608,7 @@ object AppleMusicProvider {
                 response =
                     client.get(albumUrl) {
                         header("Authorization", "Bearer $token")
+                        mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                         header("Origin", "https://music.apple.com")
                         header("Referer", "https://music.apple.com/")
                         header("User-Agent", APPLE_MUSIC_WEB_UA)

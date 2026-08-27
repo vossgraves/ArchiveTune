@@ -24,6 +24,7 @@ val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val DisableAnimationsKey = booleanPreferencesKey("disableAnimations")
 val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
+val WallpaperExtractionFailedKey = booleanPreferencesKey("wallpaperExtractionFailed")
 val HideStatusBarKey = booleanPreferencesKey("hideStatusBar")
 
 // UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
