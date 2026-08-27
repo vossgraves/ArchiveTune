@@ -75,6 +75,10 @@ import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.TextLayoutResult
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
@@ -307,16 +311,21 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "title",
             ) { title ->
+                // Same per-line gradience as the full player: the title edge-fades
+                // only while it actually marquee; short titles render gradient-free.
+                val miniTitleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMediumEmphasized,
                     color = colors.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { miniTitleLayout.value = it },
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .basicMarquee(),
+                            .basicMarquee()
+                            .marqueeEdgeFade(miniTitleLayout),
                 )
             }
 

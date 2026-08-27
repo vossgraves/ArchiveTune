@@ -214,6 +214,7 @@ import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.player.MiloPlayerContent
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -1916,7 +1917,34 @@ fun BottomSheetPlayer(
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
-                } else {
+            } else if (playerDesignStyle == PlayerDesignStyle.MILO) {
+                enrichedMetadata?.let { metadata ->
+                    MiloPlayerContent(
+                        mediaMetadata = metadata,
+                        playbackState = playbackState,
+                        isPlaying = isPlaying && !isLyricsScreenVisible,
+                        isLoading = isLoading,
+                        canSkipPrevious = canSkipPrevious,
+                        canSkipNext = canSkipNext,
+                        sliderPosition = sliderPosition,
+                        positionProvider = positionProvider,
+                        duration = duration,
+                        playerConnection = playerConnection,
+                        navController = navController,
+                        state = state,
+                        bottomSheetPageState = bottomSheetPageState,
+                        onQueueClick = openQueue,
+                        onLyricsClick = { isLyricsScreenVisible = true },
+                        onSliderValueChange = onSliderValueChange,
+                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        landscape = true,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                    )
+                }
+            } else {
                     Row(
                         modifier =
                             Modifier
@@ -2276,7 +2304,33 @@ fun BottomSheetPlayer(
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
-                } else {
+            } else if (playerDesignStyle == PlayerDesignStyle.MILO) {
+                enrichedMetadata?.let { metadata ->
+                    MiloPlayerContent(
+                        mediaMetadata = metadata,
+                        playbackState = playbackState,
+                        isPlaying = isPlaying && !isLyricsScreenVisible,
+                        isLoading = isLoading,
+                        canSkipPrevious = canSkipPrevious,
+                        canSkipNext = canSkipNext,
+                        sliderPosition = sliderPosition,
+                        positionProvider = positionProvider,
+                        duration = duration,
+                        playerConnection = playerConnection,
+                        navController = navController,
+                        state = state,
+                        bottomSheetPageState = bottomSheetPageState,
+                        onQueueClick = openQueue,
+                        onLyricsClick = { isLyricsScreenVisible = true },
+                        onSliderValueChange = onSliderValueChange,
+                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                    )
+                }
+            } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier =

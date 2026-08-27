@@ -739,6 +739,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                     PlayerDesignStyle.V9 -> stringResource(R.string.player_design_v9)
                                     PlayerDesignStyle.APPLE_MUSIC ->
                                         stringResource(R.string.player_design_apple_music)
+                                    PlayerDesignStyle.MILO ->
+                                        stringResource(R.string.player_design_milo)
                                 }
                             },
                         )

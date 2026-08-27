@@ -804,7 +804,7 @@ fun PlayerTopActions(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC, PlayerDesignStyle.MILO -> {
             Unit
         }
     }
@@ -1875,7 +1875,7 @@ fun PlayerPlaybackControls(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC, PlayerDesignStyle.MILO -> {
             Unit
         }
     }
