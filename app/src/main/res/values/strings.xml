@@ -1189,6 +1189,8 @@
     <string name="sources_tidal_token_title">Tidal token sign-in</string>
     <string name="sources_tidal_token_label">Refresh token</string>
     <string name="sources_tidal_token_help">Paste a Tidal o2_refresh token (the long JWT with \"type\":\"o2_refresh\" in its middle segment). The app exchanges it for fresh access tokens automatically. User ID is read from the token itself — no extra fields needed.</string>
+    <string name="sources_tidal_token_verified">Tidal token verified — account connected.</string>
+    <string name="sources_tidal_token_failed">Tidal could not refresh that token — it may be expired or revoked.</string>
     <string name="sources_token_invalid">Not a valid token (JWT expected)</string>
     <string name="pool_refresh_title">Refresh from pool</string>
     <string name="pool_refresh_description">Pull the latest shared accounts and instances from the community source pool</string>

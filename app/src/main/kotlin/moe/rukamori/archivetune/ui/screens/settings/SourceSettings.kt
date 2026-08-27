@@ -55,6 +55,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -105,10 +108,14 @@ import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.constants.TidalAccessTokenKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
+import moe.rukamori.archivetune.constants.TidalAuthFlowKey
+import moe.rukamori.archivetune.constants.TidalCountryCodeKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.TidalNeedsReloginKey
 import moe.rukamori.archivetune.constants.TidalRefreshTokenKey
 import moe.rukamori.archivetune.constants.TidalTokenExpiryKey
+import moe.rukamori.archivetune.constants.TidalUserIdKey
+import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -498,6 +505,7 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
     if (showTidalTokenSheet) {
         TidalTokenSheet(
             onSave = { refreshToken ->
+                showTidalTokenSheet = false
                 scope.launch(Dispatchers.IO) {
                     context.dataStore.edit {
                         it[TidalRefreshTokenKey] = refreshToken
@@ -506,8 +514,30 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                         it[TidalNeedsReloginKey] = false
                         it[moe.rukamori.archivetune.constants.TidalAuthFlowKey] = moe.rukamori.archivetune.tidal.TidalAccountManager.FLOW_OAUTH
                     }
+                    // Verify immediately instead of failing silently at first playback. The pasted
+                    // o2_refresh token was minted by some client family; try ours first, then the
+                    // PKCE pair, and keep whichever actually refreshes.
+                    val working =
+                        TidalAccountManager.refreshAccessToken(refreshToken, TidalAccountManager.FLOW_OAUTH)
+                            ?: TidalAccountManager.refreshAccessToken(refreshToken, TidalAccountManager.FLOW_PKCE)
+                    val resultMessage: Int =
+                        if (working != null) {
+                            context.dataStore.edit { prefs ->
+                                prefs[TidalAccessTokenKey] = working.accessToken
+                                prefs[TidalTokenExpiryKey] = working.expiresAtMillis
+                                prefs[TidalRefreshTokenKey] = working.refreshToken ?: refreshToken
+                                working.userId?.let { prefs[TidalUserIdKey] = it }
+                                working.countryCode?.let { prefs[TidalCountryCodeKey] = it }
+                                prefs[TidalNeedsReloginKey] = false
+                            }
+                            R.string.sources_tidal_token_verified
+                        } else {
+                            R.string.sources_tidal_token_failed
+                        }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, context.getString(resultMessage), Toast.LENGTH_SHORT).show()
+                    }
                 }
-                showTidalTokenSheet = false
             },
             onDismiss = { showTidalTokenSheet = false },
         )
@@ -601,7 +631,7 @@ private fun YouTubeAdvancedSheet(
                     label = { Text("YouTube cookie") },
                     placeholder = { Text(maskCredential(cookie).takeIf { it.isNotEmpty() } ?: "Paste session cookie") },
                     visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
-                    trailingIcon = { IconButton(onClick = { hidden = !hidden }) { Icon(painterResource(R.drawable.visibility_off), null) } },
+                    trailingIcon = { IconButton(onClick = { hidden = !hidden }) { Icon(if (hidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null) } },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     isError = cookie.isNotBlank() && !valid,
                     supportingText = { if (cookie.isNotBlank() && !valid) Text(stringResource(R.string.youtube_session_invalid)) },
@@ -639,7 +669,7 @@ private fun TidalTokenSheet(
                 label = { Text(stringResource(R.string.sources_tidal_token_label)) },
                 visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
                 trailingIcon = {
-                    IconButton(onClick = { hidden = !hidden }) { Icon(painterResource(R.drawable.visibility_off), null) }
+                    IconButton(onClick = { hidden = !hidden }) { Icon(if (hidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null) }
                 },
                 isError = token.isNotBlank() && !valid,
                 supportingText = { if (token.isNotBlank() && !valid) Text(stringResource(R.string.sources_token_invalid)) },

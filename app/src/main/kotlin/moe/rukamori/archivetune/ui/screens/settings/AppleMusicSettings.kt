@@ -32,6 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -220,7 +223,7 @@ private fun TokenSheet(
                 visualTransformation = if (showMedia) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { showMedia = !showMedia }) {
-                        Icon(painterResource(if (showMedia) R.drawable.visibility_off else R.drawable.visibility_off), null)
+                        Icon(if (showMedia) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null)
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -235,7 +238,7 @@ private fun TokenSheet(
                 visualTransformation = if (showDev) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { showDev = !showDev }) {
-                        Icon(painterResource(if (showDev) R.drawable.visibility_off else R.drawable.visibility_off), null)
+                        Icon(if (showDev) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null)
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
