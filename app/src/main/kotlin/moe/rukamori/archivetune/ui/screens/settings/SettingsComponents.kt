@@ -367,14 +367,11 @@ fun SettingsGroupCard(
                 ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                group.items.forEach { item ->
+            Column {
+                group.items.forEachIndexed { index, item ->
                     SettingsRow(
                         item = item,
-                        showDivider = false,
+                        showDivider = index < group.items.size - 1,
                     )
                 }
             }
@@ -467,7 +464,7 @@ fun SettingsRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )

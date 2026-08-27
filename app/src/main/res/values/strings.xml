@@ -1185,6 +1185,11 @@
     <string name="applemusic_token_invalid">Doesn\'t look like a token (JWT expected)</string>
     <string name="applemusic_tokens_help">Music User Token: on music.apple.com after signing in, it is the media-user-token header your browser sends. Developer token: the JWT the web player embeds, or one you minted from your own Apple Developer key.</string>
     <string name="applemusic_disconnect">Sign out</string>
+    <string name="sources_paste_token">Paste token instead</string>
+    <string name="sources_tidal_token_title">Tidal token sign-in</string>
+    <string name="sources_tidal_token_label">Refresh token</string>
+    <string name="sources_tidal_token_help">Paste a Tidal o2_refresh token (the long JWT with \"type\":\"o2_refresh\" in its middle segment). The app exchanges it for fresh access tokens automatically. User ID is read from the token itself — no extra fields needed.</string>
+    <string name="sources_token_invalid">Not a valid token (JWT expected)</string>
     <string name="pool_refresh_title">Refresh from pool</string>
     <string name="pool_refresh_description">Pull the latest shared accounts and instances from the community source pool</string>
     <string name="pool_refreshing">Refreshing from pool…</string>

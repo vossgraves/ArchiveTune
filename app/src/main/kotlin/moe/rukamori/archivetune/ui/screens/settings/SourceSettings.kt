@@ -183,6 +183,7 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
 
     var showOrderSheet by rememberSaveable { mutableStateOf(false) }
     var showYouTubeSheet by rememberSaveable { mutableStateOf(false) }
+    var showTidalTokenSheet by rememberSaveable { mutableStateOf(false) }
     var showOverflow by remember { mutableStateOf(false) }
     var refreshingPool by remember { mutableStateOf(false) }
 
@@ -335,10 +336,16 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                             else -> {}
                                         }
                                     })
-                                    if (source == AudioSourceType.TIDAL && tidalToken.isNotBlank()) {
-                                        DropdownMenuItem(text = { Text(stringResource(R.string.copy_token_masked)) }, onClick = {
+                                    if (source == AudioSourceType.TIDAL) {
+                                        if (tidalToken.isNotBlank()) {
+                                            DropdownMenuItem(text = { Text(stringResource(R.string.copy_token_masked)) }, onClick = {
+                                                menu = false
+                                                copyToClipboard(context, "Tidal token", listOf(maskCredential(tidalToken)))
+                                            })
+                                        }
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.sources_paste_token)) }, onClick = {
                                             menu = false
-                                            copyToClipboard(context, "Tidal token", listOf(maskCredential(tidalToken)))
+                                            showTidalTokenSheet = true
                                         })
                                     }
                                     if (source == AudioSourceType.DEEZER && deezerArl.isNotBlank()) {
@@ -488,6 +495,23 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             onConfirm = { newOrder -> onSourceOrderChange(newOrder.joinToString(",") { it.name }); showOrderSheet = false },
         )
     }
+    if (showTidalTokenSheet) {
+        TidalTokenSheet(
+            onSave = { refreshToken ->
+                scope.launch(Dispatchers.IO) {
+                    context.dataStore.edit {
+                        it[TidalRefreshTokenKey] = refreshToken
+                        // Force the refresh path on next playback; expiry recomputes on refresh.
+                        it[TidalTokenExpiryKey] = 0L
+                        it[TidalNeedsReloginKey] = false
+                        it[moe.rukamori.archivetune.constants.TidalAuthFlowKey] = moe.rukamori.archivetune.tidal.TidalAccountManager.FLOW_OAUTH
+                    }
+                }
+                showTidalTokenSheet = false
+            },
+            onDismiss = { showTidalTokenSheet = false },
+        )
+    }
     if (showYouTubeSheet) {
         YouTubeAdvancedSheet(
             currentCookie = innerTubeCookie,
@@ -584,6 +608,48 @@ private fun YouTubeAdvancedSheet(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 FilledTonalButton(onClick = { onSave(cookie) }, enabled = valid, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.youtube_session_save)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TidalTokenSheet(
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var token by rememberSaveable { mutableStateOf("") }
+    var hidden by rememberSaveable { mutableStateOf(true) }
+    val valid = token.trim().split('.').size == 3
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Column(
+            Modifier.padding(16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(stringResource(R.string.sources_tidal_token_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(R.string.sources_tidal_token_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = token,
+                onValueChange = { token = it },
+                label = { Text(stringResource(R.string.sources_tidal_token_label)) },
+                visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
+                trailingIcon = {
+                    IconButton(onClick = { hidden = !hidden }) { Icon(painterResource(R.drawable.visibility_off), null) }
+                },
+                isError = token.isNotBlank() && !valid,
+                supportingText = { if (token.isNotBlank() && !valid) Text(stringResource(R.string.sources_token_invalid)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(android.R.string.cancel)) }
+                FilledTonalButton(onClick = { onSave(token.trim()) }, enabled = valid, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.youtube_session_save))
+                }
             }
         }
     }
