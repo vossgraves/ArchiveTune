@@ -367,11 +367,14 @@ fun SettingsGroupCard(
                 ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
-            Column {
-                group.items.forEachIndexed { index, item ->
+            Column(
+                modifier = Modifier.padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                group.items.forEach { item ->
                     SettingsRow(
                         item = item,
-                        showDivider = index < group.items.size - 1,
+                        showDivider = false,
                     )
                 }
             }
@@ -413,7 +416,8 @@ fun SettingsRow(
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale
-                    }.background(MaterialTheme.colorScheme.primary.copy(alpha = bgAlpha))
+                    }.background(MaterialTheme.colorScheme.surfaceContainer)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = bgAlpha))
                     .focusable()
                     .clickable(
                         interactionSource = interactionSource,
@@ -464,7 +468,7 @@ fun SettingsRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )

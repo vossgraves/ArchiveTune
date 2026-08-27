@@ -1296,6 +1296,15 @@ enum class TidalAudioQuality {
     HI_RES_LOSSLESS,
 }
 
+/** Apple Music streaming quality for the account path (web ALAC pipeline). */
+enum class AppleMusicQuality {
+    AAC,
+    LOSSLESS,
+    HI_RES_LOSSLESS,
+}
+
+val AppleMusicQualityKey = stringPreferencesKey("appleMusicQuality")
+
 val TidalAudioQualityOptions =
     listOf(
         TidalAudioQuality.AAC_320,

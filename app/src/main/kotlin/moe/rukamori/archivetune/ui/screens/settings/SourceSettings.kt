@@ -49,15 +49,15 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -108,16 +108,12 @@ import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.constants.TidalAccessTokenKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
-import moe.rukamori.archivetune.constants.TidalAuthFlowKey
-import moe.rukamori.archivetune.constants.TidalCountryCodeKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.TidalNeedsReloginKey
 import moe.rukamori.archivetune.constants.TidalRefreshTokenKey
 import moe.rukamori.archivetune.constants.TidalTokenExpiryKey
-import moe.rukamori.archivetune.constants.TidalUserIdKey
-import moe.rukamori.archivetune.constants.PoolApiKeyKey
-import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
+import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -176,7 +172,6 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
     val (deezerArl) = rememberPreference(DeezerArlKey, "")
     val (qobuzTokens) = rememberPreference(QobuzTokensKey, "")
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
-    val (poolApiKeyPref) = rememberPreference(PoolApiKeyKey, "")
     val (defaultMetadataSource, onDefaultMetadataSourceChange) = rememberEnumPreference(DefaultMetadataSourceKey, MetadataSource.YOUTUBE)
     val (defaultSearchSource, onDefaultSearchSourceChange) = rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
 
@@ -194,6 +189,7 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
     var showYouTubeSheet by rememberSaveable { mutableStateOf(false) }
     var showTidalTokenSheet by rememberSaveable { mutableStateOf(false) }
     var showPoolKeySheet by rememberSaveable { mutableStateOf(false) }
+    val (poolApiKeyPref) = rememberPreference(moe.rukamori.archivetune.constants.PoolApiKeyKey, "")
     var showOverflow by remember { mutableStateOf(false) }
     var refreshingPool by remember { mutableStateOf(false) }
 
@@ -225,19 +221,7 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                             runCatching { TidalInstanceHealthManager.refresh(context, includeDiscovery = true, staggered = false) }
                                         }
                                         refreshingPool = false
-                                        val ok = PoolAccountManager.isEnabled
-                                        val message =
-                                            if (ok) {
-                                                context.getString(
-                                                    R.string.pool_refresh_done,
-                                                    PoolAccountManager.tidalAccounts().size,
-                                                    PoolAccountManager.qobuzAccounts().size,
-                                                    PoolAccountManager.deezerAccounts().size,
-                                                )
-                                            } else {
-                                                context.getString(R.string.pool_refresh_failed)
-                                            }
-                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, context.getString(R.string.pool_refresh_done, PoolAccountManager.tidalAccounts().size, PoolAccountManager.qobuzAccounts().size), Toast.LENGTH_LONG).show()
                                     }
                                 }
                             })
@@ -295,6 +279,37 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
+            // Apple Music (login + quality; playback resolution stays account-based)
+            PreferenceGroup(title = stringResource(R.string.applemusic_settings)) {
+                item {
+                    val (appleQuality, onAppleQualityChange) = rememberEnumPreference(
+                        moe.rukamori.archivetune.constants.AppleMusicQualityKey,
+                        moe.rukamori.archivetune.constants.AppleMusicQuality.AAC,
+                    )
+                    EnumListPreference(
+                        modifier = positions.modifierFor("apple_music_quality"),
+                        title = { Text(stringResource(R.string.applemusic_quality)) },
+                        description = stringResource(R.string.applemusic_quality_desc),
+                        icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                        selectedValue = appleQuality,
+                        valueText = { when (it) {
+                            moe.rukamori.archivetune.constants.AppleMusicQuality.AAC -> stringResource(R.string.applemusic_quality_aac)
+                            moe.rukamori.archivetune.constants.AppleMusicQuality.LOSSLESS -> stringResource(R.string.applemusic_quality_lossless)
+                            moe.rukamori.archivetune.constants.AppleMusicQuality.HI_RES_LOSSLESS -> stringResource(R.string.applemusic_quality_hires)
+                        } },
+                        onValueSelected = onAppleQualityChange,
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.applemusic_sign_in_web)) },
+                        description = stringResource(R.string.applemusic_settings),
+                        icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                        onClick = { navController.navigate("settings/applemusic") },
+                    )
+                }
+            }
+
             // Helper to build card data
             @Composable
             fun ServiceCard(
@@ -324,7 +339,6 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                 val chipColor = when (it) {
                                     stringResource(R.string.sources_connected) -> MaterialTheme.colorScheme.primary
                                     stringResource(R.string.sources_needs_reauth) -> MaterialTheme.colorScheme.error
-                                    stringResource(R.string.sources_no_accounts) -> MaterialTheme.colorScheme.outline
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                                 AssistChip(onClick = {}, label = { Text(it, style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Box(Modifier.size(8.dp).clip(CircleShape).background(chipColor)) }, colors = AssistChipDefaults.assistChipColors(), shape = RoundedCornerShape(999.dp))
@@ -350,13 +364,13 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                             else -> {}
                                         }
                                     })
+                                    if (source == AudioSourceType.TIDAL && tidalToken.isNotBlank()) {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.copy_token_masked)) }, onClick = {
+                                            menu = false
+                                            copyToClipboard(context, "Tidal token", listOf(maskCredential(tidalToken)))
+                                        })
+                                    }
                                     if (source == AudioSourceType.TIDAL) {
-                                        if (tidalToken.isNotBlank()) {
-                                            DropdownMenuItem(text = { Text(stringResource(R.string.copy_token_masked)) }, onClick = {
-                                                menu = false
-                                                copyToClipboard(context, "Tidal token", listOf(maskCredential(tidalToken)))
-                                            })
-                                        }
                                         DropdownMenuItem(text = { Text(stringResource(R.string.sources_paste_token)) }, onClick = {
                                             menu = false
                                             showTidalTokenSheet = true
@@ -388,26 +402,17 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             if (connectedSources.isNotEmpty()) {
                 Text(stringResource(R.string.sources_connected), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp))
                 connectedSources.forEach { src ->
-                    // "Connected" must mean usable credentials exist RIGHT NOW (local or live pool
-                    // accounts) — not merely that the toggle is on. Enabled-but-empty shows the
-                    // amber "needs setup" chip instead.
-                    val hasCredentials = when (src) {
-                        AudioSourceType.TIDAL -> tidalToken.isNotBlank() && !tidalNeedsRelogin
-                        AudioSourceType.QOBUZ -> qobuzTokens.isNotBlank() || PoolAccountManager.qobuzAccounts().isNotEmpty()
-                        AudioSourceType.QOBUZ_BACKUP -> PoolAccountManager.isEnabled
-                        AudioSourceType.DEEZER -> deezerArl.isNotBlank() || PoolAccountManager.deezerAccounts().isNotEmpty()
-                        AudioSourceType.JIOSAAVN -> true
-                        else -> false
+                    val subtitle = when (src) {
+                        AudioSourceType.TIDAL -> if (tidalNeedsRelogin) stringResource(R.string.sources_needs_reauth) else if (tidalToken.isNotBlank()) stringResource(R.string.sources_connected) else stringResource(R.string.tidal_enable_description)
+                        AudioSourceType.QOBUZ -> if (qobuzTokens.isNotBlank()) stringResource(R.string.sources_connected) else stringResource(R.string.qobuz_enable_description)
+                        AudioSourceType.QOBUZ_BACKUP -> stringResource(R.string.qobuz_backup_enable_description)
+                        AudioSourceType.DEEZER -> if (deezerArl.isNotBlank()) stringResource(R.string.sources_connected) else stringResource(R.string.deezer_enable_description)
+                        AudioSourceType.JIOSAAVN -> stringResource(R.string.jiosaavn_enable_description)
+                        else -> ""
                     }
-                    val subtitle = when {
-                        src == AudioSourceType.TIDAL && tidalNeedsRelogin -> stringResource(R.string.sources_needs_reauth)
-                        hasCredentials -> stringResource(R.string.sources_connected)
-                        else -> stringResource(R.string.sources_no_accounts)
-                    }
-                    val status = when {
-                        src == AudioSourceType.TIDAL && tidalNeedsRelogin -> stringResource(R.string.sources_needs_reauth)
-                        hasCredentials -> stringResource(R.string.sources_connected)
-                        else -> stringResource(R.string.sources_no_accounts)
+                    val status = when (src) {
+                        AudioSourceType.TIDAL -> if (tidalNeedsRelogin) stringResource(R.string.sources_needs_reauth) else if (tidalToken.isNotBlank() || !tidalEnabled) stringResource(R.string.sources_connected) else null
+                        else -> if (isEnabled(src)) stringResource(R.string.sources_connected) else null
                     }
                     ServiceCard(src, isEnabled(src), { v ->
                         when (src) {
@@ -509,6 +514,14 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             onConfirm = { newOrder -> onSourceOrderChange(newOrder.joinToString(",") { it.name }); showOrderSheet = false },
         )
     }
+    if (showYouTubeSheet) {
+        YouTubeAdvancedSheet(
+            currentCookie = innerTubeCookie,
+            onSave = { v -> onInnerTubeCookieChange(v); showYouTubeSheet = false },
+            onDismiss = { showYouTubeSheet = false },
+            onBrowser = { navController.navigate(buildLoginRoute()) },
+        )
+    }
     if (showTidalTokenSheet) {
         TidalTokenSheet(
             onSave = { refreshToken ->
@@ -516,14 +529,10 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                 scope.launch(Dispatchers.IO) {
                     context.dataStore.edit {
                         it[TidalRefreshTokenKey] = refreshToken
-                        // Force the refresh path on next playback; expiry recomputes on refresh.
                         it[TidalTokenExpiryKey] = 0L
                         it[TidalNeedsReloginKey] = false
                         it[moe.rukamori.archivetune.constants.TidalAuthFlowKey] = moe.rukamori.archivetune.tidal.TidalAccountManager.FLOW_OAUTH
                     }
-                    // Verify immediately instead of failing silently at first playback. The pasted
-                    // o2_refresh token was minted by some client family; try ours first, then the
-                    // PKCE pair, and keep whichever actually refreshes.
                     val working =
                         TidalAccountManager.refreshAccessToken(refreshToken, TidalAccountManager.FLOW_OAUTH)
                             ?: TidalAccountManager.refreshAccessToken(refreshToken, TidalAccountManager.FLOW_PKCE)
@@ -533,8 +542,8 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                 prefs[TidalAccessTokenKey] = working.accessToken
                                 prefs[TidalTokenExpiryKey] = working.expiresAtMillis
                                 prefs[TidalRefreshTokenKey] = working.refreshToken ?: refreshToken
-                                working.userId?.let { prefs[TidalUserIdKey] = it }
-                                working.countryCode?.let { prefs[TidalCountryCodeKey] = it }
+                                working.userId?.let { prefs[moe.rukamori.archivetune.constants.TidalUserIdKey] = it }
+                                working.countryCode?.let { prefs[moe.rukamori.archivetune.constants.TidalCountryCodeKey] = it }
                                 prefs[TidalNeedsReloginKey] = false
                             }
                             R.string.sources_tidal_token_verified
@@ -554,19 +563,11 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             currentKey = poolApiKeyPref,
             onSave = { key ->
                 scope.launch(Dispatchers.IO) {
-                    context.dataStore.edit { it[PoolApiKeyKey] = key.trim() }
+                    context.dataStore.edit { it[moe.rukamori.archivetune.constants.PoolApiKeyKey] = key.trim() }
                 }
                 showPoolKeySheet = false
             },
             onDismiss = { showPoolKeySheet = false },
-        )
-    }
-    if (showYouTubeSheet) {
-        YouTubeAdvancedSheet(
-            currentCookie = innerTubeCookie,
-            onSave = { v -> onInnerTubeCookieChange(v); showYouTubeSheet = false },
-            onDismiss = { showYouTubeSheet = false },
-            onBrowser = { navController.navigate(buildLoginRoute()) },
         )
     }
 }
@@ -650,7 +651,7 @@ private fun YouTubeAdvancedSheet(
                     label = { Text("YouTube cookie") },
                     placeholder = { Text(maskCredential(cookie).takeIf { it.isNotEmpty() } ?: "Paste session cookie") },
                     visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
-                    trailingIcon = { IconButton(onClick = { hidden = !hidden }) { Icon(if (hidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null) } },
+                    trailingIcon = { IconButton(onClick = { hidden = !hidden }) { Icon(painterResource(R.drawable.visibility_off), null) } },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     isError = cookie.isNotBlank() && !valid,
                     supportingText = { if (cookie.isNotBlank() && !valid) Text(stringResource(R.string.youtube_session_invalid)) },

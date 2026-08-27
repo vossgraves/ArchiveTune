@@ -1172,6 +1172,11 @@
     <string name="youtube_session_invalid">Not a valid YouTube session cookie</string>
     <string name="youtube_session_save">Save session</string>
     <string name="applemusic_settings">Apple Music</string>
+    <string name="applemusic_quality">Streaming quality</string>
+    <string name="applemusic_quality_desc">Preferred quality for Apple Music playback</string>
+    <string name="applemusic_quality_aac">AAC 256 kbps</string>
+    <string name="applemusic_quality_lossless">Lossless (ALAC 24/48)</string>
+    <string name="applemusic_quality_hires">Hi-Res Lossless (up to 24/192)</string>
     <string name="applemusic_login">Sign in to Apple Music</string>
     <string name="applemusic_login_subtitle">Sign in with your Apple ID. After the web sign-in, add your Music User Token on the next screen.</string>
     <string name="applemusic_helper">Sign in with your own Apple Music account. Independent of other sources — no pool, no shared accounts. Full-track streaming needs your account plus a developer token.</string>
