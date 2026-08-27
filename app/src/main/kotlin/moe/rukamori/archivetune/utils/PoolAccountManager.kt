@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -67,6 +68,10 @@ object PoolAccountManager {
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
     private val CACHE_DEEZER_KEY = stringPreferencesKey("poolDeezerAccounts")
+
+    /** Last resolved read key, so fire-and-forget /api/report calls use the same identity. */
+    @Volatile
+    private var poolApiKey: String? = null
 
     /** A shared Tidal subscriber token contributed to the pool. */
     data class TidalPoolAccount(
@@ -217,9 +222,15 @@ object PoolAccountManager {
                 }
                 val url = sourcesUrl ?: return@withLock false
                 runCatching {
+                    // A key pasted by the user on-device (pool site /dashboard → copy) wins over
+                    // the CI-baked build key, so personal accounts work without a custom APK.
+                    val readKey =
+                        context.dataStore.getAsync(PoolApiKeyKey)?.trim().orEmpty()
+                            .ifBlank { BuildConfig.SOURCE_PROVIDER_KEY }
+                    poolApiKey = readKey.ifBlank { null }
                     val builder = Request.Builder().url(url).header("User-Agent", "ArchiveTune-Android")
-                    if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
-                        builder.header("Authorization", "Bearer ${BuildConfig.SOURCE_PROVIDER_KEY}")
+                    if (readKey.isNotBlank()) {
+                        builder.header("Authorization", "Bearer $readKey")
                     }
                     client.newCall(builder.get().build()).execute().use { response ->
                         if (!response.isSuccessful) {
@@ -357,9 +368,10 @@ object PoolAccountManager {
                         .url("$base/api/report")
                         .header("User-Agent", "ArchiveTune-Android")
                         .post(body.toRequestBody(JSON_MEDIA))
-                if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
-                    builder.header("Authorization", "Bearer ${BuildConfig.SOURCE_PROVIDER_KEY}")
-                }
+                    val readKey = poolApiKey?.takeIf { it.isNotBlank() } ?: BuildConfig.SOURCE_PROVIDER_KEY
+                    if (readKey.isNotBlank()) {
+                        builder.header("Authorization", "Bearer $readKey")
+                    }
                 client.newCall(builder.build()).execute().use { response ->
                     if (!response.isSuccessful) {
                         Timber.tag(TAG).d("Pool report %s/%s/%s returned HTTP %d", service, reportType, id, response.code)

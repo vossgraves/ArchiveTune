@@ -115,6 +115,7 @@ import moe.rukamori.archivetune.constants.TidalNeedsReloginKey
 import moe.rukamori.archivetune.constants.TidalRefreshTokenKey
 import moe.rukamori.archivetune.constants.TidalTokenExpiryKey
 import moe.rukamori.archivetune.constants.TidalUserIdKey
+import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
@@ -175,6 +176,7 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
     val (deezerArl) = rememberPreference(DeezerArlKey, "")
     val (qobuzTokens) = rememberPreference(QobuzTokensKey, "")
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
+    val (poolApiKeyPref) = rememberPreference(PoolApiKeyKey, "")
     val (defaultMetadataSource, onDefaultMetadataSourceChange) = rememberEnumPreference(DefaultMetadataSourceKey, MetadataSource.YOUTUBE)
     val (defaultSearchSource, onDefaultSearchSourceChange) = rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
 
@@ -191,6 +193,7 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
     var showOrderSheet by rememberSaveable { mutableStateOf(false) }
     var showYouTubeSheet by rememberSaveable { mutableStateOf(false) }
     var showTidalTokenSheet by rememberSaveable { mutableStateOf(false) }
+    var showPoolKeySheet by rememberSaveable { mutableStateOf(false) }
     var showOverflow by remember { mutableStateOf(false) }
     var refreshingPool by remember { mutableStateOf(false) }
 
@@ -237,6 +240,10 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                                         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                     }
                                 }
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.pool_api_key_title)) }, onClick = {
+                                showOverflow = false
+                                showPoolKeySheet = true
                             })
                             DropdownMenuItem(text = { Text(stringResource(R.string.sources_reset_priority)) }, onClick = {
                                 showOverflow = false
@@ -542,6 +549,18 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             onDismiss = { showTidalTokenSheet = false },
         )
     }
+    if (showPoolKeySheet) {
+        PoolApiKeySheet(
+            currentKey = poolApiKeyPref,
+            onSave = { key ->
+                scope.launch(Dispatchers.IO) {
+                    context.dataStore.edit { it[PoolApiKeyKey] = key.trim() }
+                }
+                showPoolKeySheet = false
+            },
+            onDismiss = { showPoolKeySheet = false },
+        )
+    }
     if (showYouTubeSheet) {
         YouTubeAdvancedSheet(
             currentCookie = innerTubeCookie,
@@ -678,6 +697,42 @@ private fun TidalTokenSheet(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(android.R.string.cancel)) }
                 FilledTonalButton(onClick = { onSave(token.trim()) }, enabled = valid, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.youtube_session_save))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PoolApiKeySheet(
+    currentKey: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var key by rememberSaveable { mutableStateOf(currentKey) }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Column(
+            Modifier.padding(16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(stringResource(R.string.pool_api_key_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(R.string.pool_api_key_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = key,
+                onValueChange = { key = it },
+                label = { Text(stringResource(R.string.pool_api_key_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(android.R.string.cancel)) }
+                FilledTonalButton(onClick = { onSave(key) }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.youtube_session_save))
                 }
             }
