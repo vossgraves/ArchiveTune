@@ -47,6 +47,7 @@ import app.atf.media.extensions.getQueueWindows
 import app.atf.media.models.MediaMetadata
 import app.atf.media.playback.MusicService.MusicBinder
 import app.atf.media.playback.queues.Queue
+import app.atf.media.playback.queues.YouTubeQueue
 import app.atf.media.ui.player.refetchCanvasArtworkForPlayback
 import app.atf.media.telegram.TelegramClient
 import app.atf.media.telegram.TelegramMediaId
@@ -349,6 +350,19 @@ class PlayerConnection(
 
     fun startRadioSeamlessly() {
         service.startRadioSeamlessly()
+    }
+
+    /**
+     * Start radio from [seed]: seamless hand-off when it is already the playing
+     * song, a fresh radio queue otherwise (from rukamori PR #1164 — the player
+     * menu's "Start radio" used to always re-seed from the current song).
+     */
+    fun startRadio(seed: MediaMetadata) {
+        if (mediaMetadata.value?.id == seed.id) {
+            startRadioSeamlessly()
+        } else {
+            playQueue(YouTubeQueue.radio(seed))
+        }
     }
 
     fun playNext(item: MediaItem) = playNext(listOf(item))

@@ -136,6 +136,7 @@ fun AppleMusicQueueSheet(
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
 
     val localPlayer = playerConnection.localPlayer
@@ -356,7 +357,7 @@ fun AppleMusicQueueSheet(
                         .background(inactiveColor, pillShape)
                         .clip(pillShape)
                         .clickable {
-                            playerConnection.startRadioSeamlessly()
+                            mediaMetadata?.let { playerConnection.startRadio(it) }
                         },
                 contentAlignment = Alignment.Center,
             ) {
