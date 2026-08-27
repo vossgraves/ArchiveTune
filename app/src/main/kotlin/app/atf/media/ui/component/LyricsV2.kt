@@ -1016,7 +1016,12 @@ fun LyricsV2(
                         horizontalAlignment = horizontalAlignment,
                     ) {
                         val romanizedText =
-                            if (romanizationPreferences.isEnabled) {
+                            // `showsRomanization`, not `isEnabled`: the latter is false whenever the
+                            // AI engine owns romanisation (that is what tells the built-in pass to
+                            // stand down), so gating on it meant the AI results pushed into
+                            // `romanizedTextFlow` above were never composed at all — romanisation
+                            // simply never appeared in this renderer with AI romanisation on.
+                            if (romanizationPreferences.showsRomanization) {
                                 val value by item.romanizedTextFlow.collectAsStateWithLifecycle()
                                 value
                             } else {

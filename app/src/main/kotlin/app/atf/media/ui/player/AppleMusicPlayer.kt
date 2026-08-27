@@ -57,6 +57,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -85,6 +86,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -187,14 +189,13 @@ private val AppleMusicMiniArtworkSize = 56.dp
 // the walk also rotates, which is what lets a colour reach the far side of the
 // screen at all.
 //
-// [AmLyricsBlurDriftScale] has to cover the drift plus the blur radius, measured
-// to the container's furthest *corner* because the layer rotates:
-//     1.2 * max(W, H) - blurRadius * scale  >=  hypot(W, H) / 2 + maxDrift
-// ContentScale.Crop renders the square artwork at side max(W, H), so at 2.4x its
-// inscribed circle has radius 1.2 * max(W, H) and the outer 64 * 2.4 = 154dp of
-// that is softened by the blur. For a 360x800 phone:
-//     1.2 * 800 - 154 = 806dp  >=  439 + 120 = 559dp.  ✔
-// (320x480, the smallest screen this could ever run on, still clears it: 422 vs 408.)
+// The rotation is why the backdrop node is NOT sized to the player: Modifier.blur
+// clips the layer it creates to that node's bounds, and a rotated rectangle only
+// reliably covers its own inscribed circle — the radius of its *short* side. A
+// screen-shaped node therefore leaves the screen's corners exposed however far it
+// is scaled up. [blurBackdropFootprint] sizes the node so it cannot; see its docs
+// for the derivation, and note that it takes BOTH ends of the zoom below, because
+// the resting scale is the tighter of the two.
 private const val AmLyricsBlurDriftScale = 2.4f
 
 // Scale of the blurred backdrop in the COVER/QUEUE states. The LYRICS state
@@ -864,25 +865,22 @@ fun AppleMusicPlayerContent(
                 // rather than the `if (lyricsOpen && lyricsContentReady)` step
                 // it replaced.
                 val progress = lyricsBackdropProgress.value
-                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) leaves the
-                // solid part of the rotated image covering a circle of radius
-                // 806dp on a 360x800 screen, against the 559dp the corner plus
-                // drift(±120) asks for — see the constant's own comment for the
-                // full budget. A smaller scale would let a corner expose
-                // transparent areas, which the blur then sampled as a flickering
-                // dark band.
+                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) together with
+                // the [backdropFootprint] the node is sized to leaves the rotated
+                // layer covering every screen corner plus the ±120dp drift — see
+                // blurBackdropFootprint for the budget. Scale on its own cannot do
+                // it: the blur clips the layer to the node's bounds, so a rotated
+                // screen-shaped rectangle exposes the corners at any scale, which
+                // is what used to read as dark wedges sweeping round the corners.
                 //
                 // Drift and rotation both scale with the same progress, so
                 // neither can outrun the zoom that has to cover them: at p = 0
                 // there is no translation and no rotation at all, and both reach
-                // full amplitude only once the zoom does.
-                //
-                // At low p the overhang is short of the *blur radius* alone (36dp
-                // vs 64dp at p = 0) — but that is the COVER state, which has zero
-                // drift and zero rotation and looked exactly this way before the
-                // ramp existed (a 72dp blur at a fixed 1.2x, i.e. a slightly
-                // larger shortfall). What the ramp has to avoid is motion
-                // outrunning the zoom, and it does.
+                // full amplitude only once the zoom does. The footprint is sized
+                // for both ends of that ramp, because the resting scale
+                // ([AmCoverBlurScale]) is the tighter of the two — rotation can be
+                // at any angle for any p > 0, since BlurWanderDrift.rotationDeg
+                // accumulates.
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
@@ -954,40 +952,66 @@ fun AppleMusicPlayerContent(
             // The artwork backdrop. Composed in every state so there is no node
             // swap (and so no re-decode, no new RenderEffect, no one-frame
             // discontinuity) when lyrics opens or closes.
-            if (isPreS && preBlurredBitmap != null) {
-                // Pre-Android-12 has no RenderEffect, so the blur was baked
-                // into the bitmap on a background thread instead.
-                Image(
-                    bitmap = preBlurredBitmap!!.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .graphicsLayer(driftGraphicsLayer),
-                )
-            } else {
-                AsyncImage(
-                    model = artworkRequest ?: artworkUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            // graphicsLayer OUTSIDE blur: the blur is applied to
-                            // the centered image (inside the layer), then the
-                            // scale + translation is applied to the blurred
-                            // result. Blurring after the transform would sample
-                            // the translated image's edges instead.
-                            .graphicsLayer(driftGraphicsLayer)
-                            .then(
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    Modifier.blur(AmBackdropBlurRadius)
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                )
+            //
+            // Deliberately larger than the player and centred inside it: the drift
+            // rotates this node, and Modifier.blur clips its result to the node's
+            // own bounds, so a node the size of the player would swing its corners
+            // into view. requiredSize is what lets it ignore the incoming
+            // constraints; the wrapper clips the overhang back to the player so it
+            // cannot bleed over anything else. See blurBackdropFootprint.
+            val backdropFootprint =
+                remember(maxWidth, maxHeight) {
+                    blurBackdropFootprint(
+                        width = maxWidth,
+                        height = maxHeight,
+                        restScale = AmCoverBlurScale,
+                        driftScale = AmLyricsBlurDriftScale,
+                    )
+                }
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .clipToBounds(),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isPreS && preBlurredBitmap != null) {
+                    // Pre-Android-12 has no RenderEffect, so the blur was baked
+                    // into the bitmap on a background thread instead. It still goes
+                    // through driftGraphicsLayer, rotation included, so it needs the
+                    // same footprint.
+                    Image(
+                        bitmap = preBlurredBitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .requiredSize(backdropFootprint)
+                                .graphicsLayer(driftGraphicsLayer),
+                    )
+                } else {
+                    AsyncImage(
+                        model = artworkRequest ?: artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .requiredSize(backdropFootprint)
+                                // graphicsLayer OUTSIDE blur: the blur is applied to
+                                // the centered image (inside the layer), then the
+                                // scale + translation is applied to the blurred
+                                // result. Blurring after the transform would sample
+                                // the translated image's edges instead.
+                                .graphicsLayer(driftGraphicsLayer)
+                                .then(
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        Modifier.blur(AmBackdropBlurRadius)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                    )
+                }
             }
 
             if (useCanvasBackdrop) {

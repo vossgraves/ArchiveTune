@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
@@ -176,11 +177,13 @@ private val LyricsSwipeStartRegion = 144.dp
 
 // Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus the
 // 64dp blur — and, because the walk rotates, must do so out to the container's furthest corner
-// rather than its nearest edge. Crop renders the square artwork at side max(W, H), so at 2.4x the
-// solid (un-softened) coverage is a circle of radius 1.2*max(W,H) - 154dp: 806dp on a 360x800
-// screen, against hypot(360,800)/2 + 120 = 559dp needed. Kept in sync with AmLyricsBlurDriftScale
-// in AppleMusicPlayer.kt. Was 1.9x, which was sized for an older, smaller drift and let the blur
-// sample transparent pixels at full offset — a dark band along the trailing edge.
+// rather than its nearest edge. Kept in sync with AmLyricsBlurDriftScale in AppleMusicPlayer.kt.
+// Was 1.9x, which was sized for an older, smaller drift and let the blur sample transparent pixels
+// at full offset — a dark band along the trailing edge.
+//
+// Scaling alone does NOT make the rotation safe: the layer Modifier.blur produces is clipped to the
+// composable's bounds, so a rotated *screen-shaped* rectangle only covers a circle of
+// 2.4 * min(W, H) / 2. blurBackdropFootprint is what closes that gap; see its docs.
 private const val MovingBlurDriftScale = 2.4f
 private val LyricsSwipeDismissThreshold = 96.dp
 
@@ -981,6 +984,25 @@ private fun MovingBlurBackground(
                 MovingBlurDriftScale
             }
 
+        // Footprint of the drifting layer. NOT the screen: the layer Modifier.blur creates is
+        // clipped to its own bounds, so a screen-shaped rectangle rotated by the walk only covers a
+        // circle of MovingBlurDriftScale * min(W, H) / 2 = 432dp on a 360x800 phone, against the
+        // 559dp the furthest corner plus the drift needs — the missing wedge is what read as black
+        // artefacts rotating through the corners. Widening the short side fixes it without changing
+        // the look, because max(W, H) — and so ContentScale.Crop's scale factor — is untouched.
+        // See blurBackdropFootprint.
+        val driftFootprint =
+            remember(maxWidth, maxHeight) {
+                blurBackdropFootprint(
+                    width = maxWidth,
+                    height = maxHeight,
+                    // No ramp here: this backdrop is only ever composed with lyrics open, so it
+                    // sits at the drifting scale the whole time.
+                    restScale = MovingBlurDriftScale,
+                    driftScale = MovingBlurDriftScale,
+                )
+            }
+
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
@@ -1028,36 +1050,47 @@ private fun MovingBlurBackground(
                         )
                     }
                 } else {
-                    AsyncImage(
-                        model = thumbnailUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        colorFilter = vibrancyColorFilter,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            // graphicsLayer OUTSIDE blur: the blur is applied to the
-                            // centered image (inside graphicsLayer), then the scale +
-                            // translation is applied to the blurred result. This prevents
-                            // the blur from sampling transparent areas at the translated
-                            // image's trailing edge — the root cause of the corner flicker.
-                            // See [MovingBlurDriftScale] for the covering budget.
-                            .graphicsLayer {
-                                scaleX = MovingBlurDriftScale
-                                scaleY = MovingBlurDriftScale
-                                // Deferred read — see blurWander above.
-                                translationX = blurWander.xDp.floatValue.dp.toPx()
-                                translationY = blurWander.yDp.floatValue.dp.toPx()
-                                // Rotation is the only part of the walk that can
-                                // carry a colour across the whole surface;
-                                // translation moves every colour by the same
-                                // vector, so on its own it leaves the top the top.
-                                // See BlurWanderDrift.
-                                rotationZ = blurWander.rotationDeg.floatValue
-                                compositingStrategy = CompositingStrategy.Offscreen
-                            }
-                            .blur(64.dp)
-                            .alpha(0.95f),
-                    )
+                    // Centred inside a full-size box rather than filling it: the image is
+                    // deliberately larger than the screen (see driftFootprint) and requiredSize is
+                    // what lets it ignore the incoming constraints. The overflow is clipped by the
+                    // clipToBounds on the BoxWithConstraints above.
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AsyncImage(
+                            model = thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            colorFilter = vibrancyColorFilter,
+                            modifier = Modifier
+                                .requiredSize(driftFootprint)
+                                // graphicsLayer OUTSIDE blur: the blur is applied to the
+                                // centered image (inside graphicsLayer), then the scale +
+                                // translation is applied to the blurred result. This prevents
+                                // the blur from sampling transparent areas at the translated
+                                // image's trailing edge — the root cause of the corner flicker.
+                                // The flip side is that the blur clips its result to this
+                                // element's bounds, which is why those bounds are the
+                                // driftFootprint and not the screen.
+                                .graphicsLayer {
+                                    scaleX = MovingBlurDriftScale
+                                    scaleY = MovingBlurDriftScale
+                                    // Deferred read — see blurWander above.
+                                    translationX = blurWander.xDp.floatValue.dp.toPx()
+                                    translationY = blurWander.yDp.floatValue.dp.toPx()
+                                    // Rotation is the only part of the walk that can
+                                    // carry a colour across the whole surface;
+                                    // translation moves every colour by the same
+                                    // vector, so on its own it leaves the top the top.
+                                    // See BlurWanderDrift.
+                                    rotationZ = blurWander.rotationDeg.floatValue
+                                    compositingStrategy = CompositingStrategy.Offscreen
+                                }
+                                .blur(64.dp)
+                                .alpha(0.95f),
+                        )
+                    }
                 }
             }
         }

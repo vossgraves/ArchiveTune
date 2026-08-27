@@ -650,6 +650,7 @@ class MusicService :
     private var crossfadeBaseVolume = 1f
     private var crossfadeIncomingBaseVolume = 1f
     private var crossfadeProgress = 0f
+    private var crossfadeHandoffProgress = 0f
     private var crossfadePlaybackRequested = false
 
     // Monotonic operation id for crossfades. A cancelled/superseded crossfade coroutine can
@@ -2603,6 +2604,20 @@ class MusicService :
     private fun applyEffectiveVolume(finalVolume: Float = currentEffectivePlayerVolume()) {
         crossfadeBaseVolume = finalVolume
         val incomingPlayer = secondaryCrossfadePlayer
+        if (crossfadeHandoffInProgress && incomingPlayer != null) {
+            val handoffBaseVolume =
+                secondaryCrossfadeTarget?.let { currentEffectivePlayerVolumeForMediaId(it.mediaId) }
+                    ?: finalVolume
+            crossfadeIncomingBaseVolume = handoffBaseVolume
+            applyCrossfadeVolumes(
+                crossfadeHandoffProgress,
+                handoffBaseVolume,
+                handoffBaseVolume,
+                incomingPlayer,
+                localPlayer,
+            )
+            return
+        }
         if (isCrossfading && incomingPlayer != null) {
             val incomingBaseVolume =
                 secondaryCrossfadeTarget?.let { currentEffectivePlayerVolumeForMediaId(it.mediaId) }
@@ -3072,6 +3087,7 @@ class MusicService :
 
         isCrossfading = false
         crossfadeHandoffInProgress = false
+        crossfadeHandoffProgress = 0f
         crossfadeProgress = 0f
         crossfadeIncomingBaseVolume = 1f
         crossfadePlaybackRequested = false
@@ -3264,6 +3280,7 @@ class MusicService :
         crossfadeJob = null
         isCrossfading = false
         crossfadeHandoffInProgress = false
+        crossfadeHandoffProgress = 0f
         crossfadeProgress = 0f
         crossfadeIncomingBaseVolume = 1f
         crossfadePlaybackRequested = false
@@ -7720,19 +7737,24 @@ class MusicService :
     ) {
         super.onPlayWhenReadyChanged(playWhenReady, reason)
         secondaryCrossfadePlayer?.let { secondaryPlayer ->
-            if (isCrossfading && !crossfadeHandoffInProgress) {
+            if (isCrossfading) {
                 val isEndOfOutgoingItemPause =
                     !playWhenReady &&
                         reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM &&
                         localPlayer.pauseAtEndOfMediaItems
                 if (!isEndOfOutgoingItemPause) {
                     crossfadePlaybackRequested = playWhenReady
-                }
-                secondaryPlayer.playWhenReady = crossfadePlaybackRequested
-                if (crossfadePlaybackRequested) {
-                    secondaryPlayer.play()
-                } else if (!isEndOfOutgoingItemPause) {
-                    secondaryPlayer.pause()
+                    secondaryPlayer.playWhenReady = crossfadePlaybackRequested
+                    if (crossfadePlaybackRequested) {
+                        secondaryPlayer.play()
+                    } else {
+                        secondaryPlayer.pause()
+                    }
+                } else if (!crossfadeHandoffInProgress) {
+                    secondaryPlayer.playWhenReady = crossfadePlaybackRequested
+                    if (crossfadePlaybackRequested) {
+                        secondaryPlayer.play()
+                    }
                 }
             }
         }
