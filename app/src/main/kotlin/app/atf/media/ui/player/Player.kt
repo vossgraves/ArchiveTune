@@ -30,6 +30,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import com.materialkolor.ktx.toHct
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
@@ -564,6 +565,10 @@ fun BottomSheetPlayer(
     // (kept in sync with the authoritative artwork resolver, including Tidal fallback commits).
     val paletteArtworkUrl = mediaMetadata?.thumbnailUrl
 
+    // V10 Editorial: exact artwork seeds (primary/secondary) feeding HCT-toned accents.
+    var v10ArtworkSeeds by remember { mutableStateOf<Pair<Color, Color>?>(null) }
+    val v10ArtworkSeedsCache = remember { mutableMapOf<String, Pair<Color, Color>>() }
+
     LaunchedEffect(mediaMetadata?.id, paletteArtworkUrl, playerBackground, useDarkTheme, playerDesignStyle) {
         if (aodModeEnabled) return@LaunchedEffect
         val wantsPalette =
@@ -572,7 +577,7 @@ fun BottomSheetPlayer(
                 playerBackground == PlayerBackgroundStyle.BLUR_GRADIENT ||
                 playerBackground == PlayerBackgroundStyle.GLOW ||
                 playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED ||
-                playerDesignStyle == PlayerDesignStyle.V9
+                playerDesignStyle == PlayerDesignStyle.V9 || playerDesignStyle == PlayerDesignStyle.V10
         if (!wantsPalette) {
             gradientColors = emptyList()
             hasValidGradientPalette = false
@@ -655,6 +660,22 @@ fun BottomSheetPlayer(
             PlayerPaletteCache.put(cacheKey, extractedColors)
             gradientColors = extractedColors
             hasValidGradientPalette = true
+            // V10 Editorial: exact artwork seeds from the same palette run.
+            if (playerDesignStyle == PlayerDesignStyle.V10) {
+                val primarySeed =
+                    palette.vibrantSwatch ?: palette.lightVibrantSwatch ?: palette.darkVibrantSwatch ?: palette.dominantSwatch
+                val secondarySeed = palette.mutedSwatch ?: palette.lightMutedSwatch ?: palette.darkMutedSwatch ?: primarySeed
+                val seeds =
+                    if (primarySeed != null && secondarySeed != null) {
+                        Pair(Color(primarySeed.rgb), Color(secondarySeed.rgb))
+                    } else {
+                        null
+                    }
+                if (seeds != null) {
+                    v10ArtworkSeedsCache[currentMetadata.id] = seeds
+                    v10ArtworkSeeds = seeds
+                }
+            }
         }
     }
 
@@ -665,6 +686,40 @@ fun BottomSheetPlayer(
     // palette color and animates between songs so the controls blend smoothly with
     // the artwork (no blur behind the controls — pure color gradient instead).
     val dominantColor = gradientColors.firstOrNull() ?: MaterialTheme.colorScheme.primary
+
+    // ── V10 "Editorial" artwork-seeded accents ──
+    // Exact seeds from the artwork color scheme, HCT-toned so the bento field and
+    // accent track the artwork with correct toning (from rukamori PR #1229).
+    val targetV10FieldColor =
+        remember(v10ArtworkSeeds, useDarkTheme) {
+            val seeds = v10ArtworkSeeds
+            if (seeds == null) {
+                dominantColor
+            } else {
+                val hct = seeds.first.toHct()
+                if (useDarkTheme) hct.withTone(30.0).toColor() else hct.withTone(90.0).toColor()
+            }
+        }
+    val dynamicV10FieldColor by animateColorAsState(
+        targetValue = targetV10FieldColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicV10FieldColor",
+    )
+    val targetV10AccentColor =
+        remember(v10ArtworkSeeds, useDarkTheme) {
+            val seeds = v10ArtworkSeeds
+            if (seeds == null) {
+                dominantColor
+            } else {
+                val hct = seeds.first.toHct()
+                if (useDarkTheme) hct.withTone(90.0).toColor() else hct.withTone(10.0).toColor()
+            }
+        }
+    val dynamicV10AccentColor by animateColorAsState(
+        targetValue = targetV10AccentColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicV10AccentColor",
+    )
     val targetBgColor = remember(dominantColor, useDarkTheme) {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(dominantColor.toArgb(), hsv)
@@ -1879,6 +1934,67 @@ fun BottomSheetPlayer(
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
+                } else if (playerDesignStyle == PlayerDesignStyle.V10) {
+                    enrichedMetadata?.let { metadata ->
+                        V10PlayerContent(
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            textBackgroundColor = dynamicV10AccentColor,
+                            textButtonColor = dynamicV10FieldColor,
+                            iconButtonColor = iconButtonColor,
+                            onCollapseClick = { state.collapseSoft() },
+                            onQueueClick = openQueue,
+                            onLyricsClick = { isLyricsScreenVisible = true },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                            onSleepTimerClick = {
+                                if (sleepTimerTimeLeft > 0L) {
+                                    playerConnection.service.sleepTimer.clear()
+                                } else {
+                                    showSleepTimerDialog = true
+                                }
+                            },
+                            sleepTimerEnabled = sleepTimerTimeLeft > 0L,
+                            sleepTimerTimeLeft = sleepTimerTimeLeft,
+                            onMenuClick = {
+                                menuState.show {
+                                    PlayerMenu(
+                                        mediaMetadata = metadata,
+                                        navController = navController,
+                                        playerBottomSheetState = state,
+                                        onShowDetailsDialog = {
+                                            bottomSheetPageState.show {
+                                                ShowMediaInfo(metadata.id)
+                                            }
+                                        },
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            },
+                            onAddToPlaylistClick = {
+                                showChoosePlaylistDialog = true
+                            },
+                            landscape = true,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = queueSheetState.collapsedBound)
+                                    .windowInsetsPadding(
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
                         AppleMusicPlayerContent(
@@ -2238,6 +2354,67 @@ fun BottomSheetPlayer(
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
+                } else if (playerDesignStyle == PlayerDesignStyle.V10) {
+                    enrichedMetadata?.let { metadata ->
+                        V10PlayerContent(
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            textBackgroundColor = dynamicV10AccentColor,
+                            textButtonColor = dynamicV10FieldColor,
+                            iconButtonColor = iconButtonColor,
+                            onCollapseClick = { state.collapseSoft() },
+                            onQueueClick = openQueue,
+                            onLyricsClick = { isLyricsScreenVisible = true },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                            onSleepTimerClick = {
+                                if (sleepTimerTimeLeft > 0L) {
+                                    playerConnection.service.sleepTimer.clear()
+                                } else {
+                                    showSleepTimerDialog = true
+                                }
+                            },
+                            sleepTimerEnabled = sleepTimerTimeLeft > 0L,
+                            sleepTimerTimeLeft = sleepTimerTimeLeft,
+                            onMenuClick = {
+                                menuState.show {
+                                    PlayerMenu(
+                                        mediaMetadata = metadata,
+                                        navController = navController,
+                                        playerBottomSheetState = state,
+                                        onShowDetailsDialog = {
+                                            bottomSheetPageState.show {
+                                                ShowMediaInfo(metadata.id)
+                                            }
+                                        },
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            },
+                            onAddToPlaylistClick = {
+                                showChoosePlaylistDialog = true
+                            },
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = queueSheetState.collapsedBound)
+                                    .windowInsetsPadding(
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
                         AppleMusicPlayerContent(
