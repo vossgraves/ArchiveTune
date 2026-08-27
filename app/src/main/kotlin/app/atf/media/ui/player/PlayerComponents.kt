@@ -73,6 +73,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -165,6 +172,7 @@ internal fun PlayerTitleText(
             }
         }
     val badgePainter = painterResource(R.drawable.player_explicit)
+    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
     val inlineContent =
         remember(badgePainter, color, explicit) {
             if (explicit) {
@@ -201,7 +209,10 @@ internal fun PlayerTitleText(
         textAlign = textAlign,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = modifier,
+        // Per-line gradience: the fade tracks THIS line's layout only, and only
+        // while the line is long enough to actually marquee.
+        onTextLayout = { titleLayout.value = it },
+        modifier = modifier.marqueeEdgeFade(titleLayout),
     )
 }
 
@@ -212,14 +223,69 @@ internal fun PlayerTextBackdrop(
     edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-    // Keep the fade on the bounded wrapper, not after basicMarquee(). The shared helper uses
-    // explicit viewport coordinates for both edges, so scrolling text fades into any backdrop
-    // instead of placing the gradient at the marquee's unbounded intrinsic width.
-    Box(
-        modifier = modifier.fadingEdge(left = edgeFadeWidth, right = edgeFadeWidth),
-    ) {
+    // Plain passthrough: the viewport fade is applied PER LINE (title and artist
+    // each get their own [marqueeEdgeFade], only while that line marquees) —
+    // never as a wrapper-level gradient over both lines.
+    Box(modifier = modifier) {
         content()
     }
+}
+
+/**
+ * Edge-fade modifier for a marqueeing single-line [Text]: only applies once the
+ * text actually overflows (i.e. it is scrolling). Short lines render with no
+ * gradient at all. Works identically for song-title and artist lines — each
+ * carries its own layout state, so they fade independently.
+ *
+ * The layout result is passed as a [State] and read in the DRAW phase: the
+ * modifier instance stays stable across layout updates (no node rebuilds
+ * mid-marquee), no recomposition is triggered while the marquee animates, and
+ * the gradients are cached so the draw loop does not allocate per frame. The
+ * offscreen compositing layer is required for the DstIn blend to only affect
+ * this node.
+ */
+@Composable
+internal fun Modifier.marqueeEdgeFade(
+    layoutState: State<TextLayoutResult?>,
+    width: Dp = 24.dp,
+): Modifier {
+    val fadePx = with(LocalDensity.current) { width.toPx() }
+    val leftBrush =
+        remember(fadePx) {
+            Brush.horizontalGradient(
+                0f to Color.Transparent,
+                1f to Color.Black,
+                startX = 0f,
+                endX = fadePx,
+            )
+        }
+    val rightStops =
+        remember {
+            arrayOf(
+                0f to Color.Black,
+                1f to Color.Transparent,
+            )
+        }
+    return this
+        .graphicsLayer(alpha = 0.99f)
+        .drawWithContent {
+            val layout = layoutState.value
+            if (layout == null || !layout.hasVisualOverflow) {
+                drawContent()
+                return@drawWithContent
+            }
+            drawContent()
+            drawRect(brush = leftBrush, blendMode = BlendMode.DstIn)
+            drawRect(
+                brush =
+                    Brush.horizontalGradient(
+                        colorStops = rightStops,
+                        startX = size.width - fadePx,
+                        endX = size.width,
+                    ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
 }
 
 @Composable
@@ -738,7 +804,7 @@ fun PlayerTopActions(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }
@@ -1809,7 +1875,7 @@ fun PlayerPlaybackControls(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }

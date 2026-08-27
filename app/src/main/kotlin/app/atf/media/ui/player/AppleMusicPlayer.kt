@@ -1959,6 +1959,7 @@ private fun AppleMusicControlsColumn(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                     Text(
                         text = mediaMetadata.title,
                         style = MaterialTheme.typography.headlineSmall,
@@ -1971,7 +1972,7 @@ private fun AppleMusicControlsColumn(
                             Modifier
                                 .fillMaxWidth()
                                 .basicMarquee()
-                                
+                                .marqueeEdgeFade(titleLayout)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
@@ -1984,10 +1985,12 @@ private fun AppleMusicControlsColumn(
                         color = Color.White.copy(alpha = 0.64f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { artistLayout.value = it },
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .basicMarquee()
+                                .marqueeEdgeFade(artistLayout)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
@@ -2343,6 +2346,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
         ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             val miniTitleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+            val miniArtistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
             Text(
                 text = mediaMetadata.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -2355,7 +2359,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                     Modifier
                         .fillMaxWidth()
                         .basicMarquee()
-                        
+                        .marqueeEdgeFade(miniTitleLayout)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -2368,10 +2372,12 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                     color = Color.White.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { miniArtistLayout.value = it },
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .basicMarquee()
+                            .marqueeEdgeFade(miniArtistLayout)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,

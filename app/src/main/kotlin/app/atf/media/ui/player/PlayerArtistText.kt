@@ -59,7 +59,10 @@ fun ClickableArtists(
             }
         }
 
-    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // Shared layout state: drives tap detection AND the per-line edge fade, so
+    // the artist line fades only while it is long enough to marquee.
+    val layoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
+    val layoutResult = layoutState.value
 
     Text(
         text = annotatedString,
@@ -68,9 +71,11 @@ fun ClickableArtists(
         textAlign = textAlign,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        onTextLayout = { layoutResult = it },
+        onTextLayout = { layoutState.value = it },
         modifier =
-            modifier.pointerInput(annotatedString) {
+            modifier
+                .marqueeEdgeFade(layoutState)
+                .pointerInput(annotatedString) {
                 detectTapGestures(
                     onTap = { offset ->
                         val layout = layoutResult ?: return@detectTapGestures

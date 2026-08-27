@@ -54,6 +54,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -307,16 +308,19 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "title",
             ) { title ->
+                val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMediumEmphasized,
                     color = colors.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { titleLayout.value = it },
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .basicMarquee(),
+                            .basicMarquee()
+                            .marqueeEdgeFade(titleLayout),
                 )
             }
 
@@ -325,16 +329,19 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "artist",
             ) { artists ->
+                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 Text(
                     text = artists.joinToString { it.name },
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.secondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { artistLayout.value = it },
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .basicMarquee(),
+                            .basicMarquee()
+                            .marqueeEdgeFade(artistLayout),
                 )
             }
         }
