@@ -413,20 +413,22 @@ fun V10PlayerContent(
                             .size(16.dp)
                     )
                 }
-                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 val artistFade = PlayerFadeConfig.forStyle(PlayerDesignStyle.V10)
                 val artistShouldFade = artistName.length > artistFade.artistMinChars
-                Text(
-                    text = artistName.uppercase(),
-                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp),
-                    color = accent.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    onTextLayout = { artistLayout.value = it },
-                    modifier = Modifier.basicMarquee(
-                        iterations = Int.MAX_VALUE,
-                        initialDelayMillis = 2000
-                    ).let { if (artistShouldFade) it.marqueeEdgeFade(artistLayout, artistFade.fadeWidth) else it }
-                )
+                androidx.compose.foundation.layout.Box(
+                    modifier = if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(artistFade.fadeWidth) else Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = artistName.uppercase(),
+                        style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp),
+                        color = accent.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        modifier = Modifier.basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            initialDelayMillis = 2000
+                        )
+                    )
+                }
             }
         }
 

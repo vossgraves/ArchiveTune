@@ -311,21 +311,19 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "title",
             ) { title ->
-                val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 val titleShouldFade = title.length > PlayerFadeConfig.miniPlayer.titleMinChars
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMediumEmphasized,
-                    color = colors.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    onTextLayout = { titleLayout.value = it },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee()
-                            .let { if (titleShouldFade) it.marqueeEdgeFade(titleLayout, PlayerFadeConfig.miniPlayer.fadeWidth) else it },
-                )
+                Box(
+                    modifier = if (titleShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        color = colors.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                    )
+                }
             }
 
             AnimatedContent(
@@ -334,21 +332,19 @@ fun RowScope.MiniPlayerInfo(
                 label = "artist",
             ) { artists ->
                 val artistText = artists.joinToString { it.name }
-                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 val artistShouldFade = artistText.length > PlayerFadeConfig.miniPlayer.artistMinChars
-                Text(
-                    text = artistText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.secondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    onTextLayout = { artistLayout.value = it },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee()
-                            .let { if (artistShouldFade) it.marqueeEdgeFade(artistLayout, PlayerFadeConfig.miniPlayer.fadeWidth) else it },
-                )
+                Box(
+                    modifier = if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = artistText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                    )
+                }
             }
         }
     }

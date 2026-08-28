@@ -201,28 +201,28 @@ internal fun PlayerTitleText(
             }
         }
 
-    // Gradient edge fade ONLY while this title is long enough to marquee. The
-    // state object (not its value) is passed to the modifier so layout updates
-    // never recompose or rebuild the modifier chain — see [marqueeEdgeFade].
-    // Separate threshold per player style ensures short titles never fade.
-    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    // Fade lives on the BOX (the line's viewport), not the Text. The Text scrolls
+    // with basicMarquee inside the Box; the Box's drawWithContent masks at the
+    // Box's fixed edges (size.width = viewport width) so the gradient stays put
+    // while the text moves underneath. Applying it to Text would mask at the
+    // text content's edges (full scroll width) and move with the scroll.
     val shouldFade = title.length > titleThreshold
-    val effectiveModifier = if (shouldFade) modifier.marqueeEdgeFade(titleLayout, fadeWidth) else modifier
-    Text(
-        text = annotatedTitle,
-        inlineContent = inlineContent,
-        color = color,
-        style = style,
-        fontSize = fontSize,
-        fontWeight = fontWeight,
-        textAlign = textAlign,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        // Per-line gradience: the fade tracks THIS line's layout only, and only
-        // while the line is long enough to actually marquee.
-        onTextLayout = { titleLayout.value = it },
-        modifier = effectiveModifier,
-    )
+    Box(
+        modifier = if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier,
+    ) {
+        Text(
+            text = annotatedTitle,
+            inlineContent = inlineContent,
+            color = color,
+            style = style,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            textAlign = textAlign,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+        )
+    }
 }
 
 @Composable
@@ -241,21 +241,14 @@ internal fun PlayerTextBackdrop(
 }
 
 /**
- * Edge-fade modifier for a marqueeing single-line [Text]: only applies once the
- * text actually overflows (i.e. it is scrolling). Short lines render with no
- * gradient at all. Works identically for song-title and artist lines — each
- * carries its own layout state, so they fade independently.
- *
- * The layout result is passed as a [State] and read in the DRAW phase: the
- * modifier instance stays stable across layout updates (no node rebuilds
- * mid-marquee), no recomposition is triggered while the marquee animates, and
- * the gradients are cached so the draw loop does not allocate per frame. The
- * offscreen compositing layer is required for the DstIn blend to only affect
- * this node.
+ * Viewport edge fade: gradient at the BOX's fixed edges (the visible text box),
+ * not the scrolling Text content. The Box is the viewport; the Text inside
+ * scrolls with basicMarquee. At draw time size.width = Box width = viewport,
+ * so left/right rects sit at the Box edges and stay fixed while the text
+ * translates underneath. No layoutState needed — the caller gates by length.
  */
 @Composable
-internal fun Modifier.marqueeEdgeFade(
-    layoutState: State<TextLayoutResult?>,
+internal fun Modifier.viewportEdgeFade(
     width: Dp = 24.dp,
 ): Modifier {
     val fadePx = with(LocalDensity.current) { width.toPx() }
@@ -278,11 +271,6 @@ internal fun Modifier.marqueeEdgeFade(
     return this
         .graphicsLayer(alpha = 0.99f)
         .drawWithContent {
-            val layout = layoutState.value
-            if (layout == null) {
-                drawContent()
-                return@drawWithContent
-            }
             drawContent()
             drawRect(brush = leftBrush, blendMode = BlendMode.DstIn)
             drawRect(
@@ -296,6 +284,22 @@ internal fun Modifier.marqueeEdgeFade(
             )
         }
 }
+
+/**
+ * Legacy: edge fade on Text node. Kept for call sites not yet migrated to
+ * viewportEdgeFade. Behavior is now identical to viewportEdgeFade (fixed at
+ * the node's edges). New code should use viewportEdgeFade on the Box viewport.
+ */
+@Composable
+internal fun Modifier.marqueeEdgeFade(
+    layoutState: State<TextLayoutResult?>,
+    width: Dp = 24.dp,
+): Modifier = viewportEdgeFade(width)
+
+@Composable
+internal fun Modifier.marqueeEdgeFade(
+    width: Dp = 24.dp,
+): Modifier = viewportEdgeFade(width)
 
 @Composable
 fun PlayerTitleSection(
@@ -333,7 +337,6 @@ fun PlayerTitleSection(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .basicMarquee()
                             .combinedClickable(
                                 enabled = true,
                                 indication = null,
@@ -353,10 +356,7 @@ fun PlayerTitleSection(
                 onLongClick = actions.onCopyArtists,
                 artistThreshold = PlayerFadeConfig.forStyle(playerDesignStyle).artistMinChars,
                 fadeWidth = PlayerFadeConfig.forStyle(playerDesignStyle).fadeWidth,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .basicMarquee(),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

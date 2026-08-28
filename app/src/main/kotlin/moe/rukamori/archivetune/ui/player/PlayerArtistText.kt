@@ -7,7 +7,9 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,35 +65,39 @@ fun ClickableArtists(
             }
         }
 
-    // Shared layout state: drives tap detection AND the per-line edge fade, so
-    // the artist line fades only while it is long enough to marquee (separate
-    // threshold per player style).
+    // Shared layout state: drives tap detection; fade is gated by length and
+    // lives on the BOX viewport, not the Text, so the gradient stays fixed at
+    // the box edges while the marquee scrolls underneath.
     val layoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
     val layoutResult = layoutState.value
     val shouldFade = annotatedString.text.length > artistThreshold
 
-    Text(
-        text = annotatedString,
-        style = style,
-        color = color,
-        textAlign = textAlign,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        onTextLayout = { layoutState.value = it },
-        modifier =
-            (if (shouldFade) modifier.marqueeEdgeFade(layoutState, fadeWidth) else modifier)
-                .pointerInput(annotatedString) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        val layout = layoutResult ?: return@detectTapGestures
-                        val position = layout.getOffsetForPosition(offset)
-                        annotatedString
-                            .getStringAnnotations(position, position)
-                            .firstOrNull()
-                            ?.let { onArtistClick(it.item) }
-                    },
-                    onLongPress = onLongClick?.let { handler -> { handler() } },
-                )
-            },
-    )
+    Box(
+        modifier = if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier,
+    ) {
+        Text(
+            text = annotatedString,
+            style = style,
+            color = color,
+            textAlign = textAlign,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { layoutState.value = it },
+            modifier =
+                Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                    .pointerInput(annotatedString) {
+                    detectTapGestures(
+                        onTap = { offset ->
+                            val layout = layoutResult ?: return@detectTapGestures
+                            val position = layout.getOffsetForPosition(offset)
+                            annotatedString
+                                .getStringAnnotations(position, position)
+                                .firstOrNull()
+                                ?.let { onArtistClick(it.item) }
+                        },
+                        onLongPress = onLongClick?.let { handler -> { handler() } },
+                    )
+                },
+        )
+    }
 }
