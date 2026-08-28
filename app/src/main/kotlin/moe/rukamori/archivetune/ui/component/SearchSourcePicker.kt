@@ -48,10 +48,10 @@ fun SearchSourcePicker(
                         } else if (currentProvider == SearchProvider.SPOTIFY) {
                             R.drawable.spotify_icon
                         } else {
-                            R.drawable.provider_youtube
+                            R.drawable.language
                         },
                     ),
-                contentDescription = stringResource(R.string.search_catalog_picker),
+                contentDescription = stringResource(R.string.search_source_picker),
             )
         }
         DropdownMenu(
@@ -70,7 +70,7 @@ fun SearchSourcePicker(
             }
             SearchSourceMenuItem(
                 label = stringResource(R.string.search_source_youtube),
-                iconRes = R.drawable.provider_youtube,
+                iconRes = R.drawable.language,
                 selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.YOUTUBE,
             ) {
                 expanded = false

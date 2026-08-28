@@ -83,6 +83,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -107,13 +108,18 @@ import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.InfoLabel
+import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.SavedAccount
 import moe.rukamori.archivetune.utils.Updater
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.decodeSavedAccounts
 import moe.rukamori.archivetune.utils.encodeSavedAccounts
+import moe.rukamori.archivetune.utils.putLegacyPoToken
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AccountChannelUiModel
 import moe.rukamori.archivetune.viewmodels.AccountChannelsState
@@ -143,6 +149,7 @@ fun AccountSettings(
     val generalLabel = stringResource(R.string.general)
     val miscLabel = stringResource(R.string.misc)
     val loginLabel = stringResource(R.string.login)
+    val tokenDescription = stringResource(R.string.token_adv_login_description)
 
     val (accountNamePref, onAccountNameChange) = rememberPreference(AccountNameKey, "")
     val (accountEmail, onAccountEmailChange) = rememberPreference(AccountEmailKey, "")
@@ -160,6 +167,12 @@ fun AccountSettings(
         remember(savedAccountsJson) {
             SavedAccountCollection(decodeSavedAccounts(savedAccountsJson))
         }
+
+    val onLegacyPoTokenChange: (String) -> Unit = { value ->
+        PreferenceStore.launchEdit(context.dataStore) {
+            putLegacyPoToken(value)
+        }
+    }
 
     val isLoggedIn =
         remember(innerTubeCookie) {
@@ -189,12 +202,26 @@ fun AccountSettings(
             ?.size
             .let { (it ?: 0) > 1 }
 
+    var showToken by remember { mutableStateOf(false) }
+    var showTokenEditor by remember { mutableStateOf(false) }
     var showUnsavedAccountDialog by remember { mutableStateOf(false) }
     var showAccountSwitcher by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isLoggedIn) {
+        if (!isLoggedIn) {
+            showToken = false
+        }
+    }
 
     val hasUpdate =
         BuildConfig.UPDATER_AVAILABLE &&
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
+    val tokenActionTitle =
+        when {
+            !isLoggedIn -> stringResource(R.string.advanced_login)
+            showToken -> stringResource(R.string.token_shown)
+            else -> stringResource(R.string.token_hidden)
+        }
 
     val saveCurrentAccount: () -> Unit = {
         val existing = decodeSavedAccounts(savedAccountsJson)
@@ -323,10 +350,11 @@ fun AccountSettings(
                         },
                         onSecondaryAction = {
                             if (isLoggedIn) {
+                                showToken = false
                                 onInnerTubeCookieChange("")
                                 forgetAccount(context, clearWebAuthSession = true)
                             } else {
-                                navController.navigate(buildLoginRoute())
+                                showTokenEditor = true
                             }
                         },
                         onOpenAccountSwitcher = { showAccountSwitcher = true },
@@ -393,7 +421,37 @@ fun AccountSettings(
                             subtitle = stringResource(R.string.hidden_playlists_description),
                             onClick = { navController.navigate("settings/hidden_playlists") },
                             index = 0,
-                            count = 1,
+                            count = 3,
+                        )
+
+                        ExpressiveActionRow(
+                            icon = painterResource(R.drawable.token),
+                            title = tokenActionTitle,
+                            subtitle = tokenDescription,
+                            accent = if (isLoggedIn && showToken) MaterialTheme.colorScheme.tertiary else null,
+                            onClick = {
+                                if (!isLoggedIn) {
+                                    showTokenEditor = true
+                                } else if (!showToken) {
+                                    showToken = true
+                                } else {
+                                    showTokenEditor = true
+                                }
+                            },
+                            index = 1,
+                            count = 3,
+                        )
+
+                        // PO Token Generation moved here from the main settings page (Task 9).
+                        // Belongs with the other account-credential rows; opens the existing
+                        // PoTokenScreen route.
+                        ExpressiveActionRow(
+                            icon = painterResource(R.drawable.token),
+                            title = stringResource(R.string.po_token_generation),
+                            subtitle = stringResource(R.string.settings_po_token_subtitle),
+                            onClick = { navController.navigate(PO_TOKEN_ROUTE) },
+                            index = 2,
+                            count = 3,
                         )
                     }
                 }
@@ -426,6 +484,25 @@ fun AccountSettings(
                 }
             },
             onDismiss = { showAccountSwitcher = false },
+        )
+    }
+
+    if (showTokenEditor) {
+        TokenEditorDialog(
+            innerTubeCookie = innerTubeCookie,
+            visitorData = visitorData,
+            dataSyncId = dataSyncId,
+            accountNamePref = accountNamePref,
+            accountEmail = accountEmail,
+            accountChannelHandle = accountChannelHandle,
+            onInnerTubeCookieChange = onInnerTubeCookieChange,
+            onPoTokenChange = onLegacyPoTokenChange,
+            onVisitorDataChange = onVisitorDataChange,
+            onDataSyncIdChange = onDataSyncIdChange,
+            onAccountNameChange = onAccountNameChange,
+            onAccountEmailChange = onAccountEmailChange,
+            onAccountChannelHandleChange = onAccountChannelHandleChange,
+            onDismiss = { showTokenEditor = false },
         )
     }
 
@@ -1175,4 +1252,59 @@ private fun VersionStamp() {
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.40f),
         )
     }
+}
+
+@Composable
+private fun TokenEditorDialog(
+    innerTubeCookie: String,
+    visitorData: String,
+    dataSyncId: String,
+    accountNamePref: String,
+    accountEmail: String,
+    accountChannelHandle: String,
+    onInnerTubeCookieChange: (String) -> Unit,
+    onPoTokenChange: (String) -> Unit,
+    onVisitorDataChange: (String) -> Unit,
+    onDataSyncIdChange: (String) -> Unit,
+    onAccountNameChange: (String) -> Unit,
+    onAccountEmailChange: (String) -> Unit,
+    onAccountChannelHandleChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val text =
+        """
+        ***INNERTUBE COOKIE*** =$innerTubeCookie
+        ***VISITOR DATA*** =$visitorData
+        ***DATASYNC ID*** =$dataSyncId
+        ***PO TOKEN*** =${YouTube.poToken.orEmpty()}
+        ***ACCOUNT NAME*** =$accountNamePref
+        ***ACCOUNT EMAIL*** =$accountEmail
+        ***ACCOUNT CHANNEL HANDLE*** =$accountChannelHandle
+        """.trimIndent()
+
+    TextFieldDialog(
+        initialTextFieldValue = TextFieldValue(text),
+        onDone = { data ->
+            data.split("\n").forEach {
+                when {
+                    it.startsWith("***INNERTUBE COOKIE*** =") -> onInnerTubeCookieChange(it.substringAfter("="))
+                    it.startsWith("***VISITOR DATA*** =") -> onVisitorDataChange(it.substringAfter("="))
+                    it.startsWith("***DATASYNC ID*** =") -> onDataSyncIdChange(it.substringAfter("="))
+                    it.startsWith("***PO TOKEN*** =") -> onPoTokenChange(it.substringAfter("="))
+                    it.startsWith("***ACCOUNT NAME*** =") -> onAccountNameChange(it.substringAfter("="))
+                    it.startsWith("***ACCOUNT EMAIL*** =") -> onAccountEmailChange(it.substringAfter("="))
+                    it.startsWith("***ACCOUNT CHANNEL HANDLE*** =") -> onAccountChannelHandleChange(it.substringAfter("="))
+                }
+            }
+        },
+        onDismiss = onDismiss,
+        singleLine = false,
+        maxLines = 20,
+        isInputValid = {
+            hasYouTubeLoginCookie(it)
+        },
+        extraContent = {
+            InfoLabel(text = stringResource(R.string.token_adv_login_description))
+        },
+    )
 }

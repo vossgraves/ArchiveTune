@@ -59,14 +59,18 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AppleMusicQuality
+import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.AppleMusicDevTokenKey
 import moe.rukamori.archivetune.constants.AppleMusicMediaUserTokenKey
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
 /** JWT-ish shape check: three base64url segments. Good enough to catch paste errors. */
@@ -94,6 +98,7 @@ fun AppleMusicSettings(navController: NavController) {
 
     val (mediaToken, onMediaTokenChange) = rememberPreference(AppleMusicMediaUserTokenKey, "")
     val (devToken, onDevTokenChange) = rememberPreference(AppleMusicDevTokenKey, "")
+    val (quality, onQualityChange) = rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.AAC)
     val signedIn = mediaToken.isNotBlank() && devToken.isNotBlank()
 
     var showTokenSheet by rememberSaveable { mutableStateOf(false) }
@@ -126,6 +131,27 @@ fun AppleMusicSettings(navController: NavController) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            Card(
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                EnumListPreference(
+                    title = { Text(stringResource(R.string.applemusic_quality)) },
+                    description = stringResource(R.string.applemusic_quality_desc),
+                    icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                    selectedValue = quality,
+                    valueText = {
+                        when (it) {
+                            AppleMusicQuality.AAC -> stringResource(R.string.applemusic_quality_aac)
+                            AppleMusicQuality.LOSSLESS -> stringResource(R.string.applemusic_quality_lossless)
+                            AppleMusicQuality.HI_RES_LOSSLESS -> stringResource(R.string.applemusic_quality_hires)
+                        }
+                    },
+                    onValueSelected = onQualityChange,
+                )
+            }
 
             Card(
                 shape = RoundedCornerShape(26.dp),

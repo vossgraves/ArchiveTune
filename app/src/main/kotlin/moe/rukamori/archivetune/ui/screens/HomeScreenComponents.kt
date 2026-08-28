@@ -239,29 +239,6 @@ fun HomeSectionHeader(
     }
 }
 
-@Composable
-fun HomeRail(
-    title: String,
-    modifier: Modifier = Modifier,
-    leadingIcon: (@Composable () -> Unit)? = null,
-    onSeeAll: (() -> Unit)? = null,
-    header: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit,
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (header != null) {
-            header()
-        } else {
-            HomeSectionHeader(
-                title = title,
-                leadingIcon = leadingIcon,
-                onClick = onSeeAll,
-            )
-        }
-        content()
-    }
-}
-
 private const val SpeedDialGridRows = 3
 private const val SpeedDialGridColumns = 3
 private const val SpeedDialItemsPerPage = SpeedDialGridRows * SpeedDialGridColumns

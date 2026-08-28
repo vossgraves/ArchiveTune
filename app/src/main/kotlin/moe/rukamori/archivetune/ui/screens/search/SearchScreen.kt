@@ -47,8 +47,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -136,8 +134,7 @@ fun SearchScreen(
     historyViewModel: SearchHistoryViewModel = hiltViewModel(),
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    val defaultSearchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
-    var searchProvider by rememberSaveable { mutableStateOf(defaultSearchProvider) }
+    var searchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
     val onSearchSourceSelection: (SearchSource, SearchProvider) -> Unit = { _, provider ->
         searchProvider = provider
     }
@@ -211,28 +208,20 @@ fun SearchScreen(
                 )
             }
 
-            // Modern segmented control — Explore | Suggestions + persistent catalog pill.
+            // Modern segmented control — Explore | Suggestions.
             item(
                 key = "search_tabs",
                 contentType = "search_tabs",
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding, vertical = 4.dp).animateItem(),
-                ) {
-                    Box(Modifier.weight(1f)) {
-                        SearchSegmentedTabs(
-                            selectedTab = selectedTab,
-                            onTabSelected = viewModel::selectTab,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    CatalogPill(
-                        provider = searchProvider,
-                        onSelect = { provider -> onSearchSourceSelection(SearchSource.ONLINE, provider) },
-                    )
-                }
+                SearchSegmentedTabs(
+                    selectedTab = selectedTab,
+                    onTabSelected = viewModel::selectTab,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = SearchHorizontalPadding, vertical = 4.dp)
+                            .animateItem(),
+                )
             }
 
             when (val currentState = state) {
@@ -288,7 +277,6 @@ fun SearchScreen(
                                         onClear = historyViewModel::clearAll,
                                         onDelete = historyViewModel::delete,
                                         onQueryClick = onSearchQuery,
-                                        providerIconRes = if (searchProvider == SearchProvider.SPOTIFY) R.drawable.spotify_icon else R.drawable.provider_youtube,
                                         modifier = Modifier.animateItem(),
                                     )
                                 }
@@ -481,7 +469,7 @@ private fun SearchEntryField(
         )
         IconButton(
             onClick = onVoiceSearch,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = 4.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.mic),
@@ -490,6 +478,12 @@ private fun SearchEntryField(
                 modifier = Modifier.size(22.dp),
             )
         }
+        SearchSourcePicker(
+            currentScope = SearchSource.ONLINE,
+            currentProvider = searchProvider,
+            onSelection = onSourceSelection,
+            includeLocal = false,
+        )
     }
 }
 
@@ -558,53 +552,6 @@ private fun SearchSegmentedTabs(
     }
 }
 
-@Composable
-private fun CatalogPill(
-    provider: SearchProvider,
-    onSelect: (SearchProvider) -> Unit,
-) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    Box {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .clickable { expanded = true }
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-        ) {
-            Icon(
-                painter = painterResource(if (provider == SearchProvider.SPOTIFY) R.drawable.spotify_icon else R.drawable.provider_youtube),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                text = stringResource(if (provider == SearchProvider.SPOTIFY) R.string.search_source_spotify else R.string.search_source_youtube),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            Icon(painterResource(R.drawable.expand_more), null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.search_source_youtube)) },
-                onClick = { expanded = false; onSelect(SearchProvider.YOUTUBE) },
-                leadingIcon = { Icon(painterResource(R.drawable.provider_youtube), null, Modifier.size(20.dp)) },
-                trailingIcon = { if (provider == SearchProvider.YOUTUBE) Icon(painterResource(R.drawable.check), null, Modifier.size(16.dp)) },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.search_source_spotify)) },
-                onClick = { expanded = false; onSelect(SearchProvider.SPOTIFY) },
-                leadingIcon = { Icon(painterResource(R.drawable.spotify_icon), null, Modifier.size(20.dp)) },
-                trailingIcon = { if (provider == SearchProvider.SPOTIFY) Icon(painterResource(R.drawable.check), null, Modifier.size(16.dp)) },
-            )
-        }
-    }
-}
-
 // ============================================================
 // Section header
 // ============================================================
@@ -668,7 +615,6 @@ private fun RecentSearchesSection(
     onClear: () -> Unit,
     onDelete: (SearchHistory) -> Unit,
     onQueryClick: (String) -> Unit,
-    providerIconRes: Int,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -701,7 +647,6 @@ private fun RecentSearchesSection(
                     history = item,
                     onDelete = onDelete,
                     onClick = { onQueryClick(item.query) },
-                    providerIconRes = providerIconRes,
                 )
             }
         }
@@ -714,9 +659,7 @@ private fun RecentSearchRow(
     history: SearchHistory,
     onDelete: (SearchHistory) -> Unit,
     onClick: () -> Unit,
-    providerIconRes: Int = R.drawable.provider_youtube,
 ) {
-    // ponytail: SearchHistory stores no catalog provenance; badge reflects the active catalog.
     val dismissState =
         rememberSwipeToDismissBoxState(
             confirmValueChange = { value ->
@@ -785,12 +728,6 @@ private fun RecentSearchRow(
                     style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Box(
-                Modifier.size(24.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(painterResource(providerIconRes), null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(
                 painter = painterResource(R.drawable.arrow_forward),

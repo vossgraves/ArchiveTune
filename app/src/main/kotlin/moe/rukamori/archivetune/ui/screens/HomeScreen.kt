@@ -391,21 +391,16 @@ private fun HomeContent(
                             key = "home_jump_back_in",
                             contentType = "jump_back_in",
                         ) {
-                            HomeRail(
-                                title = stringResource(R.string.home_jump_back_in_badge),
-                                leadingIcon = { HomeSectionLeadingIcon(iconRes = R.drawable.history) },
+                            JumpBackInHeroSection(
+                                recentlyPlayed = uiState.heroPicks,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                JumpBackInHeroSection(
-                                    recentlyPlayed = uiState.heroPicks,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                )
-                            }
+                            )
                         }
                     }
 
@@ -414,17 +409,12 @@ private fun HomeContent(
                             key = "home_category_chips",
                             contentType = "category_chips",
                         ) {
-                            HomeRail(
-                                title = stringResource(R.string.mood_and_genres),
-                                leadingIcon = { HomeSectionLeadingIcon(iconRes = R.drawable.palette) },
+                            HomeCategoryChips(
+                                chips = uiState.homePage?.chips.orEmpty(),
+                                selectedChip = uiState.selectedChip,
+                                onChipSelected = { onAction(HomeAction.SelectChip(it)) },
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                HomeCategoryChips(
-                                    chips = uiState.homePage?.chips.orEmpty(),
-                                    selectedChip = uiState.selectedChip,
-                                    onChipSelected = { onAction(HomeAction.SelectChip(it)) },
-                                )
-                            }
+                            )
                         }
                     }
 
@@ -432,27 +422,32 @@ private fun HomeContent(
                         if (remoteQuickPicks?.items?.isNotEmpty() == true) {
                             sectionSpacer("remote_quick_picks")
                             item(
-                                key = "home_remote_quick_picks",
-                                contentType = "media_shelf",
+                                key = "home_remote_quick_picks_header",
+                                contentType = "section_header",
                             ) {
-                                HomeRail(
+                                HomeSectionHeader(
                                     title = remoteQuickPicks.title,
                                     leadingIcon = {
                                         HomeSectionLeadingIcon(iconRes = R.drawable.discover_tune)
                                     },
                                     modifier = Modifier.animateItem(),
-                                ) {
-                                    HomePageSectionContent(
-                                        section = remoteQuickPicks,
-                                        mediaMetadata = mediaMetadata,
-                                        isPlaying = isPlaying,
-                                        navController = navController,
-                                        playerConnection = playerConnection,
-                                        menuState = menuState,
-                                        haptic = haptic,
-                                        scope = scope,
-                                    )
-                                }
+                                )
+                            }
+                            item(
+                                key = "home_remote_quick_picks",
+                                contentType = "media_shelf",
+                            ) {
+                                HomePageSectionContent(
+                                    section = remoteQuickPicks,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    navController = navController,
+                                    playerConnection = playerConnection,
+                                    menuState = menuState,
+                                    haptic = haptic,
+                                    scope = scope,
+                                    modifier = Modifier.animateItem(),
+                                )
                             }
                         }
                         // Note: the local "Quick Picks" shelf (driven by
@@ -472,26 +467,31 @@ private fun HomeContent(
                     if (uiState.recentlyPlayed.size > 1) {
                         sectionSpacer("recently_played")
                         item(
-                            key = "home_recently_played",
-                            contentType = "recently_played",
+                            key = "home_recently_played_header",
+                            contentType = "section_header",
                         ) {
-                            HomeRail(
+                            HomeSectionHeader(
                                 title = stringResource(R.string.home_recently_played),
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.history)
                                 },
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                RecentlyPlayedSection(
-                                    recentlyPlayed = uiState.recentlyPlayed,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                )
-                            }
+                            )
+                        }
+                        item(
+                            key = "home_recently_played",
+                            contentType = "recently_played",
+                        ) {
+                            RecentlyPlayedSection(
+                                recentlyPlayed = uiState.recentlyPlayed,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
                         }
                     }
 
@@ -504,27 +504,32 @@ private fun HomeContent(
                     if (!minimalMode && uiState.speedDialItems.isNotEmpty()) {
                         sectionSpacer("speed_dial")
                         item(
-                            key = "home_speed_dial",
-                            contentType = "speed_dial",
+                            key = "home_speed_dial_header",
+                            contentType = "section_header",
                         ) {
-                            HomeRail(
+                            HomeSectionHeader(
                                 title = stringResource(R.string.speed_dial),
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
                                 },
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                SpeedDialSection(
-                                    speedDialItems = uiState.speedDialItems,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
-                                )
-                            }
+                            )
+                        }
+                        item(
+                            key = "home_speed_dial",
+                            contentType = "speed_dial",
+                        ) {
+                            SpeedDialSection(
+                                speedDialItems = uiState.speedDialItems,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                                modifier = Modifier.animateItem(),
+                            )
                         }
                     }
 
@@ -532,27 +537,32 @@ private fun HomeContent(
                     if (uiState.keepListening.isNotEmpty()) {
                         sectionSpacer("keep_listening")
                         item(
-                            key = "home_keep_listening",
-                            contentType = "media_shelf",
+                            key = "home_keep_listening_header",
+                            contentType = "section_header",
                         ) {
-                            HomeRail(
+                            HomeSectionHeader(
                                 title = stringResource(R.string.keep_listening),
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.listening)
                                 },
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                KeepListeningSection(
-                                    keepListening = uiState.keepListening,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
-                                )
-                            }
+                            )
+                        }
+                        item(
+                            key = "home_keep_listening",
+                            contentType = "media_shelf",
+                        ) {
+                            KeepListeningSection(
+                                keepListening = uiState.keepListening,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                                modifier = Modifier.animateItem(),
+                            )
                         }
                     }
 
@@ -563,27 +573,32 @@ private fun HomeContent(
                     if (minimalMode && uiState.speedDialItems.isNotEmpty()) {
                         sectionSpacer("speed_dial_minimal")
                         item(
-                            key = "home_speed_dial_minimal",
-                            contentType = "speed_dial",
+                            key = "home_speed_dial_header_minimal",
+                            contentType = "section_header",
                         ) {
-                            HomeRail(
+                            HomeSectionHeader(
                                 title = stringResource(R.string.speed_dial),
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
                                 },
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                SpeedDialSection(
-                                    speedDialItems = uiState.speedDialItems,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
-                                )
-                            }
+                            )
+                        }
+                        item(
+                            key = "home_speed_dial_minimal",
+                            contentType = "speed_dial",
+                        ) {
+                            SpeedDialSection(
+                                speedDialItems = uiState.speedDialItems,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                                modifier = Modifier.animateItem(),
+                            )
                         }
                     }
 
@@ -596,30 +611,30 @@ private fun HomeContent(
                         val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
                         sectionSpacer("live_performances_$sectionKey")
                         item(
+                            key = "home_live_performances_header_$sectionKey",
+                            contentType = "section_header",
+                        ) {
+                            HomePageSectionTitle(
+                                section = section,
+                                navController = navController,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(
                             key = "home_live_performances_$sectionKey",
                             contentType = "media_shelf",
                         ) {
-                            HomeRail(
-                                title = section.title,
-                                header = {
-                                    HomePageSectionTitle(
-                                        section = section,
-                                        navController = navController,
-                                    )
-                                },
+                            HomePageSectionContent(
+                                section = section,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                HomePageSectionContent(
-                                    section = section,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
-                                )
-                            }
+                            )
                         }
                     }
 
@@ -629,17 +644,12 @@ private fun HomeContent(
                             key = "home_account_playlists",
                             contentType = "media_shelf",
                         ) {
-                            HomeRail(
-                                title = stringResource(R.string.your_youtube_playlists),
-                                header = {
-                                    AccountPlaylistsTitle(
-                                        accountName = uiState.accountName,
-                                        accountImageUrl = uiState.accountImageUrl,
-                                        onClick = { navController.navigate("account") },
-                                    )
-                                },
-                                modifier = Modifier.animateItem(),
-                            ) {
+                            Column(modifier = Modifier.animateItem()) {
+                                AccountPlaylistsTitle(
+                                    accountName = uiState.accountName,
+                                    accountImageUrl = uiState.accountImageUrl,
+                                    onClick = { navController.navigate("account") },
+                                )
                                 AccountPlaylistsSection(
                                     accountPlaylists = uiState.accountPlaylists,
                                     mediaMetadata = mediaMetadata,
@@ -657,29 +667,34 @@ private fun HomeContent(
                     if (!minimalMode && uiState.forgottenFavorites.isNotEmpty()) {
                         sectionSpacer("forgotten_favorites")
                         item(
-                            key = "home_forgotten_favorites",
-                            contentType = "song_shelf",
+                            key = "home_forgotten_favorites_header",
+                            contentType = "section_header",
                         ) {
-                            HomeRail(
+                            HomeSectionHeader(
                                 title = stringResource(R.string.forgotten_favorites),
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.cached)
                                 },
                                 modifier = Modifier.animateItem(),
-                            ) {
-                                ForgottenFavoritesSection(
-                                    forgottenFavorites = uiState.forgottenFavorites,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    horizontalLazyGridItemWidth = forgottenItemWidth,
-                                    lazyGridState = forgottenFavoritesGridState,
-                                    snapLayoutInfoProvider = forgottenSnapLayoutInfoProvider,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                )
-                            }
+                            )
+                        }
+                        item(
+                            key = "home_forgotten_favorites",
+                            contentType = "song_shelf",
+                        ) {
+                            ForgottenFavoritesSection(
+                                forgottenFavorites = uiState.forgottenFavorites,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                horizontalLazyGridItemWidth = forgottenItemWidth,
+                                lazyGridState = forgottenFavoritesGridState,
+                                snapLayoutInfoProvider = forgottenSnapLayoutInfoProvider,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
                         }
                     }
 
@@ -687,30 +702,30 @@ private fun HomeContent(
                         uiState.similarRecommendations.forEach { recommendation ->
                             sectionSpacer("similar_${recommendation.title.id}")
                             item(
+                                key = "home_similar_header_${recommendation.title.id}",
+                                contentType = "section_header",
+                            ) {
+                                SimilarRecommendationsTitle(
+                                    recommendation = recommendation,
+                                    navController = navController,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                            item(
                                 key = "home_similar_${recommendation.title.id}",
                                 contentType = "media_shelf",
                             ) {
-                                HomeRail(
-                                    title = recommendation.title.title,
-                                    header = {
-                                        SimilarRecommendationsTitle(
-                                            recommendation = recommendation,
-                                            navController = navController,
-                                        )
-                                    },
+                                SimilarRecommendationsSection(
+                                    recommendation = recommendation,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    navController = navController,
+                                    playerConnection = playerConnection,
+                                    menuState = menuState,
+                                    haptic = haptic,
+                                    scope = scope,
                                     modifier = Modifier.animateItem(),
-                                ) {
-                                    SimilarRecommendationsSection(
-                                        recommendation = recommendation,
-                                        mediaMetadata = mediaMetadata,
-                                        isPlaying = isPlaying,
-                                        navController = navController,
-                                        playerConnection = playerConnection,
-                                        menuState = menuState,
-                                        haptic = haptic,
-                                        scope = scope,
-                                    )
-                                }
+                                )
                             }
                         }
                     }
@@ -730,30 +745,30 @@ private fun HomeContent(
                             val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
                             sectionSpacer("remote_$sectionKey")
                             item(
+                                key = "home_remote_header_$sectionKey",
+                                contentType = "section_header",
+                            ) {
+                                HomePageSectionTitle(
+                                    section = section,
+                                    navController = navController,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                            item(
                                 key = "home_remote_$sectionKey",
                                 contentType = "media_shelf",
                             ) {
-                                HomeRail(
-                                    title = section.title,
-                                    header = {
-                                        HomePageSectionTitle(
-                                            section = section,
-                                            navController = navController,
-                                        )
-                                    },
+                                HomePageSectionContent(
+                                    section = section,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    navController = navController,
+                                    playerConnection = playerConnection,
+                                    menuState = menuState,
+                                    haptic = haptic,
+                                    scope = scope,
                                     modifier = Modifier.animateItem(),
-                                ) {
-                                    HomePageSectionContent(
-                                        section = section,
-                                        mediaMetadata = mediaMetadata,
-                                        isPlaying = isPlaying,
-                                        navController = navController,
-                                        playerConnection = playerConnection,
-                                        menuState = menuState,
-                                        haptic = haptic,
-                                        scope = scope,
-                                    )
-                                }
+                                )
                             }
                         }
                     }

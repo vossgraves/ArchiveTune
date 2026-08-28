@@ -78,6 +78,7 @@ import moe.rukamori.archivetune.constants.TidalSubscriptionStatus
 import moe.rukamori.archivetune.constants.TidalTokenExpiryKey
 import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.qobuz.SourceInputParsing
+import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -149,6 +150,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
     var detailInstance by remember { mutableStateOf<String?>(null) }
     var showAccountDetail by remember { mutableStateOf(false) }
     var showInstanceManagement by remember { mutableStateOf(false) }
+    var showTokenDialog by remember { mutableStateOf(false) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -402,6 +404,53 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
+    if (showTokenDialog) {
+        TextFieldDialog(
+            icon = { Icon(painterResource(R.drawable.token), null) },
+            title = { Text(stringResource(R.string.sources_tidal_token_title)) },
+            placeholder = { Text(stringResource(R.string.sources_tidal_token_label)) },
+            isInputValid = { it.trim().split('.').size == 3 },
+            onDone = { rawToken ->
+                val refreshToken = rawToken.trim()
+                coroutineScope.launch {
+                    val refreshed =
+                        withContext(Dispatchers.IO) {
+                            TidalAccountManager
+                                .refreshAccessToken(refreshToken, TidalAccountManager.FLOW_OAUTH)
+                                ?.let { it to TidalAccountManager.FLOW_OAUTH }
+                                ?: TidalAccountManager
+                                    .refreshAccessToken(refreshToken, TidalAccountManager.FLOW_PKCE)
+                                    ?.let { it to TidalAccountManager.FLOW_PKCE }
+                        }
+
+                    if (refreshed == null) {
+                        toast(context.getString(R.string.sources_tidal_token_failed))
+                        return@launch
+                    }
+
+                    val (token, flow) = refreshed
+                    context.dataStore.edit { prefs ->
+                        prefs[TidalAccessTokenKey] = token.accessToken
+                        prefs[TidalRefreshTokenKey] = token.refreshToken ?: refreshToken
+                        prefs[TidalTokenExpiryKey] = token.expiresAtMillis
+                        prefs[TidalAuthFlowKey] = flow
+                        token.userId?.let { prefs[TidalUserIdKey] = it }
+                        token.countryCode?.let { prefs[TidalCountryCodeKey] = it }
+                        prefs[TidalNeedsReloginKey] = false
+                    }
+                    toast(context.getString(R.string.sources_tidal_token_verified))
+                }
+            },
+            onDismiss = { showTokenDialog = false },
+            extraContent = {
+                Text(
+                    text = stringResource(R.string.sources_tidal_token_help),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+        )
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -521,6 +570,16 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                             title = { Text(stringResource(R.string.tidal_login_web)) },
                             icon = { Icon(painterResource(R.drawable.token), null) },
                             onClick = { navController.navigate(TIDAL_LOGIN_ROUTE) },
+                        )
+                    }
+
+                    item {
+                        PreferenceEntry(
+                            modifier = positions.modifierFor("tidal_paste_token"),
+                            title = { Text(stringResource(R.string.sources_paste_token)) },
+                            description = stringResource(R.string.sources_tidal_token_help),
+                            icon = { Icon(painterResource(R.drawable.token), null) },
+                            onClick = { showTokenDialog = true },
                         )
                     }
                 }
