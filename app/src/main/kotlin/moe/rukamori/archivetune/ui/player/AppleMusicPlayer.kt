@@ -1983,7 +1983,7 @@ private fun AppleMusicControlsColumn(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     androidx.compose.foundation.layout.Box(
-                        modifier = Modifier.fillMaxWidth().viewportEdgeFade().clickable(
+                        modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = titleActions.onTitleClick,
@@ -1996,11 +1996,11 @@ private fun AppleMusicControlsColumn(
                             color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                         )
                     }
                     androidx.compose.foundation.layout.Box(
-                        modifier = Modifier.fillMaxWidth().viewportEdgeFade().clickable(
+                        modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {
@@ -2013,7 +2013,7 @@ private fun AppleMusicControlsColumn(
                             color = Color.White.copy(alpha = 0.64f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                         )
                     }
                 }
@@ -2364,7 +2364,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
         ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             androidx.compose.foundation.layout.Box(
-                modifier = Modifier.fillMaxWidth().viewportEdgeFade().clickable(
+                modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = titleActions.onTitleClick,
@@ -2377,11 +2377,11 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                    modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                 )
             }
                 androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.fillMaxWidth().viewportEdgeFade().clickable(
+                    modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
@@ -2394,7 +2394,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         color = Color.White.copy(alpha = 0.7f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                     )
                 }
             }

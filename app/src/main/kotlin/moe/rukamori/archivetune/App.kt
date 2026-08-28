@@ -189,9 +189,16 @@ class App :
         // layer; a collector keeps cached values current and the providers
         // hand back the latest without ever blocking the caller's thread.
         applicationScope.launch(Dispatchers.IO) {
+            var lastMedia = ""
             dataStore.data.collect { prefs ->
-                appleMusicDevTokenCache = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
-                appleMusicMediaUserTokenCache = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
+                val newDev = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
+                val newMedia = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
+                if (newMedia != lastMedia) {
+                    lastMedia = newMedia
+                    AppleMusicProvider.clearStorefrontCache()
+                }
+                appleMusicDevTokenCache = newDev
+                appleMusicMediaUserTokenCache = newMedia
             }
         }
         AppleMusicProvider.devTokenProvider = {

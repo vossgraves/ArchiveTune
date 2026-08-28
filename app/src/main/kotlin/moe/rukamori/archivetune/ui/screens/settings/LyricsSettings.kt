@@ -587,6 +587,7 @@ internal fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.YOULY_PLUS -> "YouLyPlus"
         PreferredLyricsProvider.SIMPMUSIC -> "SimpMusic"
         PreferredLyricsProvider.PAXSENIX_APPLE_MUSIC -> "Paxsenix: Apple Music"
+        PreferredLyricsProvider.APPLE_MUSIC -> "Apple Music"
         PreferredLyricsProvider.PAXSENIX_NETEASE -> "Paxsenix: NetEase"
         PreferredLyricsProvider.PAXSENIX_SPOTIFY -> "Paxsenix: Spotify"
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH -> "Paxsenix: Musixmatch"

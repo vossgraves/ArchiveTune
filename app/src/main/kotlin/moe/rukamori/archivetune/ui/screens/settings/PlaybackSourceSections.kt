@@ -56,6 +56,8 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.AppleMusicQuality
+import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
@@ -192,6 +194,8 @@ internal fun PlaybackSourceSections(
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     val (qobuzBackupEnabled, onQobuzBackupEnabledChange) = rememberPreference(QobuzBackupEnabledKey, false)
+    val (appleMusicQuality, onAppleMusicQualityChange) =
+        rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.AAC)
     // The Tidal artwork-fetching toggle lives in Player Settings → Artwork (same key).
     val (animatedCovers, onAnimatedCoversChange) =
         rememberPreference(TidalAnimatedCoversEnabledKey, false)
@@ -498,6 +502,33 @@ internal fun PlaybackSourceSections(
 
         item {
             SourceCheckRow(source = AudioSourceType.QOBUZ_BACKUP)
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.applemusic_settings)) {
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.applemusic_quality)) },
+                description = stringResource(R.string.applemusic_quality_desc),
+                icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                selectedValue = appleMusicQuality,
+                onValueSelected = onAppleMusicQualityChange,
+                valueText = {
+                    when (it) {
+                        AppleMusicQuality.AAC -> stringResource(R.string.applemusic_quality_aac)
+                        AppleMusicQuality.LOSSLESS -> stringResource(R.string.applemusic_quality_lossless)
+                        AppleMusicQuality.HI_RES_LOSSLESS -> stringResource(R.string.applemusic_quality_hires)
+                    }
+                },
+            )
+        }
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.applemusic_settings)) },
+                description = stringResource(R.string.applemusic_helper_short),
+                icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                onClick = { navController.navigate("settings/applemusic") },
+            )
         }
     }
 

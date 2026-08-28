@@ -59,8 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AppleMusicQuality
-import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.AppleMusicDevTokenKey
 import moe.rukamori.archivetune.constants.AppleMusicMediaUserTokenKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -98,8 +96,7 @@ fun AppleMusicSettings(navController: NavController) {
 
     val (mediaToken, onMediaTokenChange) = rememberPreference(AppleMusicMediaUserTokenKey, "")
     val (devToken, onDevTokenChange) = rememberPreference(AppleMusicDevTokenKey, "")
-    val (quality, onQualityChange) = rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.AAC)
-    val signedIn = mediaToken.isNotBlank() && devToken.isNotBlank()
+    val signedIn = mediaToken.isNotBlank()
 
     var showTokenSheet by rememberSaveable { mutableStateOf(false) }
 
@@ -131,27 +128,6 @@ fun AppleMusicSettings(navController: NavController) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            Card(
-                shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                EnumListPreference(
-                    title = { Text(stringResource(R.string.applemusic_quality)) },
-                    description = stringResource(R.string.applemusic_quality_desc),
-                    icon = { Icon(painterResource(R.drawable.ic_music), null) },
-                    selectedValue = quality,
-                    valueText = {
-                        when (it) {
-                            AppleMusicQuality.AAC -> stringResource(R.string.applemusic_quality_aac)
-                            AppleMusicQuality.LOSSLESS -> stringResource(R.string.applemusic_quality_lossless)
-                            AppleMusicQuality.HI_RES_LOSSLESS -> stringResource(R.string.applemusic_quality_hires)
-                        }
-                    },
-                    onValueSelected = onQualityChange,
-                )
-            }
 
             Card(
                 shape = RoundedCornerShape(26.dp),
@@ -211,8 +187,10 @@ fun AppleMusicSettings(navController: NavController) {
             onSave = { media, dev ->
                 scope.launch {
                     context.dataStore.edit {
-                        if (media.isNotBlank()) it[AppleMusicMediaUserTokenKey] = media.trim()
-                        if (dev.isNotBlank()) it[AppleMusicDevTokenKey] = dev.trim()
+                        val m = media.trim()
+                        val d = dev.trim()
+                        if (m.isNotBlank()) it[AppleMusicMediaUserTokenKey] = m else it.remove(AppleMusicMediaUserTokenKey)
+                        if (d.isNotBlank()) it[AppleMusicDevTokenKey] = d else it.remove(AppleMusicDevTokenKey)
                     }
                     showTokenSheet = false
                 }
@@ -236,9 +214,12 @@ private fun TokenSheet(
     var showMedia by rememberSaveable { mutableStateOf(false) }
     var showDev by rememberSaveable { mutableStateOf(false) }
 
-    val mediaValid = looksLikeMediaUserToken(mediaToken)
-    val devValid = looksLikeJwt(devToken)
-    val canSave = mediaValid && devValid
+    val mediaValid = looksLikeMediaUserToken(mediaToken.trim())
+    val devValid = devToken.trim().isEmpty() || looksLikeJwt(devToken.trim())
+    // Developer token is optional — the app ships a fallback web-player JWT and can scrape a fresh one.
+    // The user's Media User Token (0.Ap...) alone is enough to resolve ES/STM etc catalog via their account.
+    // If they pasted both (Media User Token + Bearer JWT) we store both.
+    val canSave = mediaValid && devValid && mediaToken.trim().isNotBlank()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
         Column(

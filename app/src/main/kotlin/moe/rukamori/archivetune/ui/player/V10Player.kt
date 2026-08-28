@@ -28,6 +28,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.text.TextLayoutResult
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
@@ -416,14 +417,14 @@ fun V10PlayerContent(
                 val artistFade = PlayerFadeConfig.forStyle(PlayerDesignStyle.V10)
                 val artistShouldFade = artistName.length > artistFade.artistMinChars
                 androidx.compose.foundation.layout.Box(
-                    modifier = if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(artistFade.fadeWidth) else Modifier.fillMaxWidth(),
+                    modifier = (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(artistFade.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
                 ) {
                     Text(
                         text = artistName.uppercase(),
                         style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp),
                         color = accent.copy(alpha = 0.8f),
                         maxLines = 1,
-                        modifier = Modifier.basicMarquee(
+                        modifier = Modifier.fillMaxWidth().basicMarquee(
                             iterations = Int.MAX_VALUE,
                             initialDelayMillis = 2000
                         )

@@ -31,6 +31,7 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -208,7 +209,7 @@ internal fun PlayerTitleText(
     // text content's edges (full scroll width) and move with the scroll.
     val shouldFade = title.length > titleThreshold
     Box(
-        modifier = if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier,
+        modifier = (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier).clipToBounds(),
     ) {
         Text(
             text = annotatedTitle,
@@ -220,7 +221,7 @@ internal fun PlayerTitleText(
             textAlign = textAlign,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
         )
     }
 }

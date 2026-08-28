@@ -20,6 +20,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -313,7 +314,7 @@ fun RowScope.MiniPlayerInfo(
             ) { title ->
                 val titleShouldFade = title.length > PlayerFadeConfig.miniPlayer.titleMinChars
                 Box(
-                    modifier = if (titleShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth(),
+                    modifier = (if (titleShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
                 ) {
                     Text(
                         text = title,
@@ -321,7 +322,7 @@ fun RowScope.MiniPlayerInfo(
                         color = colors.title,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                     )
                 }
             }
@@ -334,7 +335,7 @@ fun RowScope.MiniPlayerInfo(
                 val artistText = artists.joinToString { it.name }
                 val artistShouldFade = artistText.length > PlayerFadeConfig.miniPlayer.artistMinChars
                 Box(
-                    modifier = if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth(),
+                    modifier = (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
                 ) {
                     Text(
                         text = artistText,
@@ -342,7 +343,7 @@ fun RowScope.MiniPlayerInfo(
                         color = colors.secondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                     )
                 }
             }

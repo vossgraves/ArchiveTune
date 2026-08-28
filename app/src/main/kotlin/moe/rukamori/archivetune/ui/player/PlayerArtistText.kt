@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
@@ -73,7 +74,7 @@ fun ClickableArtists(
     val shouldFade = annotatedString.text.length > artistThreshold
 
     Box(
-        modifier = if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier,
+        modifier = (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier).clipToBounds(),
     ) {
         Text(
             text = annotatedString,
@@ -84,7 +85,7 @@ fun ClickableArtists(
             overflow = TextOverflow.Ellipsis,
             onTextLayout = { layoutState.value = it },
             modifier =
-                Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
                     .pointerInput(annotatedString) {
                     detectTapGestures(
                         onTap = { offset ->
