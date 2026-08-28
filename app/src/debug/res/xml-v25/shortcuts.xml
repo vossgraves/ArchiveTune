@@ -6,9 +6,9 @@
         android:shortcutId="search"
         android:shortcutShortLabel="@string/search">
         <intent
-            android:action="app.atf.media.action.SEARCH"
-            android:targetClass="app.atf.media.MainActivity"
-            android:targetPackage="app.atf.media.debug" />
+            android:action="moe.rukamori.archivetune.action.SEARCH"
+            android:targetClass="moe.rukamori.archivetune.MainActivity"
+            android:targetPackage="moe.rukamori.archivetune.debug" />
     </shortcut>
     <shortcut
         android:enabled="true"
@@ -16,8 +16,8 @@
         android:shortcutId="library"
         android:shortcutShortLabel="@string/filter_library">
         <intent
-            android:action="app.atf.media.action.LIBRARY"
-            android:targetClass="app.atf.media.MainActivity"
-            android:targetPackage="app.atf.media.debug" />
+            android:action="moe.rukamori.archivetune.action.LIBRARY"
+            android:targetClass="moe.rukamori.archivetune.MainActivity"
+            android:targetPackage="moe.rukamori.archivetune.debug" />
     </shortcut>
 </shortcuts>

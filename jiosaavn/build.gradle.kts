@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "app.atf.media.jiosaavn"
+    namespace = "moe.rukamori.archivetune.jiosaavn"
     compileSdk = 37
 
     defaultConfig {
