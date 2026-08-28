@@ -172,7 +172,6 @@ internal fun PlayerTitleText(
             }
         }
     val badgePainter = painterResource(R.drawable.player_explicit)
-    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
     val inlineContent =
         remember(badgePainter, color, explicit) {
             if (explicit) {
