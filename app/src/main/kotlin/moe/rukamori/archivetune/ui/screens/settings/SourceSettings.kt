@@ -37,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import androidx.navigation.NavController
@@ -46,7 +45,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -130,27 +128,7 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val (poolApiKey, onPoolApiKeyChange) = rememberPreference(PoolApiKeyKey, "")
     var refreshing by remember { mutableStateOf(false) }
-    var showPoolApiKeyDialog by remember { mutableStateOf(false) }
-
-    if (showPoolApiKeyDialog) {
-        TextFieldDialog(
-            icon = { Icon(painterResource(R.drawable.token), null) },
-            title = { Text(stringResource(R.string.pool_api_key_title)) },
-            initialTextFieldValue = TextFieldValue(poolApiKey),
-            placeholder = { Text(stringResource(R.string.pool_api_key_label)) },
-            isInputValid = { true },
-            onDone = { onPoolApiKeyChange(it.trim()) },
-            onDismiss = { showPoolApiKeyDialog = false },
-            extraContent = {
-                Text(
-                    text = stringResource(R.string.pool_api_key_help),
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                )
-            },
-        )
-    }
 
     PreferenceGroup(
         modifier = positions.modifierFor("youtube_music"),
@@ -210,14 +188,5 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
             )
         }
 
-        item {
-            PreferenceEntry(
-                modifier = positions.modifierFor("pool_api_key"),
-                title = { Text(stringResource(R.string.pool_api_key_title)) },
-                description = stringResource(R.string.pool_api_key_help),
-                icon = { Icon(painterResource(R.drawable.token), null) },
-                onClick = { showPoolApiKeyDialog = true },
-            )
-        }
     }
 }

@@ -170,6 +170,21 @@ fun IntegrationScreen(
             // Telegram is NOT gated — its TDLib client is self-contained and
             // doesn't share the manual-token flow.
             PreferenceGroup(
+                modifier = positions.modifierFor("apple_music"),
+                title = stringResource(R.string.applemusic_settings),
+            ) {
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("applemusic"),
+                        title = { Text(stringResource(R.string.applemusic_settings)) },
+                        description = stringResource(R.string.applemusic_helper),
+                        icon = { Icon(painterResource(R.drawable.album), null) },
+                        onClick = { navController.navigate("settings/applemusic") },
+                    )
+                }
+            }
+
+            PreferenceGroup(
                 modifier = positions.modifierFor("music_sources"),
                 title = stringResource(R.string.music_sources),
             ) {
