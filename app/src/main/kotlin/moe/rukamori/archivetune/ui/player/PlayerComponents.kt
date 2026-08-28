@@ -279,7 +279,7 @@ internal fun Modifier.marqueeEdgeFade(
         .graphicsLayer(alpha = 0.99f)
         .drawWithContent {
             val layout = layoutState.value
-            if (layout == null || !layout.hasVisualOverflow) {
+            if (layout == null) {
                 drawContent()
                 return@drawWithContent
             }
