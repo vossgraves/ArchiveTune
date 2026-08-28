@@ -26,6 +26,11 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.TextLayoutResult
+import moe.rukamori.archivetune.constants.PlayerDesignStyle
+import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -411,15 +416,19 @@ fun V10PlayerContent(
                             .size(16.dp)
                     )
                 }
+                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val artistFade = PlayerFadeConfig.forStyle(PlayerDesignStyle.V10)
+                val artistShouldFade = artistName.length > artistFade.artistMinChars
                 Text(
                     text = artistName.uppercase(),
                     style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp),
                     color = accent.copy(alpha = 0.8f),
                     maxLines = 1,
+                    onTextLayout = { artistLayout.value = it },
                     modifier = Modifier.basicMarquee(
                         iterations = Int.MAX_VALUE,
                         initialDelayMillis = 2000
-                    )
+                    ).let { if (artistShouldFade) it.marqueeEdgeFade(artistLayout, artistFade.fadeWidth) else it }
                 )
             }
         }

@@ -66,6 +66,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.State
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
+import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -311,6 +312,7 @@ fun RowScope.MiniPlayerInfo(
                 label = "title",
             ) { title ->
                 val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val titleShouldFade = title.length > PlayerFadeConfig.miniPlayer.titleMinChars
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMediumEmphasized,
@@ -322,7 +324,7 @@ fun RowScope.MiniPlayerInfo(
                         Modifier
                             .fillMaxWidth()
                             .basicMarquee()
-                            .marqueeEdgeFade(titleLayout),
+                            .let { if (titleShouldFade) it.marqueeEdgeFade(titleLayout, PlayerFadeConfig.miniPlayer.fadeWidth) else it },
                 )
             }
 
@@ -331,9 +333,11 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "artist",
             ) { artists ->
+                val artistText = artists.joinToString { it.name }
                 val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val artistShouldFade = artistText.length > PlayerFadeConfig.miniPlayer.artistMinChars
                 Text(
-                    text = artists.joinToString { it.name },
+                    text = artistText,
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.secondary,
                     maxLines = 1,
@@ -343,7 +347,7 @@ fun RowScope.MiniPlayerInfo(
                         Modifier
                             .fillMaxWidth()
                             .basicMarquee()
-                            .marqueeEdgeFade(artistLayout),
+                            .let { if (artistShouldFade) it.marqueeEdgeFade(artistLayout, PlayerFadeConfig.miniPlayer.fadeWidth) else it },
                 )
             }
         }

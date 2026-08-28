@@ -678,23 +678,6 @@ fun Queue(
                     // we don't accidentally render an upstream collapsed-content
                     // variant behind the morph.
                 }
-
-                PlayerDesignStyle.MILO -> QueueCollapsedContentV1(
-                    showCodecOnPlayer = showCodecOnPlayer,
-                    currentFormat = currentFormat,
-                    textBackgroundColor = TextBackgroundColor,
-                    sleepTimerEnabled = sleepTimerEnabled,
-                    sleepTimerTimeLeft = sleepTimerTimeLeft,
-                    onExpandQueue = openQueue,
-                    onSleepTimerClick = {
-                        if (sleepTimerEnabled) {
-                            playerConnection.service.sleepTimer.clear()
-                        } else {
-                            showSleepTimerDialog = true
-                        }
-                    },
-                    onShowLyrics = onShowLyrics,
-                )
             }
 
             if (showSleepTimerDialog) {

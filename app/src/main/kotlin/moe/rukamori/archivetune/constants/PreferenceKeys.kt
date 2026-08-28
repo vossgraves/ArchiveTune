@@ -1034,7 +1034,6 @@ enum class PlayerDesignStyle {
     V9,
     APPLE_MUSIC,
     V10,
-    MILO,
 }
 
 enum class PlayerBackgroundStyle {

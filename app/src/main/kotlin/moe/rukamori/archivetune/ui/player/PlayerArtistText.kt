@@ -22,6 +22,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.models.MediaMetadata
 
 /**
@@ -46,6 +48,8 @@ fun ClickableArtists(
     color: Color = Color.Unspecified,
     textAlign: TextAlign? = null,
     onLongClick: (() -> Unit)? = null,
+    artistThreshold: Int = 24,
+    fadeWidth: Dp = 24.dp,
 ) {
     val annotatedString =
         remember(artists) {
@@ -60,9 +64,11 @@ fun ClickableArtists(
         }
 
     // Shared layout state: drives tap detection AND the per-line edge fade, so
-    // the artist line fades only while it is long enough to marquee.
+    // the artist line fades only while it is long enough to marquee (separate
+    // threshold per player style).
     val layoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
     val layoutResult = layoutState.value
+    val shouldFade = annotatedString.text.length > artistThreshold
 
     Text(
         text = annotatedString,
@@ -73,8 +79,7 @@ fun ClickableArtists(
         overflow = TextOverflow.Ellipsis,
         onTextLayout = { layoutState.value = it },
         modifier =
-            modifier
-                .marqueeEdgeFade(layoutState)
+            (if (shouldFade) modifier.marqueeEdgeFade(layoutState, fadeWidth) else modifier)
                 .pointerInput(annotatedString) {
                 detectTapGestures(
                     onTap = { offset ->

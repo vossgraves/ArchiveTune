@@ -137,6 +137,7 @@ import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.component.ResizableIconButton
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
 import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -160,6 +161,8 @@ internal fun PlayerTitleText(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = TextUnit.Unspecified,
     textAlign: TextAlign? = null,
+    titleThreshold: Int = PlayerFadeConfig.forStyle(PlayerDesignStyle.V1).titleMinChars,
+    fadeWidth: Dp = 24.dp,
 ) {
     val annotatedTitle =
         remember(title, explicit) {
@@ -201,7 +204,10 @@ internal fun PlayerTitleText(
     // Gradient edge fade ONLY while this title is long enough to marquee. The
     // state object (not its value) is passed to the modifier so layout updates
     // never recompose or rebuild the modifier chain — see [marqueeEdgeFade].
+    // Separate threshold per player style ensures short titles never fade.
     val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    val shouldFade = title.length > titleThreshold
+    val effectiveModifier = if (shouldFade) modifier.marqueeEdgeFade(titleLayout, fadeWidth) else modifier
     Text(
         text = annotatedTitle,
         inlineContent = inlineContent,
@@ -215,7 +221,7 @@ internal fun PlayerTitleText(
         // Per-line gradience: the fade tracks THIS line's layout only, and only
         // while the line is long enough to actually marquee.
         onTextLayout = { titleLayout.value = it },
-        modifier = modifier.marqueeEdgeFade(titleLayout),
+        modifier = effectiveModifier,
     )
 }
 
@@ -297,6 +303,7 @@ fun PlayerTitleSection(
     textBackgroundColor: Color,
     navController: NavController,
     state: BottomSheetState,
+    playerDesignStyle: PlayerDesignStyle = PlayerDesignStyle.V1,
 ) {
     val actions =
         rememberPlayerTitleActions(
@@ -321,6 +328,8 @@ fun PlayerTitleSection(
                     color = textBackgroundColor,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
+                    titleThreshold = PlayerFadeConfig.forStyle(playerDesignStyle).titleMinChars,
+                    fadeWidth = PlayerFadeConfig.forStyle(playerDesignStyle).fadeWidth,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -342,6 +351,8 @@ fun PlayerTitleSection(
                 onArtistClick = actions.onArtistClick,
                 style = MaterialTheme.typography.titleMedium.copy(color = textBackgroundColor, fontSize = 16.sp),
                 onLongClick = actions.onCopyArtists,
+                artistThreshold = PlayerFadeConfig.forStyle(playerDesignStyle).artistMinChars,
+                fadeWidth = PlayerFadeConfig.forStyle(playerDesignStyle).fadeWidth,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -807,7 +818,7 @@ fun PlayerTopActions(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC, PlayerDesignStyle.MILO -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }
@@ -1878,7 +1889,7 @@ fun PlayerPlaybackControls(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC, PlayerDesignStyle.MILO -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }
