@@ -295,10 +295,15 @@ object AppleMusicVirtualStream {
             val referencedSize = moof.size + mdat.size
             val durationSec = durationsSec.getOrNull(index) ?: 0.0
             val duration = (durationSec * timescale).toLong().coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
-            // word 1: reference_type(1)=0 | referenced_size(31)
+            // Reference entry layout (3 words — matching ExoPlayer's FragmentedMp4Extractor.parseSidx):
+            //   word 1: reference_type(1)=0 | referenced_size(31)
+            //   word 2: subsegment_duration  ← the fragment's length in timescale ticks
+            //   word 3: starts_with_SAP(1)=1 | SAP_type(3)=1 | SAP_delta_time(28)=0
+            // Writing the SAP flags into word 2 (and never writing word 3) made every fragment
+            // appear 0x90000000 ticks long (~15 days) — the "-15d duration" bug.
             writeU32(out, off, referencedSize and 0x7FFFFFFF)
-            // word 2: SAP_delta_time(1)=0 | starts_with_SAP(1)=1 | SAP_type(3)=1 | delta(28)=0
-            writeU32(out, off + 4, (1 shl 31) or (1 shl 28))
+            writeU32(out, off + 4, duration)
+            writeU32(out, off + 8, (1 shl 31) or (1 shl 28))
             off += 12
         }
         return out
