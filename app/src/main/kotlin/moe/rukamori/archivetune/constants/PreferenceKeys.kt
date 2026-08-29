@@ -1024,6 +1024,14 @@ enum class PlayerButtonsStyle {
     SECONDARY,
 }
 
+/** Home screen layout style. DEFAULT = this fork's feed; RUKAMORI = upstream rukamori layout. */
+enum class HomeScreenStyle {
+    DEFAULT,
+    RUKAMORI,
+}
+
+val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
+
 enum class PlayerDesignStyle {
     V1,
     V2,

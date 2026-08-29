@@ -91,6 +91,8 @@ import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.HomeScreenStyle
+import moe.rukamori.archivetune.constants.HomeScreenStyleKey
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -259,6 +261,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(HideScrollbarKey, defaultValue = false)
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
+    val (homeScreenStyle, onHomeScreenStyleChange) =
+        rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.DEFAULT)
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -1052,6 +1056,23 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.home_outlined), null) },
                         checked = minimalHomeMode,
                         onCheckedChange = onMinimalHomeModeChange,
+                    )
+                }
+
+                item {
+                    EnumListPreference(
+                        modifier = positions.modifierFor("home_screen_style"),
+                        title = { Text(stringResource(R.string.home_screen_style)) },
+                        description = stringResource(R.string.home_screen_style_desc),
+                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
+                        selectedValue = homeScreenStyle,
+                        onValueSelected = onHomeScreenStyleChange,
+                        valueText = {
+                            when (it) {
+                                HomeScreenStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
+                                HomeScreenStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
+                            }
+                        },
                     )
                 }
 
