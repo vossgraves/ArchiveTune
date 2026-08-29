@@ -9693,6 +9693,25 @@ class MusicService :
                     bytes
                 }
             appleDrmMediaIds.add(query.mediaId)
+            // Nerd-info adaptation: patch the format row so the media-info sheet shows the
+            // Apple codec/size for this song instead of the stale YouTube values (mirrors the
+            // contentLength backfill pattern; the YouTube resolver rewrites the row whenever
+            // the song is played from YouTube again).
+            runCatching {
+                val row = database.getFormatsByIds(listOf(query.mediaId)).firstOrNull()
+                if (row != null) {
+                    val bitrate = measuredBitrate(file.length(), candidate.matchedDurationMs)
+                    database.query {
+                        upsert(
+                            row.copy(
+                                codecs = "mp4a.40.2",
+                                contentLength = file.length(),
+                                bitrate = bitrate ?: row.bitrate,
+                            ),
+                        )
+                    }
+                }
+            }
             Timber
                 .tag("MusicService")
                 .i("Apple Music resolved [%s] for \"%s\" (%d KB)", placeholder.label, query.title, file.length() / 1024)
