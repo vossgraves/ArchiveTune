@@ -438,6 +438,7 @@ fun LyricsSettings(
                         when (it) {
                             LyricsMode.V2 -> stringResource(R.string.lyrics_mode_v2)
                             LyricsMode.ENHANCED -> stringResource(R.string.lyrics_mode_enhanced)
+                            LyricsMode.SPOTIFY -> stringResource(R.string.lyrics_mode_spotify)
                         }
                     },
                 )

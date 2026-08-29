@@ -1168,6 +1168,7 @@ val LyricsModeKey = stringPreferencesKey("lyricsMode")
 enum class LyricsMode {
     V2,
     ENHANCED,
+    SPOTIFY,
 }
 
 val LyricsV2BounceFactorKey = floatPreferencesKey("lyricsV2BounceFactor")

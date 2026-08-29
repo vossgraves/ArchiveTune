@@ -1672,5 +1672,15 @@ private fun LyricsContent(
                 textColorOverride = textColor,
             )
         }
+
+        LyricsMode.SPOTIFY -> {
+            LyricsV2(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+                spotifyStyle = true,
+            )
+        }
     }
 }

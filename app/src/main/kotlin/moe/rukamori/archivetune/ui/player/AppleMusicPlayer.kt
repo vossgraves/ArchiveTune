@@ -1554,6 +1554,14 @@ fun AppleMusicPlayerContent(
                                     .fillMaxSize()
                                     .padding(horizontal = lyricsHorizontalPadding),
                             )
+                            LyricsMode.SPOTIFY -> LyricsV2(
+                                sliderPositionProvider = lyricsPosProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = lyricsHorizontalPadding),
+                                spotifyStyle = true,
+                            )
                             LyricsMode.ENHANCED -> LyricsEnhanced(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
