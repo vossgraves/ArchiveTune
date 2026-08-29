@@ -103,6 +103,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
@@ -415,11 +416,16 @@ fun V10PlayerContent(
                     )
                 }
                 val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val artistViewport = remember { mutableStateOf(0) }
                 val artistFade = PlayerFadeConfig.forStyle(PlayerDesignStyle.V10)
-                val hasArtistOverflow = artistLayout.value?.hasVisualOverflow == true
-                val artistShouldFade = hasArtistOverflow && artistName.length > artistFade.artistMinChars
+                val artistShouldFade =
+                    artistViewport.value > 0 &&
+                        (artistLayout.value?.size?.width ?: 0) > artistViewport.value
                 androidx.compose.foundation.layout.Box(
-                    modifier = (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(artistFade.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
+                    modifier =
+                        (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(artistFade.fadeWidth) else Modifier.fillMaxWidth())
+                            .clipToBounds()
+                            .onSizeChanged { artistViewport.value = it.width },
                 ) {
                     Text(
                         text = artistName.uppercase(),

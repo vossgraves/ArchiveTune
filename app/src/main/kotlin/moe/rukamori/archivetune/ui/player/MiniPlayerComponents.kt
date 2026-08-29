@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.State
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import androidx.compose.ui.res.painterResource
@@ -313,10 +314,15 @@ fun RowScope.MiniPlayerInfo(
                 label = "title",
             ) { title ->
                 val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
-                val hasOverflow = titleLayout.value?.hasVisualOverflow == true
-                val titleShouldFade = hasOverflow && title.length > PlayerFadeConfig.miniPlayer.titleMinChars
+                val titleViewport = remember { mutableStateOf(0) }
+                val titleShouldFade =
+                    titleViewport.value > 0 &&
+                        (titleLayout.value?.size?.width ?: 0) > titleViewport.value
                 Box(
-                    modifier = (if (titleShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
+                    modifier =
+                        (if (titleShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth())
+                            .clipToBounds()
+                            .onSizeChanged { titleViewport.value = it.width },
                 ) {
                     Text(
                         text = title,
@@ -337,10 +343,15 @@ fun RowScope.MiniPlayerInfo(
             ) { artists ->
                 val artistText = artists.joinToString { it.name }
                 val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
-                val hasArtistOverflow = artistLayout.value?.hasVisualOverflow == true
-                val artistShouldFade = hasArtistOverflow && artistText.length > PlayerFadeConfig.miniPlayer.artistMinChars
+                val artistViewport = remember { mutableStateOf(0) }
+                val artistShouldFade =
+                    artistViewport.value > 0 &&
+                        (artistLayout.value?.size?.width ?: 0) > artistViewport.value
                 Box(
-                    modifier = (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
+                    modifier =
+                        (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth())
+                            .clipToBounds()
+                            .onSizeChanged { artistViewport.value = it.width },
                 ) {
                     Text(
                         text = artistText,

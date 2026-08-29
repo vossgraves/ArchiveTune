@@ -1984,10 +1984,17 @@ private fun AppleMusicControlsColumn(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                     val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
-                    val hasTitleOverflow = titleLayout.value?.hasVisualOverflow == true
-                    val hasArtistOverflow = artistLayout.value?.hasVisualOverflow == true
+                    val titleViewport = remember { mutableStateOf(0) }
+                    val artistViewport = remember { mutableStateOf(0) }
+                    val hasTitleOverflow =
+                        titleViewport.value > 0 &&
+                            (titleLayout.value?.size?.width ?: 0) > titleViewport.value
+                    val hasArtistOverflow =
+                        artistViewport.value > 0 &&
+                            (artistLayout.value?.size?.width ?: 0) > artistViewport.value
                     androidx.compose.foundation.layout.Box(
-                        modifier = (if (hasTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
+                        modifier = (if (hasTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                            .onSizeChanged { titleViewport.value = it.width }.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = titleActions.onTitleClick,
@@ -2005,7 +2012,8 @@ private fun AppleMusicControlsColumn(
                         )
                     }
                     androidx.compose.foundation.layout.Box(
-                        modifier = (if (hasArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
+                        modifier = (if (hasArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                            .onSizeChanged { artistViewport.value = it.width }.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {
@@ -2371,10 +2379,17 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
         Column(modifier = Modifier.fillMaxWidth()) {
             val miniTitleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
             val miniArtistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
-            val hasMiniTitleOverflow = miniTitleLayout.value?.hasVisualOverflow == true
-            val hasMiniArtistOverflow = miniArtistLayout.value?.hasVisualOverflow == true
+            val miniTitleViewport = remember { mutableStateOf(0) }
+            val miniArtistViewport = remember { mutableStateOf(0) }
+            val hasMiniTitleOverflow =
+                miniTitleViewport.value > 0 &&
+                    (miniTitleLayout.value?.size?.width ?: 0) > miniTitleViewport.value
+            val hasMiniArtistOverflow =
+                miniArtistViewport.value > 0 &&
+                    (miniArtistLayout.value?.size?.width ?: 0) > miniArtistViewport.value
             androidx.compose.foundation.layout.Box(
-                modifier = (if (hasMiniTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
+                modifier = (if (hasMiniTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                    .onSizeChanged { miniTitleViewport.value = it.width }.clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = titleActions.onTitleClick,
@@ -2392,7 +2407,8 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                 )
             }
                 androidx.compose.foundation.layout.Box(
-                    modifier = (if (hasMiniArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
+                    modifier = (if (hasMiniArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                        .onSizeChanged { miniArtistViewport.value = it.width }.clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {

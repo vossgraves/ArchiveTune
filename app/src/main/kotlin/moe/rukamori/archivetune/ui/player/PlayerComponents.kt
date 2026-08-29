@@ -76,18 +76,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -203,18 +200,26 @@ internal fun PlayerTitleText(
         }
 
     // Fade lives on the BOX (the line's viewport), not the Text. The Text scrolls
-    // with basicMarquee inside the Box; the Box's drawWithContent masks at the
-    // Box's fixed edges (size.width = viewport width) so the gradient stays put
-    // while the text moves underneath. Applying it to Text would mask at the
-    // text content's edges (full scroll width) and move with the scroll.
-    // Show fade ONLY when the text is actually scrolling (hasVisualOverflow).
+    // with basicMarquee inside the Box; the DstIn gradient masks at the Box's
+    // fixed edges (size.width = viewport width) so the fade stays put while the
+    // text moves underneath — same technique as fadingEdge on the playlist
+    // screen. Applying it to the Text node would mask at the full scroll width
+    // instead and leave the visible edge hard-clipped (the "boxy" look).
+    // Fade shows ONLY while the line is actually scrolling: basicMarquee measures
+    // its child with unbounded width, so hasVisualOverflow never fires — compare
+    // the laid-out text width against the box (viewport) width instead. The
+    // marquee scrolls iff the text is wider than the viewport, so this is
+    // exactly "fade while scrolling", nothing else.
     val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
-    val hasOverflow = titleLayout.value?.hasVisualOverflow == true
-    // Length threshold is a cheap pre-filter to avoid flicker on first frame before
-    // layout is measured; the real gate is hasVisualOverflow.
-    val shouldFade = hasOverflow && title.length > titleThreshold
+    val titleViewportWidth = remember { mutableStateOf(0) }
+    val shouldFade =
+        titleViewportWidth.value > 0 &&
+            (titleLayout.value?.size?.width ?: 0) > titleViewportWidth.value
     Box(
-        modifier = (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier).clipToBounds(),
+        modifier =
+            (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier)
+                .clipToBounds()
+                .onSizeChanged { titleViewportWidth.value = it.width },
     ) {
         Text(
             text = annotatedTitle,
@@ -250,47 +255,14 @@ internal fun PlayerTextBackdrop(
 /**
  * Viewport edge fade: gradient at the BOX's fixed edges (the visible text box),
  * not the scrolling Text content. The Box is the viewport; the Text inside
- * scrolls with basicMarquee. At draw time size.width = Box width = viewport,
- * so left/right rects sit at the Box edges and stay fixed while the text
- * translates underneath. No layoutState needed — the caller gates by length.
+ * scrolls with basicMarquee. Delegates to the shared [fadingEdge] utility (the
+ * same fade the playlist screen uses) so every marquee line masks identically:
+ * DstIn gradient inside an offscreen layer — softens the hard clip so long
+ * scrolling titles don't get the boxy look.
  */
-@Composable
 internal fun Modifier.viewportEdgeFade(
     width: Dp = 24.dp,
-): Modifier {
-    val fadePx = with(LocalDensity.current) { width.toPx() }
-    val leftBrush =
-        remember(fadePx) {
-            Brush.horizontalGradient(
-                0f to Color.Transparent,
-                1f to Color.Black,
-                startX = 0f,
-                endX = fadePx,
-            )
-        }
-    val rightStops =
-        remember {
-            arrayOf(
-                0f to Color.Black,
-                1f to Color.Transparent,
-            )
-        }
-    return this
-        .graphicsLayer(alpha = 0.99f)
-        .drawWithContent {
-            drawContent()
-            drawRect(brush = leftBrush, blendMode = BlendMode.DstIn)
-            drawRect(
-                brush =
-                    Brush.horizontalGradient(
-                        colorStops = rightStops,
-                        startX = size.width - fadePx,
-                        endX = size.width,
-                    ),
-                blendMode = BlendMode.DstIn,
-            )
-        }
-}
+): Modifier = fadingEdge(horizontal = width)
 
 /**
  * Legacy: edge fade on Text node. Kept for call sites not yet migrated to

@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -67,17 +68,23 @@ fun ClickableArtists(
             }
         }
 
-    // Shared layout state: drives tap detection; fade is gated by length and
-    // lives on the BOX viewport, not the Text, so the gradient stays fixed at
-    // the box edges while the marquee scrolls underneath. Fade shows only when
-    // the text is actually scrolling (hasVisualOverflow).
+    // Shared layout state: also drives tap detection. Fade lives on the BOX
+    // viewport, not the Text, so the gradient stays fixed at the box edges while
+    // the marquee scrolls underneath. Fade shows ONLY while actually scrolling:
+    // basicMarquee measures its child with unbounded width so hasVisualOverflow
+    // never fires — compare laid-out text width vs the box (viewport) width.
     val layoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
     val layoutResult = layoutState.value
-    val hasOverflow = layoutResult?.hasVisualOverflow == true
-    val shouldFade = hasOverflow && annotatedString.text.length > artistThreshold
+    val viewportWidth = remember { mutableStateOf(0) }
+    val shouldFade =
+        viewportWidth.value > 0 &&
+            (layoutResult?.size?.width ?: 0) > viewportWidth.value
 
     Box(
-        modifier = (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier).clipToBounds(),
+        modifier =
+            (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier)
+                .clipToBounds()
+                .onSizeChanged { viewportWidth.value = it.width },
     ) {
         Text(
             text = annotatedString,
