@@ -251,8 +251,8 @@ val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
-// When ON (default), music videos render an inline video surface in the player. When OFF,
-// music videos are treated as plain audio (album artwork shown, no video stream is loaded).
+// When ON, music videos render an inline video surface in the player. Default OFF so songs
+// play as plain audio (album artwork shown, no video stream is loaded) unless the user opts in.
 // Distinct from HideVideoKey which filters videos out of the library/queue entirely.
 val EnableVideoPlaybackKey = booleanPreferencesKey("enableVideoPlayback")
 // When ON (default OFF), leaving the app while a music video is playing enters Picture-in-

@@ -431,7 +431,7 @@ fun BottomSheetPlayer(
     val (backdropBlurAmount) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (showCodecOnPlayer) = rememberPreference(booleanPreferencesKey("show_codec_on_player"), false)
     val (incrementalSeekSkipEnabled) = rememberPreference(moe.rukamori.archivetune.constants.SeekExtraSeconds, defaultValue = false)
-    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = true)
+    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = false)
     var keyboardSkipMultiplier by remember { mutableStateOf(1) }
     var lastKeyboardTapTime by remember { mutableLongStateOf(0L) }
 

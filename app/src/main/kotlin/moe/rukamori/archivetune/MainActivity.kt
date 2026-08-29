@@ -594,7 +594,7 @@ class MainActivity : ComponentActivity() {
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
         val pipEnabled = dataStore.get(EnablePipModeKey, false)
         if (!pipEnabled) return false
-        val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, true)
+        val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, false)
         if (!videoPlaybackEnabled) return false
         val connection = playerConnection ?: return false
         val metadata = connection.mediaMetadata.value ?: return false

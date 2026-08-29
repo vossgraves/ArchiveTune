@@ -149,7 +149,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (enableVideoPlayback, onEnableVideoPlaybackChange) =
         rememberPreference(
             EnableVideoPlaybackKey,
-            defaultValue = true,
+            defaultValue = false,
         )
     val (enablePipMode, onEnablePipModeChange) =
         rememberPreference(
