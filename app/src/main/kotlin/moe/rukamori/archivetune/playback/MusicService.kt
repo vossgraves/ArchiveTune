@@ -1456,11 +1456,16 @@ class MusicService :
             val shouldFetch =
                 stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
             if (shouldFetch) {
-                val lyrics = lyricsHelper.getLyrics(mediaMetadata)
+                // getLyricsWithProvider (not getLyrics) preserves the providerName — with the
+                // plain getter the auto-fetched lyrics were stored with a blank attribution
+                // and the "Lyrics from [provider]" header never rendered until a manual
+                // re-fetch from the lyrics search popup (4nx3b fix).
+                val lyricsResult = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
                     replaceLyricsIfAbsentOrNotFound(
                         id = mediaMetadata.id,
-                        lyrics = lyrics,
+                        lyrics = lyricsResult.lyrics,
+                        providerName = lyricsResult.providerName,
                     )
                 }
             }
@@ -9698,17 +9703,19 @@ class MusicService :
             // contentLength backfill pattern; the YouTube resolver rewrites the row whenever
             // the song is played from YouTube again).
             runCatching {
-                val row = database.getFormatsByIds(listOf(query.mediaId)).firstOrNull()
-                if (row != null) {
-                    val bitrate = measuredBitrate(file.length(), candidate.matchedDurationMs)
-                    database.query {
-                        upsert(
-                            row.copy(
-                                codecs = "mp4a.40.2",
-                                contentLength = file.length(),
-                                bitrate = bitrate ?: row.bitrate,
-                            ),
-                        )
+                runBlocking(Dispatchers.IO) {
+                    val row = database.getFormatsByIds(listOf(query.mediaId)).firstOrNull()
+                    if (row != null) {
+                        val bitrate = measuredBitrate(file.length(), candidate.matchedDurationMs)
+                        database.query {
+                            upsert(
+                                row.copy(
+                                    codecs = "mp4a.40.2",
+                                    contentLength = file.length(),
+                                    bitrate = bitrate ?: row.bitrate,
+                                ),
+                            )
+                        }
                     }
                 }
             }

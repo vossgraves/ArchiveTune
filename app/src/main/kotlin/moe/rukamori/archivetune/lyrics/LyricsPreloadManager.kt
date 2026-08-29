@@ -165,12 +165,21 @@ class LyricsPreloadManager
             }
 
             try {
-                val lyrics = lyricsHelper.getLyrics(song)
-                if (lyrics == LyricsEntity.LYRICS_NOT_FOUND) return
+                // Use getLyricsWithProvider so the providerName is preserved
+                // when storing the lyrics. Previously this called getLyrics()
+                // which discarded the providerName, so pre-loaded lyrics
+                // never showed the "Lyrics from [provider]" attribution
+                // until the user manually re-fetched via the lyrics search
+                // popup. Pass the providerName to
+                // replaceLyricsIfAbsentOrNotFound so the stored entity
+                // carries it from the moment of preload.
+                val lyricsResult = lyricsHelper.getLyricsWithProvider(song)
+                if (lyricsResult.lyrics == LyricsEntity.LYRICS_NOT_FOUND) return
 
                 database.replaceLyricsIfAbsentOrNotFound(
                     id = song.id,
-                    lyrics = lyrics,
+                    lyrics = lyricsResult.lyrics,
+                    providerName = lyricsResult.providerName,
                 )
                 Log.d(TAG, "Pre-loaded lyrics for: ${song.title}")
             } catch (e: CancellationException) {

@@ -106,10 +106,6 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             // configured at build time.
             PoolRefreshSection(positions)
 
-            // Personal pool API key: overrides the baked SOURCE_PROVIDER_KEY. Completes the
-            // per-person flow: request on the pool site → admin approval → paste here.
-            PoolApiKeySection()
-
             // Preferred-source picker, per-source enable toggles and quality. Account/instance
             // management remains in Integration (behind the manual-source-login toggle).
             PlaybackSourceSections(

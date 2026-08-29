@@ -272,21 +272,24 @@ object AppleMusicVirtualStream {
         baseTime: Long,
     ): ByteArray {
         val count = fragments.size
-        val size = 32 + 12 * count
+        // version 1: 64-bit earliest_presentation_time + first_offset — Apple's tfdt carries
+        // large absolute base media decode times that do NOT fit in 32 bits (a v0 sidx with a
+        // coerced value breaks ExoPlayer's timeline math, e.g. a "-15d" duration display).
+        val size = 40 + 12 * count
         val out = ByteArray(size)
         writeU32(out, 0, size)
         out[4] = 's'.code.toByte()
         out[5] = 'i'.code.toByte()
         out[6] = 'd'.code.toByte()
         out[7] = 'x'.code.toByte()
-        // version 0 + flags 0 stay zero
+        out[8] = 1 // version 1
         writeU32(out, 12, 1) // reference_ID
         writeU32(out, 16, timescale.coerceIn(1, Int.MAX_VALUE.toLong()).toInt())
-        writeU32(out, 20, baseTime.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
-        writeU32(out, 24, 0) // first_offset: sidx ends where the first moof begins
-        // bytes 28..29 reserved(0); 30..31 reference_count
-        writeU16(out, 30, count)
-        var off = 32
+        writeU64(out, 20, baseTime.coerceAtLeast(0))
+        writeU64(out, 28, 0) // first_offset: sidx ends where the first moof begins
+        // bytes 36..37 reserved(0); 38..39 reference_count
+        writeU16(out, 38, count)
+        var off = 40
         for ((index, pair) in fragments.withIndex()) {
             val (moof, mdat) = pair
             val referencedSize = moof.size + mdat.size
@@ -299,6 +302,14 @@ object AppleMusicVirtualStream {
             off += 12
         }
         return out
+    }
+
+    private fun writeU64(buf: ByteArray, off: Int, value: Long) {
+        var v = value
+        for (i in 7 downTo 0) {
+            buf[off + i] = (v and 0xFF).toByte()
+            v = v ushr 8
+        }
     }
 
     private fun writeU32(buf: ByteArray, off: Int, value: Int) {

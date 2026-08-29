@@ -247,15 +247,49 @@ class LyricsMenuViewModel
             providerName: String = "",
         ) {
             viewModelScope.launch(Dispatchers.IO) {
-                if (source == LyricsEntity.Source.AI_TRANSLATION) {
-                    captureLyricsBeforeTranslation(mediaMetadata.id)
-                    // Clear the translation dismissal for this media ID —
-                    // the user is manually applying a translation (via the
-                    // standard translator), so any previous "Undo Translation"
-                    // dismissal is no longer relevant.
-                    _translationDismissedMediaIds.value =
-                        _translationDismissedMediaIds.value - mediaMetadata.id
-                }
+                // When AI_TRANSLATION is saved without an explicit providerName
+                // (e.g. legacy translator menu at LyricsMenu.kt that calls
+                // `updateLyrics(mediaMetadata, lyrics, source = AI_TRANSLATION)`
+                // with no providerName argument), the default empty string
+                // would otherwise WIPE the original provider's attribution —
+                // causing both the constant overlay header AND the in-stream
+                // SyncedLine header injected by `buildSyncedLyrics(providerHeader
+                // = lyricsProviderLabel)` to vanish the moment translation lands.
+                //
+                // Resolution order when caller passed an empty providerName
+                // for an AI_TRANSLATION save:
+                //   1. captureLyricsBeforeTranslation (so the undo snapshot
+                //      holds the original provider — captures is a no-op if
+                //      the song is already captured or already AI_TRANSLATED).
+                //   2. Try the undo snapshot's providerName for THIS song.
+                //   3. Fall back to whatever the existing DB row currently
+                //      has (covers the retry-AI-on-already-translated case
+                //      where capture returns early without updating the
+                //      snapshot because the existing source is already
+                //      AI_TRANSLATION — without this branch, an empty
+                //      snapshot or a different song's snapshot would let the
+                //      empty string through and wipe the provider attribution).
+                val effectiveProviderName =
+                    if (source == LyricsEntity.Source.AI_TRANSLATION && providerName.isBlank()) {
+                        captureLyricsBeforeTranslation(mediaMetadata.id)
+                        _translationDismissedMediaIds.value =
+                            _translationDismissedMediaIds.value - mediaMetadata.id
+                        val fromSnapshot =
+                            _translationUndo.value
+                                ?.takeIf { it.mediaId == mediaMetadata.id }
+                                ?.providerName
+                                .orEmpty()
+                        if (fromSnapshot.isNotBlank()) {
+                            fromSnapshot
+                        } else {
+                            database
+                                .withTransaction { getLyricsById(mediaMetadata.id) }
+                                ?.providerName
+                                .orEmpty()
+                        }
+                    } else {
+                        providerName
+                    }
                 val lyricsToSave =
                     when (source) {
                         LyricsEntity.Source.REMOTE,
@@ -274,7 +308,7 @@ class LyricsMenuViewModel
                         id = mediaMetadata.id,
                         lyrics = lyricsToSave,
                         source = source.value,
-                        providerName = providerName,
+                        providerName = effectiveProviderName,
                     )
                 }
             }
@@ -436,11 +470,44 @@ class LyricsMenuViewModel
 
         private suspend fun saveTranslatedLyrics(mediaId: String, lyrics: String) {
             captureLyricsBeforeTranslation(mediaId)
+            // Preserve the ORIGINAL provider's name so the in-lyrics-stream
+            // "Lyrics from [provider]" header does not disappear the moment
+            // AI translation saves a new LyricsEntity. Previously the AI
+            // translation path called `replaceLyrics(id, lyrics, source=AI_TRANSLATION)`
+            // without passing `providerName`, which defaulted to "" —
+            // wiping the provider attribution and causing both the constant
+            // overlay header AND the in-stream SyncedLine header injected by
+            // `buildSyncedLyrics(providerHeader = lyricsProviderLabel)` to
+            // vanish on translation.
+            //
+            // Resolution order for the preserved providerName:
+            //   1. The undo snapshot's providerName IF it was captured for
+            //      THIS mediaId (covers the common path: user is auto-
+            //      translating a song that still has the original REMOTE /
+            //      EMBEDDED lyrics with a providerName, capture succeeds,
+            //      snapshot holds it).
+            //   2. The existing DB row's providerName as a fallback. This
+            //      covers the edge case where capture returned early WITHOUT
+            //      updating the snapshot because the existing source was
+            //      already AI_TRANSLATION (e.g. a retry after a failed AI
+            //      translation that left source=AI_TRANSLATION with no
+            //      translation content). In that case `_translationUndo` is
+            //      either null (fresh ViewModel) or holds a DIFFERENT song's
+            //      snapshot — reading from the DB gives us the right answer
+            //      rather than letting an empty string through.
+            val snapshotMatch = _translationUndo.value?.takeIf { it.mediaId == mediaId }
+            val preservedProviderName =
+                snapshotMatch?.providerName?.takeIf { it.isNotBlank() }
+                    ?: database
+                        .withTransaction { getLyricsById(mediaId) }
+                        ?.providerName
+                        .orEmpty()
             database.query {
                 replaceLyrics(
                     id = mediaId,
                     lyrics = lyrics,
                     source = LyricsEntity.Source.AI_TRANSLATION.value,
+                    providerName = preservedProviderName,
                 )
             }
         }
