@@ -131,8 +131,8 @@ class AppleMusicProgressiveDataSource(
         val virtual = buildVirtualStream(mp4, parsed, kidHex)
         Log.i(
             TAG,
-            "built virtual stream: file=%d virtual=%d fragments=%d timescale=%d",
-            mp4.size, virtual.size, parsed.fragmentCount, parsed.timescale,
+            "built virtual stream: file=${mp4.size} virtual=${virtual.size} " +
+                "fragments=${parsed.fragmentCount} timescale=${parsed.timescale}",
         )
         return Entry(virtual, virtual.size.toLong())
     }

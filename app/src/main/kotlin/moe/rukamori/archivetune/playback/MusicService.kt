@@ -10861,11 +10861,11 @@ class MusicService :
             .Builder()
             .setUuidAndExoMediaDrmProvider(
                 C.WIDEVINE_UUID,
-                ExoMediaDrm.Provider { uuid ->
-                    // FrameworkMediaDrm's constructor is private; create through the default
-                    // provider and then force software-level L3 — Apple's license server issues
+                ExoMediaDrm.Provider { _ ->
+                    // The UUID-taking constructor is private in Media3 1.10.x — use the
+                    // no-arg one and force software-level L3: Apple's license server issues
                     // keys for the web playback pipeline, which is L3-shaped.
-                    FrameworkMediaDrm.DEFAULT_PROVIDER.createExoMediaDrm(uuid).apply {
+                    FrameworkMediaDrm().apply {
                         runCatching { setPropertyString("securityLevel", "3") }
                     }
                 },
