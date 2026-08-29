@@ -10861,13 +10861,19 @@ class MusicService :
             .Builder()
             .setUuidAndExoMediaDrmProvider(
                 C.WIDEVINE_UUID,
-                ExoMediaDrm.Provider { _ ->
-                    // The UUID-taking constructor is private in Media3 1.10.x — use the
-                    // no-arg one and force software-level L3: Apple's license server issues
-                    // keys for the web playback pipeline, which is L3-shaped.
-                    FrameworkMediaDrm().apply {
-                        runCatching { setPropertyString("securityLevel", "3") }
-                    }
+                ExoMediaDrm.Provider { uuid ->
+                    // FrameworkMediaDrm's constructor is private — use newInstance and force
+                    // software-level L3: Apple's license server issues keys for the web
+                    // playback pipeline, which is L3-shaped. On failure fall back to the
+                    // default provider (handles unsupported-scheme gracefully).
+                    val created =
+                        runCatching { FrameworkMediaDrm.newInstance(uuid) }.getOrNull()?.apply {
+                            // The exact property value differs across vendors; try both and
+                            // ignore failures — worst case the device default level is used.
+                            runCatching { setPropertyString("securityLevel", "L3") }
+                                .recoverCatching { setPropertyString("securityLevel", "3") }
+                        }
+                    created ?: FrameworkMediaDrm.DEFAULT_PROVIDER.acquireExoMediaDrm(uuid)
                 },
             )
             .build(callback)
