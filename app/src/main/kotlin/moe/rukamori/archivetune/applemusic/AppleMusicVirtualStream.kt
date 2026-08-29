@@ -188,14 +188,17 @@ object AppleMusicVirtualStream {
         val pssh = buildWidevinePssh(kidHex?.let { hexToBytes(it) })
         val sidx = buildSidx(pairs, playlist.durationsSec, timescale, baseTime)
 
-        // Virtual layout: [0 .. moov hdr][patched moov size/type][pssh][moov children][sidx][rest].
-        val moovInsertAt = moov.offset + moov.headerSize
+        // Virtual layout: [before moov][patched moov hdr][pssh][moov children][sidx][rest].
+        // The patched header REPLACES the original 8-byte header — copying the header twice
+        // shifts everything after moov by 8 bytes and corrupts the box layout.
+        val beforeMoov = moov.offset
+        val moovChildrenAt = moov.offset + moov.headerSize
         val afterMoov = moov.offset + moov.size
+        val newMoovSize = moov.size + pssh.size
         val out = ByteArray(mp4.size + pssh.size + sidx.size)
         var v = 0
-        System.arraycopy(mp4, 0, out, v, moovInsertAt)
-        v += moovInsertAt
-        val newMoovSize = moov.size + pssh.size
+        System.arraycopy(mp4, 0, out, v, beforeMoov)
+        v += beforeMoov
         out[v++] = (newMoovSize ushr 24).toByte()
         out[v++] = (newMoovSize ushr 16).toByte()
         out[v++] = (newMoovSize ushr 8).toByte()
@@ -206,13 +209,13 @@ object AppleMusicVirtualStream {
         out[v++] = 'v'.code.toByte()
         System.arraycopy(pssh, 0, out, v, pssh.size)
         v += pssh.size
-        System.arraycopy(mp4, moovInsertAt, out, v, moov.size - moov.headerSize)
+        System.arraycopy(mp4, moovChildrenAt, out, v, moov.size - moov.headerSize)
         v += moov.size - moov.headerSize
         System.arraycopy(sidx, 0, out, v, sidx.size)
         v += sidx.size
         System.arraycopy(mp4, afterMoov, out, v, mp4.size - afterMoov)
         v += mp4.size - afterMoov
-        check(v == out.size)
+        check(v == out.size) { "virtual stream size mismatch: v=$v expected=${out.size}" }
         return out
     }
 
