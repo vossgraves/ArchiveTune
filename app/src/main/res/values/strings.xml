@@ -1175,6 +1175,13 @@
     <string name="sources_tidal_token_failed">Tidal could not refresh that token — it may be expired or revoked.</string>
     <string name="pool_api_key_title">Pool API key</string>
     <string name="pool_api_key_label">API key</string>
+    <string name="pool_api_key_description">Optional. Paste the personal API key issued to you by the pool site (request → admin approval → Dashboard → copy). Overrides the built-in key, so your own leased accounts keep working even if the shared key changes.</string>
+    <string name="pool_api_key_invalid">Pool keys start with "atp_"</string>
+    <string name="pool_api_key_save">Save &amp; refresh</string>
+    <string name="pool_api_key_clear">Clear</string>
+    <string name="pool_api_key_saved_ok">Key saved — pool refreshed.</string>
+    <string name="pool_api_key_saved_no_accounts">Key saved, but the pool returned no accounts. Check the key on the pool site.</string>
+    <string name="pool_api_key_cleared">Key cleared — back to the built-in pool key.</string>
     <string name="pool_api_key_help">Optional. Create a free account on the Source Pool site and copy your key from the dashboard — the app then uses YOUR key to fetch pooled accounts, instead of the key baked into this build. Leave empty to keep using the built-in key. Paste an empty field to remove a saved key.</string>
     <string name="pool_refresh_title">Refresh from pool</string>
     <string name="pool_refresh_description">Pull the latest shared accounts and instances from the community source pool</string>
