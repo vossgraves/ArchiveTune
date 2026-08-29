@@ -1885,6 +1885,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
         AudioSourceType.QOBUZ -> R.string.source_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
+        AudioSourceType.APPLE -> R.string.source_apple_music
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
@@ -1895,6 +1896,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
+        AudioSourceType.APPLE -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }

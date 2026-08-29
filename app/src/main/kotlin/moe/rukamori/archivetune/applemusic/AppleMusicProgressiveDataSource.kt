@@ -126,7 +126,7 @@ class AppleMusicProgressiveDataSource(
         kidHex: String?,
     ): Entry {
         val playlist = fetch(playlistUrl)
-        val parsed = parsePlaylist(playlistUrl, playlist)
+        val parsed = parsePlaylist(playlistUrl, playlist.toString(Charsets.UTF_8))
         val mp4 = fetch(parsed.mediaUrl)
         val virtual = buildVirtualStream(mp4, parsed, kidHex)
         Log.i(
