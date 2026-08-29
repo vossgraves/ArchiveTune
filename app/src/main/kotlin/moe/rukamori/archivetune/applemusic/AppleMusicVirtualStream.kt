@@ -60,13 +60,13 @@ object AppleMusicVirtualStream {
         kidHex: String?,
     ): ByteArray {
         val playlist = fetch(client, playlistUrl)
-        val parsed = parsePlaylist(playlistUrl, playlist)
+        val parsed = parsePlaylist(playlistUrl, playlist.toString(Charsets.UTF_8))
         val mp4 = fetch(client, parsed.mediaUrl)
         val virtual = buildVirtualStream(mp4, parsed, kidHex)
         Log.i(
             TAG,
             "built virtual stream: file=${mp4.size} virtual=${virtual.size} " +
-                "fragments=${parsed.durationsSec.size} timescale=${parsed.timescale}",
+                "fragments=${parsed.durationsSec.size}",
         )
         return virtual
     }
