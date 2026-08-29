@@ -123,6 +123,128 @@ private fun AudioSourceType.iconRes(): Int =
     }
 
 /**
+ * Compact per-source audio-quality section for Player Settings. Reuses the exact
+ * same preference keys as the full [PlaybackSourceSections] (Settings → Sources),
+ * so the two views always agree. One group per source, containing only the
+ * quality picker; pickers are dimmed while their source is disabled.
+ */
+@Composable
+internal fun PlaybackQualitySections(
+    positions: PreferencePositions,
+) {
+    val (tidalEnabled, _) = rememberPreference(TidalEnabledKey, true)
+    val (qobuzEnabled, _) = rememberPreference(QobuzEnabledKey, false)
+    val (deezerEnabled, _) = rememberPreference(DeezerEnabledKey, false)
+    val (appleMusicEnabled, _) = rememberPreference(AppleMusicSourceEnabledKey, false)
+    val (jioSaavnEnabled, _) = rememberPreference(JioSaavnEnabledKey, false)
+    val (deezerQuality, onDeezerQualityChange) =
+        rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
+    val (saavnQuality, onSaavnQualityChange) =
+        rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
+    val (audioQuality, onAudioQualityChange) =
+        rememberEnumPreference(TidalAudioQualityKey, TidalAudioQuality.FLAC)
+    val (qobuzQuality, onQobuzQualityChange) =
+        rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
+    val (appleMusicQuality, onAppleMusicQualityChange) =
+        rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.AAC)
+
+    PreferenceGroup(title = stringResource(R.string.tidal_specific)) {
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("player_tidal_audio_quality"),
+                title = { Text(stringResource(R.string.tidal_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = audioQuality,
+                onValueSelected = onAudioQualityChange,
+                isEnabled = tidalEnabled,
+                valueText = { quality ->
+                    when (quality) {
+                        TidalAudioQuality.AAC_320 -> stringResource(R.string.tidal_quality_aac_320)
+                        TidalAudioQuality.FLAC -> stringResource(R.string.tidal_quality_flac)
+                        TidalAudioQuality.HI_RES_LOSSLESS -> stringResource(R.string.tidal_quality_hires)
+                    }
+                },
+            )
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.qobuz_specific)) {
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("player_qobuz_audio_quality"),
+                title = { Text(stringResource(R.string.qobuz_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = qobuzQuality,
+                onValueSelected = onQobuzQualityChange,
+                isEnabled = qobuzEnabled,
+                valueText = { quality ->
+                    when (quality) {
+                        QobuzAudioQuality.FLAC -> stringResource(R.string.qobuz_quality_flac)
+                        QobuzAudioQuality.HI_RES -> stringResource(R.string.qobuz_quality_hires)
+                        QobuzAudioQuality.MAX -> stringResource(R.string.qobuz_quality_max)
+                    }
+                },
+            )
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.applemusic_settings)) {
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("player_applemusic_quality"),
+                title = { Text(stringResource(R.string.applemusic_quality)) },
+                description = stringResource(R.string.applemusic_quality_desc),
+                icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                selectedValue = appleMusicQuality,
+                onValueSelected = onAppleMusicQualityChange,
+                isEnabled = appleMusicEnabled,
+                valueText = {
+                    when (it) {
+                        AppleMusicQuality.AAC -> stringResource(R.string.applemusic_quality_aac)
+                        AppleMusicQuality.LOSSLESS -> stringResource(R.string.applemusic_quality_lossless)
+                        AppleMusicQuality.HI_RES_LOSSLESS -> stringResource(R.string.applemusic_quality_hires)
+                    }
+                },
+            )
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("player_deezer_audio_quality"),
+                title = { Text(stringResource(R.string.deezer_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = deezerQuality,
+                onValueSelected = onDeezerQualityChange,
+                isEnabled = deezerEnabled,
+                valueText = { quality ->
+                    when (quality) {
+                        DeezerAudioQuality.FLAC -> stringResource(R.string.deezer_quality_flac)
+                        DeezerAudioQuality.MP3_320 -> stringResource(R.string.deezer_quality_mp3_320)
+                        DeezerAudioQuality.MP3_128 -> stringResource(R.string.deezer_quality_mp3_128)
+                    }
+                },
+            )
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.jiosaavn_specific)) {
+        item {
+            EnumListPreference(
+                modifier = positions.modifierFor("player_jiosaavn_audio_quality"),
+                title = { Text(stringResource(R.string.jiosaavn_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = saavnQuality,
+                onValueSelected = onSaavnQualityChange,
+                isEnabled = jioSaavnEnabled,
+                valueText = { quality -> quality.toLabel() },
+            )
+        }
+    }
+}
+
+/**
  * Renders all streaming-source preference groups inline in the caller's scrolling Column. Meant to
  * be called from [PlayerSettings]. Emits, in order: the common "Sources" group (preferred-source
  * picker + YouTube history sync), then YouTube, Tidal and Qobuz specific groups.
