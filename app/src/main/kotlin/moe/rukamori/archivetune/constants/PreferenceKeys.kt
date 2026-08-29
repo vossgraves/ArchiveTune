@@ -1265,6 +1265,11 @@ val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
  *  When set, overrides the CI-baked BuildConfig.SOURCE_PROVIDER_KEY as the Bearer token. */
 val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 
+// Newline-separated community "paste list" URLs (rentry/gist pages tabulating shared
+// ARLs/tokens). Parsed by PasteListPoolSource and merged into the pool account caches
+// with id=null so playback reports are never sent for them. Opt-in: empty by default.
+val PasteListUrlsKey = stringPreferencesKey("pasteListUrls")
+
 // Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
 

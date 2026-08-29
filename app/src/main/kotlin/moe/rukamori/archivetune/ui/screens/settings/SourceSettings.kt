@@ -53,6 +53,8 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.PasteListUrlsKey
+import moe.rukamori.archivetune.ui.component.EditTextPreference
 import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,6 +107,10 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             // (the app also does this automatically on startup). Only shown when a source pool is
             // configured at build time.
             PoolRefreshSection(positions)
+
+            // Opt-in community paste lists: rentry/gist pages tabulating shared tokens/ARLs.
+            // Works with or without a baked-in Source Pool URL.
+            PasteListSection(positions)
 
             // Preferred-source picker, per-source enable toggles and quality. Account/instance
             // management remains in Integration (behind the manual-source-login toggle).
@@ -188,5 +194,81 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
             )
         }
 
+    }
+}
+
+/**
+ * Opt-in community paste-list source: the user pastes URLs of pages that tabulate shared
+ * tokens/ARLs (markdown tables — the Firehawk52/marl pattern). [PoolAccountManager] fetches
+ * and parses them alongside the Source Pool; the "Refresh from pool" row covers both.
+ */
+@Composable
+private fun PasteListSection(positions: PreferencePositions) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    val (urls, onUrlsChange) = rememberPreference(PasteListUrlsKey, "")
+
+    PreferenceGroup(
+        modifier = positions.modifierFor("paste_lists"),
+        title = stringResource(R.string.paste_list_title),
+    ) {
+        item {
+            EditTextPreference(
+                modifier = positions.modifierFor("paste_list_urls"),
+                title = { Text(stringResource(R.string.paste_list_urls_title)) },
+                icon = { Icon(painterResource(R.drawable.link), null) },
+                value = urls,
+                onValueChange = onUrlsChange,
+                singleLine = false,
+                isInputValid = { true },
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = {
+                    Text(
+                        if (refreshing) {
+                            stringResource(R.string.pool_refreshing)
+                        } else {
+                            stringResource(R.string.paste_list_refresh_title)
+                        },
+                    )
+                },
+                icon = { Icon(painterResource(R.drawable.sync), null) },
+                trailingContent =
+                    if (refreshing) {
+                        { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }
+                    } else {
+                        null
+                    },
+                isEnabled = !refreshing && urls.isNotBlank(),
+                onClick = {
+                    if (refreshing) return@PreferenceEntry
+                    refreshing = true
+                    scope.launch {
+                        val ok =
+                            withContext(Dispatchers.IO) {
+                                PoolAccountManager.refresh(context, force = true)
+                            }
+                        val message =
+                            if (ok) {
+                                context.getString(
+                                    R.string.paste_list_refresh_done,
+                                    PoolAccountManager.tidalAccounts().size,
+                                    PoolAccountManager.qobuzAccounts().size,
+                                    PoolAccountManager.deezerAccounts().size,
+                                    PoolAccountManager.appleMusicAccounts().size,
+                                )
+                            } else {
+                                context.getString(R.string.pool_refresh_failed)
+                            }
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        refreshing = false
+                    }
+                },
+            )
+        }
     }
 }
