@@ -312,7 +312,9 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "title",
             ) { title ->
-                val titleShouldFade = title.length > PlayerFadeConfig.miniPlayer.titleMinChars
+                val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val hasOverflow = titleLayout.value?.hasVisualOverflow == true
+                val titleShouldFade = hasOverflow && title.length > PlayerFadeConfig.miniPlayer.titleMinChars
                 Box(
                     modifier = (if (titleShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
                 ) {
@@ -322,6 +324,7 @@ fun RowScope.MiniPlayerInfo(
                         color = colors.title,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { titleLayout.value = it },
                         modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                     )
                 }
@@ -333,7 +336,9 @@ fun RowScope.MiniPlayerInfo(
                 label = "artist",
             ) { artists ->
                 val artistText = artists.joinToString { it.name }
-                val artistShouldFade = artistText.length > PlayerFadeConfig.miniPlayer.artistMinChars
+                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val hasArtistOverflow = artistLayout.value?.hasVisualOverflow == true
+                val artistShouldFade = hasArtistOverflow && artistText.length > PlayerFadeConfig.miniPlayer.artistMinChars
                 Box(
                     modifier = (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
                 ) {
@@ -343,6 +348,7 @@ fun RowScope.MiniPlayerInfo(
                         color = colors.secondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { artistLayout.value = it },
                         modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                     )
                 }

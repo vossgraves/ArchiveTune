@@ -207,7 +207,12 @@ internal fun PlayerTitleText(
     // Box's fixed edges (size.width = viewport width) so the gradient stays put
     // while the text moves underneath. Applying it to Text would mask at the
     // text content's edges (full scroll width) and move with the scroll.
-    val shouldFade = title.length > titleThreshold
+    // Show fade ONLY when the text is actually scrolling (hasVisualOverflow).
+    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    val hasOverflow = titleLayout.value?.hasVisualOverflow == true
+    // Length threshold is a cheap pre-filter to avoid flicker on first frame before
+    // layout is measured; the real gate is hasVisualOverflow.
+    val shouldFade = hasOverflow && title.length > titleThreshold
     Box(
         modifier = (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier).clipToBounds(),
     ) {
@@ -221,6 +226,7 @@ internal fun PlayerTitleText(
             textAlign = textAlign,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            onTextLayout = { titleLayout.value = it },
             modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
         )
     }

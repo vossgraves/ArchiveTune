@@ -68,10 +68,12 @@ fun ClickableArtists(
 
     // Shared layout state: drives tap detection; fade is gated by length and
     // lives on the BOX viewport, not the Text, so the gradient stays fixed at
-    // the box edges while the marquee scrolls underneath.
+    // the box edges while the marquee scrolls underneath. Fade shows only when
+    // the text is actually scrolling (hasVisualOverflow).
     val layoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
     val layoutResult = layoutState.value
-    val shouldFade = annotatedString.text.length > artistThreshold
+    val hasOverflow = layoutResult?.hasVisualOverflow == true
+    val shouldFade = hasOverflow && annotatedString.text.length > artistThreshold
 
     Box(
         modifier = (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier).clipToBounds(),

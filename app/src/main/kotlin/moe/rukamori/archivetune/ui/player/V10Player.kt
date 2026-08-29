@@ -414,8 +414,10 @@ fun V10PlayerContent(
                             .size(16.dp)
                     )
                 }
+                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 val artistFade = PlayerFadeConfig.forStyle(PlayerDesignStyle.V10)
-                val artistShouldFade = artistName.length > artistFade.artistMinChars
+                val hasArtistOverflow = artistLayout.value?.hasVisualOverflow == true
+                val artistShouldFade = hasArtistOverflow && artistName.length > artistFade.artistMinChars
                 androidx.compose.foundation.layout.Box(
                     modifier = (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(artistFade.fadeWidth) else Modifier.fillMaxWidth()).clipToBounds(),
                 ) {
@@ -424,6 +426,8 @@ fun V10PlayerContent(
                         style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp),
                         color = accent.copy(alpha = 0.8f),
                         maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        onTextLayout = { artistLayout.value = it },
                         modifier = Modifier.fillMaxWidth().basicMarquee(
                             iterations = Int.MAX_VALUE,
                             initialDelayMillis = 2000

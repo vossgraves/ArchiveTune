@@ -1982,8 +1982,12 @@ private fun AppleMusicControlsColumn(
                 modifier = Modifier.weight(1f),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val hasTitleOverflow = titleLayout.value?.hasVisualOverflow == true
+                    val hasArtistOverflow = artistLayout.value?.hasVisualOverflow == true
                     androidx.compose.foundation.layout.Box(
-                        modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
+                        modifier = (if (hasTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = titleActions.onTitleClick,
@@ -1996,11 +2000,12 @@ private fun AppleMusicControlsColumn(
                             color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { titleLayout.value = it },
                             modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                         )
                     }
                     androidx.compose.foundation.layout.Box(
-                        modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
+                        modifier = (if (hasArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {
@@ -2013,6 +2018,7 @@ private fun AppleMusicControlsColumn(
                             color = Color.White.copy(alpha = 0.64f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { artistLayout.value = it },
                             modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                         )
                     }
@@ -2363,8 +2369,12 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             modifier = Modifier.weight(1f),
         ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            val miniTitleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+            val miniArtistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+            val hasMiniTitleOverflow = miniTitleLayout.value?.hasVisualOverflow == true
+            val hasMiniArtistOverflow = miniArtistLayout.value?.hasVisualOverflow == true
             androidx.compose.foundation.layout.Box(
-                modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
+                modifier = (if (hasMiniTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = titleActions.onTitleClick,
@@ -2377,11 +2387,12 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { miniTitleLayout.value = it },
                     modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                 )
             }
                 androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.fillMaxWidth().viewportEdgeFade().clipToBounds().clickable(
+                    modifier = (if (hasMiniArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds().clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
@@ -2394,6 +2405,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         color = Color.White.copy(alpha = 0.7f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { miniArtistLayout.value = it },
                         modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                     )
                 }
