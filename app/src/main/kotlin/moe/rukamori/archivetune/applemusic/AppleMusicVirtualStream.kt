@@ -7,25 +7,19 @@
 
 package moe.rukamori.archivetune.applemusic
 
-import android.net.Uri
 import android.util.Log
-import androidx.media3.datasource.BaseDataSource
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DataSpec
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.EOFException
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Progressive byte-stream for Apple Music full-track playback.
+ * Builds a playable progressive MP4 out of Apple Music's web-playback HLS asset.
  *
- * Apple's web-playback asset URL serves an HLS playlist whose segments are byteranges of a
- * single CENC-encrypted fragmented MP4 (verified: `ftyp + moov + [moof + mdat]*`, sample-level
+ * Apple's asset URL serves an HLS playlist whose segments are byteranges of a single
+ * CENC-encrypted fragmented MP4 (verified: `ftyp + moov + [moof + mdat]*`, sample-level
  * AES-CTR, `#EXT-X-KEY` carrying the KID inline as a `data:` URI). ExoPlayer's progressive
- * pipeline can play such a file directly — but only if the extractor can (a) build a SeekMap
- * and (b) see DRM init data:
+ * pipeline can play such a file — but only if the extractor can (a) build a SeekMap and
+ * (b) see DRM init data:
  *
  *  - **Seeking**: the file has no `sidx`. We synthesize one from the playlist's `#EXTINF`
  *    durations plus the parsed fragment boundaries (`moof`/`mdat` pairs) and insert it right
@@ -36,116 +30,16 @@ import java.util.concurrent.ConcurrentHashMap
  *    level by [androidx.media3.exoplayer.drm.DefaultDrmSessionManager] via Apple's
  *    `acquireWebPlaybackLicense` endpoint (Widevine L3) — see MusicService.
  *
- * The resulting virtual byte stream is fully seekable and served through the ordinary
- * progressive pipeline. Samples are decrypted inside MediaCodec via MediaCrypto, exactly
- * like any DRM stream — no decrypted audio touches the DataSource layer.
+ * The resulting bytes are written to a cache file by the resolver and played as an ordinary
+ * progressive `file://` stream. Samples are decrypted inside MediaCodec via MediaCrypto —
+ * no decrypted audio ever touches the filesystem or the DataSource layer.
  */
-class AppleMusicProgressiveDataSource(
-    private val client: OkHttpClient,
-) : BaseDataSource(true) {
-    class Factory(
-        private val client: OkHttpClient,
-    ) : DataSource.Factory {
-        override fun createDataSource(): DataSource = AppleMusicProgressiveDataSource(client)
-    }
-
-    private data class Entry(
-        val bytes: ByteArray,
-        val length: Long,
-    )
-
-    private var current: Entry? = null
-    private var currentUri: Uri? = null
-    private var position: Long = 0
-    private var remaining: Long = 0
-
-    override fun open(dataSpec: DataSpec): Long {
-        transferInitializing(dataSpec)
-        val uri = dataSpec.uri
-        if (!uri.scheme.equals(SCHEME, ignoreCase = true)) {
-            throw IOException("AppleMusicProgressiveDataSource opened with ${uri.scheme}://")
-        }
-        val playlistUrl = uri.getQueryParameter("u").orEmpty()
-        if (playlistUrl.isBlank()) throw IOException("appledash URI missing playlist url")
-        val kidHex = uri.getQueryParameter("k")
-        val entry = getOrBuild(playlistUrl, kidHex)
-        current = entry
-        currentUri = uri
-        position = dataSpec.position
-        remaining =
-            if (dataSpec.length != LENGTH_UNSET) {
-                dataSpec.length
-            } else {
-                entry.length - dataSpec.position
-            }
-        if (position < 0 || position > entry.length) throw EOFException("position $position out of bounds")
-        transferStarted(dataSpec)
-        return remaining
-    }
-
-    override fun read(
-        buffer: ByteArray,
-        offset: Int,
-        length: Int,
-    ): Int {
-        if (remaining == 0L) return RESULT_END_OF_INPUT
-        val entry = current ?: throw IOException("read before open")
-        val count = minOf(length.toLong(), remaining, (entry.length - position).coerceAtLeast(0)).toInt()
-        if (count <= 0) return RESULT_END_OF_INPUT
-        System.arraycopy(entry.bytes, position.toInt(), buffer, offset, count)
-        position += count
-        remaining -= count
-        bytesTransferred(count)
-        return count
-    }
-
-    override fun getUri(): Uri? = currentUri
-
-    override fun close() {
-        current = null
-        currentUri = null
-    }
-
-    /** LRU-1 in-memory virtual stream keyed by playlist URL (re-downloaded on seek-back). */
-    private fun getOrBuild(
-        playlistUrl: String,
-        kidHex: String?,
-    ): Entry {
-        cache[playlistUrl]?.let { return it }
-        synchronized(cacheLock) {
-            cache[playlistUrl]?.let { return it }
-            val entry = build(playlistUrl, kidHex)
-            cache.clear()
-            cache[playlistUrl] = entry
-            return entry
-        }
-    }
-
-    private fun build(
-        playlistUrl: String,
-        kidHex: String?,
-    ): Entry {
-        val playlist = fetch(playlistUrl)
-        val parsed = parsePlaylist(playlistUrl, playlist.toString(Charsets.UTF_8))
-        val mp4 = fetch(parsed.mediaUrl)
-        val virtual = buildVirtualStream(mp4, parsed, kidHex)
-        Log.i(
-            TAG,
-            "built virtual stream: file=${mp4.size} virtual=${virtual.size} " +
-                "fragments=${parsed.fragmentCount} timescale=${parsed.timescale}",
-        )
-        return Entry(virtual, virtual.size.toLong())
-    }
-
-    private fun fetch(url: String): ByteArray {
-        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("fetch failed ${response.code} for $url")
-            return response.body?.bytes() ?: throw IOException("empty body for $url")
-        }
-    }
-
-    // ── MP4 box walking ─────────────────────────────────────────────────────────────
+object AppleMusicVirtualStream {
+    const val TAG = "AppleMusicStream"
+    private const val USER_AGENT =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/145.0.0.0 Safari/537.36"
+    private const val DEFAULT_TIMESCALE = 44100L
 
     private data class Box(
         val type: String,
@@ -153,6 +47,40 @@ class AppleMusicProgressiveDataSource(
         val size: Int,
         val headerSize: Int,
     )
+
+    private class ParsedPlaylistInfo(
+        val mediaUrl: String,
+        val durationsSec: List<Double>,
+    )
+
+    /** Fetch the playlist, then the fMP4, and assemble the virtual progressive stream. */
+    fun build(
+        client: OkHttpClient,
+        playlistUrl: String,
+        kidHex: String?,
+    ): ByteArray {
+        val playlist = fetch(client, playlistUrl)
+        val parsed = parsePlaylist(playlistUrl, playlist)
+        val mp4 = fetch(client, parsed.mediaUrl)
+        val virtual = buildVirtualStream(mp4, parsed, kidHex)
+        Log.i(
+            TAG,
+            "built virtual stream: file=${mp4.size} virtual=${virtual.size} " +
+                "fragments=${parsed.durationsSec.size} timescale=${parsed.timescale}",
+        )
+        return virtual
+    }
+
+    private fun fetch(
+        client: OkHttpClient,
+        url: String,
+    ): ByteArray {
+        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("fetch failed ${response.code} for $url")
+            return response.body?.bytes() ?: throw IOException("empty body for $url")
+        }
+    }
 
     private fun walk(
         buf: ByteArray,
@@ -191,18 +119,16 @@ class AppleMusicProgressiveDataSource(
         return v
     }
 
-    private class ParsedPlaylistInfo(
+    private class ParsedFile(
         val mediaUrl: String,
         val durationsSec: List<Double>,
-        val fragmentCount: Int,
-        val timescale: Long,
     )
 
     /** Playlist → absolute mp4 URL + per-fragment durations (seconds, from #EXTINF). */
     private fun parsePlaylist(
         playlistUrl: String,
         text: String,
-    ): ParsedPlaylistInfo {
+    ): ParsedFile {
         var mediaName: String? = null
         val durations = mutableListOf<Double>()
         for (raw in text.lineSequence()) {
@@ -222,16 +148,13 @@ class AppleMusicProgressiveDataSource(
         }
         val name = mediaName ?: throw IOException("playlist has no segments")
         val mediaUrl = playlistUrl.substringBeforeLast('/').trimEnd('/') + "/" + name
-
-        // Pre-parse the fragment count + timescale so build failures happen before download.
-        val fragmentCount = Regex("#EXTINF").findAll(text).count()
-        return ParsedPlaylistInfo(mediaUrl, durations, fragmentCount, DEFAULT_TIMESCALE)
+        return ParsedFile(mediaUrl, durations)
     }
 
     /** Parse box layout + inject `pssh` (into moov) and `sidx` (after moov). */
     private fun buildVirtualStream(
         mp4: ByteArray,
-        playlist: ParsedPlaylistInfo,
+        playlist: ParsedFile,
         kidHex: String?,
     ): ByteArray {
         val boxes = walk(mp4, 0, mp4.size)
@@ -389,31 +312,4 @@ class AppleMusicProgressiveDataSource(
 
     private fun hexToBytes(hex: String): ByteArray =
         hex.chunked(2).mapNotNull { it.toIntOrNull(16)?.toByte() }.toByteArray()
-
-    companion object {
-        const val TAG = "AppleMusicStream"
-        const val SCHEME = "appledash"
-        private const val DEFAULT_TIMESCALE = 44100L
-        private const val USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/145.0.0.0 Safari/537.36"
-        private const val LENGTH_UNSET = -1L
-        private const val RESULT_END_OF_INPUT = -1
-
-        /** In-memory virtual-stream cache keyed by playlist URL (LRU-1). */
-        private val cache = ConcurrentHashMap<String, Entry>()
-        private val cacheLock = Any()
-
-        /** Build the playback URI for a resolved Apple Music playlist. */
-        fun uriFor(
-            playlistUrl: String,
-            keyIdHex: String?,
-        ): Uri =
-            Uri.Builder()
-                .scheme(SCHEME)
-                .authority("play")
-                .appendQueryParameter("u", playlistUrl)
-                .apply { if (!keyIdHex.isNullOrBlank()) appendQueryParameter("k", keyIdHex) }
-                .build()
-    }
 }

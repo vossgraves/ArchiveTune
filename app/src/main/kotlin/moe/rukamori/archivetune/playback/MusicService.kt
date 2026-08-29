@@ -236,7 +236,7 @@ import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.audiosource.pcmBitrateOrNull
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
-import moe.rukamori.archivetune.applemusic.AppleMusicProgressiveDataSource
+import moe.rukamori.archivetune.applemusic.AppleMusicVirtualStream
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
@@ -8574,7 +8574,6 @@ class MusicService :
                 telegramFactory = telegramFactory,
                 deezerFactory = deezerFactory,
                 tidalProgressiveDashFactory = tidalProgressiveDashFactory,
-                appleFactory = AppleMusicProgressiveDataSource.Factory(mediaOkHttpClient),
             )
         }
     }
@@ -8594,17 +8593,12 @@ class MusicService :
                     defaultFactory = youtubeMediaFactory,
                     deezerFactory = DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
                     tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient),
-                    appleFactory = AppleMusicProgressiveDataSource.Factory(mediaOkHttpClient),
                 )
             }
 
         return ResolvingDataSource.Factory(routingFactory) { dataSpec ->
             val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
-            if (
-                scheme == DeezerCrypto.SCHEME ||
-                scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME ||
-                scheme == AppleMusicProgressiveDataSource.SCHEME
-            ) {
+            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
                 dataSpec
             } else {
                 resolvePlaybackDataSpec(
@@ -9632,14 +9626,6 @@ class MusicService :
             refreshed.accessToken
         }
 
-    /**
-     * Apple Music full-track source. Requires both Apple tokens (dev JWT + Media-User-Token
-     * with an active subscription). Resolution walks the catalog candidates through the shared
-     * metadata gate here (so a wrong search hit falls through to the next candidate instead of
-     * killing the source), then returns the top accepted candidate as an `appledash://` stream
-     * served by [AppleMusicProgressiveDataSource]. The media id is registered for the Widevine
-     * L3 DRM session that decrypts the CENC samples at the codec level.
-     */
     private fun resolveAppleStream(
         query: SourceQuery,
         trusted: Boolean = false,
@@ -9661,14 +9647,14 @@ class MusicService :
             }
         if (candidates.isEmpty()) return null
 
-        var best: DirectStream? = null
+        // Gate candidates locally (shared metadata gate) so a wrong search hit falls through
+        // to the next candidate; with a per-song override the user's pick wins outright.
+        var winner: Pair<AppleMusicAudioProvider.AppleMusicStream, DirectStream>? = null
         var bestScore = -1.0
         for (candidate in candidates) {
             val stream =
                 DirectStream(
-                    uri = AppleMusicProgressiveDataSource
-                        .uriFor(candidate.playlistUrl, candidate.keyIdHex)
-                        .toString(),
+                    uri = "apple-pending:${candidate.songId}",
                     mimeType = "audio/mp4",
                     codecs = "mp4a.40.2",
                     contentLength = candidate.contentLength,
@@ -9692,15 +9678,52 @@ class MusicService :
                     )
                 }
             if (match.accepted && match.score > bestScore) {
-                best = stream
+                winner = candidate to stream
                 bestScore = match.score
             }
         }
-        best?.let {
+        val (candidate, placeholder) = winner ?: return null
+
+        // Materialize the winning candidate into a cache file; playback is an ordinary
+        // progressive file stream with the Widevine L3 session decrypting at the codec level.
+        return try {
+            val file =
+                appleStreamFile(query.mediaId) {
+                    val bytes = AppleMusicVirtualStream.build(mediaOkHttpClient, candidate.playlistUrl, candidate.keyIdHex)
+                    bytes
+                }
             appleDrmMediaIds.add(query.mediaId)
-            Timber.tag("MusicService").i("Apple Music resolved [%s] for \"%s\"", it.label, query.title)
+            Timber
+                .tag("MusicService")
+                .i("Apple Music resolved [%s] for \"%s\" (%d KB)", placeholder.label, query.title, file.length() / 1024)
+            placeholder.copy(uri = android.net.Uri.fromFile(file).toString(), contentLength = file.length())
+        } catch (err: Throwable) {
+            Timber.tag("MusicService").w(err, "Apple Music virtual stream failed for \"%s\"", query.title)
+            null
         }
-        return best
+    }
+
+    /**
+     * Cache file for an Apple stream (cacheDir/applemusic/<mediaId>.m4a), built via [build]
+     * when missing, with a simple prune: oldest files go first past ~300 MB.
+     */
+    private fun appleStreamFile(
+        mediaId: String,
+        build: () -> ByteArray,
+    ): java.io.File {
+        val dir = java.io.File(cacheDir, "applemusic").apply { mkdirs() }
+        val files = dir.listFiles()?.sortedBy { it.lastModified() } ?: emptyList()
+        var total = files.sumOf { it.length() }
+        for (f in files) {
+            if (total <= 300L * 1024 * 1024) break
+            total -= f.length()
+            f.delete()
+        }
+        val safeId = mediaId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val out = java.io.File(dir, "$safeId.m4a")
+        if (out.exists() && out.length() > 0) return out
+        out.writeBytes(build())
+        return out
     }
 
     private fun resolveTidalStream(query: SourceQuery): DirectStream? {
@@ -10799,7 +10822,6 @@ class MusicService :
             normalizedScheme == "telegram" ||
             normalizedScheme == DeezerCrypto.SCHEME ||
             normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME ||
-            normalizedScheme == AppleMusicProgressiveDataSource.SCHEME ||
             normalizedScheme == "http" ||
             normalizedScheme == "https"
     }
@@ -10809,8 +10831,7 @@ class MusicService :
         return normalizedScheme == "content" ||
             normalizedScheme == "file" ||
             normalizedScheme == "android.resource" ||
-            normalizedScheme == "telegram" ||
-            normalizedScheme == AppleMusicProgressiveDataSource.SCHEME
+            normalizedScheme == "telegram"
     }
 
     private fun deviceSupportsMimeType(mimeType: String): Boolean =
@@ -10885,7 +10906,6 @@ class MusicService :
         private val telegramFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
-        private val appleFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -10909,9 +10929,6 @@ class MusicService :
                     // Streams through its own progressive-DASH source; the YouTube resolver
                     // would rewrite the URI.
                     tidalProgressiveDashFactory
-                } else if (normalizedScheme == AppleMusicProgressiveDataSource.SCHEME) {
-                    // Apple Music progressive fMP4 (sidx/pssh-injected virtual stream).
-                    appleFactory
                 } else if (
                     normalizedScheme == "content" ||
                     normalizedScheme == "file" ||
@@ -10948,7 +10965,6 @@ class MusicService :
         private val defaultFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
-        private val appleFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -10964,7 +10980,6 @@ class MusicService :
                 when (scheme) {
                     DeezerCrypto.SCHEME -> deezerFactory
                     TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
-                    AppleMusicProgressiveDataSource.SCHEME -> appleFactory
                     else -> defaultFactory
                 }
             val selected = factory.createDataSource()

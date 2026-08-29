@@ -215,7 +215,9 @@ private fun TokenSheet(
     var showDev by rememberSaveable { mutableStateOf(false) }
 
     val mediaValid = looksLikeMediaUserToken(mediaToken.trim())
-    val devValid = devToken.trim().isEmpty() || looksLikeJwt(devToken.trim())
+    // Tolerate a "Bearer " prefix and stray whitespace on the pasted dev JWT.
+    val devClean = devToken.trim().removePrefix("Bearer ").removePrefix("bearer ").trim()
+    val devValid = devClean.isEmpty() || looksLikeJwt(devClean)
     // Developer token is optional — the app ships a fallback web-player JWT and can scrape a fresh one.
     // The user's Media User Token (0.Ap...) alone is enough to resolve ES/STM etc catalog via their account.
     // If they pasted both (Media User Token + Bearer JWT) we store both.
@@ -223,7 +225,12 @@ private fun TokenSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
         Column(
-            Modifier.padding(16.dp).padding(bottom = 24.dp),
+            // Scrollable: two long credential fields push the save row below the sheet fold
+            // otherwise, which reads as "the submit button disappeared".
+            Modifier
+                .padding(16.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(stringResource(R.string.applemusic_tokens_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -264,7 +271,7 @@ private fun TokenSheet(
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(android.R.string.cancel)) }
-                FilledTonalButton(onClick = { onSave(mediaToken, devToken) }, enabled = canSave, modifier = Modifier.weight(1f)) {
+                FilledTonalButton(onClick = { onSave(mediaToken, devClean) }, enabled = canSave, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.youtube_session_save))
                 }
             }
