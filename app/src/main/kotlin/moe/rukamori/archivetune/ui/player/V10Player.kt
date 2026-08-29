@@ -415,31 +415,16 @@ fun V10PlayerContent(
                             .size(16.dp)
                     )
                 }
-                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
-                val artistViewport = remember { mutableStateOf(0) }
-                val artistFade = PlayerFadeConfig.forStyle(PlayerDesignStyle.V10)
-                val artistShouldFade =
-                    artistViewport.value > 0 &&
-                        (artistLayout.value?.size?.width ?: 0) > artistViewport.value
-                androidx.compose.foundation.layout.Box(
-                    modifier =
-                        (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(artistFade.fadeWidth) else Modifier.fillMaxWidth())
-                            .clipToBounds()
-                            .onSizeChanged { artistViewport.value = it.width },
-                ) {
-                    Text(
-                        text = artistName.uppercase(),
-                        style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp),
-                        color = accent.copy(alpha = 0.8f),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        onTextLayout = { artistLayout.value = it },
-                        modifier = Modifier.fillMaxWidth().basicMarquee(
-                            iterations = Int.MAX_VALUE,
-                            initialDelayMillis = 2000
-                        )
+                Text(
+                    text = artistName.uppercase(),
+                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp),
+                    color = accent.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee(
+                        iterations = Int.MAX_VALUE,
+                        initialDelayMillis = 2000
                     )
-                }
+                )
             }
         }
 
