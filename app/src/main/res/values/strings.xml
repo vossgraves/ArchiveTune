@@ -838,6 +838,7 @@
     <string name="audio_source_disabled">Disabled — enable it in its section below</string>
     <string name="audio_source_youtube_fallback">YouTube is always tried last if no other source can resolve a track.</string>
     <string name="source_tidal">Tidal</string>
+    <string name="source_apple_music">Apple Music</string>
     <string name="source_youtube">YouTube</string>
     <string name="play_from">Play from</string>
     <string name="play_from_automatic">Automatic (preferred order)</string>
@@ -1144,6 +1145,8 @@
     <string name="source_settings">Sources</string>
     <string name="source_settings_subtitle">Streaming sources, priority and quality</string>
     <string name="applemusic_settings">Apple Music</string>
+    <string name="applemusic_enable">Enable Apple Music as a source</string>
+    <string name="applemusic_enable_description">Play full tracks via your Apple Music subscription (Media-User-Token). Needs both tokens signed in; shared pool accounts work too.</string>
     <string name="applemusic_quality">Streaming quality</string>
     <string name="applemusic_quality_desc">Preferred quality for Apple Music playback</string>
     <string name="applemusic_quality_aac">AAC 256 kbps</string>

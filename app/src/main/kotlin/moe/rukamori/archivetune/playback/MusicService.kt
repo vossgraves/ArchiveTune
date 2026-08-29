@@ -74,6 +74,11 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.drm.ExoMediaDrm
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -188,6 +193,7 @@ import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
+import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
 import moe.rukamori.archivetune.constants.TidalInstancesKey
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
@@ -229,6 +235,8 @@ import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.audiosource.pcmBitrateOrNull
+import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
+import moe.rukamori.archivetune.applemusic.AppleMusicProgressiveDataSource
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
@@ -8566,6 +8574,7 @@ class MusicService :
                 telegramFactory = telegramFactory,
                 deezerFactory = deezerFactory,
                 tidalProgressiveDashFactory = tidalProgressiveDashFactory,
+                appleFactory = AppleMusicProgressiveDataSource.Factory(mediaOkHttpClient),
             )
         }
     }
@@ -8585,12 +8594,17 @@ class MusicService :
                     defaultFactory = youtubeMediaFactory,
                     deezerFactory = DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
                     tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient),
+                    appleFactory = AppleMusicProgressiveDataSource.Factory(mediaOkHttpClient),
                 )
             }
 
         return ResolvingDataSource.Factory(routingFactory) { dataSpec ->
             val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
-            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
+            if (
+                scheme == DeezerCrypto.SCHEME ||
+                scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME ||
+                scheme == AppleMusicProgressiveDataSource.SCHEME
+            ) {
                 dataSpec
             } else {
                 resolvePlaybackDataSpec(
@@ -8709,6 +8723,7 @@ class MusicService :
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
             AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
+            AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
@@ -9337,6 +9352,11 @@ class MusicService :
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
                     AudioSourceType.QOBUZ_BACKUP -> resolveQobuzBackupStream(query)
                     AudioSourceType.DEEZER -> resolveDeezerStream(query)
+                    AudioSourceType.APPLE ->
+                        resolveAppleStream(
+                            query,
+                            trusted = overrideIsSourceOverride && override == AudioSourceType.APPLE,
+                        )
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }
@@ -9611,6 +9631,77 @@ class MusicService :
             Timber.tag("MusicService").i("Tidal token force-refreshed after 401")
             refreshed.accessToken
         }
+
+    /**
+     * Apple Music full-track source. Requires both Apple tokens (dev JWT + Media-User-Token
+     * with an active subscription). Resolution walks the catalog candidates through the shared
+     * metadata gate here (so a wrong search hit falls through to the next candidate instead of
+     * killing the source), then returns the top accepted candidate as an `appledash://` stream
+     * served by [AppleMusicProgressiveDataSource]. The media id is registered for the Widevine
+     * L3 DRM session that decrypts the CENC samples at the codec level.
+     */
+    private fun resolveAppleStream(
+        query: SourceQuery,
+        trusted: Boolean = false,
+    ): DirectStream? {
+        if (AppleMusicAudioProvider.mediaUserToken() == null || AppleMusicAudioProvider.devToken() == null) {
+            Timber
+                .tag("MusicService")
+                .d("Apple Music source: missing tokens (sign in via Settings → Apple Music)")
+            return null
+        }
+        val candidates =
+            runBlocking(Dispatchers.IO) {
+                AppleMusicAudioProvider.resolveCandidates(
+                    title = query.title,
+                    artists = query.artists,
+                    album = query.album,
+                    durationMs = query.durationMs,
+                )
+            }
+        if (candidates.isEmpty()) return null
+
+        var best: DirectStream? = null
+        var bestScore = -1.0
+        for (candidate in candidates) {
+            val stream =
+                DirectStream(
+                    uri = AppleMusicProgressiveDataSource
+                        .uriFor(candidate.playlistUrl, candidate.keyIdHex)
+                        .toString(),
+                    mimeType = "audio/mp4",
+                    codecs = "mp4a.40.2",
+                    contentLength = candidate.contentLength,
+                    label = "Apple Music ${candidate.flavor}",
+                    source = AudioSourceType.APPLE,
+                    matchedTitle = candidate.matchedTitle,
+                    matchedArtist = candidate.matchedArtist,
+                    matchedAlbum = candidate.matchedAlbum,
+                    matchedDurationMs = candidate.matchedDurationMs,
+                )
+            val match =
+                if (trusted) {
+                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
+                } else {
+                    TitleMatch.evaluate(
+                        wantedTitle = query.title,
+                        wantedArtists = query.artists,
+                        wantedAlbum = query.album,
+                        wantedDurationMs = query.durationMs,
+                        stream = stream,
+                    )
+                }
+            if (match.accepted && match.score > bestScore) {
+                best = stream
+                bestScore = match.score
+            }
+        }
+        best?.let {
+            appleDrmMediaIds.add(query.mediaId)
+            Timber.tag("MusicService").i("Apple Music resolved [%s] for \"%s\"", it.label, query.title)
+        }
+        return best
+    }
 
     private fun resolveTidalStream(query: SourceQuery): DirectStream? {
         val quality = parseTidalAudioQuality()
@@ -10239,13 +10330,14 @@ class MusicService :
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false
         // Defaults MUST match PlaybackSourceSections + sourceResolutionChain(). Any enabled
-        // external lossless source (Tidal, Qobuz, Qobuz backup, Deezer) must bypass the ephemeral
-        // YouTube player cache so toggling a source on takes effect immediately instead of
-        // replaying cached YT bytes.
+        // external lossless source (Tidal, Qobuz, Qobuz backup, Deezer, Apple Music) must bypass
+        // the ephemeral YouTube player cache so toggling a source on takes effect immediately
+        // instead of replaying cached YT bytes.
         return dataStore.get(TidalEnabledKey, true) ||
             dataStore.get(QobuzEnabledKey, false) ||
             dataStore.get(QobuzBackupEnabledKey, false) ||
-            dataStore.get(DeezerEnabledKey, false)
+            dataStore.get(DeezerEnabledKey, false) ||
+            dataStore.get(AppleMusicSourceEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(
@@ -10707,6 +10799,7 @@ class MusicService :
             normalizedScheme == "telegram" ||
             normalizedScheme == DeezerCrypto.SCHEME ||
             normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME ||
+            normalizedScheme == AppleMusicProgressiveDataSource.SCHEME ||
             normalizedScheme == "http" ||
             normalizedScheme == "https"
     }
@@ -10716,7 +10809,8 @@ class MusicService :
         return normalizedScheme == "content" ||
             normalizedScheme == "file" ||
             normalizedScheme == "android.resource" ||
-            normalizedScheme == "telegram"
+            normalizedScheme == "telegram" ||
+            normalizedScheme == AppleMusicProgressiveDataSource.SCHEME
     }
 
     private fun deviceSupportsMimeType(mimeType: String): Boolean =
@@ -10737,6 +10831,46 @@ class MusicService :
                 // files imprecise or impossible.
                 .setConstantBitrateSeekingEnabled(true),
         )
+            // Apple Music full-track streams are CENC-encrypted fMP4; the Widevine L3
+            // session (license exchanged against Apple's acquireWebPlaybackLicense) is
+            // attached only for media ids resolved through the Apple source — everything
+            // else stays DRM-free with the default behavior.
+            .setDrmSessionManagerProvider { mediaItem ->
+                val isApple = mediaItem.mediaId?.let { it in appleDrmMediaIds } == true
+                if (isApple) buildAppleDrmSessionManager() ?: DrmSessionManager.DRM_UNSUPPORTED
+                else DrmSessionManager.DRM_UNSUPPORTED
+            }
+
+    /**
+     * Media ids resolved through the Apple Music source. Registered when the resolver
+     * returns an Apple stream so the DRM provider above knows which media items need the
+     * Widevine session. Entries stay for the process lifetime (tiny; ids only).
+     */
+    private val appleDrmMediaIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    private fun buildAppleDrmSessionManager(): DrmSessionManager? {
+        val mediaToken = AppleMusicAudioProvider.mediaUserToken() ?: return null
+        val devToken = AppleMusicAudioProvider.devToken()
+        val callback = HttpMediaDrmCallback(APPLE_LICENSE_URL, OkHttpDataSource.Factory(mediaOkHttpClient))
+        devToken?.let { callback.setKeyRequestProperty("Authorization", "Bearer $it") }
+        callback.setKeyRequestProperty("Media-User-Token", mediaToken)
+        callback.setKeyRequestProperty("Origin", "https://music.apple.com")
+        callback.setKeyRequestProperty("Referer", "https://music.apple.com/")
+        callback.setKeyRequestProperty("Content-Type", "application/octet-stream")
+        return DefaultDrmSessionManager
+            .Builder()
+            .setUuidAndExoMediaDrmProvider(
+                C.WIDEVINE_UUID,
+                ExoMediaDrm.Provider { uuid ->
+                    FrameworkMediaDrm(uuid).apply {
+                        // Force L3: Apple's license server issues software-level keys for the
+                        // web playback pipeline; requesting L1 would fail on most devices.
+                        runCatching { setPropertyString("securityLevel", "3") }
+                    }
+                },
+            )
+            .build(callback)
+    }
 
     private class SchemeRoutingDataSource(
         private val cachedFactory: DataSource.Factory,
@@ -10744,6 +10878,7 @@ class MusicService :
         private val telegramFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
+        private val appleFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -10767,6 +10902,9 @@ class MusicService :
                     // Streams through its own progressive-DASH source; the YouTube resolver
                     // would rewrite the URI.
                     tidalProgressiveDashFactory
+                } else if (normalizedScheme == AppleMusicProgressiveDataSource.SCHEME) {
+                    // Apple Music progressive fMP4 (sidx/pssh-injected virtual stream).
+                    appleFactory
                 } else if (
                     normalizedScheme == "content" ||
                     normalizedScheme == "file" ||
@@ -10803,6 +10941,7 @@ class MusicService :
         private val defaultFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
+        private val appleFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -10818,6 +10957,7 @@ class MusicService :
                 when (scheme) {
                     DeezerCrypto.SCHEME -> deezerFactory
                     TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
+                    AppleMusicProgressiveDataSource.SCHEME -> appleFactory
                     else -> defaultFactory
                 }
             val selected = factory.createDataSource()
@@ -11571,6 +11711,10 @@ class MusicService :
         // Prefix for the dedicated player-cache key used by Tidal streams so their bytes never
         // collide with the YouTube stream cached under the bare media id.
         private const val TIDAL_CACHE_KEY_PREFIX = "tidal:"
+
+        /** Apple Music license endpoint (Widevine L3 key exchange, verified live). */
+        private const val APPLE_LICENSE_URL =
+            "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/acquireWebPlaybackLicense"
         const val HOME_FORGOTTEN_FAVORITES = "home_forgotten_favorites"
         const val HOME_KEEP_LISTENING = "home_keep_listening"
         const val HOME_SUGGESTED_SONGS = "home_suggested_songs"

@@ -61,6 +61,7 @@ import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
@@ -105,6 +106,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
         AudioSourceType.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
+        AudioSourceType.APPLE -> context.getString(R.string.source_apple_music)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
@@ -115,6 +117,7 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
+        AudioSourceType.APPLE -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -140,6 +143,7 @@ internal fun PlaybackSourceSections(
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChangeRaw) = rememberPreference(QobuzEnabledKey, false)
     val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
+    val (appleMusicEnabled, onAppleMusicEnabledChangeRaw) = rememberPreference(AppleMusicSourceEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
@@ -167,6 +171,14 @@ internal fun PlaybackSourceSections(
     }
     val onDeezerEnabledChange: (Boolean) -> Unit = { enabled ->
         onDeezerEnabledChangeRaw(enabled)
+        if (enabled && PoolAccountManager.isEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { PoolAccountManager.refresh(context, force = true) }
+            }
+        }
+    }
+    val onAppleMusicEnabledChange: (Boolean) -> Unit = { enabled ->
+        onAppleMusicEnabledChangeRaw(enabled)
         if (enabled && PoolAccountManager.isEnabled) {
             scope.launch(Dispatchers.IO) {
                 runCatching { PoolAccountManager.refresh(context, force = true) }
@@ -211,6 +223,7 @@ internal fun PlaybackSourceSections(
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
             AudioSourceType.DEEZER -> deezerEnabled
+            AudioSourceType.APPLE -> appleMusicEnabled
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
         }
@@ -506,6 +519,16 @@ internal fun PlaybackSourceSections(
     }
 
     PreferenceGroup(title = stringResource(R.string.applemusic_settings)) {
+        item {
+            SwitchPreference(
+                modifier = positions.modifierFor("applemusic_enable"),
+                title = { Text(stringResource(R.string.applemusic_enable)) },
+                description = stringResource(R.string.applemusic_enable_description),
+                icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                checked = appleMusicEnabled,
+                onCheckedChange = onAppleMusicEnabledChange,
+            )
+        }
         item {
             EnumListPreference(
                 title = { Text(stringResource(R.string.applemusic_quality)) },

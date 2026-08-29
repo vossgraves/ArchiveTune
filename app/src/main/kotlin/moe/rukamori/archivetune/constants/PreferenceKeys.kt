@@ -1308,6 +1308,13 @@ enum class AppleMusicQuality {
 
 val AppleMusicQualityKey = stringPreferencesKey("appleMusicQuality")
 
+/**
+ * Master enable for Apple Music as a streaming source (Settings → Sources → Apple Music).
+ * Default off: playback needs a Media-User-Token with an active Apple Music subscription,
+ * and the resolution chain hits Apple's unofficial web-playback endpoint.
+ */
+val AppleMusicSourceEnabledKey = booleanPreferencesKey("appleMusicSourceEnabled")
+
 val TidalAudioQualityOptions =
     listOf(
         TidalAudioQuality.AAC_320,
@@ -1421,6 +1428,7 @@ enum class AudioSourceType {
     QOBUZ,
     QOBUZ_BACKUP,
     DEEZER,
+    APPLE,
     JIOSAAVN,
     YOUTUBE,
 }

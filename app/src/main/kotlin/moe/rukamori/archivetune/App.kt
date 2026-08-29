@@ -206,6 +206,10 @@ class App :
         }
         AppleMusicProvider.mediaUserTokenProvider = {
             appleMusicMediaUserTokenCache.ifBlank { null }
+                // Fall back to shared Apple Music accounts contributed to the Source Pool when
+                // the user hasn't signed in personally — enables lyrics/canvas/playback for
+                // pool users without their own login.
+                ?: PoolAccountManager.appleMusicAccounts().firstOrNull()?.mediaUserToken
         }
 
         // Spotify Canvas. The canvas module deliberately has no dependency on the

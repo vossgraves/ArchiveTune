@@ -10,6 +10,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
@@ -76,6 +77,7 @@ object SourceCheckService {
                 AudioSourceType.QOBUZ -> checkQobuz(context)
                 AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup()
                 AudioSourceType.DEEZER -> checkDeezer(context)
+                AudioSourceType.APPLE -> checkAppleMusic()
                 AudioSourceType.JIOSAAVN -> checkJioSaavn()
                 AudioSourceType.YOUTUBE -> SourceCheckResult(
                     healthy = true,
@@ -325,6 +327,44 @@ object SourceCheckService {
                 )
             }
         }.getOrNull()
+
+    private suspend fun checkAppleMusic(): SourceCheckResult {
+        val mediaToken = AppleMusicAudioProvider.mediaUserToken()
+        val devToken = AppleMusicAudioProvider.devToken()
+        if (mediaToken == null || devToken == null) {
+            val missing =
+                buildList {
+                    if (devToken == null) add("dev (Bearer) token")
+                    if (mediaToken == null) add("Media-User-Token")
+                }.joinToString(" and ")
+            val pool = PoolAccountManager.appleMusicAccounts()
+            if (pool.isNotEmpty()) {
+                return SourceCheckResult(
+                    healthy = true,
+                    summary = "Signed in via the Source Pool (%d shared Apple Music account%s).".format(
+                        pool.size,
+                        if (pool.size == 1) "" else "s",
+                    ),
+                )
+            }
+            return SourceCheckResult(
+                healthy = false,
+                summary = "No $missing. Sign in via Settings → Apple Music, or refresh the source pool.",
+            )
+        }
+        return runCatching {
+            val storefront = AppleMusicAudioProvider.resolveStorefront()
+            SourceCheckResult(
+                healthy = true,
+                summary = "Apple Music reachable — storefront '$storefront' resolved from your token.",
+            )
+        }.getOrElse {
+            SourceCheckResult(
+                healthy = false,
+                summary = "Token present but the API rejected it (${it.message}). Re-paste a fresh Media-User-Token.",
+            )
+        }
+    }
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
         // force = true. The whole point of tapping "Check source" is to find out whether accounts

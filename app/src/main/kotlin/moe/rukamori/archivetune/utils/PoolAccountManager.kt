@@ -68,6 +68,7 @@ object PoolAccountManager {
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
     private val CACHE_DEEZER_KEY = stringPreferencesKey("poolDeezerAccounts")
+    private val CACHE_APPLE_KEY = stringPreferencesKey("poolAppleMusicAccounts")
 
     /** Last resolved read key, so fire-and-forget /api/report calls use the same identity. */
     @Volatile
@@ -105,6 +106,18 @@ object PoolAccountManager {
         val masterSecret: String? = null,
     )
 
+    /**
+     * A shared Apple Music credential. [mediaUserToken] is the personal `0.Ap…` token from the
+     * contributor's Apple Music web session; it unlocks user-scoped AMP API calls (lyrics,
+     * personal storefront) and — with an active subscription — full-track playback via the
+     * web-playback endpoint. The dev (Bearer) JWT is NOT pooled: the app self-scrapes one.
+     */
+    data class AppleMusicPoolAccount(
+        val id: Long?,
+        val mediaUserToken: String,
+        val premium: Boolean,
+    )
+
     @Volatile
     private var tidalCache: List<TidalPoolAccount> = emptyList()
 
@@ -113,6 +126,9 @@ object PoolAccountManager {
 
     @Volatile
     private var deezerCache: List<DeezerPoolAccount> = emptyList()
+
+    @Volatile
+    private var appleMusicCache: List<AppleMusicPoolAccount> = emptyList()
 
     @Volatile
     private var lastRefreshAt = 0L
@@ -154,11 +170,14 @@ object PoolAccountManager {
 
     fun deezerAccounts(): List<DeezerPoolAccount> = deezerCache.sortedByDescending { it.premium }
 
-    fun hasAccounts(): Boolean = tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty()
+    fun appleMusicAccounts(): List<AppleMusicPoolAccount> = appleMusicCache.sortedByDescending { it.premium }
+
+    fun hasAccounts(): Boolean =
+        tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() || appleMusicCache.isNotEmpty()
 
     /** True when every pooled service has at least one account, i.e. nothing is left to discover. */
     private fun hasEveryService(): Boolean =
-        tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty()
+        tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
     /**
      * How long a non-forced [refresh] may be skipped for. Full caches are re-read once a day; a
@@ -186,12 +205,16 @@ object PoolAccountManager {
                 context.dataStore.getAsync(CACHE_DEEZER_KEY)?.takeIf { it.isNotBlank() }?.let {
                     deezerCache = parseDeezer(JSONArray(it))
                 }
+                context.dataStore.getAsync(CACHE_APPLE_KEY)?.takeIf { it.isNotBlank() }?.let {
+                    appleMusicCache = parseAppleMusic(JSONArray(it))
+                }
                 loadedFromDisk = true
                 Timber.tag(TAG).d(
-                    "Loaded cached accounts: tidal=%d qobuz=%d deezer=%d",
+                    "Loaded cached accounts: tidal=%d qobuz=%d deezer=%d apple=%d",
                     tidalCache.size,
                     qobuzCache.size,
                     deezerCache.size,
+                    appleMusicCache.size,
                 )
             }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached pool accounts") }
         }
@@ -254,6 +277,7 @@ object PoolAccountManager {
                         val tidal = parseTidal(root.optJSONObject("tidal")?.optJSONArray("accounts"))
                         val qobuz = parseQobuz(root.optJSONObject("qobuz")?.optJSONArray("accounts"))
                         val deezer = parseDeezer(root.optJSONObject("deezer")?.optJSONArray("accounts"))
+                        val apple = parseAppleMusic(root.optJSONObject("apple-music")?.optJSONArray("accounts"))
                         // Don't overwrite the in-memory cache with an empty list when the pool
                         // returns a 200 with a partial/empty response (rate-limit, transient
                         // server bug, captive-portal interception, malformed JSON). The user
@@ -261,7 +285,7 @@ object PoolAccountManager {
                         // while playing songs" — and the only way to recover was force-stop +
                         // re-open. Only update the cache when at least one list is non-empty.
                         // Otherwise keep the previous (non-empty) cache so playback keeps working.
-                        val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty()
+                        val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty()
                         if (allEmpty && hasAccounts()) {
                             Timber
                                 .tag(TAG)
@@ -270,14 +294,16 @@ object PoolAccountManager {
                             tidalCache = tidal
                             qobuzCache = qobuz
                             deezerCache = deezer
+                            appleMusicCache = apple
                             lastRefreshAt = System.currentTimeMillis()
-                            persist(context, tidal, qobuz, deezer)
+                            persist(context, tidal, qobuz, deezer, apple)
                         }
                         Timber.tag(TAG).i(
-                            "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d",
+                            "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d apple=%d",
                             tidal.size,
                             qobuz.size,
                             deezer.size,
+                            apple.size,
                         )
                     }
                 }.onFailure { Timber.tag(TAG).w(it, "Pool account refresh failed") }
@@ -290,6 +316,7 @@ object PoolAccountManager {
         tidal: List<TidalPoolAccount>,
         qobuz: List<QobuzPoolAccount>,
         deezer: List<DeezerPoolAccount>,
+        apple: List<AppleMusicPoolAccount>,
     ) {
         val tidalJson =
             JSONArray().apply {
@@ -329,11 +356,23 @@ object PoolAccountManager {
                     )
                 }
             }.toString()
+        val appleJson =
+            JSONArray().apply {
+                apple.forEach {
+                    put(
+                        JSONObject()
+                            .put("id", it.id)
+                            .put("token", it.mediaUserToken)
+                            .put("premium", it.premium),
+                    )
+                }
+            }.toString()
         runCatching {
             context.dataStore.edit { prefs ->
                 prefs[CACHE_TIDAL_KEY] = tidalJson
                 prefs[CACHE_QOBUZ_KEY] = qobuzJson
                 prefs[CACHE_DEEZER_KEY] = deezerJson
+                prefs[CACHE_APPLE_KEY] = appleJson
             }
         }.onFailure { Timber.tag(TAG).w(it, "Failed to persist pool accounts") }
     }
@@ -451,4 +490,21 @@ object PoolAccountManager {
     /** Pool entry id from /api/sources (positive when present); null for manual/legacy entries. */
     private fun entryId(obj: JSONObject): Long? =
         obj.optLong("id", 0L).takeIf { it > 0L }
+
+    private fun parseAppleMusic(arr: JSONArray?): List<AppleMusicPoolAccount> {
+        if (arr == null) return emptyList()
+        val out = mutableListOf<AppleMusicPoolAccount>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val token = field(obj, "token") ?: continue
+            if (!token.startsWith("0.")) continue // media-user-tokens always start with "0."
+            out +=
+                AppleMusicPoolAccount(
+                    id = entryId(obj),
+                    mediaUserToken = token,
+                    premium = obj.optBoolean("premium", true),
+                )
+        }
+        return out
+    }
 }

@@ -329,6 +329,7 @@ object AudioSourceConfig {
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,
             AudioSourceType.DEEZER,
+            AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
             AudioSourceType.YOUTUBE,
         )

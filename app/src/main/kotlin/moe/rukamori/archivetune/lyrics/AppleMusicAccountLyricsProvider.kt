@@ -42,10 +42,11 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     override val name = "Apple Music"
 
     override fun isEnabled(context: Context): Boolean {
-        // Only show when the user actually pasted a Media User Token (0.Ap...)
-        // The dev JWT is optional because the app has a fallback web token.
+        // Enabled when the user pasted a Media-User-Token (0.Ap…) OR a shared pool account is
+        // available. The dev JWT is optional because the app has a fallback web token.
         val token = context.dataStore[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
-        return token.isNotBlank()
+        if (token.isNotBlank()) return true
+        return PoolAccountManager.appleMusicAccounts().isNotEmpty()
     }
 
     override suspend fun getLyrics(

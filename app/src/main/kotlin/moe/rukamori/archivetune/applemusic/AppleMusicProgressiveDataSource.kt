@@ -1,0 +1,419 @@
+/*
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
+package moe.rukamori.archivetune.applemusic
+
+import android.net.Uri
+import android.util.Log
+import androidx.media3.datasource.BaseDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.EOFException
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * Progressive byte-stream for Apple Music full-track playback.
+ *
+ * Apple's web-playback asset URL serves an HLS playlist whose segments are byteranges of a
+ * single CENC-encrypted fragmented MP4 (verified: `ftyp + moov + [moof + mdat]*`, sample-level
+ * AES-CTR, `#EXT-X-KEY` carrying the KID inline as a `data:` URI). ExoPlayer's progressive
+ * pipeline can play such a file directly — but only if the extractor can (a) build a SeekMap
+ * and (b) see DRM init data:
+ *
+ *  - **Seeking**: the file has no `sidx`. We synthesize one from the playlist's `#EXTINF`
+ *    durations plus the parsed fragment boundaries (`moof`/`mdat` pairs) and insert it right
+ *    after the `moov` — a top-level insertion, so no other box sizes need fixing.
+ *  - **DRM init**: the file has no `pssh` box; we synthesize a Widevine PSSH from the tenc
+ *    KID (the playlist's inline key id) and insert it as the first child of the `moov`,
+ *    bumping the `moov` size accordingly. The decryption key itself is fetched at the codec
+ *    level by [androidx.media3.exoplayer.drm.DefaultDrmSessionManager] via Apple's
+ *    `acquireWebPlaybackLicense` endpoint (Widevine L3) — see MusicService.
+ *
+ * The resulting virtual byte stream is fully seekable and served through the ordinary
+ * progressive pipeline. Samples are decrypted inside MediaCodec via MediaCrypto, exactly
+ * like any DRM stream — no decrypted audio touches the DataSource layer.
+ */
+class AppleMusicProgressiveDataSource(
+    private val client: OkHttpClient,
+) : BaseDataSource(true) {
+    class Factory(
+        private val client: OkHttpClient,
+    ) : DataSource.Factory {
+        override fun createDataSource(): DataSource = AppleMusicProgressiveDataSource(client)
+    }
+
+    private data class Entry(
+        val bytes: ByteArray,
+        val length: Long,
+    )
+
+    private var current: Entry? = null
+    private var currentUri: Uri? = null
+    private var position: Long = 0
+    private var remaining: Long = 0
+
+    override fun open(dataSpec: DataSpec): Long {
+        transferInitializing(dataSpec)
+        val uri = dataSpec.uri
+        if (!uri.scheme.equals(SCHEME, ignoreCase = true)) {
+            throw IOException("AppleMusicProgressiveDataSource opened with ${uri.scheme}://")
+        }
+        val playlistUrl = uri.getQueryParameter("u").orEmpty()
+        if (playlistUrl.isBlank()) throw IOException("appledash URI missing playlist url")
+        val kidHex = uri.getQueryParameter("k")
+        val entry = getOrBuild(playlistUrl, kidHex)
+        current = entry
+        currentUri = uri
+        position = dataSpec.position
+        remaining =
+            if (dataSpec.length != LENGTH_UNSET) {
+                dataSpec.length
+            } else {
+                entry.length - dataSpec.position
+            }
+        if (position < 0 || position > entry.length) throw EOFException("position $position out of bounds")
+        transferStarted(dataSpec)
+        return remaining
+    }
+
+    override fun read(
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int {
+        if (remaining == 0L) return RESULT_END_OF_INPUT
+        val entry = current ?: throw IOException("read before open")
+        val count = minOf(length.toLong(), remaining, (entry.length - position).coerceAtLeast(0)).toInt()
+        if (count <= 0) return RESULT_END_OF_INPUT
+        System.arraycopy(entry.bytes, position.toInt(), buffer, offset, count)
+        position += count
+        remaining -= count
+        bytesTransferred(count)
+        return count
+    }
+
+    override fun getUri(): Uri? = currentUri
+
+    override fun close() {
+        current = null
+        currentUri = null
+    }
+
+    /** LRU-1 in-memory virtual stream keyed by playlist URL (re-downloaded on seek-back). */
+    private fun getOrBuild(
+        playlistUrl: String,
+        kidHex: String?,
+    ): Entry {
+        cache[playlistUrl]?.let { return it }
+        synchronized(cacheLock) {
+            cache[playlistUrl]?.let { return it }
+            val entry = build(playlistUrl, kidHex)
+            cache.clear()
+            cache[playlistUrl] = entry
+            return entry
+        }
+    }
+
+    private fun build(
+        playlistUrl: String,
+        kidHex: String?,
+    ): Entry {
+        val playlist = fetch(playlistUrl)
+        val parsed = parsePlaylist(playlistUrl, playlist)
+        val mp4 = fetch(parsed.mediaUrl)
+        val virtual = buildVirtualStream(mp4, parsed, kidHex)
+        Log.i(
+            TAG,
+            "built virtual stream: file=%d virtual=%d fragments=%d timescale=%d",
+            mp4.size, virtual.size, parsed.fragmentCount, parsed.timescale,
+        )
+        return Entry(virtual, virtual.size.toLong())
+    }
+
+    private fun fetch(url: String): ByteArray {
+        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("fetch failed ${response.code} for $url")
+            return response.body?.bytes() ?: throw IOException("empty body for $url")
+        }
+    }
+
+    // ── MP4 box walking ─────────────────────────────────────────────────────────────
+
+    private data class Box(
+        val type: String,
+        val offset: Int,
+        val size: Int,
+        val headerSize: Int,
+    )
+
+    private fun walk(
+        buf: ByteArray,
+        start: Int,
+        end: Int,
+    ): List<Box> {
+        val out = mutableListOf<Box>()
+        var off = start
+        while (off + 8 <= end) {
+            var size = readU32(buf, off)
+            val type = String(buf, off + 4, 4, Charsets.ISO_8859_1)
+            var header = 8
+            if (size == 1) {
+                if (off + 16 > end) break
+                size = readU64(buf, off + 8).toInt()
+                header = 16
+            } else if (size == 0) {
+                size = end - off
+            }
+            if (size < 8 || off + size > end) break
+            out.add(Box(type, off, size, header))
+            off += size
+        }
+        return out
+    }
+
+    private fun readU32(buf: ByteArray, off: Int): Int =
+        ((buf[off].toInt() and 0xFF) shl 24) or
+            ((buf[off + 1].toInt() and 0xFF) shl 16) or
+            ((buf[off + 2].toInt() and 0xFF) shl 8) or
+            (buf[off + 3].toInt() and 0xFF)
+
+    private fun readU64(buf: ByteArray, off: Int): Long {
+        var v = 0L
+        for (i in 0 until 8) v = (v shl 8) or (buf[off + i].toLong() and 0xFF)
+        return v
+    }
+
+    private class ParsedPlaylistInfo(
+        val mediaUrl: String,
+        val durationsSec: List<Double>,
+        val fragmentCount: Int,
+        val timescale: Long,
+    )
+
+    /** Playlist → absolute mp4 URL + per-fragment durations (seconds, from #EXTINF). */
+    private fun parsePlaylist(
+        playlistUrl: String,
+        text: String,
+    ): ParsedPlaylistInfo {
+        var mediaName: String? = null
+        val durations = mutableListOf<Double>()
+        for (raw in text.lineSequence()) {
+            val line = raw.trim()
+            when {
+                line.startsWith("#EXT-X-MAP") && mediaName == null ->
+                    Regex("URI=\"([^\"]+)\"").find(line)?.let { mediaName = it.groupValues[1] }
+                line.startsWith("#EXTINF") ->
+                    Regex("#EXTINF:([0-9.]+)").find(line)?.let {
+                        durations += it.groupValues[1].toDoubleOrNull() ?: 0.0
+                    }
+            }
+        }
+        if (mediaName == null) {
+            mediaName = text.lineSequence().map { it.trim() }
+                .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+        }
+        val name = mediaName ?: throw IOException("playlist has no segments")
+        val mediaUrl = playlistUrl.substringBeforeLast('/').trimEnd('/') + "/" + name
+
+        // Pre-parse the fragment count + timescale so build failures happen before download.
+        val fragmentCount = Regex("#EXTINF").findAll(text).count()
+        return ParsedPlaylistInfo(mediaUrl, durations, fragmentCount, DEFAULT_TIMESCALE)
+    }
+
+    /** Parse box layout + inject `pssh` (into moov) and `sidx` (after moov). */
+    private fun buildVirtualStream(
+        mp4: ByteArray,
+        playlist: ParsedPlaylistInfo,
+        kidHex: String?,
+    ): ByteArray {
+        val boxes = walk(mp4, 0, mp4.size)
+        val moov = boxes.firstOrNull { it.type == "moov" } ?: throw IOException("no moov box")
+
+        val pairs = mutableListOf<Pair<Box, Box>>()
+        var i = 0
+        val seq = boxes.filter { it.type == "moof" || it.type == "mdat" }
+        while (i + 1 < seq.size) {
+            if (seq[i].type == "moof" && seq[i + 1].type == "mdat") {
+                pairs += seq[i] to seq[i + 1]
+                i += 2
+            } else {
+                i++
+            }
+        }
+        if (pairs.isEmpty()) throw IOException("no moof/mdat fragments")
+
+        val timescale = findBox(mp4, moov, "mdhd")?.let { mdhd ->
+            val p = mdhd.offset + mdhd.headerSize
+            if (mp4[p].toInt() == 1) readU32(mp4, p + 4 + 16).toLong() else readU32(mp4, p + 4 + 8).toLong()
+        }?.takeIf { it > 0 } ?: DEFAULT_TIMESCALE
+
+        val baseTime = findBox(mp4, moov, "moof")?.let { firstMoof ->
+            val traf = findBox(mp4, firstMoof, "traf") ?: return@let null
+            val tfdt = findBox(mp4, traf, "tfdt") ?: return@let null
+            val p = tfdt.offset + tfdt.headerSize
+            if (mp4[p].toInt() == 1) readU64(mp4, p + 4) else readU32(mp4, p + 4).toLong()
+        } ?: 0L
+
+        val pssh = buildWidevinePssh(kidHex?.let { hexToBytes(it) })
+        val sidx = buildSidx(pairs, playlist.durationsSec, timescale, baseTime)
+
+        // Virtual layout: [0 .. moov hdr][patched moov size/type][pssh][moov children][sidx][rest].
+        val moovInsertAt = moov.offset + moov.headerSize
+        val afterMoov = moov.offset + moov.size
+        val out = ByteArray(mp4.size + pssh.size + sidx.size)
+        var v = 0
+        System.arraycopy(mp4, 0, out, v, moovInsertAt)
+        v += moovInsertAt
+        val newMoovSize = moov.size + pssh.size
+        out[v++] = (newMoovSize ushr 24).toByte()
+        out[v++] = (newMoovSize ushr 16).toByte()
+        out[v++] = (newMoovSize ushr 8).toByte()
+        out[v++] = newMoovSize.toByte()
+        out[v++] = 'm'.code.toByte()
+        out[v++] = 'o'.code.toByte()
+        out[v++] = 'o'.code.toByte()
+        out[v++] = 'v'.code.toByte()
+        System.arraycopy(pssh, 0, out, v, pssh.size)
+        v += pssh.size
+        System.arraycopy(mp4, moovInsertAt, out, v, moov.size - moov.headerSize)
+        v += moov.size - moov.headerSize
+        System.arraycopy(sidx, 0, out, v, sidx.size)
+        v += sidx.size
+        System.arraycopy(mp4, afterMoov, out, v, mp4.size - afterMoov)
+        v += mp4.size - afterMoov
+        check(v == out.size)
+        return out
+    }
+
+    /** Depth-limited recursive box search inside [root]'s children. */
+    private fun findBox(
+        buf: ByteArray,
+        root: Box,
+        type: String,
+    ): Box? {
+        val containers = setOf("moov", "trak", "mdia", "minf", "stbl", "moof", "traf")
+        var frontier = listOf(root)
+        var depth = 0
+        while (frontier.isNotEmpty() && depth < 6) {
+            val next = mutableListOf<Box>()
+            for (container in frontier) {
+                for (b in walk(buf, container.offset + container.headerSize, container.offset + container.size)) {
+                    if (b.type == type) return b
+                    if (b.type in containers) next += b
+                }
+            }
+            frontier = next
+            depth++
+        }
+        return null
+    }
+
+    private fun buildWidevinePssh(kid: ByteArray?): ByteArray {
+        val systemId = byteArrayOf(
+            0xED.toByte(), 0xEF.toByte(), 0x8B.toByte(), 0xA9.toByte(),
+            0x79.toByte(), 0xD6.toByte(), 0x4A.toByte(), 0xCE.toByte(),
+            0xA3.toByte(), 0xC8.toByte(), 0x27.toByte(), 0xDC.toByte(),
+            0xD5.toByte(), 0x1D.toByte(), 0x21.toByte(), 0xED.toByte(),
+        )
+        val k = kid ?: ByteArray(16)
+        val size = 52 // size+type+verFlags+systemId+kidCount+kid+dataSize(0)
+        val out = ByteArray(size)
+        writeU32(out, 0, size)
+        out[4] = 'p'.code.toByte()
+        out[5] = 's'.code.toByte()
+        out[6] = 's'.code.toByte()
+        out[7] = 'h'.code.toByte()
+        // version 0 + flags 0 stay zero
+        System.arraycopy(systemId, 0, out, 12, 16)
+        writeU32(out, 28, 1) // KID count
+        System.arraycopy(k, 0, out, 32, 16)
+        writeU32(out, 48, 0) // data size
+        return out
+    }
+
+    private fun buildSidx(
+        fragments: List<Pair<Box, Box>>,
+        durationsSec: List<Double>,
+        timescale: Long,
+        baseTime: Long,
+    ): ByteArray {
+        val count = fragments.size
+        val size = 32 + 12 * count
+        val out = ByteArray(size)
+        writeU32(out, 0, size)
+        out[4] = 's'.code.toByte()
+        out[5] = 'i'.code.toByte()
+        out[6] = 'd'.code.toByte()
+        out[7] = 'x'.code.toByte()
+        // version 0 + flags 0 stay zero
+        writeU32(out, 12, 1) // reference_ID
+        writeU32(out, 16, timescale.coerceIn(1, Int.MAX_VALUE.toLong()).toInt())
+        writeU32(out, 20, baseTime.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
+        writeU32(out, 24, 0) // first_offset: sidx ends where the first moof begins
+        // bytes 28..29 reserved(0); 30..31 reference_count
+        writeU16(out, 30, count)
+        var off = 32
+        for ((index, pair) in fragments.withIndex()) {
+            val (moof, mdat) = pair
+            val referencedSize = moof.size + mdat.size
+            val durationSec = durationsSec.getOrNull(index) ?: 0.0
+            val duration = (durationSec * timescale).toLong().coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+            // word 1: reference_type(1)=0 | referenced_size(31)
+            writeU32(out, off, referencedSize and 0x7FFFFFFF)
+            // word 2: SAP_delta_time(1)=0 | starts_with_SAP(1)=1 | SAP_type(3)=1 | delta(28)=0
+            writeU32(out, off + 4, (1 shl 31) or (1 shl 28))
+            off += 12
+        }
+        return out
+    }
+
+    private fun writeU32(buf: ByteArray, off: Int, value: Int) {
+        buf[off] = (value ushr 24).toByte()
+        buf[off + 1] = (value ushr 16).toByte()
+        buf[off + 2] = (value ushr 8).toByte()
+        buf[off + 3] = value.toByte()
+    }
+
+    private fun writeU16(buf: ByteArray, off: Int, value: Int) {
+        buf[off] = ((value shr 8) and 0xFF).toByte()
+        buf[off + 1] = (value and 0xFF).toByte()
+    }
+
+    private fun hexToBytes(hex: String): ByteArray =
+        hex.chunked(2).mapNotNull { it.toIntOrNull(16)?.toByte() }.toByteArray()
+
+    companion object {
+        const val TAG = "AppleMusicStream"
+        const val SCHEME = "appledash"
+        private const val DEFAULT_TIMESCALE = 44100L
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/145.0.0.0 Safari/537.36"
+        private const val LENGTH_UNSET = -1L
+        private const val RESULT_END_OF_INPUT = -1
+
+        /** In-memory virtual-stream cache keyed by playlist URL (LRU-1). */
+        private val cache = ConcurrentHashMap<String, Entry>()
+        private val cacheLock = Any()
+
+        /** Build the playback URI for a resolved Apple Music playlist. */
+        fun uriFor(
+            playlistUrl: String,
+            keyIdHex: String?,
+        ): Uri =
+            Uri.Builder()
+                .scheme(SCHEME)
+                .authority("play")
+                .appendQueryParameter("u", playlistUrl)
+                .apply { if (!keyIdHex.isNullOrBlank()) appendQueryParameter("k", keyIdHex) }
+                .build()
+    }
+}
