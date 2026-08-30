@@ -10,6 +10,8 @@ package moe.rukamori.archivetune.utils
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.PasteListUrlsKey
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -83,7 +85,7 @@ object PasteListPoolSource {
     @Volatile
     private var appleCache: List<PoolAccountManager.AppleMusicPoolAccount> = emptyList()
 
-    fun hasUrls(context: Context): Boolean = cachedUrls(context).isNotEmpty()
+    suspend fun hasUrls(context: Context): Boolean = cachedUrls(context).isNotEmpty()
 
     private suspend fun cachedUrls(context: Context): List<String> =
         context.dataStore
@@ -104,7 +106,7 @@ object PasteListPoolSource {
 
     /** Loads persisted paste-list accounts into memory. Cheap, no network. */
     suspend fun loadCached(context: Context) {
-        withContext(kotlinx.coroutines.Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
             runCatching {
                 context.dataStore.getAsync(TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
                     tidalCache = parseTidalJson(it)
@@ -130,7 +132,7 @@ object PasteListPoolSource {
         context: Context,
         force: Boolean = false,
     ): Boolean =
-        withContext(kotlinx.coroutines.Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
             loadCached(context)
             val urls = cachedUrls(context)
             if (urls.isEmpty()) return@withContext false
@@ -218,10 +220,10 @@ object PasteListPoolSource {
     }
 
     /**
-     * Parses raw paste-list text into pool-shaped account JSON. Visible to the module for tests.
+     * Parses raw paste-list text into pool-shaped account JSON.
      * Deduplicates by token so repeated rows collapse.
      */
-    fun parse(text: String): Accounts {
+    private fun parse(text: String): Accounts {
         val out = Accounts()
         val seenTidal = mutableSetOf<String>()
         val seenQobuz = mutableSetOf<String>()

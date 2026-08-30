@@ -1985,11 +1985,30 @@ private fun SpotifyWord(
                                 val fillPx = pillWidth * progress
                                 val pillLeft = if (isRtl) pillWidth - fillPx else 0f
                                 val rawLeft = pillLeft - padHpx
-                                val clipLeft = rawLeft.coerceAtLeast(0f)
-                                val clipRight = (rawLeft + fillPx).coerceIn(0f, size.width)
-                                clipRect(clipLeft, 0f, clipRight, size.height) {
-                                    drawContent()
-                                }
+                                val solidFraction = (rawLeft / size.width).coerceIn(0f, 1f)
+                                drawContent()
+                                // Hard-edge alpha mask at the sweep position (same edge as the pill),
+                                // via DstIn like AnimatedWordV2 — drawContent() cannot be called
+                                // inside a nested clipRect receiver, so mask instead of clip.
+                                drawRect(
+                                    brush =
+                                        if (isRtl) {
+                                            Brush.horizontalGradient(
+                                                0f to Color.Transparent,
+                                                solidFraction.coerceAtMost(1f) to Color.Transparent,
+                                                solidFraction.coerceAtLeast(0f) to Color.Black,
+                                                1f to Color.Black,
+                                            )
+                                        } else {
+                                            Brush.horizontalGradient(
+                                                0f to Color.Black,
+                                                solidFraction.coerceIn(0f, 1f) to Color.Black,
+                                                solidFraction.coerceAtLeast(0f) to Color.Transparent,
+                                                1f to Color.Transparent,
+                                            )
+                                        },
+                                    blendMode = BlendMode.DstIn,
+                                )
                             }
                     } else {
                         Modifier
