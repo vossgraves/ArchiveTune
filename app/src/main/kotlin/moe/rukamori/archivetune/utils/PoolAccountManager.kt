@@ -155,13 +155,22 @@ object PoolAccountManager {
     val isEnabled: Boolean
         get() = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
 
-    private val sourcesUrl: String?
+    private val poolBaseUrl: String?
         get() =
             BuildConfig.SOURCE_PROVIDER_URL
                 .trim()
                 .trimEnd('/')
                 .takeIf { it.isNotEmpty() }
-                ?.let { "$it/api/sources" }
+
+    /**
+     * Credentials-only feed of the split pool. The server also serves a combined legacy feed at
+     * /api/sources (accounts + instance URLs together) for older app builds; this client asks
+     * for the narrow account feed so tokens and instance URLs arrive over separate URLs.
+     * Falls back to the legacy URL only when the pool deployment predates the split (404).
+     */
+    private val accountsUrl: String? get() = poolBaseUrl?.let { "$it/api/accounts" }
+
+    private val legacySourcesUrl: String? get() = poolBaseUrl?.let { "$it/api/sources" }
 
     /** Premium accounts first; callers try them in order. Paste-list accounts follow pool ones. Never throws. */
     fun tidalAccounts(): List<TidalPoolAccount> = (tidalCache + PasteListPoolSource.tidalAccounts()).sortedByDescending { it.premium }
@@ -202,16 +211,16 @@ object PoolAccountManager {
         withContext(Dispatchers.IO) {
             runCatching {
                 PasteListPoolSource.loadCached(context)
-                context.dataStore.getAsync(CACHE_TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
+                cached(context, CACHE_TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
                     tidalCache = parseTidal(JSONArray(it))
                 }
-                context.dataStore.getAsync(CACHE_QOBUZ_KEY)?.takeIf { it.isNotBlank() }?.let {
+                cached(context, CACHE_QOBUZ_KEY)?.takeIf { it.isNotBlank() }?.let {
                     qobuzCache = parseQobuz(JSONArray(it))
                 }
-                context.dataStore.getAsync(CACHE_DEEZER_KEY)?.takeIf { it.isNotBlank() }?.let {
+                cached(context, CACHE_DEEZER_KEY)?.takeIf { it.isNotBlank() }?.let {
                     deezerCache = parseDeezer(JSONArray(it))
                 }
-                context.dataStore.getAsync(CACHE_APPLE_KEY)?.takeIf { it.isNotBlank() }?.let {
+                cached(context, CACHE_APPLE_KEY)?.takeIf { it.isNotBlank() }?.let {
                     appleMusicCache = parseAppleMusic(JSONArray(it))
                 }
                 loadedFromDisk = true
@@ -251,7 +260,7 @@ object PoolAccountManager {
                 if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
                     return@withLock true
                 }
-                val url = sourcesUrl
+                val url = accountsUrl ?: legacySourcesUrl
                 if (url == null) {
                     // No Source Pool URL baked in — paste lists are the only account source.
                     Timber.tag(TAG).d("No Source Pool URL configured; refreshing paste lists only")
@@ -260,65 +269,18 @@ object PoolAccountManager {
                         // A key pasted by the user on-device (pool site /dashboard → copy) wins over
                         // the CI-baked build key, so personal accounts work without a custom APK.
                         val readKey =
-                            context.dataStore.getAsync(PoolApiKeyKey)?.trim().orEmpty()
+                                cached(context, PoolApiKeyKey)?.trim().orEmpty()
                                 .ifBlank { BuildConfig.SOURCE_PROVIDER_KEY }
                         poolApiKey = readKey.ifBlank { null }
-                        val builder = Request.Builder().url(url).header("User-Agent", "ArchiveTune-Android")
-                        if (readKey.isNotBlank()) {
-                            builder.header("Authorization", "Bearer $readKey")
-                        }
-                        client.newCall(builder.get().build()).execute().use { response ->
-                            if (!response.isSuccessful) {
-                                // HTTP 401 specifically means the pool's read-key enforcement
-                                // rejected this build (SOURCE_PROVIDER_KEY is missing or wrong in
-                                // BuildConfig). Surface that explicitly so the failure mode is
-                                // obvious in logs instead of looking like an empty pool.
-                                if (response.code == 401) {
-                                    Timber.tag(TAG).w(
-                                        "Pool /api/sources rejected the request as unauthorized (HTTP 401). " +
-                                            "The build's SOURCE_PROVIDER_KEY is missing or invalid; " +
-                                            "the pool returned 0 accounts. Check that the CI workflow " +
-                                            "injects SOURCE_PROVIDER_KEY/POOL_CLIENT_KEY secrets.",
-                                    )
-                                } else {
-                                    Timber.tag(TAG).w("Pool /api/sources returned HTTP %d", response.code)
-                                }
-                                return@use
-                            }
-                            val root = JSONObject(response.body?.string().orEmpty())
-                            val tidal = parseTidal(root.optJSONObject("tidal")?.optJSONArray("accounts"))
-                        val qobuz = parseQobuz(root.optJSONObject("qobuz")?.optJSONArray("accounts"))
-                        val deezer = parseDeezer(root.optJSONObject("deezer")?.optJSONArray("accounts"))
-                        val apple = parseAppleMusic(root.optJSONObject("apple-music")?.optJSONArray("accounts"))
-                        // Don't overwrite the in-memory cache with an empty list when the pool
-                        // returns a 200 with a partial/empty response (rate-limit, transient
-                        // server bug, captive-portal interception, malformed JSON). The user
-                        // symptom is "Qobuz and other source providers disappear all of a sudden
-                        // while playing songs" — and the only way to recover was force-stop +
-                        // re-open. Only update the cache when at least one list is non-empty.
-                        // Otherwise keep the previous (non-empty) cache so playback keeps working.
-                        val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty()
-                        if (allEmpty && hasAccounts()) {
-                            Timber
-                                .tag(TAG)
-                                .w("Pool returned empty account lists — keeping existing cache to avoid mid-playback source disappearance")
+                        val fetched = fetchAccounts(context, url, readKey)
+                        if (fetched == null && url == accountsUrl && legacySourcesUrl != null) {
+                            // Pool deployment predates the split feed — retry the combined URL.
+                            Timber.tag(TAG).d("/api/accounts unavailable; falling back to legacy /api/sources")
+                            fetchAccounts(context, legacySourcesUrl!!, readKey)
                         } else {
-                            tidalCache = tidal
-                            qobuzCache = qobuz
-                            deezerCache = deezer
-                            appleMusicCache = apple
-                            lastRefreshAt = System.currentTimeMillis()
-                            persist(context, tidal, qobuz, deezer, apple)
+                            fetched
                         }
-                        Timber.tag(TAG).i(
-                            "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d apple=%d",
-                            tidal.size,
-                            qobuz.size,
-                            deezer.size,
-                            apple.size,
-                        )
-                    }
-                }.onFailure { Timber.tag(TAG).w(it, "Pool account refresh failed") }
+                    }.onFailure { Timber.tag(TAG).w(it, "Pool account refresh failed") }
                 } // else (pool URL configured)
 
                 // Second source: user-configured community paste lists (rentry/gist tables).
@@ -329,6 +291,77 @@ object PoolAccountManager {
                 hasAccounts()
             }
         }
+
+    /**
+     * Fetches and parses one credentials feed (/api/accounts, or the accounts half of the legacy
+     * /api/sources). Applies the parsed accounts to the in-memory caches and persists them
+     * encrypted. Returns null when the request failed with a retryable status (404 — split feed
+     * not deployed yet) so the caller can fall back; other failures are logged and swallowed.
+     */
+    private suspend fun fetchAccounts(
+        context: Context,
+        url: String,
+        readKey: String,
+    ): JSONObject? {
+        val builder = Request.Builder().url(url).header("User-Agent", "ArchiveTune-Android")
+        if (readKey.isNotBlank()) {
+            builder.header("Authorization", "Bearer $readKey")
+        }
+        client.newCall(builder.get().build()).execute().use { response ->
+            if (!response.isSuccessful) {
+                if (response.code == 404) {
+                    return null
+                }
+                // HTTP 401 specifically means the pool's read-key enforcement rejected this
+                // build (SOURCE_PROVIDER_KEY is missing or wrong in BuildConfig). Surface that
+                // explicitly so the failure mode is obvious in logs instead of looking like an
+                // empty pool.
+                if (response.code == 401) {
+                    Timber.tag(TAG).w(
+                        "Pool account feed rejected the request as unauthorized (HTTP 401). " +
+                            "The build's SOURCE_PROVIDER_KEY is missing or invalid; " +
+                            "the pool returned 0 accounts. Check that the CI workflow " +
+                            "injects SOURCE_PROVIDER_KEY/POOL_CLIENT_KEY secrets.",
+                    )
+                } else {
+                    Timber.tag(TAG).w("Pool account feed %s returned HTTP %d", url, response.code)
+                }
+                return null
+            }
+            val root = JSONObject(response.body?.string().orEmpty())
+            val tidal = parseTidal(root.optJSONObject("tidal")?.optJSONArray("accounts"))
+            val qobuz = parseQobuz(root.optJSONObject("qobuz")?.optJSONArray("accounts"))
+            val deezer = parseDeezer(root.optJSONObject("deezer")?.optJSONArray("accounts"))
+            val apple = parseAppleMusic(root.optJSONObject("apple-music")?.optJSONArray("accounts"))
+            // Don't overwrite the in-memory cache with an empty list when the pool returns a
+            // 200 with a partial/empty response (rate-limit, transient server bug, captive-portal
+            // interception, malformed JSON). The user symptom is "Qobuz and other source
+            // providers disappear all of a sudden while playing songs" — and the only way to
+            // recover was force-stop + re-open. Only update the cache when at least one list is
+            // non-empty. Otherwise keep the previous (non-empty) cache so playback keeps working.
+            val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty()
+            if (allEmpty && hasAccounts()) {
+                Timber
+                    .tag(TAG)
+                    .w("Pool returned empty account lists — keeping existing cache to avoid mid-playback source disappearance")
+            } else {
+                tidalCache = tidal
+                qobuzCache = qobuz
+                deezerCache = deezer
+                appleMusicCache = apple
+                lastRefreshAt = System.currentTimeMillis()
+                persist(context, tidal, qobuz, deezer, apple)
+            }
+            Timber.tag(TAG).i(
+                "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d apple=%d",
+                tidal.size,
+                qobuz.size,
+                deezer.size,
+                apple.size,
+            )
+            return root
+        }
+    }
 
     private suspend fun persist(
         context: Context,
@@ -388,12 +421,22 @@ object PoolAccountManager {
             }.toString()
         runCatching {
             context.dataStore.edit { prefs ->
-                prefs[CACHE_TIDAL_KEY] = tidalJson
-                prefs[CACHE_QOBUZ_KEY] = qobuzJson
-                prefs[CACHE_DEEZER_KEY] = deezerJson
-                prefs[CACHE_APPLE_KEY] = appleJson
+                prefs[CACHE_TIDAL_KEY] = PoolCacheCrypto.encrypt(tidalJson)
+                prefs[CACHE_QOBUZ_KEY] = PoolCacheCrypto.encrypt(qobuzJson)
+                prefs[CACHE_DEEZER_KEY] = PoolCacheCrypto.encrypt(deezerJson)
+                prefs[CACHE_APPLE_KEY] = PoolCacheCrypto.encrypt(appleJson)
             }
         }.onFailure { Timber.tag(TAG).w(it, "Failed to persist pool accounts") }
+    }
+
+    private suspend fun cached(context: Context, key: androidx.datastore.preferences.core.Preferences.Key<String>): String? {
+        val raw = context.dataStore.getAsync(key)?.takeIf { it.isNotBlank() } ?: return null
+        PoolCacheCrypto.decrypt(raw)?.let { return it }
+        // Migrate old plaintext cache entries immediately; never write them back.
+        if (key == PoolApiKeyKey) {
+            context.dataStore.edit { prefs -> prefs[key] = PoolCacheCrypto.encrypt(raw) }
+        }
+        return raw
     }
 
     /**
@@ -410,7 +453,7 @@ object PoolAccountManager {
         reportType: String,
     ) {
         if (id == null) return
-        val base = sourcesUrl?.removeSuffix("/api/sources") ?: return
+        val base = poolBaseUrl ?: return
         reportScope.launch {
             runCatching {
                 val body =

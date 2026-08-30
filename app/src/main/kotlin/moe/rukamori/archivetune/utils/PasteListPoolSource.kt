@@ -109,20 +109,26 @@ object PasteListPoolSource {
         withContext(Dispatchers.IO) {
             runCatching {
                 context.dataStore.getAsync(TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    tidalCache = parseTidalJson(it)
+                    tidalCache = parseTidalJson(decrypted(it))
                 }
                 context.dataStore.getAsync(QOBUZ_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    qobuzCache = parseQobuzJson(it)
+                    qobuzCache = parseQobuzJson(decrypted(it))
                 }
                 context.dataStore.getAsync(DEEZER_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    deezerCache = parseDeezerJson(it)
+                    deezerCache = parseDeezerJson(decrypted(it))
                 }
                 context.dataStore.getAsync(APPLE_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    appleCache = parseAppleJson(it)
+                    appleCache = parseAppleJson(decrypted(it))
                 }
             }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached paste-list accounts") }
         }
     }
+
+    /**
+     * Decrypts a persisted paste-list cache value. Values written by older builds are plaintext;
+     * those pass through (read-only migration — they are rewritten encrypted on the next refresh).
+     */
+    private fun decrypted(value: String): String = PoolCacheCrypto.decrypt(value) ?: value
 
     /**
      * Fetches every configured URL, re-parses only pages whose bytes changed, and persists the
@@ -179,10 +185,12 @@ object PasteListPoolSource {
                 context.dataStore.edit { prefs ->
                     prefs[HASHES_KEY] = newHashes.toString()
                     prefs[LAST_KEY] = now.toString()
-                    prefs[TIDAL_KEY] = accounts.tidal.toString()
-                    prefs[QOBUZ_KEY] = accounts.qobuz.toString()
-                    prefs[DEEZER_KEY] = accounts.deezer.toString()
-                    prefs[APPLE_KEY] = accounts.apple.toString()
+                    // Credentials from paste lists are as sensitive as pool ones — persist them
+                    // encrypted with the Android Keystore key (PoolCacheCrypto), never plaintext.
+                    prefs[TIDAL_KEY] = PoolCacheCrypto.encrypt(accounts.tidal.toString())
+                    prefs[QOBUZ_KEY] = PoolCacheCrypto.encrypt(accounts.qobuz.toString())
+                    prefs[DEEZER_KEY] = PoolCacheCrypto.encrypt(accounts.deezer.toString())
+                    prefs[APPLE_KEY] = PoolCacheCrypto.encrypt(accounts.apple.toString())
                 }
                 tidalCache = parseTidalJson(accounts.tidal.toString())
                 qobuzCache = parseQobuzJson(accounts.qobuz.toString())
