@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -122,6 +123,41 @@ object AppleMusicAudioProvider {
     /** True when both tokens are present — the source cannot resolve anything otherwise. */
     fun isAvailable(): Boolean = devToken() != null && mediaUserToken() != null
 
+    /** Thrown by [searchSongIds]/[webPlayback] on 401/403 — the media-user-token is dead. */
+    private class AuthException : Exception("apple media-user-token rejected (401/403)")
+
+    /** One entry of the account ring: a media-user-token plus its pool id (null = personal). */
+    private data class RingEntry(val token: String, val poolId: Long?)
+
+    @Volatile
+    private var ring: List<RingEntry> = emptyList()
+
+    @Volatile
+    private var ringBuiltAt = 0L
+
+    /** Sticky index of the last account that resolved successfully; rotation starts here. */
+    @Volatile
+    private var ringIndex = 0
+
+    /**
+     * The account ring: the personal media-user-token first (when signed in), then the shared
+     * pool accounts premium-first — mirroring how the Qobuz/Deezer resolvers walk their token
+     * lists. Cached for a minute so per-call rebuilds don't hammer the preference stores.
+     */
+    private fun accountRing(): List<RingEntry> {
+        val now = System.currentTimeMillis()
+        val cached = ring
+        if (cached.isNotEmpty() && now - ringBuiltAt < 60_000L) return cached
+        val personal = mediaUserToken()
+        val pool = PoolAccountManager.appleMusicAccounts().map { RingEntry(it.mediaUserToken, it.id) }
+        val built = ((personal?.let { listOf(RingEntry(it, null)) } ?: emptyList()) + pool)
+            .distinctBy { it.token }
+        ring = built
+        ringBuiltAt = now
+        if (ringIndex >= built.size) ringIndex = 0
+        return built
+    }
+
     /**
      * One playable Apple Music candidate. [playlistUrl] serves the HLS playlist whose
      * segments are byteranges of the single encrypted fMP4 at [mediaUrl].
@@ -153,9 +189,51 @@ object AppleMusicAudioProvider {
         durationMs: Long?,
     ): List<AppleMusicStream> =
         withContext(Dispatchers.IO) {
+            val devToken = devToken() ?: return@withContext emptyList()
+            val ringEntries = accountRing()
+            if (ringEntries.isEmpty()) return@withContext emptyList()
+
+            // Walk the ring starting at the sticky winner; a 401/403 advances to the next
+            // account (reporting dead pool entries) until one resolves or all fail.
+            for (attempt in ringEntries.indices) {
+                val index = (ringIndex + attempt) % ringEntries.size
+                val entry = ringEntries[index]
+                val streams =
+                    runCatching {
+                        resolveWithToken(entry.token, devToken, title, artists)
+                    }.getOrElse { error ->
+                        if (error !is AuthException) {
+                            Log.w(TAG, "resolve failed: ${error.message}")
+                            return@withContext emptyList()
+                        }
+                        Log.w(TAG, "media-user-token rejected — rotating account ${index + 1}/${ringEntries.size}")
+                        if (entry.poolId != null) {
+                            PoolAccountManager.report(
+                                service = "apple-music",
+                                kind = "account",
+                                id = entry.poolId,
+                                reportType = "dead",
+                            )
+                        }
+                        null
+                    }
+                if (streams != null) {
+                    ringIndex = index // sticky winner — next playback starts here
+                    return@withContext streams
+                }
+            }
+            emptyList()
+        }
+
+    /** One resolve pass with a specific media-user-token. Throws [AuthException] on 401/403. */
+    private suspend fun resolveWithToken(
+        mediaToken: String,
+        devToken: String,
+        title: String,
+        artists: List<String>,
+    ): List<AppleMusicStream> =
+        withContext(Dispatchers.IO) {
             runCatching {
-                val mediaToken = mediaUserToken() ?: return@runCatching emptyList()
-                val devToken = devToken() ?: return@runCatching emptyList()
                 val storefront = resolveStorefront()
 
                 val query = if (title.contains(artists.firstOrNull().orEmpty(), ignoreCase = true)) {
@@ -174,7 +252,13 @@ object AppleMusicAudioProvider {
                     webPlayback(id, devToken, mediaToken, storefront)?.let { out += it }
                 }
                 out
-            }.onFailure { Log.w(TAG, "resolve failed: ${it.message}") }.getOrDefault(emptyList())
+            }.getOrElse { error ->
+                // Auth failures must propagate to the rotation loop — swallowing them here
+                // would pin the ring to a dead account.
+                if (error is AuthException) throw error
+                Log.w(TAG, "resolve failed: ${error.message}")
+                emptyList()
+            }
         }
 
     /** Top catalog song ids for [query], in Apple's search-rank order. */
@@ -203,6 +287,7 @@ object AppleMusicAudioProvider {
                 .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
+                if (response.code == 401 || response.code == 403) throw AuthException()
                 Log.w(TAG, "search failed: %d".format(response.code))
                 return emptyList()
             }
@@ -234,6 +319,7 @@ object AppleMusicAudioProvider {
                 .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
+                if (response.code == 401 || response.code == 403) throw AuthException()
                 Log.w(TAG, "webPlayback failed for %s: %d".format(songId, response.code))
                 return null
             }
