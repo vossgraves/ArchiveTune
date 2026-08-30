@@ -156,23 +156,23 @@ fun Thumbnail(
             when {
                 inlineLyricsText == null -> emptyList()
                 LyricsUtils.isTtml(inlineLyricsText) ->
-                    LyricsUtils.parseTtml(inlineLyricsText, playerConnection.player.duration.takeIf { it > 0 })
+                    LyricsUtils.parseTtml(inlineLyricsText, playerConnection.player.duration.takeIf { it > 0 }?.toInt())
                 LyricsUtils.isLineSyncedLrc(inlineLyricsText) -> LyricsUtils.parseLyrics(inlineLyricsText)
                 else -> emptyList()
             }
         }
-    val inlineLyricsAvailable =
-        showLyricsOnPlayer &&
-            isPlayerExpanded &&
-            inlineLines.isNotEmpty() &&
-            playerDesignStyle != PlayerDesignStyle.V10 &&
-            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val lowDataModeActive = rememberLowDataModeActive()
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V4,
     )
+    val inlineLyricsAvailable =
+        showLyricsOnPlayer &&
+            isPlayerExpanded &&
+            inlineLines.isNotEmpty() &&
+            playerDesignStyle != PlayerDesignStyle.V10 &&
+            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
     val (maxCanvasCacheSize, _) =
         rememberPreference(
             key = MaxCanvasCacheSizeKey,
