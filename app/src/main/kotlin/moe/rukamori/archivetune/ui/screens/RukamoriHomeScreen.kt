@@ -127,6 +127,7 @@ import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
+import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 
 private val HomeFeedMaxWidth = 1_200.dp
@@ -729,7 +730,7 @@ private fun QuickPicksSection(
                         remember(song.song.thumbnailUrl, requestWidthPx, requestHeightPx) {
                             ImageRequest
                                 .Builder(context)
-                                .data(song.song.thumbnailUrl)
+                                .data(song.song.thumbnailUrl?.highRes())
                                 .size(Size(requestWidthPx, requestHeightPx))
                                 .crossfade(true)
                                 .build()
@@ -992,7 +993,7 @@ private fun RemoteQuickPicksSection(
                         remember(song.thumbnail, requestWidthPx, requestHeightPx) {
                             ImageRequest
                                 .Builder(context)
-                                .data(song.thumbnail)
+                                .data(song.thumbnail.highRes())
                                 .size(Size(requestWidthPx, requestHeightPx))
                                 .crossfade(true)
                                 .build()
