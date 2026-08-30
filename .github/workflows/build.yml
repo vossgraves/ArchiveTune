@@ -133,8 +133,10 @@ jobs:
           SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
           # Per-app read key created by ArchivePool's admin page.
           SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
-          # Must exactly match ArchivePool's Railway POOL_CLIENT_KEY.
-          POOL_CLIENT_KEY: ${{ secrets.POOL_CLIENT_KEY }}
+          # POOL_CLIENT_KEY is intentionally NOT passed anymore: builds speak the v2 feed
+          # protocol (X-Pool-Client: v2), where the credential encryption key is derived from
+          # the read key itself. The server keeps its POOL_CLIENT_KEY env var solely so
+          # already-installed legacy builds can still decrypt their feeds.
           # Telegram (TDLib) credentials from https://my.telegram.org/apps. Optional: when unset the
           # build falls back to Telegram Desktop's public api_id, which violates Telegram's ToS and
           # risks user account bans — set these secrets to ship this fork's own registered app.

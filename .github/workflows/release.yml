@@ -387,8 +387,7 @@ jobs:
           SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
           # Per-app read key for the pool (secret). Blank is fine while the pool runs unenforced.
           SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
-          # End-to-end decryption key for encrypted pool credentials (secret). Blank if unencrypted.
-          POOL_CLIENT_KEY: ${{ secrets.POOL_CLIENT_KEY }}
+          # POOL_CLIENT_KEY not needed: v2 feed protocol derives encryption from the read key.
 
       - name: Resolve release output directory
         id: release_dir

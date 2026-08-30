@@ -66,7 +66,7 @@ jobs:
           # then the gradle default (https://archivepool.vercel.app) in build.gradle.kts.
           SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
           SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
-          POOL_CLIENT_KEY: ${{ secrets.POOL_CLIENT_KEY }}
+          # POOL_CLIENT_KEY not needed: v2 feed protocol derives encryption from the read key.
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
