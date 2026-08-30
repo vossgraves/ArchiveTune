@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.constants.AppleMusicQuality
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -188,6 +189,7 @@ object AppleMusicAudioProvider {
         artists: List<String>,
         album: String?,
         durationMs: Long?,
+        quality: AppleMusicQuality = AppleMusicQuality.LOSSLESS,
     ): List<AppleMusicStream> =
         withContext(Dispatchers.IO) {
             val devToken = devToken() ?: return@withContext emptyList()
@@ -201,7 +203,7 @@ object AppleMusicAudioProvider {
                 val entry = ringEntries[index]
                 val streams =
                     runCatching {
-                        resolveWithToken(entry.token, devToken, title, artists)
+                        resolveWithToken(entry.token, devToken, title, artists, quality)
                     }.getOrElse { error ->
                         if (error !is AuthException) {
                             Log.w(TAG, "resolve failed: ${error.message}")
@@ -232,6 +234,7 @@ object AppleMusicAudioProvider {
         devToken: String,
         title: String,
         artists: List<String>,
+        quality: AppleMusicQuality,
     ): List<AppleMusicStream> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -250,7 +253,7 @@ object AppleMusicAudioProvider {
                 val out = mutableListOf<AppleMusicStream>()
                 for (id in songIds.take(5)) {
                     if (out.size >= 3) break
-                    webPlayback(id, devToken, mediaToken, storefront)?.let { out += it }
+                    webPlayback(id, devToken, mediaToken, storefront, quality)?.let { out += it }
                 }
                 out
             }.getOrElse { error ->
@@ -306,6 +309,7 @@ object AppleMusicAudioProvider {
         devToken: String,
         mediaToken: String,
         storefront: String,
+        quality: AppleMusicQuality,
     ): AppleMusicStream? {
         val body = """{"salableAdamId":$songId,"language":"en-us"}""".toRequestBody(JSON_MEDIA)
         val request =
@@ -343,7 +347,13 @@ object AppleMusicAudioProvider {
                     val kbps = Regex("(\\d+)$").find(flavor)?.groupValues?.last()?.toIntOrNull() ?: 0
                     Asset(flavor, url, kbps)
                 }.sortedByDescending { it.kbps }
-            val asset = candidates.firstOrNull() ?: return null
+            val asset = when (quality) {
+                AppleMusicQuality.AAC ->
+                    candidates.firstOrNull { it.kbps <= 320 } ?: candidates.minByOrNull { it.kbps }
+                AppleMusicQuality.LOSSLESS ->
+                    candidates.firstOrNull { it.kbps in 321..1411 } ?: candidates.lastOrNull()
+                AppleMusicQuality.HI_RES_LOSSLESS -> candidates.firstOrNull()
+            } ?: return null
 
             // The asset URL serves the HLS playlist; segments are byteranges of one mp4.
             val playlistUrl = asset.url

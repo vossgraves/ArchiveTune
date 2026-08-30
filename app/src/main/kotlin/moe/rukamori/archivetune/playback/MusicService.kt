@@ -193,6 +193,8 @@ import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
+import moe.rukamori.archivetune.constants.AppleMusicQuality
+import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
@@ -8655,6 +8657,11 @@ class MusicService :
         return runCatching { TidalAudioQuality.valueOf(stored) }.getOrDefault(TidalAudioQuality.FLAC)
     }
 
+    private fun parseAppleMusicQuality(): AppleMusicQuality {
+        val stored = dataStore.get(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS.name)
+        return runCatching { AppleMusicQuality.valueOf(stored) }.getOrDefault(AppleMusicQuality.LOSSLESS)
+    }
+
     private fun parseTidalInstances(): List<String> =
         dataStore
             .get(TidalInstancesKey, "")
@@ -9242,7 +9249,12 @@ class MusicService :
         val cached = directStreamCache[mediaId]
         if (!isDirectPick && cached != null && cached.expiresAtMs > now) {
             val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
-            val cacheHitsOverride = override == null || override == cached.stream.source
+            val cacheHitsOverride =
+                if (override != null) {
+                    override == cached.stream.source
+                } else {
+                    cached.stream.source == sourceResolutionChain().firstOrNull()
+                }
             if (cacheHitsOverride && !lowDataModeActive) {
                 Timber.tag("MusicService").d(
                     "Multi-source cache HIT for %s: %s [%s]",
@@ -9414,7 +9426,9 @@ class MusicService :
                 bestSource = source
                 bestScore = match.score
             }
-            if (bestScore >= 0.999) break
+            // The list is the user's source preference order. The first valid source wins;
+            // later sources are fallbacks, not competitors selected by metadata score.
+            if (best != null) break
         }
 
         val winningStream = best
@@ -9437,55 +9451,6 @@ class MusicService :
                         runBlocking { dataStore.edit { prefs -> prefs[QobuzLastProbeTrackKey] = probe } }
                     }
                 }
-            }
-            // AUTO-PIN the winning lossless source as a per-song override so that on app
-            // restart (or any future re-resolution of this same media id) the resolver
-            // short-circuits to the same source the user was listening to, instead of
-            // re-running the whole chain and possibly landing on a different (or
-            // lower-quality) source.
-            //
-            // Conditions:
-            //   1. Not a prefetch call — we only pin the source for the song the user is
-            //      actually about to hear, not the next song whose resolution might be
-            //      discarded if the user skips manually.
-            //   2. Winning source is not YOUTUBE — YouTube is the implicit fallback and
-            //      pinning it would prevent a future lossless source from taking over.
-            //   3. No existing override — we don't overwrite a user's manual "Play from"
-            //      choice. (A null existing pin means either never pinned, or the user
-            //      cleared it; both are safe to auto-pin.)
-            //   4. The winning source is currently enabled — belt-and-suspenders; the
-            //      chain already filters by enabled-ness, but this guards against a
-            //      race where the user disabled the source between chain build and now.
-            //
-            // The pin is durable (DataStore preferences, included in Settings backups)
-            // and is consulted at the top of this same function on the next call, so the
-            // very next DataSpec request for this media id will route directly to the
-            // pinned source (skipping the full chain search). The per-source byte cache
-            // (e.g. "qobuz:$mediaId") is already namespaced by source, so cached bytes
-            // from the first play remain reachable on restart as long as the resolver
-            // routes to the same source — which the pin now guarantees.
-            if (!isPrefetch &&
-                winningSource != AudioSourceType.YOUTUBE &&
-                isSourceEnabled(winningSource) &&
-                override == null
-            ) {
-                runCatching {
-                    runBlocking {
-                        dataStore.edit { prefs ->
-                            prefs[SongSourceOverrideKey] =
-                                SongSourceOverride.withOverride(
-                                    prefs[SongSourceOverrideKey],
-                                    mediaId,
-                                    winningSource,
-                                )
-                        }
-                    }
-                }
-                Timber.tag("MusicService").i(
-                    "Auto-pinned %s to %s (will be reused on app restart)",
-                    mediaId,
-                    winningSource.name,
-                )
             }
             return applyDirectStream(dataSpec, mediaId, winningStream)
         }
@@ -9648,6 +9613,7 @@ class MusicService :
                 .d("Apple Music source: missing tokens (sign in via Settings → Apple Music)")
             return null
         }
+        val appleQuality = parseAppleMusicQuality()
         val candidates =
             runBlocking(Dispatchers.IO) {
                 AppleMusicAudioProvider.resolveCandidates(
@@ -9655,6 +9621,7 @@ class MusicService :
                     artists = query.artists,
                     album = query.album,
                     durationMs = query.durationMs,
+                    quality = appleQuality,
                 )
             }
         if (candidates.isEmpty()) return null
@@ -9668,7 +9635,9 @@ class MusicService :
                 DirectStream(
                     uri = "apple-pending:${candidate.songId}",
                     mimeType = "audio/mp4",
-                    codecs = "mp4a.40.2",
+                    codecs = if (candidate.flavor.contains("ctrp", ignoreCase = true) &&
+                        candidate.flavor.filter(Char::isDigit).toIntOrNull()?.let { it > 320 } == true
+                    ) "alac" else "mp4a.40.2",
                     contentLength = candidate.contentLength,
                     label = "Apple Music ${candidate.flavor}",
                     source = AudioSourceType.APPLE,
@@ -9699,12 +9668,11 @@ class MusicService :
         // Materialize the winning candidate into a cache file; playback is an ordinary
         // progressive file stream with the Widevine L3 session decrypting at the codec level.
         return try {
-            val drmUri = AppleMusicVirtualStream.drmUri(mediaOkHttpClient, candidate.playlistUrl)
             val file =
-                appleStreamFile(query.mediaId) {
+                appleStreamFile(query.mediaId, appleQuality) {
                     AppleMusicVirtualStream.build(mediaOkHttpClient, candidate.playlistUrl, candidate.keyIdHex).bytes
                 }
-            appleDrmTrackInfo[query.mediaId] = AppleTrackDrmInfo(adamId = candidate.songId, drmUri = drmUri)
+            appleDrmTrackInfo[query.mediaId] = AppleTrackDrmInfo(adamId = candidate.songId, drmUri = candidate.drmUri)
             // Nerd-info adaptation: patch the format row so the media-info sheet shows the
             // Apple codec/size for this song instead of the stale YouTube values (mirrors the
             // contentLength backfill pattern; the YouTube resolver rewrites the row whenever
@@ -9717,7 +9685,7 @@ class MusicService :
                         database.query {
                             upsert(
                                 row.copy(
-                                    codecs = "mp4a.40.2",
+                                    codecs = placeholder.codecs,
                                     contentLength = file.length(),
                                     bitrate = bitrate ?: row.bitrate,
                                 ),
@@ -9742,6 +9710,7 @@ class MusicService :
      */
     private fun appleStreamFile(
         mediaId: String,
+        quality: AppleMusicQuality,
         build: () -> ByteArray,
     ): java.io.File {
         val dir = java.io.File(cacheDir, "applemusic").apply { mkdirs() }
@@ -9753,7 +9722,7 @@ class MusicService :
             f.delete()
         }
         val safeId = mediaId.replace(Regex("[^A-Za-z0-9_-]"), "_")
-        val out = java.io.File(dir, "$safeId.m4a")
+        val out = java.io.File(dir, "${safeId}_${quality.name.lowercase()}.m4a")
         if (out.exists() && out.length() > 0) return out
         out.writeBytes(build())
         return out

@@ -146,7 +146,7 @@ internal fun PlaybackQualitySections(
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     val (appleMusicQuality, onAppleMusicQualityChange) =
-        rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.AAC)
+        rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS)
 
     PreferenceGroup(title = stringResource(R.string.tidal_specific)) {
         item {
@@ -329,7 +329,7 @@ internal fun PlaybackSourceSections(
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     val (qobuzBackupEnabled, onQobuzBackupEnabledChange) = rememberPreference(QobuzBackupEnabledKey, false)
     val (appleMusicQuality, onAppleMusicQualityChange) =
-        rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.AAC)
+        rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS)
     // The Tidal artwork-fetching toggle lives in Player Settings → Artwork (same key).
     val (animatedCovers, onAnimatedCoversChange) =
         rememberPreference(TidalAnimatedCoversEnabledKey, false)
