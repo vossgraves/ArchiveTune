@@ -212,17 +212,20 @@ object PoolAccountManager {
         withContext(Dispatchers.IO) {
             runCatching {
                 PasteListPoolSource.loadCached(context)
+                // The persisted cache stores DECRYPTED plaintext JSON (PoolCacheCrypto handles the
+                // at-rest layer), so the parse-time decryptor is a pure pass-through.
+                val passthrough: (String) -> String? = { raw -> raw }
                 cached(context, CACHE_TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    tidalCache = parseTidal(JSONArray(it))
+                    tidalCache = parseTidal(JSONArray(it), passthrough)
                 }
                 cached(context, CACHE_QOBUZ_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    qobuzCache = parseQobuz(JSONArray(it))
+                    qobuzCache = parseQobuz(JSONArray(it), passthrough)
                 }
                 cached(context, CACHE_DEEZER_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    deezerCache = parseDeezer(JSONArray(it))
+                    deezerCache = parseDeezer(JSONArray(it), passthrough)
                 }
                 cached(context, CACHE_APPLE_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    appleMusicCache = parseAppleMusic(JSONArray(it))
+                    appleMusicCache = parseAppleMusic(JSONArray(it), passthrough)
                 }
                 loadedFromDisk = true
                 Timber.tag(TAG).d(
