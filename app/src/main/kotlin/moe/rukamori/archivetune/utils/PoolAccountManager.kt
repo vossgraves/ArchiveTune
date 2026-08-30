@@ -329,10 +329,10 @@ object PoolAccountManager {
                 return null
             }
             val root = JSONObject(response.body?.string().orEmpty())
-            val tidal = parseTidal(root.optJSONObject("tidal")?.optJSONArray("accounts"))
-            val qobuz = parseQobuz(root.optJSONObject("qobuz")?.optJSONArray("accounts"))
-            val deezer = parseDeezer(root.optJSONObject("deezer")?.optJSONArray("accounts"))
-            val apple = parseAppleMusic(root.optJSONObject("apple-music")?.optJSONArray("accounts"))
+            val tidal = parseTidal(accountsArray(root, "tidal"))
+            val qobuz = parseQobuz(accountsArray(root, "qobuz"))
+            val deezer = parseDeezer(accountsArray(root, "deezer"))
+            val apple = parseAppleMusic(accountsArray(root, "apple-music"))
             // Don't overwrite the in-memory cache with an empty list when the pool returns a
             // 200 with a partial/empty response (rate-limit, transient server bug, captive-portal
             // interception, malformed JSON). The user symptom is "Qobuz and other source
@@ -481,6 +481,14 @@ object PoolAccountManager {
             }.onFailure { Timber.tag(TAG).w(it, "Pool report failed") }
         }
     }
+
+    /**
+     * Accounts array for one service, tolerant of both feed shapes: the canonical
+     * `{ "tidal": { "accounts": [...] } }` (mirrors the legacy /api/sources account half) and a
+     * bare `{ "tidal": [...] } }. Null when the service is absent or empty.
+     */
+    private fun accountsArray(root: JSONObject, service: String): JSONArray? =
+        root.optJSONObject(service)?.optJSONArray("accounts") ?: root.optJSONArray(service)
 
     /** Decrypts a sensitive field. Empty/blank blobs and decrypt failures yield null. */
     private fun field(obj: JSONObject, key: String): String? {
