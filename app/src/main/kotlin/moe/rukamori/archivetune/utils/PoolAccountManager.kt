@@ -39,8 +39,9 @@ import java.util.concurrent.TimeUnit
  *
  * Security model:
  *  - The pool exposes account tokens as AES-256-GCM ciphertext (E2E). We decrypt locally with
- *    [PoolCrypto], which uses `BuildConfig.POOL_CLIENT_KEY`. When the pool has no client key
- *    configured the values arrive in plaintext and [PoolCrypto.maybeDecrypt] passes them through.
+ *    [PoolCrypto]: on the v2 feed protocol the key is DERIVED from the read key we present
+ *    (X-Pool-Client: v2), so the app needs only its source-provider key. Older feeds use the
+ *    static [BuildConfig.POOL_CLIENT_KEY], which must match the site's POOL_CLIENT_KEY.
  *  - When the pool enforces read keys, we present `BuildConfig.SOURCE_PROVIDER_KEY` as a bearer.
  *
  * Behaviour:
@@ -303,7 +304,16 @@ object PoolAccountManager {
         url: String,
         readKey: String,
     ): JSONObject? {
-        val builder = Request.Builder().url(url).header("User-Agent", "ArchiveTune-Android")
+        val builder =
+            Request
+                .Builder()
+                .url(url)
+                .header("User-Agent", "ArchiveTune-Android")
+                // v2 of the pool feed protocol: the server encrypts sensitive fields with a key
+                // DERIVED from the read key below (SHA-256 of a domain-separated string), so this
+                // app needs only the source-provider key — no separately-distributed
+                // POOL_CLIENT_KEY has to match the deployment. Older servers ignore the header.
+                .header("X-Pool-Client", "v2")
         if (readKey.isNotBlank()) {
             builder.header("Authorization", "Bearer $readKey")
         }
@@ -329,10 +339,23 @@ object PoolAccountManager {
                 return null
             }
             val root = JSONObject(response.body?.string().orEmpty())
-            val tidal = parseTidal(accountsArray(root, "tidal"))
-            val qobuz = parseQobuz(accountsArray(root, "qobuz"))
-            val deezer = parseDeezer(accountsArray(root, "deezer"))
-            val apple = parseAppleMusic(accountsArray(root, "apple-music"))
+            // Which key protects the feed's sensitive fields — "read-key" (v2: derived from the
+            // read key we presented) or "client-key" (legacy: BuildConfig.POOL_CLIENT_KEY). Try
+            // the indicated scheme first and fall back to the other, so the app works against
+            // both current and older pool deployments regardless of which scheme they chose.
+            val derivedKey = PoolCrypto.deriveClientKey(readKey)
+            val encryptionScheme = root.optString("encryption", "")
+            val decryptor: (String) -> String? = { raw ->
+                if (encryptionScheme == "read-key") {
+                    PoolCrypto.maybeDecryptWith(raw, derivedKey) ?: PoolCrypto.maybeDecrypt(raw)
+                } else {
+                    PoolCrypto.maybeDecrypt(raw) ?: PoolCrypto.maybeDecryptWith(raw, derivedKey)
+                }
+            }
+            val tidal = parseTidal(accountsArray(root, "tidal"), decryptor)
+            val qobuz = parseQobuz(accountsArray(root, "qobuz"), decryptor)
+            val deezer = parseDeezer(accountsArray(root, "deezer"), decryptor)
+            val apple = parseAppleMusic(accountsArray(root, "apple-music"), decryptor)
             // Don't overwrite the in-memory cache with an empty list when the pool returns a
             // 200 with a partial/empty response (rate-limit, transient server bug, captive-portal
             // interception, malformed JSON). The user symptom is "Qobuz and other source
@@ -490,44 +513,54 @@ object PoolAccountManager {
     private fun accountsArray(root: JSONObject, service: String): JSONArray? =
         root.optJSONObject(service)?.optJSONArray("accounts") ?: root.optJSONArray(service)
 
-    /** Decrypts a sensitive field. Empty/blank blobs and decrypt failures yield null. */
-    private fun field(obj: JSONObject, key: String): String? {
+    /** Decrypts a sensitive field with the feed's decryptor. Blank/failed decryptions yield null. */
+    private fun field(
+        obj: JSONObject,
+        key: String,
+        decryptor: (String) -> String?,
+    ): String? {
         val raw = obj.optString(key, "").takeIf { it.isNotBlank() } ?: return null
-        val decoded = PoolCrypto.maybeDecrypt(raw)?.takeIf { it.isNotBlank() }
+        val decoded = decryptor(raw)?.takeIf { it.isNotBlank() }
         if (decoded == null && PoolCrypto.isEncrypted(raw)) {
-            Timber.tag(TAG).w("Dropped encrypted pool field %s because the client key could not decrypt it", key)
+            Timber.tag(TAG).w("Dropped encrypted pool field %s because no available key could decrypt it", key)
         }
         return decoded
     }
 
-    private fun parseTidal(arr: JSONArray?): List<TidalPoolAccount> {
+    private fun parseTidal(
+        arr: JSONArray?,
+        decryptor: (String) -> String?,
+    ): List<TidalPoolAccount> {
         if (arr == null) return emptyList()
         val out = mutableListOf<TidalPoolAccount>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val token = field(obj, "token") ?: continue
+            val token = field(obj, "token", decryptor) ?: continue
             out +=
                 TidalPoolAccount(
                     id = entryId(obj),
                     token = token,
-                    refreshToken = field(obj, "refreshToken"),
-                    countryCode = field(obj, "countryCode"),
+                    refreshToken = field(obj, "refreshToken", decryptor),
+                    countryCode = field(obj, "countryCode", decryptor),
                     premium = obj.optBoolean("premium", false),
                 )
         }
         return out
     }
 
-    private fun parseQobuz(arr: JSONArray?): List<QobuzPoolAccount> {
+    private fun parseQobuz(
+        arr: JSONArray?,
+        decryptor: (String) -> String?,
+    ): List<QobuzPoolAccount> {
         if (arr == null) return emptyList()
         val out = mutableListOf<QobuzPoolAccount>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val token = field(obj, "token") ?: continue
-            val appId = field(obj, "appId") ?: continue
+            val token = field(obj, "token", decryptor) ?: continue
+            val appId = field(obj, "appId", decryptor) ?: continue
             // Without an app secret the app cannot sign Qobuz stream URLs, so such an account is
             // useless for playback and is skipped rather than cached as a dead entry.
-            val appSecret = field(obj, "appSecret") ?: continue
+            val appSecret = field(obj, "appSecret", decryptor) ?: continue
             out +=
                 QobuzPoolAccount(
                     id = entryId(obj),
@@ -540,33 +573,39 @@ object PoolAccountManager {
         return out
     }
 
-    private fun parseDeezer(arr: JSONArray?): List<DeezerPoolAccount> {
+    private fun parseDeezer(
+        arr: JSONArray?,
+        decryptor: (String) -> String?,
+    ): List<DeezerPoolAccount> {
         if (arr == null) return emptyList()
         val out = mutableListOf<DeezerPoolAccount>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val arl = field(obj, "arl") ?: continue
+            val arl = field(obj, "arl", decryptor) ?: continue
             out +=
                 DeezerPoolAccount(
                     id = entryId(obj),
                     arl = arl,
                     premium = obj.optBoolean("premium", false),
-                    masterSecret = field(obj, "masterSecret"),
+                    masterSecret = field(obj, "masterSecret", decryptor),
                 )
         }
         return out
     }
 
-    /** Pool entry id from /api/sources (positive when present); null for manual/legacy entries. */
+    /** Pool entry id from the accounts feed (positive when present); null for manual/legacy entries. */
     private fun entryId(obj: JSONObject): Long? =
         obj.optLong("id", 0L).takeIf { it > 0L }
 
-    private fun parseAppleMusic(arr: JSONArray?): List<AppleMusicPoolAccount> {
+    private fun parseAppleMusic(
+        arr: JSONArray?,
+        decryptor: (String) -> String?,
+    ): List<AppleMusicPoolAccount> {
         if (arr == null) return emptyList()
         val out = mutableListOf<AppleMusicPoolAccount>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val token = field(obj, "token") ?: continue
+            val token = field(obj, "token", decryptor) ?: continue
             if (!token.startsWith("0.")) continue // media-user-tokens always start with "0."
             out +=
                 AppleMusicPoolAccount(
