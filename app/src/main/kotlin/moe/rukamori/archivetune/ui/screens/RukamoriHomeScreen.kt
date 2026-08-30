@@ -989,10 +989,10 @@ private fun RemoteQuickPicksSection(
                     val isActive = song.id == mediaMetadata?.id
                     val context = LocalContext.current
                     val imageRequest =
-                        remember(song.thumbnailUrl, requestWidthPx, requestHeightPx) {
+                        remember(song.thumbnail, requestWidthPx, requestHeightPx) {
                             ImageRequest
                                 .Builder(context)
-                                .data(song.thumbnailUrl)
+                                .data(song.thumbnail)
                                 .size(Size(requestWidthPx, requestHeightPx))
                                 .crossfade(true)
                                 .build()
