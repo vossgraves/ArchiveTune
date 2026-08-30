@@ -96,6 +96,7 @@ import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
+import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
@@ -108,6 +109,7 @@ import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.ui.utils.highRes
+import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -128,6 +130,7 @@ fun Thumbnail(
     sliderPositionProvider: () -> Long?,
     modifier: Modifier = Modifier,
     isPlayerExpanded: Boolean = true, // Add parameter to control swipe based on player state
+    onOpenLyrics: (() -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
@@ -143,6 +146,27 @@ fun Thumbnail(
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
     val hidePlayerThumbnail by rememberPreference(HidePlayerThumbnailKey, false)
+    // BitChord-style inline lyrics: synced lyrics replace the artwork on the player.
+    val showLyricsOnPlayer by rememberPreference(ShowLyricsOnPlayerKey, true)
+    val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+    val inlineLyricsText =
+        currentLyricsEntity?.lyrics?.trim()?.takeIf { it.isNotBlank() }
+    val inlineLines =
+        remember(inlineLyricsText) {
+            when {
+                inlineLyricsText == null -> emptyList()
+                LyricsUtils.isTtml(inlineLyricsText) ->
+                    LyricsUtils.parseTtml(inlineLyricsText, playerConnection.player.duration.takeIf { it > 0 })
+                LyricsUtils.isLineSyncedLrc(inlineLyricsText) -> LyricsUtils.parseLyrics(inlineLyricsText)
+                else -> emptyList()
+            }
+        }
+    val inlineLyricsAvailable =
+        showLyricsOnPlayer &&
+            isPlayerExpanded &&
+            inlineLines.isNotEmpty() &&
+            playerDesignStyle != PlayerDesignStyle.V10 &&
+            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val lowDataModeActive = rememberLowDataModeActive()
     val playerDesignStyle by rememberEnumPreference(
@@ -529,6 +553,27 @@ fun Thumbnail(
                                             modifier = Modifier.size(120.dp),
                                         )
                                     }
+                                } else if (inlineLyricsAvailable &&
+                                    !(
+                                        LocalVideoArtworkState.current != null &&
+                                            item.metadata?.isMusicVideo == true &&
+                                            item.mediaId == currentMediaItem?.mediaId &&
+                                            !item.mediaId.isLocalMediaId()
+                                    )
+                                ) {
+                                    // Synced lyrics live on the player (BitChord-style); the
+                                    // lyrics button still opens the full lyrics page.
+                                    PlayerInlineLyrics(
+                                        lines = inlineLines,
+                                        positionProvider = { playerConnection.player.currentPosition },
+                                        isPlaying = isPlaying,
+                                        textColor = textBackgroundColor,
+                                        artworkUrl =
+                                            item.metadata?.thumbnailUrl?.highRes()
+                                                ?: item.mediaMetadata.artworkUri?.toString(),
+                                        modifier = Modifier.fillMaxSize(),
+                                        onOpenLyrics = onOpenLyrics,
+                                    )
                                 } else {
                                     val primaryCanvasUrl = canvasArtwork?.animated
                                     val fallbackCanvasUrl = canvasArtwork?.videoUrl

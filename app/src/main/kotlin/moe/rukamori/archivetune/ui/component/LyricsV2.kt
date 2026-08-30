@@ -1868,7 +1868,7 @@ private fun LyricsLineSpotify(
 }
 
 @Composable
-private fun SpotifyWord(
+internal fun SpotifyWord(
     word: WordTimestamp,
     isLineActive: Boolean,
     pillVisible: Boolean,

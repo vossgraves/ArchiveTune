@@ -69,6 +69,7 @@ import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
+import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
 import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -150,6 +151,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             EnableVideoPlaybackKey,
             defaultValue = false,
+        )
+    val (showLyricsOnPlayer, onShowLyricsOnPlayerChange) =
+        rememberPreference(
+            ShowLyricsOnPlayerKey,
+            defaultValue = true,
         )
     val (enablePipMode, onEnablePipModeChange) =
         rememberPreference(
@@ -372,6 +378,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("enable_video_playback"),
                 title = stringResource(R.string.video_playback),
             ) {
+                item {
+                    Column(modifier = positions.modifierFor("show_lyrics_on_player")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.show_lyrics_on_player)) },
+                            description = stringResource(R.string.show_lyrics_on_player_desc),
+                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                            checked = showLyricsOnPlayer,
+                            onCheckedChange = onShowLyricsOnPlayerChange,
+                        )
+                    }
+                }
+
                 item {
                     Column(modifier = positions.modifierFor("enable_video_playback")) {
                         SwitchPreference(

@@ -78,6 +78,8 @@
     <string name="paste_list_desc">One URL per line: pages that tabulate shared tokens/ARLs in markdown tables. Parsed credentials merge into the source pool accounts and rotate automatically; nothing is reported back and nothing leaves the device except the fetch.</string>
     <string name="paste_list_refresh_title">Refresh paste lists now</string>
     <string name="paste_list_refresh_done">Paste lists refreshed: %1$d Tidal, %2$d Qobuz, %3$d Deezer, %4$d Apple account(s)</string>
+    <string name="show_lyrics_on_player">Lyrics on player</string>
+    <string name="show_lyrics_on_player_desc">Show word-synced lyrics in place of the artwork on the expanded player. Tap them to open the full lyrics page.</string>
 
     <!-- Download source priority (fork-only — JioSaavn added). -->
     <string name="download_source_jiosaavn">JioSaavn</string>

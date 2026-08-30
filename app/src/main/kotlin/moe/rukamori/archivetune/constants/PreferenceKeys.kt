@@ -1270,6 +1270,10 @@ val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 // with id=null so playback reports are never sent for them. Opt-in: empty by default.
 val PasteListUrlsKey = stringPreferencesKey("pasteListUrls")
 
+// When ON (default), synced lyrics render in place of the player artwork (BitChord-style
+// inline lyrics on the player screen). The lyrics button still opens the full lyrics page.
+val ShowLyricsOnPlayerKey = booleanPreferencesKey("showLyricsOnPlayer")
+
 // Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
 
