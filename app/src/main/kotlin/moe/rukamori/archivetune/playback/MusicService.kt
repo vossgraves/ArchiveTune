@@ -77,6 +77,8 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionManager
 import androidx.media3.exoplayer.drm.ExoMediaDrm
+import androidx.media3.exoplayer.drm.MediaDrmCallback
+import androidx.media3.exoplayer.drm.MediaDrmCallbackException
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -342,6 +344,10 @@ import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
 import moe.rukamori.archivetune.widget.LoadWidgetInsightsUseCase
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import timber.log.Timber
 import java.io.EOFException
 import java.io.FileOutputStream
@@ -8695,6 +8701,7 @@ class MusicService :
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
+                AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
         // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
@@ -9692,12 +9699,12 @@ class MusicService :
         // Materialize the winning candidate into a cache file; playback is an ordinary
         // progressive file stream with the Widevine L3 session decrypting at the codec level.
         return try {
+            val drmUri = AppleMusicVirtualStream.drmUri(mediaOkHttpClient, candidate.playlistUrl)
             val file =
                 appleStreamFile(query.mediaId) {
-                    val bytes = AppleMusicVirtualStream.build(mediaOkHttpClient, candidate.playlistUrl, candidate.keyIdHex)
-                    bytes
+                    AppleMusicVirtualStream.build(mediaOkHttpClient, candidate.playlistUrl, candidate.keyIdHex).bytes
                 }
-            appleDrmMediaIds.add(query.mediaId)
+            appleDrmTrackInfo[query.mediaId] = AppleTrackDrmInfo(adamId = candidate.songId, drmUri = drmUri)
             // Nerd-info adaptation: patch the format row so the media-info sheet shows the
             // Apple codec/size for this song instead of the stale YouTube values (mirrors the
             // contentLength backfill pattern; the YouTube resolver rewrites the row whenever
@@ -10883,27 +10890,28 @@ class MusicService :
             // attached only for media ids resolved through the Apple source — everything
             // else stays DRM-free with the default behavior.
             .setDrmSessionManagerProvider { mediaItem ->
-                val isApple = mediaItem.mediaId?.let { it in appleDrmMediaIds } == true
-                if (isApple) buildAppleDrmSessionManager() ?: DrmSessionManager.DRM_UNSUPPORTED
+                val appleTrack = mediaItem.mediaId?.let { appleDrmTrackInfo[it] }
+                if (appleTrack != null) buildAppleDrmSessionManager(appleTrack) ?: DrmSessionManager.DRM_UNSUPPORTED
                 else DrmSessionManager.DRM_UNSUPPORTED
             }
 
     /**
-     * Media ids resolved through the Apple Music source. Registered when the resolver
-     * returns an Apple stream so the DRM provider above knows which media items need the
-     * Widevine session. Entries stay for the process lifetime (tiny; ids only).
+     * Media ids resolved through the Apple Music source, with the per-track values Apple's
+     * license exchange needs (adamId + the playlist's raw EXT-X-KEY `uri`). Registered when
+     * the resolver returns an Apple stream so the DRM provider knows which media items need
+     * the Widevine session. Entries stay for the process lifetime (tiny; ids only).
      */
-    private val appleDrmMediaIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private class AppleTrackDrmInfo(
+        val adamId: String,
+        val drmUri: String,
+    )
 
-    private fun buildAppleDrmSessionManager(): DrmSessionManager? {
+    private val appleDrmTrackInfo: MutableMap<String, AppleTrackDrmInfo> = ConcurrentHashMap()
+
+    private fun buildAppleDrmSessionManager(track: AppleTrackDrmInfo): DrmSessionManager? {
         val mediaToken = AppleMusicAudioProvider.mediaUserToken() ?: return null
         val devToken = AppleMusicAudioProvider.devToken()
-        val callback = HttpMediaDrmCallback(APPLE_LICENSE_URL, OkHttpDataSource.Factory(mediaOkHttpClient))
-        devToken?.let { callback.setKeyRequestProperty("Authorization", "Bearer $it") }
-        callback.setKeyRequestProperty("Media-User-Token", mediaToken)
-        callback.setKeyRequestProperty("Origin", "https://music.apple.com")
-        callback.setKeyRequestProperty("Referer", "https://music.apple.com/")
-        callback.setKeyRequestProperty("Content-Type", "application/octet-stream")
+        val callback = AppleLicenseCallback(track, devToken, mediaToken)
         return DefaultDrmSessionManager
             .Builder()
             .setUuidAndExoMediaDrmProvider(
@@ -10924,6 +10932,88 @@ class MusicService :
                 },
             )
             .build(callback)
+    }
+
+    /**
+     * Speaks Apple's license-exchange protocol (verified against gamdl): the Widevine
+     * challenge travels BASE64 inside a JSON envelope —
+     * `{"challenge", "key-system", "uri", "adamId", "isLibrary", "user-initiated"}` —
+     * and the response is JSON whose `license` field carries the base64 license bytes.
+     * A plain HttpMediaDrmCallback posts the raw challenge and chokes on the JSON response,
+     * which is why Apple playback was silent. Provisioning (L3 device registration) still
+     * goes to Google's default endpoint.
+     */
+    private inner class AppleLicenseCallback(
+        private val track: AppleTrackDrmInfo,
+        private val devToken: String?,
+        private val mediaToken: String,
+    ) : MediaDrmCallback {
+        // Provisioning uses Widevine's normal server, not Apple's.
+        private val provisionFallback = HttpMediaDrmCallback(null, OkHttpDataSource.Factory(mediaOkHttpClient))
+
+        private fun fail(message: String): Nothing {
+            Timber.tag("MusicService").w(message)
+            val uri = android.net.Uri.parse(APPLE_LICENSE_URL)
+            throw MediaDrmCallbackException(
+                DataSpec(uri),
+                uri,
+                emptyMap(),
+                0L,
+                java.io.IOException(message),
+            )
+        }
+
+        override fun executeProvisionRequest(
+            uuid: java.util.UUID,
+            request: ExoMediaDrm.ProvisionRequest,
+        ): MediaDrmCallback.Response = provisionFallback.executeProvisionRequest(uuid, request)
+
+        override fun executeKeyRequest(
+            uuid: java.util.UUID,
+            request: ExoMediaDrm.KeyRequest,
+        ): MediaDrmCallback.Response {
+            val body =
+                JSONObject()
+                    .put("challenge", android.util.Base64.encodeToString(request.data, android.util.Base64.NO_WRAP))
+                    .put("key-system", "com.widevine.alpha")
+                    .put("uri", track.drmUri)
+                    .put("adamId", track.adamId)
+                    .put("isLibrary", false)
+                    .put("user-initiated", true)
+            val builder =
+                Request
+                    .Builder()
+                    .url(APPLE_LICENSE_URL)
+                    .header("Content-Type", "application/json")
+                    .header("Origin", "https://music.apple.com")
+                    .header("Referer", "https://music.apple.com/")
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+                    .post(body.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+            devToken?.let { builder.header("Authorization", "Bearer $it") }
+            builder.header("Media-User-Token", mediaToken)
+            mediaOkHttpClient.newCall(builder.build()).execute().use { response ->
+                val text = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    fail("Apple license exchange failed: HTTP ${response.code} ${text.take(200)}")
+                }
+                val json =
+                    runCatching { JSONObject(text) }.getOrElse {
+                        fail("Apple license response is not JSON: ${text.take(200)}")
+                    }
+                val status = json.optInt("status", -1)
+                if (status != 0) {
+                    val customer = json.optString("customerMessage").ifBlank { text.take(200) }
+                    fail("Apple license exchange rejected (status=$status): $customer")
+                }
+                val license = json.optString("license")
+                if (license.isBlank()) fail("Apple license response has no license field")
+                val decoded =
+                    runCatching { android.util.Base64.decode(license, android.util.Base64.DEFAULT) }.getOrElse {
+                        fail("Apple license base64 decode failed: ${it.message}")
+                    }
+                return MediaDrmCallback.Response(decoded)
+            }
+        }
     }
 
     private class SchemeRoutingDataSource(

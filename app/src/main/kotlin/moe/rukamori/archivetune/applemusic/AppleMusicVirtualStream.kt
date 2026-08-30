@@ -53,12 +53,18 @@ object AppleMusicVirtualStream {
         val durationsSec: List<Double>,
     )
 
+    /** Result of [build]: the virtual stream bytes plus the raw DRM URI (Apple's `uri` field). */
+    class Built(
+        val bytes: ByteArray,
+        val drmUri: String,
+    )
+
     /** Fetch the playlist, then the fMP4, and assemble the virtual progressive stream. */
     fun build(
         client: OkHttpClient,
         playlistUrl: String,
         kidHex: String?,
-    ): ByteArray {
+    ): Built {
         val playlist = fetch(client, playlistUrl)
         val parsed = parsePlaylist(playlistUrl, playlist.toString(Charsets.UTF_8))
         val mp4 = fetch(client, parsed.mediaUrl)
@@ -68,8 +74,14 @@ object AppleMusicVirtualStream {
             "built virtual stream: file=${mp4.size} virtual=${virtual.size} " +
                 "fragments=${parsed.durationsSec.size}",
         )
-        return virtual
+        return Built(bytes = virtual, drmUri = parsed.drmUri)
     }
+
+    /** Fetches just the playlist and extracts the raw EXT-X-KEY URI (Apple license `uri` field). */
+    fun drmUri(
+        client: OkHttpClient,
+        playlistUrl: String,
+    ): String = parsePlaylist(playlistUrl, fetch(client, playlistUrl).toString(Charsets.UTF_8)).drmUri
 
     private fun fetch(
         client: OkHttpClient,
@@ -122,6 +134,7 @@ object AppleMusicVirtualStream {
     private class ParsedFile(
         val mediaUrl: String,
         val durationsSec: List<Double>,
+        val drmUri: String,
     )
 
     /** Playlist → absolute mp4 URL + per-fragment durations (seconds, from #EXTINF). */
@@ -130,12 +143,17 @@ object AppleMusicVirtualStream {
         text: String,
     ): ParsedFile {
         var mediaName: String? = null
+        var drmUri: String? = null
         val durations = mutableListOf<Double>()
         for (raw in text.lineSequence()) {
             val line = raw.trim()
             when {
                 line.startsWith("#EXT-X-MAP") && mediaName == null ->
                     Regex("URI=\"([^\"]+)\"").find(line)?.let { mediaName = it.groupValues[1] }
+                // The EXT-X-KEY URI is a data: URI carrying the key id. The RAW URI string is
+                // what Apple's license endpoint expects as the `uri` field of the exchange.
+                line.startsWith("#EXT-X-KEY") && drmUri == null ->
+                    Regex("URI=\"([^\"]+)\"").find(line)?.let { drmUri = it.groupValues[1] }
                 line.startsWith("#EXTINF") ->
                     Regex("#EXTINF:([0-9.]+)").find(line)?.let {
                         durations += it.groupValues[1].toDoubleOrNull() ?: 0.0
@@ -148,7 +166,7 @@ object AppleMusicVirtualStream {
         }
         val name = mediaName ?: throw IOException("playlist has no segments")
         val mediaUrl = playlistUrl.substringBeforeLast('/').trimEnd('/') + "/" + name
-        return ParsedFile(mediaUrl, durations)
+        return ParsedFile(mediaUrl, durations, drmUri ?: throw IOException("playlist has no EXT-X-KEY"))
     }
 
     /** Parse box layout + inject `pssh` (into moov) and `sidx` (after moov). */
@@ -249,8 +267,19 @@ object AppleMusicVirtualStream {
             0xA3.toByte(), 0xC8.toByte(), 0x27.toByte(), 0xDC.toByte(),
             0xD5.toByte(), 0x1D.toByte(), 0x21.toByte(), 0xED.toByte(),
         )
+        // The pssh DATA must be a WidevinePsshData protobuf carrying the key id — an empty
+        // payload produces a license challenge without key ids and Apple's server refuses it
+        // (playback with no sound). Mirrors gamdl's reconstruct_pssh:
+        //   field 1 (algorithm) = 1 (AES-CTR): tag 0x08, value 0x01
+        //   field 2 (key_ids)   = 16 bytes:    tag 0x12, len 0x10, <kid>
         val k = kid ?: ByteArray(16)
-        val size = 52 // size+type+verFlags+systemId+kidCount+kid+dataSize(0)
+        val data = ByteArray(4 + k.size)
+        data[0] = 0x08
+        data[1] = 0x01 // algorithm = AESCTR
+        data[2] = 0x12 // field 2 (key_ids), wire type 2
+        data[3] = k.size.toByte()
+        System.arraycopy(k, 0, data, 4, k.size)
+        val size = 8 + 4 + 16 + 4 + data.size
         val out = ByteArray(size)
         writeU32(out, 0, size)
         out[4] = 'p'.code.toByte()
@@ -259,9 +288,8 @@ object AppleMusicVirtualStream {
         out[7] = 'h'.code.toByte()
         // version 0 + flags 0 stay zero
         System.arraycopy(systemId, 0, out, 12, 16)
-        writeU32(out, 28, 1) // KID count
-        System.arraycopy(k, 0, out, 32, 16)
-        writeU32(out, 48, 0) // data size
+        writeU32(out, 28, data.size)
+        System.arraycopy(data, 0, out, 32, data.size)
         return out
     }
 

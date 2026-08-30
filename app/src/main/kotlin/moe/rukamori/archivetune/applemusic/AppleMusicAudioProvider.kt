@@ -168,6 +168,7 @@ object AppleMusicAudioProvider {
         val mediaUrl: String,
         val licenseUrl: String,
         val keyIdHex: String?,
+        val drmUri: String,
         val flavor: String,
         val contentLength: Long?,
         val matchedTitle: String,
@@ -360,6 +361,7 @@ object AppleMusicAudioProvider {
                 matchedArtist = metadata?.artist(),
                 matchedAlbum = metadata?.album(),
                 matchedDurationMs = metadata?.durationMs(),
+                drmUri = parsed.drmUri,
             )
         }
     }
@@ -378,6 +380,7 @@ object AppleMusicAudioProvider {
     private class ParsedPlaylist(
         val mediaUrl: String,
         val keyIdHex: String?,
+        val drmUri: String,
         val contentLength: Long?,
     )
 
@@ -395,12 +398,15 @@ object AppleMusicAudioProvider {
             }
             val text = response.body?.string().orEmpty()
             var keyIdHex: String? = null
+            var drmUri: String? = null
             var mediaName: String? = null
             val dataLines = mutableListOf<String>()
             for (rawLine in text.lineSequence()) {
                 val line = rawLine.trim()
                 when {
                     line.startsWith("#EXT-X-KEY") && keyIdHex == null -> {
+                        // The RAW data: URI is what Apple's license exchange expects as `uri`.
+                        Regex("URI=\"([^\"]+)\"").find(line)?.let { match -> drmUri = match.groupValues[1] }
                         Regex("URI=\"data:[^\"]*base64,([^\"]+)\"").find(line)?.let { match ->
                             keyIdHex =
                                 runCatching {
@@ -417,7 +423,7 @@ object AppleMusicAudioProvider {
             // Prefer the EXT-X-MAP name; segments reference the same file.
             val name = mediaName ?: dataLines.firstOrNull() ?: return null
             val mediaUrl = playlistUrl.substringBeforeLast('/').trimEnd('/') + "/" + name
-            return ParsedPlaylist(mediaUrl, keyIdHex, null)
+            return ParsedPlaylist(mediaUrl, keyIdHex, drmUri ?: "", null)
         }
     }
 }
