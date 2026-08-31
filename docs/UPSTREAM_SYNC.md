@@ -98,8 +98,10 @@ The koiverse phone-home surface was removed from the fork:
 
 - `TogetherOnlineApi` / `TogetherOnlineEndpoint` / `TogetherOnlineHost` and the
   `MusicTogetherConnectionMode.ONLINE` path are gone. Listen Together now runs
-  on LAN (`TogetherServer`/`TogetherClient`) and the vivimusic public servers
-  (`TogetherPublicServers`/`TogetherPublicClient`) only.
+  on LAN (`TogetherServer`/`TogetherClient`) and the Metrolist public server
+  (`TogetherPublicServers`/`TogetherPublicClient`, protobuf protocol — see
+  `TogetherPublicProto.kt`; the old vivimusic JSON servers were dropped in
+  2026-08) only.
 - `ArchiveTuneKoiverseServer.txt`, `DataServer.txt`, `Koiverse.jks`,
   `Koiverse.jks.base64` were deleted; `DataServer.txt` and the
   `DATA_SERVER_URL`/`API_BEARER_TOKEN`/`CANVAS_BEARER_TOKEN` BuildConfig fields

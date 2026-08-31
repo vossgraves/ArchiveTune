@@ -277,3 +277,44 @@ drop the `moriextractor` submodule, remove the inert cipher UI (keep
 koiverse Listen-Together REST/WS path so public rooms use vivimusic's WSS
 servers via `TogetherPublicClient`. The canvas proxy was replaced by
 Apple Music / Spotify providers. See `.jcode/PLAN_OPUS.md` for the full plan.
+
+## 2026-08: public Listen Together moved to the Metrolist protobuf server
+
+Session 2026-08-31 replaced the dead vivimusic JSON servers with the
+Metrolist community server (`wss://metroserverx.meowery.eu/ws`, "The
+Meowery") so ArchiveTune, Metrolist and SimpMusic share rooms on one
+protocol, still auth-free. The wire layer is
+`together/TogetherPublicProto.kt` (protobuf Envelope, gzip above 100
+bytes, `encodeDefaults=false` — proto3 semantics; `@ProtoNumber`s are
+MetrolistGroup/metroproto's `listentogether.proto`, don't renumber).
+App-facing models in `TogetherPublicProtocol.kt` are unchanged;
+`TogetherPublicClient.kt` translates.
+
+Non-obvious server semantics encoded in the client (each has a comment
+at its site):
+
+- `client_capabilities` must be the FIRST frame or the server answers
+  `unsupported_client` and no room is ever joined. The type strings are
+  NOT in the .proto — they come from metroserver's protocol.go.
+- The server's room queue EXCLUDES the current track
+  (`sanitizeUpcomingQueue`); the client prepends it back so guest queue
+  indices aren't off by one. Idempotent for full queues.
+- PLAY before any CHANGE_TRACK is rejected (`no_track`); the host's
+  diff broadcast therefore sends CHANGE_TRACK first, then an explicit
+  PLAY or PAUSE (the server forces IsPlaying=false on change_track, so
+  a paused host skipping tracks would otherwise leave guests playing).
+- Guests cannot send `playback_action` at all (`not_host`, quietly
+  dropped). Guest add-track goes `suggest_track` → host auto-approves
+  (SuggestionReceived branch) → server broadcasts queue_add to everyone.
+- `buffer_ready` is the catch-up mechanism: the server answers with a
+  precise seek+play/pause pair. Guests send it on join, rejoin and every
+  change_track relay.
+- Session-expired error codes clear the stored token and replay the
+  pending create/join instead of dead-ending; join-failure error codes
+  surface as JoinRejected.
+
+Same session: ported upstream rukamori's IP-rotation refresh after
+bot detection into `YTPlayerUtils.resolvePlaybackData` (the fork's
+playback/stream package is fork-only and already exceeds upstream —
+3-attempt recovery tracker, codec-state recovery, offline cache bypass,
+URL probe failsafe — so only this one piece was worth porting).
