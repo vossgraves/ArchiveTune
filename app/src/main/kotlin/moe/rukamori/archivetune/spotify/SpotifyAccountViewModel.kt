@@ -46,7 +46,14 @@ class SpotifyAccountViewModel
                                 isLoading = false,
                             )
                         }
-                        if (session.isAuthenticated) reloadPlaylists()
+                        // Loading-perf fix (ported from 4nx3b batch-8, 2026-08-29): do NOT
+                        // auto-reloadPlaylists() here. This VM is instantiated whenever the
+                        // Integrations screen opens, and the repository is a @Singleton — so the
+                        // auto-refresh flipped `_isRefreshing = true` app-wide and the Spotify
+                        // Playlists Library page (observing the same flow) showed its spinner
+                        // for the entire multi-second fetch. The user can pull-to-refresh or tap
+                        // the refresh button on that page; the cached playlist list still renders
+                        // instantly on cold launch.
                     }.onFailure { error ->
                         if (error is CancellationException) throw error
                         reportException(error)

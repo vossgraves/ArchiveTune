@@ -12,12 +12,17 @@ import androidx.datastore.preferences.core.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -513,16 +518,34 @@ class SpotifyLibraryRepository
                         Spotify.myPlaylists(limit = limit, offset = offset).getOrThrow()
                     }
                 if (page.items.isEmpty()) break
-                playlists +=
-                    page.items.map { playlist ->
-                        if (playlist.tracks?.total != null) {
-                            playlist
-                        } else {
-                            playlistTrackCount(playlist.id)
-                                ?.let { playlist.copy(tracks = SpotifyPlaylistTracksRef(total = it)) }
-                                ?: playlist
-                        }
+                // Loading-perf fix (ported from 4nx3b batch-8, 2026-08-29): the libraryV3
+                // GraphQL response often omits `tracks.totalCount` for leaf playlists, and the
+                // previous implementation fetched each missing count SEQUENTIALLY — one extra
+                // HTTP round-trip per playlist, so N playlists meant N serial calls plus 429
+                // Retry-After backoffs (easily 4-5s for 100 playlists). Parallelize the count
+                // lookups with a bounded concurrency so the wall time is roughly
+                // ceil(N / 8) round-trips instead of N. The semaphore matters: without it
+                // Spotify 429s the burst and the backoff compounds the wall time.
+                val pageItems = page.items
+                val enriched =
+                    coroutineScope {
+                        val semaphore = Semaphore(COUNT_FETCH_CONCURRENCY)
+                        pageItems
+                            .map { playlist ->
+                                async(Dispatchers.IO) {
+                                    if (playlist.tracks?.total != null) {
+                                        playlist
+                                    } else {
+                                        semaphore.withPermit {
+                                            playlistTrackCount(playlist.id)
+                                                ?.let { playlist.copy(tracks = SpotifyPlaylistTracksRef(total = it)) }
+                                                ?: playlist
+                                        }
+                                    }
+                                }
+                            }.awaitAll()
                     }
+                playlists += enriched
                 offset += page.items.size
                 if (offset >= page.total || page.items.size < limit) break
             }
@@ -571,6 +594,12 @@ class SpotifyLibraryRepository
             private const val SEARCH_CACHE_TTL_MS = 5 * 60 * 1000L
             private const val METADATA_CACHE_TTL_MS = 15 * 60 * 1000L
             private const val METADATA_MATCH_THRESHOLD = 0.58
+
+            /**
+             * In-flight parallel track-count fetches in [fetchAllPlaylists]. 8 keeps the burst
+             * under Spotify's 429 threshold while cutting the wall time ~8x vs sequential.
+             */
+            private const val COUNT_FETCH_CONCURRENCY = 8
             private val spotifyCacheJson =
                 Json {
                     ignoreUnknownKeys = true

@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -104,40 +105,50 @@ fun Modifier.liquidGlass(
     baseColor: Color = Color.Unspecified,
 ): Modifier {
     val isDark = isSystemInDarkTheme()
-    return this.drawBackdrop(
-        backdrop = backdrop,
-        effects = {
-            val l = 0f
-            vibrancy()
-            blur(
-                if (l > 0f) {
-                    lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
-                } else {
-                    lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
-                },
-            )
-            lens(24f.dp.toPx(), size.minDimension / 4f, false)
-        },
-        onDrawBackdrop = { drawBackdrop ->
-            drawBackdrop()
-        },
-        shape = { shape },
-        onDrawBehind =
-            if (baseColor != Color.Unspecified) {
-                { drawRect(baseColor) }
-            } else {
-                null
+    // Liquid-glass perf fix (ported from 4nx3b, 2026-08-28): memoize the entire
+    // drawBackdrop modifier chain so it isn't rebuilt on every recomposition. The
+    // chain depends only on (backdrop, shape, interactive, baseColor, isDark) — all
+    // stable across scroll-driven recompositions of the host screen. Without this
+    // memo, every recomposition rebuilt the kyant effect stack and re-installed the
+    // RuntimeShader on the GraphicsLayer, which was the dominant cause of the "lag
+    // when switching pages" symptom (the new page's first frames all paid that GPU
+    // setup cost while the user was already trying to scroll).
+    return remember(backdrop, shape, interactive, baseColor, isDark) {
+        this.drawBackdrop(
+            backdrop = backdrop,
+            effects = {
+                val l = 0f
+                vibrancy()
+                blur(
+                    if (l > 0f) {
+                        lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
+                    } else {
+                        lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
+                    },
+                )
+                lens(24f.dp.toPx(), size.minDimension / 4f, false)
             },
-        onDrawSurface = {
-            val luminanceAnimation = 0.5f
-            val darken = lerp(
-                0.12f,
-                0.5f,
-                ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
-            )
-            drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
-        },
-    )
+            onDrawBackdrop = { drawBackdrop ->
+                drawBackdrop()
+            },
+            shape = { shape },
+            onDrawBehind =
+                if (baseColor != Color.Unspecified) {
+                    { drawRect(baseColor) }
+                } else {
+                    null
+                },
+            onDrawSurface = {
+                val luminanceAnimation = 0.5f
+                val darken = lerp(
+                    0.12f,
+                    0.5f,
+                    ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
+                )
+                drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
+            },
+        )
+    }
 }
 
 /**

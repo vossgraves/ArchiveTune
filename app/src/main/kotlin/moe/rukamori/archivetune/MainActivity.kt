@@ -2766,31 +2766,41 @@ class MainActivity : ComponentActivity() {
                                                 Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
-                                                    .offset {
-                                                        if (bottomNavigationBarHeight == 0.dp) {
-                                                            IntOffset(
-                                                                x = 0,
-                                                                y = navSlideDistance.roundToPx(),
-                                                            )
-                                                        } else {
-                                                            val slideOffset =
-                                                                navSlideDistance *
-                                                                    playerBottomSheetState.progress.coerceIn(
-                                                                        0f,
-                                                                        1f,
-                                                                    )
-                                                            val hideOffset =
-                                                                navSlideDistance *
-                                                                    (
-                                                                        1 -
-                                                                            bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
-                                                                            navVisibleHeight
-                                                                    )
-                                                            IntOffset(
-                                                                x = 0,
-                                                                y = (slideOffset + hideOffset).roundToPx(),
-                                                            )
-                                                        }
+                                                    // Liquid-glass nav lag fix (ported from 4nx3b
+                                                    // batch-8, 2026-08-29): `Modifier.offset` runs in
+                                                    // the LAYOUT phase, so every spring frame (nav
+                                                    // bar height animating when the mini player docks)
+                                                    // and every sheet-drag frame (player progress)
+                                                    // re-laid-out the entire FloatingNavigationToolbar
+                                                    // subtree — cascading to every onGloballyPositioned
+                                                    // callback, re-positioning the kyant drawBackdrop
+                                                    // shaders and invalidating the app-wide
+                                                    // layerBackdrop recording on the NavHost root.
+                                                    // graphicsLayer runs in the DRAW phase only:
+                                                    // layout coordinates stay stable, callbacks don't
+                                                    // fire, the shader chain doesn't recompute per
+                                                    // frame. Visual identical; liquid glass surfaces
+                                                    // are NOT sacrificed.
+                                                    .graphicsLayer {
+                                                        translationY =
+                                                            if (bottomNavigationBarHeight == 0.dp) {
+                                                                navSlideDistance.toPx()
+                                                            } else {
+                                                                val slideOffset =
+                                                                    navSlideDistance.toPx() *
+                                                                        playerBottomSheetState.progress.coerceIn(
+                                                                            0f,
+                                                                            1f,
+                                                                        )
+                                                                val hideOffset =
+                                                                    navSlideDistance.toPx() *
+                                                                        (
+                                                                            1 -
+                                                                                bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
+                                                                                    navVisibleHeight
+                                                                        )
+                                                                slideOffset + hideOffset
+                                                            }
                                                     },
                                         ) {
                                             FloatingNavigationToolbar(
