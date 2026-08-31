@@ -111,6 +111,7 @@ import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.AlbumGridItem
 import moe.rukamori.archivetune.ui.component.ArtistGridItem
+import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.component.SongGridItem
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -1598,8 +1599,8 @@ fun RecentlyPlayedSection(
     if (distinctSongs.isEmpty()) return
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = modifier.fillMaxWidth(),
     ) {
         items(
@@ -1631,20 +1632,14 @@ private fun RecentlyPlayedCard(
     haptic: HapticFeedback,
     navController: NavController,
 ) {
-    val context = LocalContext.current
-    val cardWidth = 165.dp
-    val artworkSize = cardWidth
+    // Echo-nightly-style compact song card: 132dp wide instead of the old 165dp giant, with
+    // the artwork handled by [ItemThumbnail] exactly like the library grid — full image
+    // visible (Fit) unless the user's global "crop thumbnails to square" preference is on.
+    // The previous implementation forced a 1:1 box with ContentScale.Crop, which cut ~44%
+    // off the sides of 16:9 thumbnails and made these cards look far more "zoomed in" than
+    // every other shelf in the app.
+    val cardWidth = 132.dp
     val isActive = song.id == mediaMetadata?.id
-    val artworkSizePx = with(LocalDensity.current) { artworkSize.roundToPx() }
-    val imageRequest =
-        remember(song.song.thumbnailUrl, artworkSizePx) {
-            ImageRequest
-                .Builder(context)
-                .data(song.song.thumbnailUrl)
-                .size(Size(artworkSizePx, artworkSizePx))
-                .crossfade(true)
-                .build()
-        }
 
     Column(
         modifier =
@@ -1677,26 +1672,24 @@ private fun RecentlyPlayedCard(
                 ),
     ) {
         Box(
-            modifier =
-                Modifier
-                    .size(width = artworkSize, height = artworkSize)
-                    .clip(RoundedCornerShape(20.dp)),
+            modifier = Modifier.size(cardWidth),
         ) {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            ItemThumbnail(
+                thumbnailUrl = song.song.thumbnailUrl,
+                isActive = isActive,
+                isPlaying = isPlaying,
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxSize(),
             )
-            // 3-dot menu floating at top-right of the artwork.
+            // 3-dot menu floating at top-right of the artwork (subtler at this size).
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .size(28.dp)
+                        .padding(4.dp)
+                        .size(24.dp)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.45f))
+                        .background(Color.Black.copy(alpha = 0.4f))
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuState.show {
@@ -1713,29 +1706,15 @@ private fun RecentlyPlayedCard(
                     painter = painterResource(R.drawable.more_vert),
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-            // Active / playing indicator — small dot at top-left.
-            if (isActive) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp)
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            ),
+                    modifier = Modifier.size(14.dp),
                 )
             }
         }
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = song.song.title,
-            style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1743,7 +1722,7 @@ private fun RecentlyPlayedCard(
         )
         Text(
             text = song.artists.joinToString { it.name },
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
