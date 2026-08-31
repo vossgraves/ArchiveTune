@@ -5679,7 +5679,7 @@ class MusicService :
                 Unit
             }
 
-            moe.rukamori.archivetune.together.TogetherPublicEvent.SuggestionReceived -> {
+            is moe.rukamori.archivetune.together.TogetherPublicEvent.SuggestionReceived -> {
                 // Only the host approves suggestions; nothing for a guest to do.
                 Unit
             }
