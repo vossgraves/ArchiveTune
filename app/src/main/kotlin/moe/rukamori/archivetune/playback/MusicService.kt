@@ -4237,14 +4237,6 @@ class MusicService :
             ) {
                 onInfiniteQueueEnabled(queue.infiniteQueueSeedMediaId())
             }
-
-            if (
-                autoLoadMoreEnabled &&
-                !queue.hasNextPage() &&
-                player.mediaItemCount - player.currentMediaItemIndex <= 3
-            ) {
-                onInfiniteQueueEnabled()
-            }
         }
     }
 
