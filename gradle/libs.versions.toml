@@ -4,6 +4,9 @@ annotation = "1.10.0"
 json = "20250517"
 kotlin = "2.4.0"
 kotlinMetadata = "2.4.0"
+# Must match the kotlinx-serialization version the other dependencies (ktor) already pull,
+# so the proto runtime and the JSON runtime share one serialization-core.
+kotlinxSerialization = "1.11.0"
 compose = "1.12.0-beta02"
 lifecycle = "2.11.0"
 material3 = "1.5.0-alpha23"
@@ -140,6 +143,8 @@ apache-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "apa
 hilt = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 hilt-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
 kotlin-metadata-jvm = { module = "org.jetbrains.kotlin:kotlin-metadata-jvm", version.ref = "kotlinMetadata" }
+
+kotlinx-serialization-protobuf = { module = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf", version.ref = "kotlinxSerialization" }
 
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }

@@ -20,19 +20,17 @@ internal data class TogetherPublicServer(
 )
 
 /**
- * Public Listen Together servers operated by the vivimusic community.
- * No auth required; a custom URL can be configured per user.
+ * Public Listen Together servers — the Metrolist community server, speaking the
+ * protobuf protocol (see TogetherPublicProto.kt). No auth required; a custom URL
+ * can be configured per user. Operated by Nyx (The Meowery), Poland; shared by
+ * Metrolist and SimpMusic clients, so rooms interoperate across all three apps.
  */
 internal object TogetherPublicServers {
     val Defaults =
         listOf(
             TogetherPublicServer(
-                name = "HF (Europe)",
-                url = "wss://devilmi-vivi-music-listen-together.hf.space",
-            ),
-            TogetherPublicServer(
-                name = "Render (USA)",
-                url = "wss://vivimusic-listen-together.onrender.com",
+                name = "The Meowery (Metrolist)",
+                url = "wss://metroserverx.meowery.eu/ws",
             ),
         )
 

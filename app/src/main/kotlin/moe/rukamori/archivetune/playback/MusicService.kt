@@ -5136,59 +5136,88 @@ class MusicService :
         val position =
             state.positionMs.takeIf { it > 0L } ?: (last?.positionMs ?: 0L)
 
-        val action =
-            when {
-                queueChanged -> {
-                    moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
-                        action = moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.SYNC_QUEUE,
-                        trackId = trackInfo?.id,
-                        trackInfo = trackInfo,
-                        position = position,
-                        queue = queue.map { it.toPublicTrackInfo() },
-                    )
-                }
+        // The Metrolist server keeps no room track until the host names one, and PLAY
+        // before any CHANGE_TRACK is answered with `no_track`. So a track change is
+        // always announced first, and the play state rides right behind it in the same
+        // tick — the server itself forces IsPlaying=false on change_track, so the
+        // follow-up PLAY is what makes a mid-playback track change stick for guests.
+        val actions =
+            buildList {
+                when {
+                    trackInfo != null && trackChanged -> {
+                        add(
+                            moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
+                                action = moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.CHANGE_TRACK,
+                                trackId = trackInfo.id,
+                                trackInfo = trackInfo,
+                                position = 0L,
+                                queue = queue.map { it.toPublicTrackInfo() },
+                            ),
+                        )
+                        // The server forces IsPlaying=false on change_track, and the wire
+                        // action cannot carry play state — so the host states it explicitly
+                        // right behind the change, for BOTH states. Without the PAUSE half,
+                        // a host skipping tracks while paused would leave every guest
+                        // playing a track the host has stopped.
+                        add(
+                            moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
+                                action =
+                                    if (state.isPlaying) {
+                                        moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.PLAY
+                                    } else {
+                                        moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.PAUSE
+                                    },
+                                trackId = trackInfo.id,
+                                position = position,
+                            ),
+                        )
+                    }
 
-                trackChanged -> {
-                    moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
-                        action = moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.CHANGE_TRACK,
-                        trackId = trackInfo?.id,
-                        trackInfo = trackInfo,
-                        position = position,
-                    )
-                }
+                    queueChanged -> {
+                        add(
+                            moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
+                                action = moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.SYNC_QUEUE,
+                                trackId = trackInfo?.id,
+                                trackInfo = trackInfo,
+                                position = position,
+                                queue = queue.map { it.toPublicTrackInfo() },
+                            ),
+                        )
+                    }
 
-                playingChanged -> {
-                    moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
-                        action =
-                            if (state.isPlaying) {
-                                moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.PLAY
-                            } else {
-                                moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.PAUSE
-                            },
-                        trackId = trackInfo?.id,
-                        position = position,
-                    )
-                }
+                    playingChanged -> {
+                        add(
+                            moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
+                                action =
+                                    if (state.isPlaying) {
+                                        moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.PLAY
+                                    } else {
+                                        moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.PAUSE
+                                    },
+                                trackId = trackInfo?.id,
+                                position = position,
+                            ),
+                        )
+                    }
 
-                last != null &&
-                    state.isPlaying &&
-                    kotlin.math.abs(state.positionMs - last.positionMs) > 1_200L -> {
-                    moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
-                        action = moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.SEEK,
-                        trackId = trackInfo?.id,
-                        position = state.positionMs,
-                    )
-                }
-
-                else -> {
-                    null
+                    last != null &&
+                        state.isPlaying &&
+                        kotlin.math.abs(state.positionMs - last.positionMs) > 1_200L -> {
+                        add(
+                            moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
+                                action = moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.SEEK,
+                                trackId = trackInfo?.id,
+                                position = state.positionMs,
+                            ),
+                        )
+                    }
                 }
             }
 
-        if (action != null) {
-            client.sendPlaybackAction(action)
+        if (actions.isNotEmpty()) {
+            actions.forEach { client.sendPlaybackAction(it) }
             togetherPublicLastState = state
-            togetherPublicLastAction = action
+            togetherPublicLastAction = actions.last()
         }
     }
 
@@ -5424,6 +5453,21 @@ class MusicService :
                 }
             }
 
+            is moe.rukamori.archivetune.together.TogetherPublicEvent.SuggestionReceived -> {
+                // Guests add tracks on Metrolist servers via suggest_track; approve here so
+                // the guest experience matches the old vivi queue_add (settings permitting).
+                val hosting =
+                    togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.HostingOnline
+                val settings = hosting?.settings ?: initialSettings
+                if (settings.allowGuestsToAddTracks) {
+                    Timber.tag("Together")
+                        .i("auto-approving suggestion ${event.suggestionId} from ${event.fromUsername}")
+                    client.approveSuggestion(event.suggestionId)
+                } else {
+                    client.rejectSuggestion(event.suggestionId)
+                }
+            }
+
             is moe.rukamori.archivetune.together.TogetherPublicEvent.Error -> {
                 if (event.recoverable) {
                     val fallback =
@@ -5491,6 +5535,14 @@ class MusicService :
                 togetherPublicLastState = event.state
                 applyRemoteRoomState(event.state)
                 client.requestSync()
+                // Joiner-catches-up-by-asking: the server answers buffer_ready with a
+                // precise seek + play/pause pair reflecting its own clock, which is a
+                // tighter sync than the join snapshot alone can give.
+                event.state.queue
+                    .getOrNull(event.state.currentIndex)
+                    ?.id
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { client.sendBufferReady(it) }
             }
 
             is moe.rukamori.archivetune.together.TogetherPublicEvent.SyncState -> {
@@ -5578,6 +5630,13 @@ class MusicService :
                     togetherPublicParticipants = event.state.participants
                     togetherPublicLastState = event.state
                     applyRemoteRoomState(event.state)
+                    // Rejoined mid-track: ask for the live position rather than trusting
+                    // a snapshot whose age the reconnect delay set.
+                    event.state.queue
+                        .getOrNull(event.state.currentIndex)
+                        ?.id
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { client.sendBufferReady(it) }
                 }
             }
 
@@ -5617,6 +5676,11 @@ class MusicService :
             is moe.rukamori.archivetune.together.TogetherPublicEvent.SyncRequested,
             moe.rukamori.archivetune.together.TogetherPublicEvent.Disconnected,
             -> {
+                Unit
+            }
+
+            moe.rukamori.archivetune.together.TogetherPublicEvent.SuggestionReceived -> {
+                // Only the host approves suggestions; nothing for a guest to do.
                 Unit
             }
 
@@ -5736,6 +5800,16 @@ class MusicService :
         togetherPublicLastState = updated
         togetherPublicParticipants = updated.participants
         applyRemoteRoomState(updated)
+
+        // Joiner-catches-up-by-asking, applied on every track change: the server answers
+        // buffer_ready with a fresh seek + play/pause pair measured on its own clock, so
+        // the guest re-locks onto the host's live position instead of the position the
+        // change_track carried (which the server forces to 0).
+        if (action.action == moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.CHANGE_TRACK &&
+            !action.trackId.isNullOrBlank()
+        ) {
+            client.sendBufferReady(action.trackId.orEmpty())
+        }
     }
 
     fun leaveTogether() {
@@ -5976,13 +6050,11 @@ class MusicService :
                 showTogetherNotice(getString(R.string.not_allowed), key = "GUEST_ADD_DISABLED_LOCAL")
                 return
             }
-            publicClient.sendPlaybackAction(
-                moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload(
-                    action = moe.rukamori.archivetune.together.TogetherPublicPlaybackActions.QUEUE_ADD,
-                    trackInfo = track.toPublicTrackInfo(),
-                    insertNext = mode == moe.rukamori.archivetune.together.AddTrackMode.PLAY_NEXT,
-                ),
-            )
+            // Metrolist servers reject a guest's direct queue_add with `not_host`; the
+            // guest's route in is suggest_track, which the host auto-approves (see the
+            // SuggestionReceived branch in handleTogetherPublicHostEvent). The server
+            // then broadcasts queue_add to everyone as a host-authored action.
+            publicClient.suggestTrack(track.toPublicTrackInfo())
             return
         }
         val client = togetherClient ?: return

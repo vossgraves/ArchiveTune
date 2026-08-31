@@ -480,6 +480,7 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.json)
+    implementation(libs.kotlinx.serialization.protobuf)
     implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)

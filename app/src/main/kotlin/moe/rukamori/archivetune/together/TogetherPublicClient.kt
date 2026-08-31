@@ -4,9 +4,14 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * Public Listen Together WebSocket client — ported from vivimusic
- * (C) 2026 Vividh / vivimusic Project, GPL-3.0. JSON-only subset.
- * https://github.com/vividhq/vivimusic (listen-together/ListenTogetherClient.kt)
+ * Public Listen Together WebSocket client, speaking the Metrolist protobuf protocol.
+ * Ported from Metrolist / SimpMusic (GPL-3.0) and adapted to ArchiveTune's event surface.
+ * Metrolist Project (C) 2026 — Licensed under GPL-3.0 | See git history for contributors
+ *
+ * Wire format (TogetherPublicProto.kt): every frame is a protobuf Envelope over a binary
+ * WebSocket message; the payload inside is protobuf, gzipped above 100 bytes. The FIRST
+ * frame on any connection must be client_capabilities — the server answers
+ * `unsupported_client` otherwise, no matter how correct everything else is.
  */
 
 package moe.rukamori.archivetune.together
@@ -19,10 +24,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.encodeToJsonElement
 import moe.rukamori.archivetune.constants.TogetherPublicIsHostKey
 import moe.rukamori.archivetune.constants.TogetherPublicRoomCodeKey
 import moe.rukamori.archivetune.constants.TogetherPublicSessionTokenKey
@@ -105,6 +106,18 @@ internal sealed class TogetherPublicEvent {
         val isHost: Boolean,
     ) : TogetherPublicEvent()
 
+    /**
+     * A guest asked to add a track. On Metrolist servers guests cannot enqueue directly
+     * (`not_host`); they suggest and the host approves. MusicService auto-approves so the
+     * guest experience is unchanged.
+     */
+    data class SuggestionReceived(
+        val suggestionId: String,
+        val fromUserId: String,
+        val fromUsername: String,
+        val trackInfo: TogetherPublicTrackInfo?,
+    ) : TogetherPublicEvent()
+
     data class Error(
         val message: String,
         val recoverable: Boolean,
@@ -114,8 +127,10 @@ internal sealed class TogetherPublicEvent {
 }
 
 /**
- * WebSocket client for the public Listen Together servers (vivi protocol, JSON only).
- * Binary frames are rejected: the server would be speaking protobuf, which we do not support.
+ * WebSocket client for the public Listen Together servers (Metrolist protocol, protobuf
+ * over binary frames).
+ *
+ * Text frames are ignored: the server writes BinaryMessage exclusively.
  */
 internal class TogetherPublicClient(
     private val externalScope: CoroutineScope,
@@ -125,6 +140,11 @@ internal class TogetherPublicClient(
 ) {
     var onEvent: ((TogetherPublicEvent) -> Unit)? = null
 
+    private val codec = TogetherPublicProtoCodec()
+
+    // Volatile: assigned from the connect coroutine but read by OkHttp listener threads;
+    // onOpen can fire before connect()'s own assignment lands, so it re-assigns first.
+    @Volatile
     private var webSocket: WebSocket? = null
     private var pingJob: Job? = null
     private var reconnectJob: Job? = null
@@ -134,6 +154,7 @@ internal class TogetherPublicClient(
     private var roomCode: String? = null
     private var isHost = false
     private var pendingAction: TogetherPublicPendingAction? = null
+    private var pingSequence = 0L
 
     private val httpClient =
         OkHttpClient.Builder()
@@ -142,8 +163,6 @@ internal class TogetherPublicClient(
             .pingInterval(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
-
-    private val json: Json = TogetherPublicJson
 
     init {
         externalScope.launch {
@@ -196,7 +215,7 @@ internal class TogetherPublicClient(
     }
 
     fun leaveRoom() {
-        sendNull(TogetherPublicMessageTypes.LEAVE_ROOM)
+        send(TogetherPublicMessageTypes.LEAVE_ROOM, null)
         externalScope.launch {
             dataStore.edit { prefs ->
                 prefs.remove(TogetherPublicSessionTokenKey)
@@ -211,7 +230,7 @@ internal class TogetherPublicClient(
     fun approveJoin(userId: String) {
         send(
             TogetherPublicMessageTypes.APPROVE_JOIN,
-            TogetherPublicApproveJoinPayload(userId = userId),
+            TogetherWireApproveJoinPayload(userId = userId),
         )
     }
 
@@ -221,26 +240,23 @@ internal class TogetherPublicClient(
     ) {
         send(
             TogetherPublicMessageTypes.REJECT_JOIN,
-            TogetherPublicRejectJoinPayload(userId = userId, reason = reason),
+            TogetherWireRejectJoinPayload(userId = userId, reason = reason.orEmpty()),
         )
     }
 
     fun sendPlaybackAction(action: TogetherPublicPlaybackActionPayload) {
-        send(
-            TogetherPublicMessageTypes.PLAYBACK_ACTION,
-            action,
-        )
+        send(TogetherPublicMessageTypes.PLAYBACK_ACTION, action.toWireAction())
     }
 
     fun sendBufferReady(trackId: String) {
         send(
             TogetherPublicMessageTypes.BUFFER_READY,
-            TogetherPublicBufferReadyPayload(trackId = trackId),
+            TogetherWireBufferReadyPayload(trackId = trackId),
         )
     }
 
     fun requestSync() {
-        sendNull(TogetherPublicMessageTypes.REQUEST_SYNC)
+        send(TogetherPublicMessageTypes.REQUEST_SYNC, null)
     }
 
     fun kickUser(
@@ -249,64 +265,87 @@ internal class TogetherPublicClient(
     ) {
         send(
             TogetherPublicMessageTypes.KICK_USER,
-            TogetherPublicKickUserPayload(userId = userId, reason = reason),
+            TogetherWireKickUserPayload(userId = userId, reason = reason.orEmpty()),
         )
     }
 
     fun transferHost(newHostId: String) {
         send(
             TogetherPublicMessageTypes.TRANSFER_HOST,
-            TogetherPublicTransferHostPayload(newHostId = newHostId),
+            TogetherWireTransferHostPayload(newHostId = newHostId),
         )
     }
 
-    private fun sendNull(type: String) {
-        val message = TogetherPublicMessage(type = type, payload = null)
-        val text = json.encodeToString(message)
-        webSocket?.send(text)
+    /** How a guest adds a track on Metrolist servers — direct queue_add is host-only. */
+    fun suggestTrack(trackInfo: TogetherPublicTrackInfo) {
+        send(
+            TogetherPublicMessageTypes.SUGGEST_TRACK,
+            TogetherWireSuggestTrackPayload(trackInfo = trackInfo.toWireTrack()),
+        )
     }
 
-    private inline fun <reified T> send(
-        type: String,
-        payload: T,
+    fun approveSuggestion(suggestionId: String) {
+        send(
+            TogetherPublicMessageTypes.APPROVE_SUGGESTION,
+            TogetherWireApproveSuggestionPayload(suggestionId = suggestionId),
+        )
+    }
+
+    fun rejectSuggestion(
+        suggestionId: String,
+        reason: String? = null,
     ) {
-        val message =
-            TogetherPublicMessage(
-                type = type,
-                payload = json.encodeToJsonElement(payload),
-            )
-        val text = json.encodeToString(message)
-        webSocket?.send(text)
+        send(
+            TogetherPublicMessageTypes.REJECT_SUGGESTION,
+            TogetherWireRejectSuggestionPayload(suggestionId = suggestionId, reason = reason.orEmpty()),
+        )
+    }
+
+    private fun send(
+        type: String,
+        payload: Any?,
+    ) {
+        val socket = webSocket ?: return
+        val frame = runCatching { codec.encode(type, payload) }.getOrNull() ?: return
+        socket.send(ByteString.of(*frame))
     }
 
     private val listener =
         object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 reconnectAttempts = 0
+                this@TogetherPublicClient.webSocket = webSocket
+                // The mandatory handshake. Must be the first frame on the socket, or the
+                // server answers `unsupported_client` and never lets us into a room.
+                send(
+                    TogetherPublicMessageTypes.CLIENT_CAPABILITIES,
+                    TogetherWireClientCapabilities(
+                        supportsProtobuf = true,
+                        supportsCompression = true,
+                        clientVersion = CLIENT_VERSION,
+                    ),
+                )
                 startPingJob()
                 val token = sessionToken
                 if (token != null) {
                     send(
                         TogetherPublicMessageTypes.RECONNECT,
-                        TogetherPublicReconnectPayload(sessionToken = token),
+                        TogetherWireReconnectPayload(sessionToken = token),
                     )
+                    // Retained: if the token turns out to be expired, the session-expired
+                    // path replays the user's original create/join request instead of
+                    // dead-ending the session.
                 } else {
                     executePendingAction()
                 }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                handleTextMessage(text)
+                // The Metrolist server writes BinaryMessage exclusively; ignore text.
             }
 
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                onEvent?.invoke(
-                    TogetherPublicEvent.Error(
-                        message = "Unsupported server protocol (binary frames)",
-                        recoverable = false,
-                    ),
-                )
-                webSocket.close(1003, "Protobuf unsupported")
+                handleBinaryMessage(bytes.toByteArray())
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -329,96 +368,95 @@ internal class TogetherPublicClient(
             is TogetherPublicPendingAction.CreateRoom -> {
                 send(
                     TogetherPublicMessageTypes.CREATE_ROOM,
-                    TogetherPublicCreateRoomPayload(username = action.username),
+                    TogetherWireCreateRoomPayload(username = action.username),
                 )
             }
 
             is TogetherPublicPendingAction.JoinRoom -> {
                 send(
                     TogetherPublicMessageTypes.JOIN_ROOM,
-                    TogetherPublicJoinRoomPayload(roomCode = action.roomCode.uppercase(), username = action.username),
+                    TogetherWireJoinRoomPayload(
+                        roomCode = action.roomCode.uppercase(),
+                        username = action.username,
+                    ),
                 )
             }
         }
     }
 
-    private fun handleTextMessage(text: String) {
-        val message =
-            runCatching { json.decodeFromString<TogetherPublicMessage>(text) }
-                .getOrElse { t ->
-                    onEvent?.invoke(TogetherPublicEvent.Error("Failed to decode message", true))
-                    return
-                }
-        when (message.type) {
+    private fun handleBinaryMessage(data: ByteArray) {
+        val (type, payloadBytes) =
+            runCatching { codec.decode(data) }.getOrElse { return }
+        val payload =
+            if (payloadBytes.isEmpty()) {
+                null
+            } else {
+                codec.decodePayload(type, payloadBytes)
+            }
+        when (type) {
+            TogetherPublicMessageTypes.SERVER_CAPABILITIES -> {
+                // Handshake acknowledged. A server that advertised no compression would
+                // need a codec swap; the public Metrolist server always supports it.
+            }
+
             TogetherPublicMessageTypes.ROOM_CREATED -> {
-                val payload = message.payload<TogetherPublicRoomCreatedPayload>() ?: return
+                val payload = payload as? TogetherWireRoomCreatedPayload ?: return
                 sessionToken = payload.sessionToken
                 roomCode = payload.roomCode
                 isHost = true
-                externalScope.launch {
-                    dataStore.edit { prefs ->
-                        prefs[TogetherPublicSessionTokenKey] = payload.sessionToken
-                        prefs[TogetherPublicRoomCodeKey] = payload.roomCode
-                        prefs[TogetherPublicIsHostKey] = true
-                    }
-                }
+                persistSession(payload.sessionToken, payload.roomCode, isHost = true)
                 onEvent?.invoke(TogetherPublicEvent.RoomCreated(payload.roomCode, payload.userId))
             }
 
             TogetherPublicMessageTypes.JOIN_APPROVED -> {
-                val payload = message.payload<TogetherPublicJoinApprovedPayload>() ?: return
+                val payload = payload as? TogetherWireJoinApprovedPayload ?: return
+                val state = payload.state ?: return
                 sessionToken = payload.sessionToken
                 roomCode = payload.roomCode
                 isHost = false
-                externalScope.launch {
-                    dataStore.edit { prefs ->
-                        prefs[TogetherPublicSessionTokenKey] = payload.sessionToken
-                        prefs[TogetherPublicRoomCodeKey] = payload.roomCode
-                        prefs[TogetherPublicIsHostKey] = false
-                    }
-                }
+                persistSession(payload.sessionToken, payload.roomCode, isHost = false)
                 onEvent?.invoke(
                     TogetherPublicEvent.JoinApproved(
                         roomCode = payload.roomCode,
                         userId = payload.userId,
-                        state = payload.state.toTogetherRoomState(sessionId = payload.roomCode),
+                        state = state.toAppState().toTogetherRoomState(sessionId = payload.roomCode),
                     ),
                 )
             }
 
             TogetherPublicMessageTypes.JOIN_REJECTED -> {
-                val payload = message.payload<TogetherPublicJoinRejectedPayload>()
-                onEvent?.invoke(TogetherPublicEvent.JoinRejected(payload?.reason ?: "rejected"))
+                val payload = payload as? TogetherWireJoinRejectedPayload
+                onEvent?.invoke(TogetherPublicEvent.JoinRejected(payload?.reason?.ifBlank { null } ?: "rejected"))
             }
 
             TogetherPublicMessageTypes.JOIN_REQUEST -> {
-                val payload = message.payload<TogetherPublicJoinRequestPayload>() ?: return
+                val payload = payload as? TogetherWireJoinRequestPayload ?: return
                 onEvent?.invoke(TogetherPublicEvent.JoinRequested(payload.userId, payload.username))
             }
 
             TogetherPublicMessageTypes.USER_JOINED -> {
-                val payload = message.payload<TogetherPublicUserJoinedPayload>() ?: return
+                val payload = payload as? TogetherWireUserJoinedPayload ?: return
                 onEvent?.invoke(TogetherPublicEvent.UserJoined(payload.userId, payload.username))
             }
 
             TogetherPublicMessageTypes.USER_LEFT -> {
-                val payload = message.payload<TogetherPublicUserLeftPayload>() ?: return
+                val payload = payload as? TogetherWireUserLeftPayload ?: return
                 onEvent?.invoke(TogetherPublicEvent.UserLeft(payload.userId, payload.username))
             }
 
             TogetherPublicMessageTypes.USER_RECONNECTED -> {
-                val payload = message.payload<TogetherPublicUserReconnectedPayload>() ?: return
+                val payload = payload as? TogetherWireUserReconnectedPayload ?: return
                 onEvent?.invoke(TogetherPublicEvent.UserReconnected(payload.userId, payload.username))
             }
 
             TogetherPublicMessageTypes.USER_DISCONNECTED -> {
-                val payload = message.payload<TogetherPublicUserDisconnectedPayload>() ?: return
+                val payload = payload as? TogetherWireUserDisconnectedPayload ?: return
                 onEvent?.invoke(TogetherPublicEvent.UserDisconnected(payload.userId, payload.username))
             }
 
             TogetherPublicMessageTypes.SYNC_STATE -> {
-                val payload = message.payload<TogetherPublicSyncStatePayload>() ?: return
-                onEvent?.invoke(TogetherPublicEvent.SyncState(payload))
+                val payload = payload as? TogetherWireSyncStatePayload ?: return
+                onEvent?.invoke(TogetherPublicEvent.SyncState(payload.toAppSyncState()))
             }
 
             TogetherPublicMessageTypes.REQUEST_SYNC -> {
@@ -426,63 +464,174 @@ internal class TogetherPublicClient(
             }
 
             TogetherPublicMessageTypes.SYNC_PLAYBACK -> {
-                val payload = message.payload<TogetherPublicPlaybackActionPayload>() ?: return
-                onEvent?.invoke(TogetherPublicEvent.SyncPlayback(payload))
+                val payload = payload as? TogetherWirePlaybackAction ?: return
+                onEvent?.invoke(TogetherPublicEvent.SyncPlayback(payload.toAppAction()))
             }
 
             TogetherPublicMessageTypes.HOST_CHANGED -> {
-                val payload = message.payload<TogetherPublicHostChangedPayload>() ?: return
-                onEvent?.invoke(TogetherPublicEvent.HostChanged(roomCode ?: "", payload.newHostId, payload.newHostName))
+                val payload = payload as? TogetherWireHostChangedPayload ?: return
+                onEvent?.invoke(
+                    TogetherPublicEvent.HostChanged(
+                        roomCode ?: "",
+                        payload.newHostId,
+                        payload.newHostName,
+                    ),
+                )
             }
 
             TogetherPublicMessageTypes.KICKED -> {
-                val payload = message.payload<TogetherPublicKickedPayload>()
-                onEvent?.invoke(TogetherPublicEvent.Kicked(payload?.reason ?: "kicked"))
+                val payload = payload as? TogetherWireKickedPayload
+                clearSession()
+                onEvent?.invoke(TogetherPublicEvent.Kicked(payload?.reason?.ifBlank { null } ?: "kicked"))
             }
 
             TogetherPublicMessageTypes.RECONNECTED -> {
-                val payload = message.payload<TogetherPublicReconnectedPayload>() ?: return
+                val payload = payload as? TogetherWireReconnectedPayload ?: return
+                val state = payload.state ?: return
+                pendingAction = null
+                isHost = payload.isHost
+                roomCode = payload.roomCode
+                if (sessionToken != null) {
+                    persistSession(sessionToken ?: "", payload.roomCode, payload.isHost)
+                }
                 onEvent?.invoke(
                     TogetherPublicEvent.Reconnected(
                         roomCode = payload.roomCode,
                         userId = payload.userId,
-                        state = payload.state.toTogetherRoomState(sessionId = payload.roomCode),
+                        state = state.toAppState().toTogetherRoomState(sessionId = payload.roomCode),
                         isHost = payload.isHost,
                     ),
                 )
             }
 
             TogetherPublicMessageTypes.ERROR -> {
-                val payload = message.payload<TogetherPublicErrorPayload>()
-                onEvent?.invoke(TogetherPublicEvent.Error(payload?.message ?: "server error", true))
+                handleError(payload as? TogetherWireErrorPayload)
             }
 
             TogetherPublicMessageTypes.PONG -> {
                 // Keep-alive acknowledged; nothing to do.
             }
 
+            TogetherPublicMessageTypes.SUGGESTION_RECEIVED -> {
+                val payload = payload as? TogetherWireSuggestionReceivedPayload ?: return
+                onEvent?.invoke(
+                    TogetherPublicEvent.SuggestionReceived(
+                        suggestionId = payload.suggestionId,
+                        fromUserId = payload.fromUserId,
+                        fromUsername = payload.fromUsername,
+                        trackInfo = payload.trackInfo?.toAppTrack(),
+                    ),
+                )
+            }
+
+            TogetherPublicMessageTypes.SUGGESTION_APPROVED,
+            TogetherPublicMessageTypes.SUGGESTION_REJECTED,
+            TogetherPublicMessageTypes.BUFFER_WAIT,
+            TogetherPublicMessageTypes.BUFFER_COMPLETE,
+            -> {
+                // Addressed to a guest flow ArchiveTune does not drive itself; the
+                // resulting sync_playback follow-ups arrive as normal events.
+            }
+
             else -> {
-                // Unknown message types are ignored for forward compatibility.
+                // Unknown message types are ignored for forward compatibility — a newer
+                // Metrolist client in the room must not be able to kill this one.
             }
         }
     }
 
-    private inline fun <reified T> TogetherPublicMessage.payload(): T? =
-        payload?.let { element ->
-            try {
-                json.decodeFromJsonElement(element)
-            } catch (e: Exception) {
-                null
+    private fun handleError(payload: TogetherWireErrorPayload?) {
+        val code = payload?.code.orEmpty()
+        val message = payload?.message?.ifBlank { null } ?: "server error"
+        when (code) {
+            // A guest attempting playback control on a server where only the host may.
+            // Expected noise, not a connection problem: the tap simply has no effect.
+            "not_host",
+
+            // Transient races against the host's own broadcasts; the next sync corrects.
+            "stale_track",
+
+            // These arrive as errors but ARE the join answer on this protocol.
+            "room_not_found", "invalid_room_code", "missing_room_code",
+            "missing_username", "invalid_username", "room_full", "too_many_pending",
+            "room_invalid", "already_in_room", "already_pending",
+            -> {
+                if (code in JOIN_FAILURE_CODES) {
+                    onEvent?.invoke(TogetherPublicEvent.JoinRejected(message))
+                }
+            }
+
+            "session_not_found", "session_expired", "missing_session_token" -> handleSessionExpired(message)
+
+            "unsupported_client", "capabilities_too_late", "capabilities_already_set" -> {
+                // A protocol-level mismatch no retry can fix on this connection.
+                onEvent?.invoke(TogetherPublicEvent.Error(message, recoverable = false))
+            }
+
+            else -> {
+                onEvent?.invoke(TogetherPublicEvent.Error(message, recoverable = true))
             }
         }
+    }
+
+    /**
+     * The stored session token no longer names a live session (expired past the server's
+     * 15-minute reconnect grace, or the room is gone). Forget it and either replay the
+     * user's original create/join request or surface the loss.
+     */
+    private fun handleSessionExpired(message: String) {
+        val hadPendingAction = pendingAction != null
+        clearSession()
+        if (hadPendingAction) {
+            // Close so handleConnectionLost schedules a reconnect that replays the
+            // pending create/join on a clean session.
+            webSocket?.close(1000, "Session expired")
+        } else {
+            onEvent?.invoke(TogetherPublicEvent.Error(message, recoverable = true))
+            webSocket?.close(1000, "Session expired")
+        }
+    }
+
+    private fun persistSession(
+        token: String,
+        room: String,
+        isHost: Boolean,
+    ) {
+        externalScope.launch {
+            dataStore.edit { prefs ->
+                prefs[TogetherPublicSessionTokenKey] = token
+                prefs[TogetherPublicRoomCodeKey] = room
+                prefs[TogetherPublicIsHostKey] = isHost
+            }
+        }
+    }
+
+    private fun clearSession() {
+        sessionToken = null
+        roomCode = null
+        externalScope.launch {
+            dataStore.edit { prefs ->
+                prefs.remove(TogetherPublicSessionTokenKey)
+                prefs.remove(TogetherPublicRoomCodeKey)
+                prefs.remove(TogetherPublicIsHostKey)
+            }
+        }
+    }
 
     private fun startPingJob() {
         pingJob?.cancel()
         pingJob =
             externalScope.launch {
                 while (isActive) {
-                    delay(25_000L)
-                    sendNull(TogetherPublicMessageTypes.PING)
+                    delay(PING_INTERVAL_MS)
+                    pingSequence += 1L
+                    send(
+                        TogetherPublicMessageTypes.PING,
+                        TogetherWirePingPayload(
+                            clientTime = System.currentTimeMillis(),
+                            sequence = pingSequence,
+                        ),
+                    )
                 }
             }
     }
@@ -535,5 +684,32 @@ internal class TogetherPublicClient(
             val roomCode: String,
             val username: String,
         ) : TogetherPublicPendingAction()
+    }
+
+    private companion object {
+        const val CLIENT_VERSION = "ArchiveTune"
+
+        /**
+         * The server drops a connection that stays silent past its 60s read deadline;
+         * 15s of application-level pings (SimpMusic's interval) keeps the room alive even
+         * when OkHttp's own 30s protocol pings are stripped by a middlebox.
+         */
+        const val PING_INTERVAL_MS = 15_000L
+
+        /**
+         * Error codes that answer a join attempt. Delivered as `error` frames on this
+         * protocol but semantically the same as vivi's join_rejected.
+         */
+        val JOIN_FAILURE_CODES =
+            setOf(
+                "room_not_found",
+                "invalid_room_code",
+                "missing_room_code",
+                "missing_username",
+                "invalid_username",
+                "room_full",
+                "too_many_pending",
+                "room_invalid",
+            )
     }
 }
