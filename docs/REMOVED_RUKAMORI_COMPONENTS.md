@@ -11,8 +11,10 @@ git checkout 819476ff6 -- <path>   # restore it into the tree
 
 Do **not** restore any of these without re-evaluating: they were removed
 because they phone home to `*.koiiverse.cloud` / Rukamori servers, or were
-inert leftovers. The AGENTS.md + `scripts/upstream_sync.sh` Phase 4 guards
-will fail the build/sync if the koiverse surface is reintroduced.
+inert leftovers. The AGENTS.md guards will fail the build if the koiverse
+surface is reintroduced. (The upstream-sync workflow and its
+`scripts/upstream_sync.sh` / `scripts/ai_resolve.py` were removed outright
+in 2026-09 — see V0_CHAT_MEMORY.md.)
 
 ---
 
@@ -119,7 +121,7 @@ phantom dependency left after the playback stack moved to
 `MetrolistExtractor` (declared in `core/build.gradle.kts` via
 `libs.metrolist.extractor`). Removed: the `settings.gradle.kts` include,
 `app/build.gradle.kts` implementation, the proguard keep rule, the
-`.gitmodules` entry, and the `scripts/upstream_sync.sh` / `AGENTS.md` lists.
+`.gitmodules` entry, and the `AGENTS.md` lists.
 
 ## 6. Keystores and junk (deleted, do NOT restore)
 

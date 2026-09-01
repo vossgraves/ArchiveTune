@@ -318,3 +318,16 @@ bot detection into `YTPlayerUtils.resolvePlaybackData` (the fork's
 playback/stream package is fork-only and already exceeds upstream —
 3-attempt recovery tracker, codec-state recovery, offline cache bypass,
 URL probe failsafe — so only this one piece was worth porting).
+
+## 2026-09: upstream sync workflow removed
+
+Session 2026-09-01 deleted the entire auto-sync machinery at the user's
+request: `.github/workflows/upstream-sync.yml`,
+`.github/workflows/upstream-sync-merge.yml`, `scripts/upstream_sync.sh`,
+`scripts/ai_resolve.py`, and `docs/UPSTREAM_SYNC.md`. Upstream rukamori
+changes are now pulled manually (no merge base exists, so targeted
+`git show upstream-rukamori/main:<path>` comparisons are the working
+method). Note: the cron had never been firing anyway — the workflow only
+existed on `dev`, and GitHub runs schedules from the default branch
+(`main`), which never carried it. The `SYNC_PAT` / `AI_API_KEY` secrets
+are now unused and can be deleted from repo settings.
