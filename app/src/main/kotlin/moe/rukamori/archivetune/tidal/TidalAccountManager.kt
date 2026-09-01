@@ -567,4 +567,19 @@ object TidalAccountManager {
                 }
             }
         }
+
+    /** Detects TidalUnauthorizedException in a throwable's cause or suppressed chain (ExoPlayer interruptions). */
+    fun isUnauthorized(root: Throwable?): Boolean {
+        val stack = ArrayDeque<Throwable>()
+        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
+        root?.let { stack.addLast(it) }
+        while (stack.isNotEmpty()) {
+            val t = stack.removeLast()
+            if (!seen.add(t)) continue
+            if (t is TidalUnauthorizedException) return true
+            t.cause?.let { stack.addLast(it) }
+            t.suppressed.forEach { stack.addLast(it) }
+        }
+        return false
+    }
 }

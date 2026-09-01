@@ -94,6 +94,8 @@ object QobuzAudioProvider {
         val isToken: Boolean,
         val search: (String) -> JSONArray?,
         val download: (String, Int) -> DownloadResult?,
+        val poolId: Long? = null,
+        val isPoolPremium: Boolean = false,
     )
 
     /** The last Qobuz track id that resolved successfully, usable as a health-probe track. */
@@ -423,6 +425,12 @@ object QobuzAudioProvider {
             if (download.isPreview) {
                 // Unsubscribed/expired backing account: skip this backend for a while, try the next.
                 Timber.tag("Qobuz").w("%s returned preview-only; skipping", backend.label)
+                // Report not_premium to the pool, but only for accounts we advertised as premium.
+                // Qobuz returns "sample":true for both lapsed subscriptions and unavailable-at-quality tracks,
+                // so only marking definitely wrong claims prevents disabling healthy accounts.
+                if (backend.isToken && backend.isPoolPremium && backend.poolId != null) {
+                    moe.rukamori.archivetune.utils.PoolAccountManager.report("qobuz", "account", backend.poolId, "not_premium")
+                }
                 markInstanceFailed(backend.id, hardFailure = false)
                 continue
             }
@@ -488,6 +496,7 @@ object QobuzAudioProvider {
                         appSecret = it.appSecret,
                         label = "Source Pool",
                         subscription = if (it.premium) "premium" else "",
+                        poolId = it.id,
                     )
                 }
             }.getOrDefault(emptyList())
@@ -569,6 +578,8 @@ object QobuzAudioProvider {
                     isToken = true,
                     search = { q -> searchItemsDirect(token, q) },
                     download = { id, fmt -> fetchDownloadDirect(token, id, fmt) },
+                    poolId = token.poolId,
+                    isPoolPremium = token.poolId != null && token.subscription.equals("premium", ignoreCase = true),
                 )
             }
         val proxyBackends =
@@ -818,6 +829,9 @@ object QobuzAudioProvider {
                 .addQueryParameter("app_id", token.appId)
                 .build()
         client.newCall(directRequest(url.toString(), token)).execute().use { response ->
+            if (response.code == 401 || response.code == 403) {
+                token.poolId?.let { moe.rukamori.archivetune.utils.PoolAccountManager.report("qobuz", "account", it, "dead") }
+            }
             if (!response.isSuccessful) return null
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) return null
@@ -837,6 +851,9 @@ object QobuzAudioProvider {
         formatId: Int,
     ): DownloadResult? {
         client.newCall(directDownloadRequest(token, trackId, formatId)).execute().use { response ->
+            if (response.code == 401 || response.code == 403) {
+                token.poolId?.let { moe.rukamori.archivetune.utils.PoolAccountManager.report("qobuz", "account", it, "dead") }
+            }
             if (!response.isSuccessful) return null
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) return null

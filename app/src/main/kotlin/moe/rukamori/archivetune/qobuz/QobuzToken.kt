@@ -15,6 +15,7 @@ data class QobuzToken(
     val appSecret: String,
     val label: String = "",
     val subscription: String = "",
+    val poolId: Long? = null,
 ) {
     /** Stable identifier used for health-cache keys and dedupe (the auth token is unique per account). */
     val id: String get() = token.take(12)
@@ -27,6 +28,7 @@ data class QobuzToken(
             put("appSecret", appSecret)
             put("label", label)
             put("subscription", subscription)
+            poolId?.let { put("poolId", it) }
         }
 
     companion object {
@@ -42,6 +44,7 @@ data class QobuzToken(
                 appSecret = appSecret,
                 label = obj.optString("label").trim(),
                 subscription = obj.optString("subscription").trim(),
+                poolId = obj.optLong("poolId", 0L).takeIf { it > 0L },
             )
         }
 
