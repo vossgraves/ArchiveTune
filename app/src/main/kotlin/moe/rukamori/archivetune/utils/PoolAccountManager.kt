@@ -605,60 +605,48 @@ object PoolAccountManager {
         val ctx = appContext ?: return
         val replacementObj = root.optJSONObject("replacement") ?: return
         val decryptor = decryptorFor(replacementObj, readKey)
+        val replacementArr = replacementObj.optJSONObject(service)?.optJSONArray("accounts") ?: JSONArray()
 
         refreshMutex.withLock {
-            // If the cache no longer contains the dead entry, a refresh landed while the report
-            // was in flight — that cache is authoritative, so drop the replacement.
-            val cacheList = when (service) {
-                "tidal" -> tidalCache
-                "qobuz" -> qobuzCache
-                "deezer" -> deezerCache
-                "apple-music" -> appleMusicCache
+            when (service) {
+                "tidal" -> tidalCache = mergeList(tidalCache, deadId, TidalPoolAccount::id, replacementArr, ::parseTidal, decryptor) ?: return@withLock
+                "qobuz" -> qobuzCache = mergeList(qobuzCache, deadId, QobuzPoolAccount::id, replacementArr, ::parseQobuz, decryptor) ?: return@withLock
+                "deezer" -> deezerCache = mergeList(deezerCache, deadId, DeezerPoolAccount::id, replacementArr, ::parseDeezer, decryptor) ?: return@withLock
+                "apple-music" -> appleMusicCache = mergeList(appleMusicCache, deadId, AppleMusicPoolAccount::id, replacementArr, ::parseAppleMusic, decryptor) ?: return@withLock
                 else -> return@withLock
             }
-
-            val deadIndex = cacheList.indexOfFirst { it.id == deadId }
-            if (deadIndex < 0) return@withLock // Entry already gone from cache.
-
-            val replacementArr = replacementObj.optJSONObject(service)?.optJSONArray("accounts") ?: return@withLock
-            if (replacementArr.length() == 0) {
-                // No replacement available — just drop the dead entry.
-                val newList = cacheList.filterIndexed { idx, _ -> idx != deadIndex }
-                when (service) {
-                    "tidal" -> tidalCache = newList as List<TidalPoolAccount>
-                    "qobuz" -> qobuzCache = newList as List<QobuzPoolAccount>
-                    "deezer" -> deezerCache = newList as List<DeezerPoolAccount>
-                    "apple-music" -> appleMusicCache = newList as List<AppleMusicPoolAccount>
-                }
-                persist(ctx, tidalCache, qobuzCache, deezerCache, appleMusicCache)
-                return@withLock
-            }
-
-            // Parse the replacement with the same decryptor as the feed.
-            val replacementEntry = when (service) {
-                "tidal" -> parseTidal(replacementArr, decryptor).firstOrNull()
-                "qobuz" -> parseQobuz(replacementArr, decryptor).firstOrNull()
-                "deezer" -> parseDeezer(replacementArr, decryptor).firstOrNull()
-                "apple-music" -> parseAppleMusic(replacementArr, decryptor).firstOrNull()
-                else -> null
-            } ?: return@withLock
-
-            // If the replacement is already in the cache, just drop the dead entry.
-            val newList = if (cacheList.any { it.id == replacementEntry.id }) {
-                cacheList.filterIndexed { idx, _ -> idx != deadIndex }
-            } else {
-                // Replace the dead entry with the replacement, preserving order.
-                cacheList.mapIndexed { idx, entry -> if (idx == deadIndex) replacementEntry else entry }
-            }
-
-            // Update the appropriate cache.
-            when (service) {
-                "tidal" -> tidalCache = newList as List<TidalPoolAccount>
-                "qobuz" -> qobuzCache = newList as List<QobuzPoolAccount>
-                "deezer" -> deezerCache = newList as List<DeezerPoolAccount>
-                "apple-music" -> appleMusicCache = newList as List<AppleMusicPoolAccount>
-            }
             persist(ctx, tidalCache, qobuzCache, deezerCache, appleMusicCache)
+        }
+    }
+
+    /**
+     * Replaces the dead-id element of [cacheList] with the parsed replacement, preserving order.
+     * Null return means "nothing to persist": the dead entry is no longer cached (a refresh landed
+     * while the report was in flight, so that cache is authoritative) or the replacement failed to
+     * parse. An empty [replacementArr] drops the dead entry with no substitute.
+     */
+    private fun <T> mergeList(
+        cacheList: List<T>,
+        deadId: Long,
+        idOf: (T) -> Long?,
+        replacementArr: JSONArray,
+        parse: (JSONArray?, (String) -> String?) -> List<T>,
+        decryptor: (String) -> String?,
+    ): List<T>? {
+        val deadIndex = cacheList.indexOfFirst { idOf(it) == deadId }
+        if (deadIndex < 0) return null
+
+        if (replacementArr.length() == 0) {
+            return cacheList.filterIndexed { idx, _ -> idx != deadIndex }
+        }
+
+        val replacementEntry = parse(replacementArr, decryptor).firstOrNull() ?: return null
+
+        // Replacement already cached (a concurrent report raced to the same one) — just drop the dead entry.
+        return if (cacheList.any { idOf(it) == idOf(replacementEntry) }) {
+            cacheList.filterIndexed { idx, _ -> idx != deadIndex }
+        } else {
+            cacheList.mapIndexed { idx, entry -> if (idx == deadIndex) replacementEntry else entry }
         }
     }
 
