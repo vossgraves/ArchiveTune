@@ -409,6 +409,9 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
             icon = { Icon(painterResource(R.drawable.token), null) },
             title = { Text(stringResource(R.string.sources_tidal_token_title)) },
             placeholder = { Text(stringResource(R.string.sources_tidal_token_label)) },
+            // A Tidal refresh token is a live credential — mask it, as the Qobuz token fields and
+            // the Apple Music token sheet already do.
+            masked = true,
             isInputValid = { it.trim().split('.').size == 3 },
             onDone = { rawToken ->
                 val refreshToken = rawToken.trim()

@@ -1225,6 +1225,17 @@ enum class SearchSource {
 val VisitorDataKey = stringPreferencesKey("visitorData")
 val DataSyncIdKey = stringPreferencesKey("dataSyncId")
 val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
+
+/**
+ * OAuth2 credentials for the YouTube VR device-code flow, the signed-in path that does not use a
+ * cookie. The access token is short-lived (~1h) and is what reaches InnerTube as a Bearer; the
+ * refresh token is long-lived and never leaves the app.
+ */
+val InnerTubeOAuthTokenKey = stringPreferencesKey("innerTubeOAuthToken")
+val InnerTubeOAuthRefreshTokenKey = stringPreferencesKey("innerTubeOAuthRefreshToken")
+
+/** Epoch millis at which [InnerTubeOAuthTokenKey] expires, so a refresh happens before a 401. */
+val InnerTubeOAuthExpiresAtKey = longPreferencesKey("innerTubeOAuthExpiresAt")
 val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")

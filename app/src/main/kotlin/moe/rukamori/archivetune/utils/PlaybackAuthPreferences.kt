@@ -18,6 +18,9 @@ import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
+import moe.rukamori.archivetune.constants.InnerTubeOAuthExpiresAtKey
+import moe.rukamori.archivetune.constants.InnerTubeOAuthRefreshTokenKey
+import moe.rukamori.archivetune.constants.InnerTubeOAuthTokenKey
 import moe.rukamori.archivetune.constants.PoTokenGvsKey
 import moe.rukamori.archivetune.constants.PoTokenKey
 import moe.rukamori.archivetune.constants.PoTokenPlayerKey
@@ -36,6 +39,13 @@ fun Preferences.toPlaybackAuthState(): PlaybackAuthState =
         poTokenGvs = this[PoTokenGvsKey],
         poTokenPlayer = this[PoTokenPlayerKey],
         webClientPoTokenEnabled = this[WebClientPoTokenEnabledKey] ?: false,
+        // Only the access token goes to core; the refresh token stays app-side (see
+        // YouTubeOAuthRepository). An expired token is passed down as null rather than as a value
+        // that would 401 on every request — core has no way to refresh it.
+        oauthToken =
+            this[InnerTubeOAuthTokenKey]?.takeIf {
+                (this[InnerTubeOAuthExpiresAtKey] ?: 0L) > System.currentTimeMillis()
+            },
     ).normalized()
 
 fun MutablePreferences.clearPlaybackAuthSession(clearAccountIdentity: Boolean = true) {
@@ -46,6 +56,12 @@ fun MutablePreferences.clearPlaybackAuthSession(clearAccountIdentity: Boolean = 
     remove(PoTokenGvsKey)
     remove(PoTokenPlayerKey)
     remove(PoTokenSourceUrlKey)
+    // The OAuth session is a second way to be signed in, so signing out has to drop it too —
+    // otherwise "log out" leaves a working Bearer behind and playback stays authenticated.
+    // Revoking it server-side is YouTubeOAuthRepository.signOut(); this only clears local state.
+    remove(InnerTubeOAuthTokenKey)
+    remove(InnerTubeOAuthRefreshTokenKey)
+    remove(InnerTubeOAuthExpiresAtKey)
     if (clearAccountIdentity) {
         remove(AccountNameKey)
         remove(AccountImageUrlKey)

@@ -65,6 +65,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -370,6 +372,12 @@ fun TextFieldDialog(
     maxLines: Int = if (singleLine) 1 else 10,
     keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
     isInputValid: (String) -> Boolean = { it.isNotEmpty() },
+    /**
+     * Masks the field, for dialogs that take a credential (a Tidal refresh token, an API
+     * key). Off by default so every existing caller is unchanged; opting in keeps a secret
+     * off the screen, out of screenshots and away from anyone glancing over.
+     */
+    masked: Boolean = false,
     onDone: (String) -> Unit = {},
     // new multi-field support
     textFields: List<Pair<String, TextFieldValue>>? = null,
@@ -468,6 +476,8 @@ fun TextFieldDialog(
                     enabled = enabled,
                     singleLine = singleLine,
                     maxLines = maxLines,
+                    visualTransformation =
+                        if (masked) PasswordVisualTransformation() else VisualTransformation.None,
                     colors = OutlinedTextFieldDefaults.colors(),
                     keyboardOptions = keyboardOptions,
                     keyboardActions =
