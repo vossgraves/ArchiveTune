@@ -385,6 +385,9 @@ fun LyricsProvidersSettings(
                             textFieldValue = paxsenixApiKey,
                             onTextFieldValueChange = onPaxsenixApiKeyChange,
                             singleLine = true,
+                            // Bound to the stored key, so reopening the dialog rendered a live
+                            // credential in cleartext.
+                            masked = true,
                             isInputValid = { it.isBlank() || it.length >= 8 },
                         )
                     }

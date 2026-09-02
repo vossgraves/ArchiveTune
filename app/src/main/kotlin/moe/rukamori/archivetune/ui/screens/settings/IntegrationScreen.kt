@@ -346,6 +346,9 @@ fun IntegrationScreen(
             onDismiss = { showListenBrainzTokenEditor.value = false },
             singleLine = true,
             maxLines = 1,
+            // The dialog opens pre-filled with the stored token, so editing it put a working
+            // ListenBrainz credential on screen in cleartext every time.
+            masked = true,
             isInputValid = {
                 it.isNotEmpty()
             },
