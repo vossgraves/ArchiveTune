@@ -1697,4 +1697,5 @@
     <string name="telegram_bot_forward_failed">Couldn\'t forward to your channel: %1$s</string>
     <string name="telegram_bot_added_to_playlist">Added to \"%1$s\"</string>
     <string name="telegram_bot_choose_option">Bot needs your choice — pick an option below:</string>
+    <string name="paste">Paste</string>
 </resources>

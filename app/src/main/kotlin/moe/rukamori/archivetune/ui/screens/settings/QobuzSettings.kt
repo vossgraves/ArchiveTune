@@ -25,6 +25,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -282,6 +288,11 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         var editToken by remember(token) { mutableStateOf(token.token) }
         var editAppId by remember(token) { mutableStateOf(token.appId) }
         var editAppSecret by remember(token) { mutableStateOf(token.appSecret) }
+        // Reset per token: opening another token's details must not inherit the last one's
+        // revealed state and expose a secret the user never asked to see.
+        var revealToken by remember(token) { mutableStateOf(false) }
+        var revealAppId by remember(token) { mutableStateOf(false) }
+        var revealAppSecret by remember(token) { mutableStateOf(false) }
 
         val status = tokenHealth[token.id]
         val statusColor =
@@ -362,29 +373,33 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
+                // The three secrets are masked by default with a per-field reveal, the same
+                // treatment the Apple Music token sheet already gives its tokens. They used to
+                // render in plaintext monospace, so opening a token's details put a working Qobuz
+                // credential on screen — visible to anyone glancing over, and to any screenshot or
+                // screen recording. Revealing is still one tap when you need to check a paste.
+                SecretField(
                     value = editToken,
                     onValueChange = { editToken = it },
-                    label = { Text("Token (auth)") },
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                    modifier = Modifier.fillMaxWidth(),
+                    label = "Token (auth)",
+                    revealed = revealToken,
+                    onToggleReveal = { revealToken = !revealToken },
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
+                SecretField(
                     value = editAppId,
                     onValueChange = { editAppId = it },
-                    label = { Text("App ID") },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                    modifier = Modifier.fillMaxWidth(),
+                    label = "App ID",
+                    revealed = revealAppId,
+                    onToggleReveal = { revealAppId = !revealAppId },
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
+                SecretField(
                     value = editAppSecret,
                     onValueChange = { editAppSecret = it },
-                    label = { Text("App Secret") },
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                    modifier = Modifier.fillMaxWidth(),
+                    label = "App Secret",
+                    revealed = revealAppSecret,
+                    onToggleReveal = { revealAppSecret = !revealAppSecret },
                 )
                 Spacer(Modifier.height(12.dp))
                 Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -935,4 +950,49 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
             }
         }
     }
+}
+
+/**
+ * A credential field: masked by default, monospace when revealed so a pasted token can actually be
+ * proof-read. Local to this screen — Tidal and Apple Music each have their own equivalent today,
+ * and pulling a shared component out of three callers is worth doing only once they have stopped
+ * diverging (Apple's also validates shape, Tidal's carries a different label set).
+ */
+@Composable
+private fun SecretField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    revealed: Boolean,
+    onToggleReveal: () -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation =
+            if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            // Material3's IconButton, spelled out: this file imports ui.component.IconButton,
+            // which takes a required onLongClick and would not fit here.
+            androidx.compose.material3.IconButton(onClick = onToggleReveal) {
+                Icon(
+                    imageVector =
+                        if (revealed) {
+                            androidx.compose.material.icons.Icons.Filled.VisibilityOff
+                        } else {
+                            androidx.compose.material.icons.Icons.Filled.Visibility
+                        },
+                    contentDescription = null,
+                )
+            }
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        textStyle =
+            MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            ),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
