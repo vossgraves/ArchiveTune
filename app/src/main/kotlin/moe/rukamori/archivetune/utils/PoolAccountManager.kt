@@ -314,6 +314,19 @@ object PoolAccountManager {
                             result = fetchAccounts(context, legacySourcesUrl!!, readKey)
                         }
                     }
+                    // Both the split feed and the legacy combined feed 404'd. That is not an
+                    // "old pool deployment" — it means nothing at this host serves the pool API at
+                    // all (wrong SOURCE_PROVIDER_URL, or a deployment that no longer exists). Say
+                    // so explicitly: the previous wording ("feed returned HTTP 404") reads like a
+                    // credential problem, and a missing/invalid read key is a 401, never a 404.
+                    if (!result.succeeded && result.code == 404) {
+                        Timber.tag(TAG).e(
+                            "No pool API at %s — both /api/accounts and /api/sources returned 404. " +
+                                "SOURCE_PROVIDER_URL points at a host that is not an ArchivePool deployment " +
+                                "(this is NOT a read-key problem; a bad key answers 401).",
+                            poolBaseUrl,
+                        )
+                    }
                 } // else (pool URL configured)
 
                 // Second source: user-configured community paste lists (rentry/gist tables).

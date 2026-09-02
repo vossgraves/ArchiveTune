@@ -70,6 +70,12 @@ object AppleMusicAudioProvider {
 
     /** Storefront resolved from the Media-User-Token (`/v1/me/storefront`), cached 24 h. */
     private const val STOREFRONT_TTL_MS = 24 * 60 * 60 * 1000L
+
+    /**
+     * KEYFORMAT of the Widevine #EXT-X-KEY line — the standard Widevine system id as a URN. The
+     * same playlist also lists FairPlay and PlayReady keys, which are not usable on Android here.
+     */
+    private const val WIDEVINE_KEYFORMAT = "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
     @Volatile private var cachedStorefront: String? = null
     @Volatile private var cachedStorefrontAtMs = 0L
     private val storefrontMutex = Mutex()
@@ -415,13 +421,25 @@ object AppleMusicAudioProvider {
                 val line = rawLine.trim()
                 when {
                     line.startsWith("#EXT-X-KEY") && keyIdHex == null -> {
-                        // The RAW data: URI is what Apple's license exchange expects as `uri`.
-                        Regex("URI=\"([^\"]+)\"").find(line)?.let { match -> drmUri = match.groupValues[1] }
-                        Regex("URI=\"data:[^\"]*base64,([^\"]+)\"").find(line)?.let { match ->
-                            keyIdHex =
-                                runCatching {
-                                    java.util.Base64.getDecoder().decode(match.groupValues[1].trim())
-                                }.getOrNull()?.joinToString("") { "%02x".format(it) }
+                        // A playlist carries one #EXT-X-KEY per DRM system: FairPlay
+                        // (KEYFORMAT="com.apple.streamingkeydelivery", an skd:// URI), PlayReady,
+                        // and Widevine. Only the Widevine line is usable here — its data: URI
+                        // payload is the 16-byte tenc KID, and its raw URI is what Apple's licence
+                        // exchange expects as `uri`. Taking "the first line with a data: URI"
+                        // instead could latch onto PlayReady, whose payload is a WRM header rather
+                        // than a KID, or leave `drmUri` pointing at FairPlay's skd:// URI. Both
+                        // yielded a challenge Apple rejects, i.e. silent playback.
+                        if (line.contains(WIDEVINE_KEYFORMAT, ignoreCase = true)) {
+                            // The RAW data: URI is what Apple's license exchange expects as `uri`.
+                            Regex("URI=\"([^\"]+)\"").find(line)?.let { match -> drmUri = match.groupValues[1] }
+                            Regex("URI=\"data:[^\"]*base64,([^\"]+)\"").find(line)?.let { match ->
+                                keyIdHex =
+                                    runCatching {
+                                        java.util.Base64.getDecoder().decode(match.groupValues[1].trim())
+                                    }.getOrNull()
+                                        ?.takeIf { it.size == AppleMusicVirtualStream.KID_BYTES }
+                                        ?.joinToString("") { "%02x".format(it) }
+                            }
                         }
                     }
                     line.startsWith("#EXT-X-MAP") && mediaName == null -> {

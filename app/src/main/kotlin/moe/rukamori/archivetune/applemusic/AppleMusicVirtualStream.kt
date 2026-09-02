@@ -41,6 +41,9 @@ object AppleMusicVirtualStream {
             "Chrome/145.0.0.0 Safari/537.36"
     private const val DEFAULT_TIMESCALE = 44100L
 
+    /** A CENC key id is always exactly 16 bytes; anything else cannot be a KID. */
+    const val KID_BYTES = 16
+
     private data class Box(
         val type: String,
         val offset: Int,
@@ -203,7 +206,20 @@ object AppleMusicVirtualStream {
             if (mp4[p].toInt() == 1) readU64(mp4, p + 4) else readU32(mp4, p + 4).toLong()
         } ?: 0L
 
-        val pssh = buildWidevinePssh(kidHex?.let { hexToBytes(it) })
+        // A Widevine challenge is only valid when the pssh carries the real 16-byte tenc KID.
+        // Fabricating an all-zero KID (the previous `?: ByteArray(16)` fallback) still produced a
+        // structurally valid, playable file — Apple's licence server simply refused to issue a
+        // usable key, so every track decoded to SILENCE with no error logged anywhere. Fail loudly
+        // instead: resolveAppleStream catches this and falls through to the next source, and the
+        // reason lands in the log rather than being inaudible.
+        val kid = kidHex
+            ?.let { hexToBytes(it) }
+            ?.takeIf { it.size == KID_BYTES }
+            ?: throw IOException(
+                "no usable Widevine key id in playlist (kid=${kidHex ?: "absent"}); " +
+                    "cannot build a decryptable stream",
+            )
+        val pssh = buildWidevinePssh(kid)
         val sidx = buildSidx(pairs, playlist.durationsSec, timescale, baseTime)
 
         // Virtual layout: [before moov][patched moov hdr][pssh][moov children][sidx][rest].
@@ -260,25 +276,27 @@ object AppleMusicVirtualStream {
         return null
     }
 
-    private fun buildWidevinePssh(kid: ByteArray?): ByteArray {
+    private fun buildWidevinePssh(kid: ByteArray): ByteArray {
         val systemId = byteArrayOf(
             0xED.toByte(), 0xEF.toByte(), 0x8B.toByte(), 0xA9.toByte(),
             0x79.toByte(), 0xD6.toByte(), 0x4A.toByte(), 0xCE.toByte(),
             0xA3.toByte(), 0xC8.toByte(), 0x27.toByte(), 0xDC.toByte(),
             0xD5.toByte(), 0x1D.toByte(), 0x21.toByte(), 0xED.toByte(),
         )
-        // The pssh DATA must be a WidevinePsshData protobuf carrying the key id — an empty
-        // payload produces a license challenge without key ids and Apple's server refuses it
-        // (playback with no sound). Mirrors gamdl's reconstruct_pssh:
+        // The pssh DATA must be a WidevinePsshData protobuf carrying the key id — an empty or
+        // wrong-length payload produces a license challenge Apple's server refuses (playback with
+        // no sound). Mirrors gamdl's reconstruct_pssh:
         //   field 1 (algorithm) = 1 (AES-CTR): tag 0x08, value 0x01
         //   field 2 (key_ids)   = 16 bytes:    tag 0x12, len 0x10, <kid>
-        val k = kid ?: ByteArray(16)
-        val data = ByteArray(4 + k.size)
+        // The length is written as a single-byte varint, which is only correct for a 16-byte KID —
+        // hence the caller's size check, restated here so this stays true if it ever moves.
+        require(kid.size == KID_BYTES) { "Widevine KID must be $KID_BYTES bytes, got ${kid.size}" }
+        val data = ByteArray(4 + kid.size)
         data[0] = 0x08
         data[1] = 0x01 // algorithm = AESCTR
         data[2] = 0x12 // field 2 (key_ids), wire type 2
-        data[3] = k.size.toByte()
-        System.arraycopy(k, 0, data, 4, k.size)
+        data[3] = kid.size.toByte()
+        System.arraycopy(kid, 0, data, 4, kid.size)
         val size = 8 + 4 + 16 + 4 + data.size
         val out = ByteArray(size)
         writeU32(out, 0, size)

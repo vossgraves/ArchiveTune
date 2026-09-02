@@ -9774,7 +9774,11 @@ class MusicService :
             f.delete()
         }
         val safeId = mediaId.replace(Regex("[^A-Za-z0-9_-]"), "_")
-        val out = java.io.File(dir, "${safeId}_${quality.name.lowercase()}.m4a")
+        // The v2 marker invalidates files built before the pssh KID fix: those carry an all-zero
+        // Widevine key id, so they are structurally valid (and therefore cached and replayed
+        // forever) but decode to silence. Bumping the name is what makes the fix observable on a
+        // song the user has already played; the size prune above retires the stale v1 files.
+        val out = java.io.File(dir, "${safeId}_${quality.name.lowercase()}_v2.m4a")
         if (out.exists() && out.length() > 0) return out
         out.writeBytes(build())
         return out
