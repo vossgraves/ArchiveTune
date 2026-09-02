@@ -176,16 +176,23 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                                 }
                                 accountsOk
                             }
+                        // A pool failure wins over `ok`. refresh() returns hasAccounts(), which is
+                        // true whenever anything survives in the persisted cache — so a pool that
+                        // 404s or 401s on every request still reported "refreshed: tidal=1 …" and
+                        // looked healthy, hiding the real reason in logcat. Show the reason.
+                        val poolError = PoolAccountManager.lastFeedError
                         val message =
-                            if (ok) {
-                                context.getString(
-                                    R.string.pool_refresh_done,
-                                    PoolAccountManager.tidalAccounts().size,
-                                    PoolAccountManager.qobuzAccounts().size,
-                                    PoolAccountManager.deezerAccounts().size,
-                                )
-                            } else {
-                                context.getString(R.string.pool_refresh_failed)
+                            when {
+                                poolError != null ->
+                                    context.getString(R.string.pool_refresh_failed) + "\n" + poolError
+                                ok ->
+                                    context.getString(
+                                        R.string.pool_refresh_done,
+                                        PoolAccountManager.tidalAccounts().size,
+                                        PoolAccountManager.qobuzAccounts().size,
+                                        PoolAccountManager.deezerAccounts().size,
+                                    )
+                                else -> context.getString(R.string.pool_refresh_failed)
                             }
                         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                         refreshing = false

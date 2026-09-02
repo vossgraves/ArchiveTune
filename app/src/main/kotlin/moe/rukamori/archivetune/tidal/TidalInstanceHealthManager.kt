@@ -94,13 +94,10 @@ object TidalInstanceHealthManager {
                         Timber.tag("TidalHealth").d("Discovery returned %d instance(s)", discovered.size)
                         candidates += discovered
                     }
-                    // Seed the scan with the well-known public hostnames. Probing them is the only
-                    // way any of them can ever become usable: the resolver reads its fallback list
-                    // from healthyUrls(), so a seed that fails verification never gets streamed
-                    // from. Without this the scan had nothing to probe whenever the Source Pool
-                    // discovery feed was empty or unreachable, which pinned the reported instance
-                    // count at 0 regardless of how many public mirrors were actually up.
-                    candidates += TidalAudioProvider.SEED_INSTANCE_CANDIDATES
+                    // Deliberately no baked-in seed hosts (see TidalAudioProvider). Candidates are
+                    // only what the user configured plus what the Source Pool discovery feed
+                    // returned; when both are empty the scan is skipped instead of probing ten
+                    // dead public mirrors on every launch.
 
                     if (candidates.isEmpty()) {
                         Timber.tag("TidalHealth").d("No TIDAL instances configured or discovered; skipping health scan")

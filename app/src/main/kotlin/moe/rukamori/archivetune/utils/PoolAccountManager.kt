@@ -80,6 +80,20 @@ object PoolAccountManager {
     @Volatile
     private var appContext: Context? = null
 
+    /**
+     * Why the last pool fetch failed, or null when it succeeded (or no pool URL is configured).
+     *
+     * [refresh] returns `hasAccounts()`, which is true whenever *anything* is in the persisted
+     * cache — so a pool that 404s on every request still reported "success" to the settings
+     * screen as long as one stale account survived from an earlier session. That made a broken
+     * pool indistinguishable from a working one in the UI, and the real HTTP status was only
+     * ever visible in logcat. Callers surface this alongside the result so the reason reaches
+     * the user instead of just the log.
+     */
+    @Volatile
+    var lastFeedError: String? = null
+        private set
+
     /** Report deduplication: "$service:$id:$type" → timestamp. Suppresses duplicate reports within ~10 minutes. */
     private val reportDedupe = ConcurrentHashMap<String, Long>()
     private const val REPORT_DEDUPE_WINDOW_MS = 10 * 60 * 1000L
@@ -277,7 +291,9 @@ object PoolAccountManager {
                 }
                 val url = accountsUrl ?: legacySourcesUrl
                 if (url == null) {
-                    // No Source Pool URL baked in — paste lists are the only account source.
+                    // No Source Pool URL baked in — paste lists are the only account source, so
+                    // there is no pool failure to report.
+                    lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; refreshing paste lists only")
                 } else {
                     // A key pasted by the user on-device (pool site /dashboard → copy) wins over
@@ -314,19 +330,32 @@ object PoolAccountManager {
                             result = fetchAccounts(context, legacySourcesUrl!!, readKey)
                         }
                     }
-                    // Both the split feed and the legacy combined feed 404'd. That is not an
-                    // "old pool deployment" — it means nothing at this host serves the pool API at
-                    // all (wrong SOURCE_PROVIDER_URL, or a deployment that no longer exists). Say
-                    // so explicitly: the previous wording ("feed returned HTTP 404") reads like a
-                    // credential problem, and a missing/invalid read key is a 401, never a 404.
-                    if (!result.succeeded && result.code == 404) {
-                        Timber.tag(TAG).e(
-                            "No pool API at %s — both /api/accounts and /api/sources returned 404. " +
-                                "SOURCE_PROVIDER_URL points at a host that is not an ArchivePool deployment " +
-                                "(this is NOT a read-key problem; a bad key answers 401).",
-                            poolBaseUrl,
-                        )
-                    }
+                    // Record why the fetch failed — or clear it on success — so the settings screen
+                    // can show the reason rather than a generic "failed". refresh()'s own Boolean
+                    // cannot carry this: it reports whether anything is cached, not whether the
+                    // network call actually worked.
+                    lastFeedError =
+                        when {
+                            result.succeeded -> null
+                            // Both the split feed and the legacy combined feed 404'd. That is not
+                            // an "old pool deployment" — nothing at this host serves the pool API
+                            // at all (wrong SOURCE_PROVIDER_URL, or a deployment that no longer
+                            // exists). A missing or invalid read key is a 401, never a 404.
+                            result.code == 404 -> {
+                                Timber.tag(TAG).e(
+                                    "No pool API at %s — both /api/accounts and /api/sources returned 404. " +
+                                        "SOURCE_PROVIDER_URL points at a host that is not an ArchivePool deployment " +
+                                        "(this is NOT a read-key problem; a bad key answers 401).",
+                                    poolBaseUrl,
+                                )
+                                "No pool API at $poolBaseUrl (HTTP 404) — that URL is not an ArchivePool deployment."
+                            }
+                            result.code == 401 ->
+                                "Pool rejected the API key (HTTP 401) — SOURCE_PROVIDER_KEY is missing, revoked, " +
+                                    "or issued by a different deployment."
+                            result.code == 0 -> "Could not reach $poolBaseUrl — network error."
+                            else -> "Pool feed returned HTTP ${result.code}."
+                        }
                 } // else (pool URL configured)
 
                 // Second source: user-configured community paste lists (rentry/gist tables).

@@ -79,36 +79,14 @@ object TidalAudioProvider {
     // This list is intentionally empty so nothing is ever baked into the app or silently used.
     private val DEFAULT_DOWNLOAD_API_ENDPOINTS = emptyList<TidalDownloadEndpoint>()
 
-    /**
-     * Well-known public HiFi/QQDL hostnames offered to the startup health scan as *probe
-     * candidates* only.
-     *
-     * These are NOT active endpoints: nothing here is ever streamed from until
-     * [TidalInstanceHealthManager] has probed it and recorded it as
-     * [InstanceHealth.HEALTHY], at which point it reaches the resolver the same way a
-     * pool-discovered instance does (via `TidalInstanceHealthManager.healthyUrls`). So the
-     * "empty user list = public streaming disabled" contract still holds for anything that
-     * cannot actually serve a full track, and a user who clears their list does not silently
-     * get these back as endpoints.
-     *
-     * The reason they exist: the Source Pool discovery feed is often down to one entry (or
-     * zero), which left the scan with nothing to probe and the instance list permanently at
-     * "0 healthy" even on a correctly-configured install. Seeding the scan gives it something
-     * to find. Dead hosts cost one probe each and are then skipped via the cooldown map.
-     */
-    val SEED_INSTANCE_CANDIDATES: List<String> =
-        listOf(
-            "https://eu-central.monochrome.tf",
-            "https://us-west.monochrome.tf",
-            "https://api.monochrome.tf",
-            "https://hot.monochrome.tf",
-            "https://monochrome-api.samidy.com",
-            "https://wolf.qqdl.site",
-            "https://maus.qqdl.site",
-            "https://vogel.qqdl.site",
-            "https://katze.qqdl.site",
-            "https://hund.qqdl.site",
-        )
+    // Nor are any public HiFi/QQDL hostnames seeded into the startup health scan. A
+    // SEED_INSTANCE_CANDIDATES list used to hold ten well-known monochrome.tf / qqdl.site hosts
+    // so the scan had something to probe when the Source Pool discovery feed came back empty. In
+    // practice they were all dead — a real scan resolved them as two PREVIEW_ONLY and eight
+    // UNREACHABLE — so they bought nothing, cost ~10s of probing on every launch, and made an
+    // install that never asked for those hosts look like it was "fetching instances from
+    // monochrome". Instances now come only from the user's own Tidal settings entries and the
+    // Source Pool discovery feed ($SOURCE_PROVIDER_URL/api/discovery/tidal).
 
     // Live uptime feed used by the official monochrome.tf frontend to discover currently-healthy
     // instances. Best-effort only: it rotates and may be unreachable, so discovery is allowed to
