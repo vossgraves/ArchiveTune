@@ -1,8 +1,0 @@
-{
-  "tag": "v14.0.5362",
-  "version": "14.0.5362",
-  "version_code": "5362",
-  "name": "14.0.5362",
-  "body": "# Changelog\n\n## Fixes\n\n- fix: revert share UI more-options, region spoofer recommendations, queue button taps — by @rukamori\n- fix: remove incorrect awaitPointerEvent import — by @rukamori\n\n\n\n<details>\n<summary>Other changes</summary>\n\n- Merge pull request 4nx3b/ArchiveTune#78 from 4nx3b/dev — by @4nx3b\n\n</details>",
-  "source": "4nx3b/ArchiveTune"
-}
