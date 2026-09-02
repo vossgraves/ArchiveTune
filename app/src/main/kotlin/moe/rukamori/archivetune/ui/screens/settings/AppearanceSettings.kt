@@ -467,11 +467,14 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("liquid_glass_effects"),
+                modifier = positions.modifierFor("dynamic_theme"),
                 title = stringResource(R.string.theme),
             ) {
+                // Liquid glass used to sit in its own PreferenceGroup, also titled "Theme", so the
+                // screen opened with a Theme header, one switch, and a second Theme header. Same
+                // group, same order, one header.
                 item {
-                    Column {
+                    Column(modifier = positions.modifierFor("liquid_glass_effects")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.liquid_glass_effects)) },
                             description = stringResource(R.string.liquid_glass_effects_desc),
@@ -489,12 +492,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         }
                     }
                 }
-            }
 
-            PreferenceGroup(
-                modifier = positions.modifierFor("dynamic_theme"),
-                title = stringResource(R.string.theme),
-            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.enable_dynamic_theme)) },
