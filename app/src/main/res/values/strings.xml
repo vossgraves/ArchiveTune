@@ -192,7 +192,7 @@
     <string name="export_to_folder_success">Exported to selected folder</string>
     <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>
     <string name="export_songs_to_local">Export songs to local storage</string>
-    <string name="export_songs_to_local_description">Export all downloaded songs to a folder on your device. Files are saved in their original format (FLAC, OPUS, M4A, etc.).</string>
+    <string name="export_songs_to_local_description">Copy downloads to a folder, in their original format.</string>
     <string name="export_all_songs_progress">Exporting songs… (%1$d of %2$d)</string>
     <string name="export_all_songs_complete">Exported %1$d song(s) successfully%2$s</string>
     <string name="export_all_songs_no_downloads">No downloaded songs to export</string>
@@ -593,7 +593,7 @@
     <string name="enable_proxy">Enable proxy</string>
     <string name="internet">Internet</string>
     <string name="youtube_music_region">YouTube Music region</string>
-    <string name="youtube_music_region_desc">Spoofs the country YouTube Music thinks you\'re connecting from. The home feed, recommendations, search, new releases, and radio queues will all reflect the chosen country. Also bypasses geo-restrictions on specific songs. System default falls back to your device locale.</string>
+    <string name="youtube_music_region_desc">Spoof your country for the home feed, search and radio. Also bypasses geo-blocks.</string>
     <string name="youtube_music_region_restarting">Applying new region… restarting app</string>
     <string name="internet_warning_title">Security &amp; Usage Warning</string>
     <string name="internet_warning_doh">DNS over HTTPS only works if your country blocks YouTube. If YouTube actively blocks your region, consider using a Proxy or VPN.</string>
@@ -627,22 +627,22 @@
     <string name="enable_youlyplus_lyrics">Enable YouLyPlus lyrics</string>
     <string name="enable_unison_lyrics">Enable Unison lyrics</string>
     <string name="prioritize_word_synced_lyrics">Prioritize Word Synced Lyrics</string>
-    <string name="prioritize_word_synced_lyrics_desc">When on, lyrics are fetched ONLY from BetterLyrics, BetterLyrics Portato, YouLyPlus, and Unison — and only word-synced lyrics (QRC/YRC/TTML) are accepted from these four. All other provider toggles and the Lyrics Priority order below are ignored while this is on. If none of the four return word-synced lyrics, the app falls back to your normal provider priority.</string>
+    <string name="prioritize_word_synced_lyrics_desc">Only accept word-synced lyrics, from BetterLyrics, YouLyPlus and Unison.</string>
     <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
     <string name="enable_megalobiz_lyrics">Enable Megalobiz lyrics</string>
     <string name="enable_paxsenix_lyrics">Enable Paxsenix lyrics</string>
     <string name="enable_musixmatch_experimental">Musixmatch (experimental)</string>
-    <string name="enable_musixmatch_experimental_desc">Native Musixmatch provider using token.get + richsync. Fetches word-synced TTML when available, falls back to line-synced LRC and plain lyrics. No hardcoded token; runtime-fetched only.</string>
+    <string name="enable_musixmatch_experimental_desc">Word-synced TTML from Musixmatch, falling back to line-synced.</string>
     <string name="musixmatch_experimental_section">Experimental</string>
     <string name="musixmatch_experimental_warning">This provider uses Musixmatch\'s internal app endpoint. It may break without notice if Musixmatch changes their API, requires the user token, or rate-limits requests. Disable and re-enable to refresh the token if lyrics stop returning.</string>
     <string name="player_and_audio">Player and audio</string>
     <string name="audio_quality">Audio quality</string>
-    <string name="audio_quality_description">Controls YouTube fallback stream quality. Tidal, Qobuz, Deezer and JioSaavn use their own quality settings.</string>
+    <string name="audio_quality_description">YouTube fallback quality. Other services use their own settings.</string>
     <string name="audio_quality_auto">Auto</string>
     <string name="audio_quality_high">High</string>
     <string name="audio_quality_low">Low</string>
     <string name="low_data_mode_title">Low Data Mode</string>
-    <string name="low_data_mode_description">On mobile or metered networks, uses low-quality YouTube streams and disables Tidal, Qobuz, playback caching, canvas, and background lyrics preloading</string>
+    <string name="low_data_mode_description">On metered networks, drop to low quality and disable the lossless sources.</string>
     <string name="queue">Queue</string>
     <string name="persistent_queue">Persistent queue</string>
     <string name="persistent_queue_desc">Restore your last queue when the app starts</string>
@@ -651,7 +651,7 @@
     <string name="skip_silence">Skip silence</string>
     <string name="audio_normalization">Audio normalization</string>
     <string name="audio_offload">Audio offload</string>
-    <string name="audio_offload_desc">Let supported devices play audio using low-power hardware decoding. Some audio processing features are disabled.</string>
+    <string name="audio_offload_desc">Low-power hardware decoding. Disables some audio processing.</string>
     <string name="pause_on_device_mute">Pause when device volume is 0</string>
     <string name="pause_on_device_mute_desc">Pause at zero volume, explain play attempts, and resume when volume increases</string>
     <string name="device_mute_recovery_volume">Increase volume from 0</string>
@@ -728,7 +728,7 @@
     <string name="eq_frequency_kilohertz">%1$.1f kHz</string>
     <string name="storage">Storage</string>
     <string name="smart_trimmer">Smart Trimmer</string>
-    <string name="smart_trimmer_description">Smart trimmer dynamically manages the image cache and song cache, pruning old entries to save disk space.</string>
+    <string name="smart_trimmer_description">Prune old image and song cache entries to save disk space.</string>
     <string name="cache">Cache</string>
     <string name="image_cache">Image Cache</string>
     <string name="song_cache">Song Cache</string>
@@ -786,7 +786,7 @@
     <string name="pause_search_history">Pause search history</string>
     <string name="clear_search_history">Clear search history</string>
     <string name="clear_search_history_confirm">Are you sure you want to clear all search history?</string>
-    <string name="use_login_for_browse_desc">This can influence what content you see and for example shows premium-only albums if you are logged in with a Premium account</string>
+    <string name="use_login_for_browse_desc">Browse signed in, so premium-only albums appear.</string>
     <string name="disable_screenshot">Disable screenshot</string>
     <string name="disable_screenshot_desc">When this option is on, screenshots and the app\'s view in Recents are disabled.</string>
     <string name="enable_lrclib">Enable LrcLib lyrics provider</string>
@@ -797,11 +797,11 @@
     <string name="romanization">Romanization</string>
     <string name="hide_explicit">Hide explicit content</string>
     <string name="allow_age_restricted">Allow age-restricted content</string>
-    <string name="allow_age_restricted_summary">Play age-restricted songs by routing them through YouTube\'s embedded player. Resolution can take a little longer, and may still fail if YouTube tightens the gate.</string>
+    <string name="allow_age_restricted_summary">Play age-restricted songs via YouTube\'s embedded player. Slower, and can fail.</string>
     <string name="hide_video">Hide music videos</string>
     <string name="ai_content_filter">AI content filter</string>
     <string name="ai_content_filter_hide">Hide AI-generated content</string>
-    <string name="ai_content_filter_hide_summary">Filter songs, videos, albums, artists, and playlists from high-confidence AI channels in Home and Search</string>
+    <string name="ai_content_filter_hide_summary">Hide content from high-confidence AI channels in Home and Search.</string>
     <string name="ai_content_filter_moderate">Include moderate-confidence channels</string>
     <string name="ai_content_filter_moderate_summary">Also hide channels that are likely, but not confirmed, to use AI-generated content</string>
     <string name="ai_content_filter_update">Update channel lists</string>
@@ -819,7 +819,7 @@
     <string name="restore_failed">Failed to restore backup</string>
     <!-- Multi-source audio framework -->
     <string name="audio_sources">Audio Sources</string>
-    <string name="audio_sources_description">Choose which services to stream from, in what order. YouTube is always used as the final fallback.</string>
+    <string name="audio_sources_description">Choose which services to stream from, and in what order.</string>
     <string name="catalog_sources">Catalog sources</string>
     <string name="default_metadata_source">Default metadata source</string>
     <string name="default_metadata_source_desc">Choose which catalog supplies titles, artists, albums and artwork when available.</string>
@@ -830,7 +830,7 @@
     <string name="search_source_youtube">YouTube Music</string>
     <string name="search_source_spotify">Spotify</string>
     <string name="spotify_catalog_source">Spotify catalog</string>
-    <string name="spotify_catalog_source_desc">Connect Spotify in Integration for metadata/search. Audio is resolved through the app\'s supported playback sources; Spotify DRM streams are not used.</string>
+    <string name="spotify_catalog_source_desc">Use Spotify for metadata and search only; audio comes from other sources.</string>
     <string name="search_spotify">Search Spotify</string>
     <string name="search_source_picker">Choose search source</string>
     <string name="spotify_track_unavailable">Spotify track could not be mapped to a playable source.</string>
@@ -850,13 +850,13 @@
     <string name="preferred_sources">Preferred sources</string>
     <string name="preferred_sources_summary">Top of the list is tried first</string>
     <string name="set_source_priority">Drag to set source priority</string>
-    <string name="source_priority_description">The topmost enabled source is used first. Sources listed after YouTube are ignored, since YouTube resolves every track.</string>
+    <string name="source_priority_description">The topmost enabled source wins. Anything after YouTube is never reached.</string>
     <string name="youtube_source_note">YouTube always works and needs no setup. Place a lossless source above it to override YouTube playback.</string>
     <string name="tidal_specific">Tidal</string>
     <string name="qobuz_specific">Qobuz</string>
     <string name="manage_in_integration">Log in, tokens &amp; instances — in Integration</string>
     <string name="tidal_account_first">Use my account first</string>
-    <string name="tidal_account_first_description">When signed in, fetch streams from your own Tidal account before falling back to public instances.</string>
+    <string name="tidal_account_first_description">Prefer your own Tidal account over the public instances.</string>
 
     <!-- Tidal music source integration -->
     <string name="music_sources">Music Sources</string>
@@ -877,13 +877,13 @@
     <string name="tidal_animated_covers">Animated covers</string>
     <string name="tidal_animated_covers_description">Show Tidal video/canvas covers when available</string>
     <string name="tidal_account">Account (optional)</string>
-    <string name="tidal_account_description">Playback works without signing in. Optionally paste your Tidal session cookie to improve matching and access your library.</string>
+    <string name="tidal_account_description">Optional. Improves matching and gives access to your library.</string>
     <string name="tidal_set_cookie">Set Tidal cookie</string>
     <string name="tidal_account_connected">Connected: %1$s</string>
     <string name="tidal_disconnect">Disconnect Tidal account</string>
     <!-- Tidal HiFi instances -->
     <string name="tidal_instances">HiFi instances</string>
-    <string name="tidal_instances_description">Optional fallback for when no pool account can stream a track. ArchiveTune probes the well-known public HiFi/QQDL mirrors on startup and only uses the ones that pass; add your own here to have them tried first. Tap Test instances to see which are reachable.</string>
+    <string name="tidal_instances_description">Public mirrors used when no pool account can stream a track. Yours are tried first.</string>
     <string name="tidal_add_instance">Add instance</string>
     <string name="tidal_instance_url_hint">https://instance.example.com</string>
     <string name="tidal_instance_invalid_url">Enter a valid http(s) URL</string>
@@ -915,7 +915,7 @@
     <string name="qobuz_quality_max">Hi-Res Max (up to 192 kHz)</string>
     <string name="qobuz_manage_instances">Manage Qobuz instances</string>
     <string name="qobuz_instances">Qobuz instances</string>
-    <string name="qobuz_instances_description">Qobuz streams are resolved through Qobuz-DL proxy instances. None are bundled — add your own, then tap Test instances to check which ones work. If the list is empty, Qobuz streaming is disabled.</string>
+    <string name="qobuz_instances_description">Qobuz-DL proxy instances. None are bundled — add your own or Qobuz stays off.</string>
     <string name="qobuz_add_instance">Add instance</string>
     <string name="qobuz_reset_instances">Clear all instances</string>
     <string name="qobuz_check_instances">Test instances</string>
@@ -923,7 +923,7 @@
 
     <!-- Qobuz account tokens (direct API) -->
     <string name="qobuz_tokens">Qobuz account tokens</string>
-    <string name="qobuz_tokens_description">Sign in with a Qobuz web session, or paste one or more token blocks. Direct tokens stream from Qobuz at full fidelity and are tried before proxy instances.</string>
+    <string name="qobuz_tokens_description">Sign in or paste tokens. Direct tokens stream at full fidelity, before proxies.</string>
     <string name="qobuz_login_web">Sign in with Qobuz (web)</string>
     <string name="qobuz_login">Sign in to Qobuz</string>
     <string name="qobuz_login_success">Added Qobuz account</string>
@@ -963,7 +963,7 @@
     <!-- Listening history sync -->
     <string name="listening_history">Listening history</string>
     <string name="sync_youtube_history">Report plays to YouTube history</string>
-    <string name="sync_youtube_history_description">Add tracks to your YouTube account\'s listen history, even when the audio is streamed from Tidal or Qobuz. Only affects your YouTube account — the in-app history is unaffected.</string>
+    <string name="sync_youtube_history_description">Add plays to your YouTube history even when audio comes from another source.</string>
 
     <!-- Tidal account login / premium -->
     <string name="tidal_login">Sign in to Tidal</string>
@@ -1024,7 +1024,7 @@
     <string name="enable_scrobbling">Enable Scrobbling</string>
     <string name="lastfm_now_playing">Now playing</string>
     <string name="lastfm_prefer_yt_thumbnails">Prefer YouTube thumbnails</string>
-    <string name="lastfm_prefer_yt_thumbnails_desc">Use clean 16:9 YouTube hq720 artwork instead of Last.fm catalogue images (fixes black/brown bars on some thumbnails)</string>
+    <string name="lastfm_prefer_yt_thumbnails_desc">Use 16:9 YouTube artwork instead of Last.fm images.</string>
     <string name="refresh_telegram_playlist">Refresh from Telegram</string>
     <string name="scrobbling_configuration">Scrobbling Configuration</string>
     <string name="scrobble_min_track_duration">Minimum Track Duration</string>
@@ -1126,7 +1126,7 @@
     <string name="refresh">Refresh</string>
     <string name="description_refresh">Manually refresh Discord Rich Presence</string>
     <string name="discord_show_when_paused">Show RPC when paused</string>
-    <string name="discord_show_when_paused_desc">If enabled, Rich Presence will remain visible while paused with a pause icon. If disabled, RPC will disappear when paused.</string>
+    <string name="discord_show_when_paused_desc">Keep Rich Presence visible while paused, with a pause icon.</string>
     <string name="discord_paused">Paused</string>
     <string name="logout_confirm_title">Confirm logout</string>
     <string name="logout_confirm_message">Are you sure you want to log out of Discord?.</string>
@@ -1147,7 +1147,7 @@
     <string name="source_settings_subtitle">Streaming sources, priority and quality</string>
     <string name="applemusic_settings">Apple Music</string>
     <string name="applemusic_enable">Enable Apple Music as a source</string>
-    <string name="applemusic_enable_description">Play full tracks via your Apple Music subscription (Media-User-Token). Needs both tokens signed in; shared pool accounts work too.</string>
+    <string name="applemusic_enable_description">Play full tracks with your Apple Music subscription, or a pool account.</string>
     <string name="applemusic_quality">Streaming quality</string>
     <string name="applemusic_quality_desc">Preferred quality for Apple Music playback</string>
     <string name="applemusic_quality_aac">AAC 256 kbps</string>
@@ -1317,7 +1317,7 @@
     <string name="onboarding_permission_notifications_title">Notifications</string>
     <string name="onboarding_permission_notifications_desc">Show playback controls and music activity in the notification shade.</string>
     <string name="onboarding_permission_device_audio_capture_title">On-device audio recognition</string>
-    <string name="onboarding_permission_device_audio_capture_desc">Recognize music playing in other apps without using the microphone. Android asks for screen and audio capture approval each time, ArchiveTune processes audio only.</string>
+    <string name="onboarding_permission_device_audio_capture_desc">Recognize music in other apps without using the microphone.</string>
     <string name="onboarding_permission_bluetooth_connect_title">Bluetooth audio connection</string>
     <string name="onboarding_permission_bluetooth_connect_desc">Connect to nearby Bluetooth audio devices for playback.</string>
     <string name="onboarding_permission_network_title">Network access</string>
@@ -1621,14 +1621,14 @@
     <string name="export_format_redownload_lossless">Re-download as lossless, then export</string>
     <string name="export_format_redownload_lossless_description">Fetches a real lossless file from Qobuz or Tidal first</string>
     <string name="spotify_canvas">Spotify Canvas</string>
-    <string name="spotify_canvas_desc">Fetch and play the official Spotify Canvas looping video for the current song. Uses the song\'s YouTube Music video ID to look up the canvas via a third-party API (mlc.kouzu.in).</string>
+    <string name="spotify_canvas_desc">Play the official looping Canvas video for the current song.</string>
     <string name="hide_status_bar">Hide status bar</string>
-    <string name="hide_status_bar_desc">Hide the system status bar on all screens. Swipe down from the top edge to reveal it temporarily</string>
+    <string name="hide_status_bar_desc">Hide the status bar. Swipe down from the top to reveal it.</string>
     <string name="ui_scale">UI scale</string>
     <string name="ui_scale_desc">Adjust the size of all UI elements (smaller = more content, larger = easier to read)</string>
     <string name="ui_scale_value">%1$d%%</string>
     <string name="tablet_mode">Tablet mode</string>
-    <string name="tablet_mode_desc">Use the two-pane tablet layout (side navigation rail) on all screen sizes. Recommended for tablets and landscape phones.</string>
+    <string name="tablet_mode_desc">Use the two-pane layout with a side rail on every screen size.</string>
     <string name="sleep_timer_off">Off</string>
     <string name="sleep_timer_set_for">Sleep timer: %1$s</string>
     <string name="sleep_timer_end_of_song">End of song</string>
@@ -1692,7 +1692,7 @@
     <string name="telegram_bot_add_to_playlist">Add to playlist</string>
     <string name="telegram_bot_play_all">Play all</string>
     <string name="telegram_bot_forward_to_channel">Auto-forward to my channel</string>
-    <string name="telegram_bot_forward_to_channel_summary">When you add a bot-fetched song to a Telegram-channel playlist, also forward the original message to that channel.</string>
+    <string name="telegram_bot_forward_to_channel_summary">Also forward the original message when adding to a channel playlist.</string>
     <string name="telegram_bot_forwarded">Forwarded to your channel</string>
     <string name="telegram_bot_forward_failed">Couldn\'t forward to your channel: %1$s</string>
     <string name="telegram_bot_added_to_playlist">Added to \"%1$s\"</string>
