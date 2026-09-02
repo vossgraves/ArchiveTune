@@ -92,6 +92,8 @@ import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LIBREFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LibreFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.YOUTUBE_OAUTH_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.YouTubeOAuthLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFmDashboardScreen
@@ -712,5 +714,9 @@ fun NavGraphBuilder.navigationBuilder(
             navController,
             startUrl = backStackEntry.arguments?.getString(LOGIN_URL_ARGUMENT)?.let(Uri::decode),
         )
+    }
+    // The other half of YouTube sign-in: no WebView, no cookie — a code typed at google.com/device.
+    composable(YOUTUBE_OAUTH_ROUTE) {
+        YouTubeOAuthLoginScreen(navController)
     }
 }

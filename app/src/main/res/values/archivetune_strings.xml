@@ -823,4 +823,25 @@
     <string name="ytdlp_empty_description">Connect to the internet to restore the primary playback runtime.</string>
     <string name="ytdlp_error_title">yt-dlp unavailable</string>
     <string name="ytdlp_runtime_load_failed">The yt-dlp runtime could not be loaded. Native playback remains available as fallback.</string>
+
+    <!-- YouTube sign-in: the browser (cookie) route and the OAuth device-code route. -->
+    <string name="yt_browser_sign_in">Sign in with browser</string>
+    <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>
+    <string name="yt_oauth_sign_in">Sign in with a code</string>
+    <string name="yt_oauth_sign_in_desc">Type a short code at google.com/device. No browser sign-in needed.</string>
+    <string name="yt_oauth_sign_out">Sign out of the code session</string>
+    <string name="yt_oauth_sign_out_desc">Revokes the token with Google and removes it from this device.</string>
+    <string name="yt_oauth_step_open">Open google.com/device on any device, sign in to Google, then enter this code:</string>
+    <string name="yt_oauth_open_page">Open google.com/device</string>
+    <string name="yt_oauth_code_copied">Code copied to clipboard</string>
+    <string name="yt_oauth_requesting">Asking Google for a code…</string>
+    <string name="yt_oauth_waiting">Waiting for you to approve the code…</string>
+    <string name="yt_oauth_signed_in">Signed in. Playback now uses your account.</string>
+    <string name="yt_oauth_signed_out">Signed out of the code session</string>
+    <string name="yt_oauth_no_browser">No app here can open google.com/device — use another device.</string>
+    <string name="yt_oauth_failed_network">Couldn\'t reach Google. Check your connection and try again.</string>
+    <string name="yt_oauth_failed_expired">The code expired before it was approved. Get a new one.</string>
+    <string name="yt_oauth_failed_denied">Sign-in was denied. Approve the code on the Google page to continue.</string>
+    <string name="yt_oauth_failed_other">Sign-in failed (%1$s).</string>
+    <string name="yt_oauth_scope_note">This signs playback in only. Library, playlists and browse still use the browser login.</string>
 </resources>

@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -70,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,7 +92,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.App.Companion.forgetAccount
+import moe.rukamori.archivetune.auth.YouTubeOAuthRepository
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -100,6 +104,7 @@ import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
 import moe.rukamori.archivetune.constants.ForceSyncOnAccountSwitchKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
+import moe.rukamori.archivetune.constants.InnerTubeOAuthRefreshTokenKey
 import moe.rukamori.archivetune.constants.SavedAccountsKey
 import moe.rukamori.archivetune.constants.SelectedYtmPlaylistsKey
 import moe.rukamori.archivetune.constants.UseLoginForBrowse
@@ -143,6 +148,7 @@ fun AccountSettings(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
     val scrollBehavior = appBarScrollBehavior()
 
     val accountLabel = stringResource(R.string.account)
@@ -163,6 +169,11 @@ fun AccountSettings(
         rememberPreference(ForceSyncOnAccountSwitchKey, false)
     val (selectedYtmPlaylists, _) = rememberPreference(SelectedYtmPlaylistsKey, "")
     val (savedAccountsJson, onSavedAccountsJsonChange) = rememberPreference(SavedAccountsKey, "")
+    // YouTubeOAuthRepository.isSignedIn is a one-shot read; observing the refresh token instead
+    // keeps the sign-in/sign-out row correct without leaving the screen, and mirrors how
+    // isLoggedIn below is derived from the cookie. The token is never rendered.
+    val (oauthRefreshToken, _) = rememberPreference(InnerTubeOAuthRefreshTokenKey, "")
+    val hasOAuthSession = oauthRefreshToken.isNotBlank()
     val savedAccounts =
         remember(savedAccountsJson) {
             SavedAccountCollection(decodeSavedAccounts(savedAccountsJson))
@@ -367,6 +378,58 @@ fun AccountSettings(
                             latestVersion = latestVersionName,
                             onClick = { uriHandler.openUri(Updater.getLatestDownloadUrl()) },
                         )
+                    }
+                }
+
+                item {
+                    // Two sign-ins that are not interchangeable, so both are named rather than
+                    // hidden behind one "Login": the browser route yields the WEB_REMIX cookie the
+                    // library and browse need, the device code yields a VR Bearer that only signs
+                    // /player. They can be held at the same time, hence the independent rows.
+                    val browserRowVisible = !isLoggedIn
+                    val signInRowCount = (if (browserRowVisible) 1 else 0) + 1
+                    ExpressiveSectionCard(title = loginLabel) {
+                        if (browserRowVisible) {
+                            ExpressiveActionRow(
+                                icon = painterResource(R.drawable.login),
+                                title = stringResource(R.string.yt_browser_sign_in),
+                                subtitle = stringResource(R.string.yt_browser_sign_in_desc),
+                                onClick = { navController.navigate(buildLoginRoute()) },
+                                index = 0,
+                                count = signInRowCount,
+                            )
+                        }
+
+                        if (hasOAuthSession) {
+                            ExpressiveActionRow(
+                                icon = painterResource(R.drawable.logout),
+                                title = stringResource(R.string.yt_oauth_sign_out),
+                                subtitle = stringResource(R.string.yt_oauth_sign_out_desc),
+                                accent = MaterialTheme.colorScheme.error,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        YouTubeOAuthRepository.signOut(context)
+                                        Toast
+                                            .makeText(
+                                                context,
+                                                context.getString(R.string.yt_oauth_signed_out),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                    }
+                                },
+                                index = signInRowCount - 1,
+                                count = signInRowCount,
+                            )
+                        } else {
+                            ExpressiveActionRow(
+                                icon = painterResource(R.drawable.token),
+                                title = stringResource(R.string.yt_oauth_sign_in),
+                                subtitle = stringResource(R.string.yt_oauth_sign_in_desc),
+                                onClick = { navController.navigate(YOUTUBE_OAUTH_ROUTE) },
+                                index = signInRowCount - 1,
+                                count = signInRowCount,
+                            )
+                        }
                     }
                 }
 
