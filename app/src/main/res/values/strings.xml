@@ -907,6 +907,9 @@
     <string name="deezer_login">Sign in to Deezer</string>
     <string name="deezer_login_description">Use your own Deezer account instead of the shared pool</string>
     <string name="deezer_login_success">Signed in to Deezer as %1$s</string>
+    <string name="deezer_network_settings">Network &amp; Geo-Proxy</string>
+    <string name="deezer_proxy_mode">Proxy Mode</string>
+    <string name="deezer_proxy_mode_description">Use proxy to prevent GEO-blocking and unlock full global catalogue</string>
     <string name="qobuz_enable">Enable Qobuz source</string>
     <string name="qobuz_enable_description">Use Qobuz proxy instances for playback</string>
     <string name="qobuz_audio_quality">Audio quality</string>

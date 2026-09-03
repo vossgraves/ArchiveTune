@@ -440,6 +440,16 @@ class App :
                 }
         }
 
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[DeezerProxyModeKey] ?: DeezerProxyMode.AUTO.name }
+                .distinctUntilChanged()
+                .collect { modeName ->
+                    val mode = runCatching { DeezerProxyMode.valueOf(modeName) }.getOrDefault(DeezerProxyMode.AUTO)
+                    DeezerAudioProvider.setProxyMode(mode)
+                }
+        }
+
         // Observe the user-configured Paxsenix API key + endpoint and apply
         // them to PaxsenixLyrics. When the user changes the key in Settings
         // → Lyrics → Providers → Paxsenix API key, this collector fires and

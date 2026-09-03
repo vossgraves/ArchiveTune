@@ -206,6 +206,8 @@ object AppleMusicProvider {
      * have on hand (including the hardcoded fallback). A user-pasted dev token
      * always wins over anything scraped or hardcoded.
      */
+    suspend fun getDevToken(): String = ensureTokenFresh()
+
     private suspend fun ensureTokenFresh(): String {
         devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { userDevToken ->
             return userDevToken

@@ -1533,6 +1533,19 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 // the provider still verifies the real tier per track.
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 
+// Deezer Geo-Proxy selection to bypass regional catalogue blocking.
+val DeezerProxyModeKey = stringPreferencesKey("deezerProxyMode")
+
+enum class DeezerProxyMode(val host: String, val displayName: String) {
+    AUTO("auto", "Auto (UK Fallback)"),
+    UK1("uk1.proxy.murglar.app", "UK 1"),
+    UK2("uk2.proxy.murglar.app", "UK 2"),
+    RU1("ru1.proxy.murglar.app", "RU 1"),
+    RU2("ru2.proxy.murglar.app", "RU 2"),
+    MD("md.proxy.murglar.app", "MD"),
+    DIRECT("direct", "No Proxy"),
+}
+
 // ---------------------------------------------------------------------------
 // JioSaavn source
 // ---------------------------------------------------------------------------

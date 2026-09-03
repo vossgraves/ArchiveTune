@@ -297,7 +297,7 @@ fun StatsScreen(
                         .padding(top = scaffoldPadding.calculateTopPadding()),
             ) {
                 item(key = "rangeControls", contentType = "controls") {
-                    StatsFilterPanel(modifier = Modifier.animateItem()) {
+                    StatsFilterPanel {
                         ChoiceChipsRow(
                             chips =
                                 when (selectedOption) {
@@ -342,13 +342,12 @@ fun StatsScreen(
                 item(key = "overview", contentType = "overview") {
                     StatsSummarySection(
                         summary = listeningSummary,
-                        modifier = Modifier.animateItem(),
                     )
                 }
 
                 item(key = "artistDistribution", contentType = "insights") {
                     if (mostPlayedArtists.isNotEmpty()) {
-                        Column(modifier = Modifier.animateItem()) {
+                        Column {
                             StatsSectionHeader(
                                 title = stringResource(R.string.stats_artist_breakdown),
                                 supportingText = mostPlayedArtists.take(5).size.toString(),
@@ -375,7 +374,6 @@ fun StatsScreen(
                                 mostPlayedSongs.firstOrNull { it.id == rankedSong.id }
                             },
                         navController = navController,
-                        modifier = Modifier.animateItem(),
                     )
                 }
 
@@ -384,7 +382,6 @@ fun StatsScreen(
                         daySlots = listeningByDayOfWeek,
                         hourSlots = listeningByHour,
                         currentDayOfWeek = remember { LocalDateTime.now().dayOfWeek.value % 7 },
-                        modifier = Modifier.animateItem(),
                     )
                 }
 
@@ -401,7 +398,6 @@ fun StatsScreen(
                                 ),
                             )
                         },
-                        modifier = Modifier.animateItem(),
                     )
                 }
 
@@ -452,8 +448,7 @@ fun StatsScreen(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                                    .animateItem(),
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
                         ) {
                             Icon(
                                 painter =
@@ -483,7 +478,6 @@ fun StatsScreen(
                     StatsSectionHeader(
                         title = stringResource(R.string.artists),
                         supportingText = mostPlayedArtists.size.toString(),
-                        modifier = Modifier.animateItem(),
                     )
                 }
 
@@ -530,7 +524,6 @@ fun StatsScreen(
                     StatsSectionHeader(
                         title = stringResource(R.string.albums),
                         supportingText = mostPlayedAlbums.size.toString(),
-                        modifier = Modifier.animateItem(),
                     )
                 }
 

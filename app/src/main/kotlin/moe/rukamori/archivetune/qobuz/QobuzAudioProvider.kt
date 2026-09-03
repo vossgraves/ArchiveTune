@@ -354,6 +354,7 @@ object QobuzAudioProvider {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
+        val isrc: String? = null,
         /**
          * When non-null, [resolve] skips the title/artist search ([resolveTrackId] /
          * [bestMatch]) and goes straight to [backend.download] with this trackId.
@@ -678,6 +679,7 @@ object QobuzAudioProvider {
         val items = backend.search(searchQuery) ?: return null
         val wantedTitle = query.title.titleMatchNormalized()
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
+        val wantedIsrc = query.isrc?.let { TidalAudioProvider.normalizeIsrc(it) }
         var bestId: String? = null
         var bestTitle = ""
         var bestArtist: String? = null
@@ -696,6 +698,19 @@ object QobuzAudioProvider {
                     ?: ""
             val candidateDurationMs = item.longOrNull("duration")?.times(1000L)
             val candidateAlbum = item.optJSONObject("album")?.stringOrNull("title")
+            val candidateIsrc = item.stringOrNull("isrc")?.let { TidalAudioProvider.normalizeIsrc(it) }
+
+            // If exact ISRC matches, immediately pick this track with 100% confidence
+            if (wantedIsrc != null && candidateIsrc == wantedIsrc) {
+                bestId = id
+                bestTitle = rawTitle
+                bestArtist = candidateArtist.takeIf { it.isNotBlank() }
+                bestAlbum = candidateAlbum
+                bestDurationMs = candidateDurationMs
+                bestScore = 200
+                break
+            }
+
             val score =
                 scoreMatch(
                     wantedTitle = wantedTitle,
