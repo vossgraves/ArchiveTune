@@ -72,9 +72,8 @@ object SourceInputParsing {
             val token = matchField(line, "token")
             val userId = matchField(line, "user id", "user_id", "userid", "user")
             val subscription = matchField(line, "subscription", "plan")
-            val appId = Regex("app_id:?\\s*([0-9]+)", RegexOption.IGNORE_CASE).find(line)?.groupValues?.get(1)
-            val appSecret =
-                Regex("app_secret:?\\s*([a-f0-9]{16,})", RegexOption.IGNORE_CASE).find(line)?.groupValues?.get(1)
+            val appId = AppIdRegex.find(line)?.groupValues?.get(1)
+            val appSecret = AppSecretRegex.find(line)?.groupValues?.get(1)
 
             when {
                 token != null -> {
@@ -86,7 +85,12 @@ object SourceInputParsing {
                 // A plain line with no field markers/separators becomes the label for the next block
                 // (e.g. "Qobuz - JP"). Lines like "Lossless Streaming ➠ ✅" carry a separator and are
                 // ignored so they don't get mistaken for a label.
-                !line.contains(Regex("[➠→➔⇒:]")) && !line.contains("app_") && current == null ->
+                // `current == null` used to guard this, which meant only the very first block
+                // could take a label: current is set by startBlock() and never cleared, so in the
+                // multi-account paste this parser exists for, accounts 2..N lost their names.
+                // startBlock() consumes pendingLabel, so each plain line simply labels the block
+                // that follows it.
+                !line.contains(FieldSeparatorRegex) && !line.contains("app_") ->
                     pendingLabel = line.take(40)
                 else -> {}
             }
@@ -116,4 +120,10 @@ object SourceInputParsing {
         }
         return null
     }
+
+    // Hoisted out of the per-line loop: these were three Regex constructions — three
+    // Pattern.compile calls — for every line of a paste that is routinely hundreds of lines.
+    private val AppIdRegex = Regex("app_id:?\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+    private val AppSecretRegex = Regex("app_secret:?\\s*([a-f0-9]{16,})", RegexOption.IGNORE_CASE)
+    private val FieldSeparatorRegex = Regex("[➠→➔⇒:]")
 }

@@ -112,7 +112,12 @@ object QobuzBackupProvider {
 
         val cacheKey = "${trimmed.lowercase()}|$limit"
         val now = System.currentTimeMillis()
-        searchCache[cacheKey]?.takeIf { it.expiresAt > now }?.let { return it.candidates }
+        searchCache[cacheKey]?.let { cached ->
+            if (cached.expiresAt > now) return cached.candidates
+            // Drop it rather than leaving it: the map was only ever read through the TTL check, so
+            // expired entries accumulated for the life of the process, one per distinct query.
+            searchCache.remove(cacheKey)
+        }
 
         // Over-fetch, then rank locally: the mirror returns its matches in primary-key order, not
         // by relevance, so the first 8 rows for a broad term ("sabrina carpenter") are an
@@ -467,9 +472,4 @@ object QobuzBackupProvider {
         }.onFailure { error ->
             Timber.tag("QobuzBackup").d(error, "mirror probe failed for %s", url.take(80))
         }.getOrNull()
-
-    /** Drops cached search results. Called when the user clears app caches. */
-    fun clearCaches() {
-        searchCache.clear()
-    }
 }

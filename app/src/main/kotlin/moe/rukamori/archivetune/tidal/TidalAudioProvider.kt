@@ -856,8 +856,6 @@ object TidalAudioProvider {
         return false
     }
 
-    fun isTidalTrackId(value: String): Boolean = value.toTidalTrackIdOrNull() != null
-
     fun searchCandidates(
         query: Query,
         limit: Int = 8,
@@ -984,13 +982,6 @@ object TidalAudioProvider {
     }
 
     // endregion
-
-    fun isLiveManifestUri(value: String?): Boolean {
-        val uri = value?.let(Uri::parse) ?: return false
-        if (uri.scheme.equals(PROGRESSIVE_DASH_SCHEME, ignoreCase = true)) return true
-        val path = uri.path?.replace('\\', '/') ?: return false
-        return path.contains("/tidal-temp/") && path.endsWith(".mpd", ignoreCase = true)
-    }
 
     /**
      * Builds a private URI consumed by [TidalProgressiveDashDataSource]. The manifest remains in the

@@ -75,9 +75,6 @@ object QobuzAudioProvider {
     val activeInstanceUrls: List<String>
         get() = instances.map { it.baseUrl }
 
-    val activeTokenIds: List<String>
-        get() = tokens.map { it.id }
-
     /** Replaces the active direct-API token list. Duplicates (by token string) are dropped. */
     fun setTokens(newTokens: List<QobuzToken>) {
         val seen = LinkedHashSet<String>()
@@ -212,7 +209,21 @@ object QobuzAudioProvider {
                 }
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use
+                    if (!response.isSuccessful) {
+                        // A rejected read and a healthy pool with nothing contributed both end up
+                        // as zero instances here, so say which one happened — this is the whole
+                        // difference between "no Qobuz accounts" and "this build's key is wrong".
+                        if (response.code == 401) {
+                            Timber
+                                .tag("QobuzDiscovery")
+                                .w(
+                                    "Pool discovery %s rejected as unauthorized (HTTP 401); " +
+                                        "SOURCE_PROVIDER_KEY is missing or invalid for this build.",
+                                    source,
+                                )
+                        }
+                        return@use
+                    }
                     val body = response.body?.string().orEmpty()
                     if (body.isBlank()) return@use
                     val obj = JSONObject(body)
@@ -237,20 +248,6 @@ object QobuzAudioProvider {
             discoveryCacheExpiresAt = System.currentTimeMillis() + DISCOVERY_CACHE_MS
         }
         return result
-    }
-
-    /**
-     * Unions community-discovered instances with the user's configured list (user entries kept and
-     * ordered first). No-op when discovery is disabled or returns nothing. Call off the main thread.
-     */
-    fun mergeDiscoveredInstances() {
-        val discovered = discoverInstances()
-        if (discovered.isEmpty()) return
-        val merged = LinkedHashSet<String>()
-        merged += activeInstanceUrls
-        merged += discovered
-        setInstances(merged.toList())
-        Timber.tag("QobuzDiscovery").d("Merged %d discovered instance(s)", discovered.size)
     }
 
     /** Normalizes an instance URL to `scheme://host[:port]` form, or null when invalid. */

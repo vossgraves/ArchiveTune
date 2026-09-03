@@ -7,21 +7,6 @@ package moe.rukamori.archivetune.utils.tidal
 
 import java.net.URLDecoder
 
-fun normalizeTidalCookieInput(input: String): String? {
-    val trimmedInput =
-        input
-            .trim()
-            .removePrefix("Cookie:")
-            .removePrefix("cookie:")
-            .trim()
-            .trim(';')
-    if (trimmedInput.isBlank()) return null
-
-    return mergeTidalCookieInputs(listOf(trimmedInput))
-}
-
-fun isTidalCookieConfigured(value: String): Boolean = extractTidalRefreshToken(value) != null
-
 fun mergeTidalCookieInputs(inputs: Iterable<String>): String? {
     val candidates =
         inputs
