@@ -42,9 +42,11 @@ import java.util.concurrent.TimeUnit
  * on that one client and nothing else — while browse, search and metadata keep using WEB_REMIX.
  * Wiring the Bearer into everything is the obvious next step and is the wrong one.
  *
- * Nothing here needs microG/GmsCore. The device flow is plain HTTPS against Google's OAuth
- * endpoints; the "GmsCore support" framing in the original plan conflated this with ReVanced's
- * APK-patching work, which does not apply to a source-built app.
+ * This flow itself needs no microG — it is plain HTTPS against Google's OAuth endpoints, and works
+ * on a device with no Google software at all. Signing in *through* microG is a separate, easier
+ * route that produces a token of the same shape: see [GmsAccountRepository]. Both land in
+ * [InnerTubeOAuthTokenKey], and [validAccessToken] hands microG-issued tokens back to that
+ * repository to refresh, so nothing downstream has to know which route was used.
  */
 object YouTubeOAuthRepository {
     private const val TAG = "YouTubeOAuth"
@@ -174,6 +176,13 @@ object YouTubeOAuthRepository {
      */
     suspend fun validAccessToken(context: Context): String? =
         withContext(Dispatchers.IO) {
+            // A token from the system account (microG / Play Services) lives in the same key but
+            // has no refresh token — the authenticator reissues it. Hand those back to the
+            // repository that knows how, so every caller downstream stays unaware of which of the
+            // three sign-in routes produced the Bearer it is using.
+            if (GmsAccountRepository.isSignedIn(context)) {
+                return@withContext GmsAccountRepository.validAccessToken(context)
+            }
             val prefs = context.dataStore.data
             val expiresAt = context.dataStore.get(InnerTubeOAuthExpiresAtKey, 0L)
             val current = context.dataStore.get(InnerTubeOAuthTokenKey, "")
@@ -224,6 +233,11 @@ object YouTubeOAuthRepository {
     /** Signs out: revokes the grant server-side (best effort) and drops the local session. */
     suspend fun signOut(context: Context) {
         withContext(Dispatchers.IO) {
+            // Signing out must drop whichever session exists, not just the device-flow one.
+            if (GmsAccountRepository.isSignedIn(context)) {
+                GmsAccountRepository.signOut(context)
+                return@withContext
+            }
             val refresh = context.dataStore.get(InnerTubeOAuthRefreshTokenKey, "")
             if (refresh.isNotBlank()) {
                 post(REVOKE_URL, FormBody.Builder().add("token", refresh).build())

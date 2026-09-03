@@ -1271,6 +1271,15 @@ val InnerTubeOAuthRefreshTokenKey = stringPreferencesKey("innerTubeOAuthRefreshT
 
 /** Epoch millis at which [InnerTubeOAuthTokenKey] expires, so a refresh happens before a 401. */
 val InnerTubeOAuthExpiresAtKey = longPreferencesKey("innerTubeOAuthExpiresAt")
+
+/**
+ * Google account chosen from the system picker, when signed in via microG / Play Services.
+ *
+ * Set means the token in [InnerTubeOAuthTokenKey] came from AccountManager rather than the device
+ * flow, and so is refreshed by asking the authenticator again instead of with a refresh token —
+ * AccountManager never gives one out. See GmsAccountRepository.
+ */
+val GmsAccountNameKey = stringPreferencesKey("gmsAccountName")
 val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")

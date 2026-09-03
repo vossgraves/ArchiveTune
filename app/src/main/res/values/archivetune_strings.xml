@@ -829,6 +829,11 @@
     <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>
     <string name="yt_oauth_sign_in">Sign in with a code</string>
     <string name="yt_oauth_sign_in_desc">Type a short code at google.com/device. No browser sign-in needed.</string>
+    <string name="gms_sign_in">Sign in with your Google account</string>
+    <string name="gms_sign_in_desc">Uses the account already on this device via microG or Play Services.</string>
+    <string name="gms_sign_out">Sign out of the device account</string>
+    <string name="gms_sign_in_done">Signed in with your device account</string>
+    <string name="gms_sign_in_failed">Could not get a token from microG / Play Services</string>
     <string name="yt_oauth_sign_out">Sign out of the code session</string>
     <string name="yt_oauth_sign_out_desc">Revokes the token with Google and removes it from this device.</string>
     <string name="yt_oauth_step_open">Open google.com/device on any device, sign in to Google, then enter this code:</string>
