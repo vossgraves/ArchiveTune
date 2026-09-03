@@ -1,5 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.MessageDigest
 import java.util.Properties
+import java.util.zip.ZipFile
 
 @DisableCachingByDefault(because = "Validation-only task has no outputs.")
 abstract class ValidateStartIoReleaseConfigurationTask : DefaultTask() {
@@ -141,6 +143,24 @@ android {
             ).trim()
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+
+        // TDLib's libtdjni.so is 21.7 MB per ABI — 8.7 MB compressed into the APK and the full
+        // 21.7 MB extracted on install (useLegacyPackaging below) — paid by every user, for an
+        // optional integration most never sign in to. `-PslimTdlib=true` leaves it out and the app
+        // fetches it the first time someone opens Telegram; see TdLibNativeLibrary.
+        //
+        // DEFAULTS TO BUNDLED. Do not flip this until the per-ABI libraries are actually published
+        // at TDLIB_NATIVE_BASE_URL, or Telegram breaks for everyone on the slim build. The naming
+        // the loader expects is libtdjni-<version>-<abi>.so, and `./gradlew extractTdLibNatives`
+        // writes exactly those files for uploading.
+        val slimTdlib = (project.findProperty("slimTdlib") as String?)?.toBoolean() ?: false
+        buildConfigField("boolean", "TDLIB_BUNDLED", "${!slimTdlib}")
+        buildConfigField(
+            "String",
+            "TDLIB_NATIVE_BASE_URL",
+            "\"${project.findProperty("tdlibNativeBaseUrl") as String?
+                ?: "https://github.com/vossgraves/ArchiveTune/releases/download/tdlib-1.8.56"}\"",
+        )
 
         // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
         // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
@@ -324,6 +344,13 @@ android {
             // made the universal APK ~142 MiB. Compressed packaging cuts the universal APK by
             // ~51 MiB (and each per-ABI APK by ~12 MiB) at the cost of a slightly slower install.
             useLegacyPackaging = true
+            // Slim build: the loader fetches it on first Telegram use instead. Excluded here
+            // rather than by swapping the dependency, so TdApi and the Client class — which the
+            // app compiles against and which survives a missing native library, catching the
+            // UnsatisfiedLinkError in its static initialiser — still ship.
+            if ((project.findProperty("slimTdlib") as String?)?.toBoolean() == true) {
+                excludes += "**/libtdjni.so"
+            }
             keepDebugSymbols += listOf(
                 "**/libandroidx.graphics.path.so",
                 "**/libdatastore_shared_counter.so"
@@ -596,4 +623,50 @@ configurations.configureEach {
         "androidx.compose.animation:animation-graphics:${libs.versions.compose.get()}",
         "org.jetbrains.kotlin:kotlin-metadata-jvm:${libs.versions.kotlinMetadata.get()}",
     )
+}
+
+/**
+ * Extracts TDLib's per-ABI native libraries from the resolved `td` AAR, named the way
+ * `TdLibNativeLibrary` asks for them, ready to attach to a GitHub release.
+ *
+ * Only needed to publish the assets a `-PslimTdlib=true` build downloads. Run it once per TDLib
+ * version bump, upload the four files to the tag named in TDLIB_NATIVE_BASE_URL, and update the
+ * digests in TdLibNativeLibrary — the task prints them.
+ */
+tasks.register("extractTdLibNatives") {
+    group = "distribution"
+    description = "Extract libtdjni.so per ABI from the td AAR for publishing as release assets."
+
+    val outputDir = layout.buildDirectory.dir("tdlib-natives")
+    val aars =
+        configurations
+            .detachedConfiguration(dependencies.create("com.github.tdlibx:td:1.8.56@aar"))
+            .also { it.isTransitive = false }
+
+    outputs.dir(outputDir)
+    doLast {
+        val aar = aars.singleFile
+        val destination = outputDir.get().asFile
+        destination.deleteRecursively()
+        destination.mkdirs()
+        val version = "1.8.56"
+        ZipFile(aar).use { zip ->
+            zip.entries().asSequence()
+                .filter { it.name.startsWith("jni/") && it.name.endsWith("/libtdjni.so") }
+                .forEach { entry ->
+                    val abi = entry.name.removePrefix("jni/").substringBefore('/')
+                    val target = File(destination, "libtdjni-$version-$abi.so")
+                    zip.getInputStream(entry).use { input ->
+                        target.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    val digest =
+                        MessageDigest
+                            .getInstance("SHA-256")
+                            .digest(target.readBytes())
+                            .joinToString("") { "%02x".format(it) }
+                    logger.lifecycle("$abi  $digest  ${target.name}")
+                }
+        }
+        logger.lifecycle("Wrote to $destination")
+    }
 }

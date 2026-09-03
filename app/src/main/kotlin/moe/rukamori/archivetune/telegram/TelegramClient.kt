@@ -124,6 +124,15 @@ object TelegramClient {
         synchronized(lock) {
             if (client != null) return true
             if (BuildConfig.TELEGRAM_API_ID <= 0 || BuildConfig.TELEGRAM_API_HASH.isBlank()) return false
+            // On a bundled build this just loads the library out of the APK. On a slim one it
+            // fails until TdLibNativeLibrary.download has run — Client's static initialiser
+            // swallows the UnsatisfiedLinkError and every later call would fail for no visible
+            // reason, so refuse to start instead and let the caller offer the download.
+            if (!TdLibNativeLibrary.ensureLoaded(ctx)) {
+                Timber.tag(TAG).w("TDLib native library is not available yet; not starting")
+                _authState.value = TelegramAuthState.Unsupported("NativeLibraryMissing")
+                return false
+            }
             appContext = ctx
             runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
             _authState.value = TelegramAuthState.Connecting
