@@ -19,13 +19,19 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 
@@ -55,3 +61,42 @@ fun glassAwareLargeTopAppBarColors(): TopAppBarColors =
         containerColor = glassAwareSurface(),
         scrolledContainerColor = Color.Transparent,
     )
+
+/**
+ * Container colour for a card that sits over the glass backdrop: a translucent tint when Liquid
+ * Glass is on, and the ordinary Material 3 [MaterialTheme.colorScheme.surfaceContainerHigh]
+ * otherwise.
+ *
+ * The two alphas differ because the backdrop does: over a dark backdrop a card has to *add* light
+ * to read as raised, over a light one it has to stay mostly opaque or the text underneath shows
+ * through. Same values the fork settled on.
+ */
+@Composable
+fun glassAwareCardColor(): Color =
+    when {
+        !rememberLiquidGlassEnabled() -> MaterialTheme.colorScheme.surfaceContainerHigh
+        isSystemInDarkTheme() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        else -> Color.White.copy(alpha = 0.65f)
+    }
+
+/**
+ * The hairline that separates a glass card from the backdrop — brighter at the top than the
+ * bottom, so the card reads as lit from above. A no-op while Liquid Glass is off: a Material 3
+ * card is separated by its own elevation and tone, and outlining it as well just looks noisy.
+ */
+@Composable
+fun Modifier.glassAwareCardBorder(shape: Shape): Modifier =
+    if (!rememberLiquidGlassEnabled()) {
+        this
+    } else {
+        val base = MaterialTheme.colorScheme.primary
+        border(
+            width = 1.dp,
+            brush =
+                Brush.verticalGradient(
+                    0f to base.copy(alpha = 0.20f),
+                    1f to base.copy(alpha = 0.04f),
+                ),
+            shape = shape,
+        )
+    }
