@@ -34,11 +34,36 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.lyrics.LyricsEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
+import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.SpotifyWord
+
+/**
+ * The current song's lyrics parsed into timed lines, or an empty list when there are none or
+ * they are unsynced — the pane needs timings, so plain-text lyrics do not qualify.
+ *
+ * Shared by every player style that shows lyrics in place of the artwork (see [PlayerInlineLyrics]),
+ * so the "which lyric formats count as synced" decision is made once rather than per style.
+ */
+@Composable
+fun rememberInlineLyricLines(playerConnection: PlayerConnection): List<LyricsEntry> {
+    val entity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+    val text = entity?.lyrics?.trim()?.takeIf { it.isNotBlank() }
+    return remember(text) {
+        when {
+            text == null -> emptyList()
+            LyricsUtils.isTtml(text) ->
+                LyricsUtils.parseTtml(text, playerConnection.player.duration.takeIf { it > 0 }?.toInt())
+            LyricsUtils.isLineSyncedLrc(text) -> LyricsUtils.parseLyrics(text)
+            else -> emptyList()
+        }
+    }
+}
 
 /**
  * BitChord-style lyrics pane that lives ON the expanded player: rendered in place of the

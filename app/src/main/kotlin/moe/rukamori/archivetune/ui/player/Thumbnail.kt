@@ -109,7 +109,6 @@ import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -148,31 +147,21 @@ fun Thumbnail(
     val hidePlayerThumbnail by rememberPreference(HidePlayerThumbnailKey, false)
     // BitChord-style inline lyrics: synced lyrics replace the artwork on the player.
     val showLyricsOnPlayer by rememberPreference(ShowLyricsOnPlayerKey, true)
-    val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
-    val inlineLyricsText =
-        currentLyricsEntity?.lyrics?.trim()?.takeIf { it.isNotBlank() }
-    val inlineLines =
-        remember(inlineLyricsText) {
-            when {
-                inlineLyricsText == null -> emptyList()
-                LyricsUtils.isTtml(inlineLyricsText) ->
-                    LyricsUtils.parseTtml(inlineLyricsText, playerConnection.player.duration.takeIf { it > 0 }?.toInt())
-                LyricsUtils.isLineSyncedLrc(inlineLyricsText) -> LyricsUtils.parseLyrics(inlineLyricsText)
-                else -> emptyList()
-            }
-        }
+    val inlineLines = rememberInlineLyricLines(playerConnection)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val lowDataModeActive = rememberLowDataModeActive()
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V4,
     )
+    // Editorial (V10) is the one style that opts out: its bento layout gives the artwork a
+    // fixed slot the three-line pane does not fit. Apple Music never reaches this composable —
+    // it draws its own artwork and wires the pane itself (see AppleMusicPlayer).
     val inlineLyricsAvailable =
         showLyricsOnPlayer &&
             isPlayerExpanded &&
             inlineLines.isNotEmpty() &&
-            playerDesignStyle != PlayerDesignStyle.V10 &&
-            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
+            playerDesignStyle != PlayerDesignStyle.V10
     val (maxCanvasCacheSize, _) =
         rememberPreference(
             key = MaxCanvasCacheSizeKey,
