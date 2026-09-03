@@ -249,7 +249,10 @@ class App :
             }
         }
 
-        runCatching { moe.rukamori.archivetune.telegram.TelegramClient.ensureStarted(this) }
+        // Only resumes an existing session — see TelegramClient.startIfSessionExists. Starting the
+        // client unconditionally mapped TDLib's 21.7 MB native library and started its threads for
+        // every user, signed in to Telegram or not.
+        runCatching { moe.rukamori.archivetune.telegram.TelegramClient.startIfSessionExists(this) }
 
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "")

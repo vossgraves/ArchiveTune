@@ -137,6 +137,26 @@ object TelegramClient {
         }
     }
 
+    /** Where TDLib keeps its session; [sessionDir] exists only once a login has completed. */
+    private fun sessionDir(context: Context) = File(File(context.filesDir, "telegram"), "db")
+
+    /**
+     * Starts the client only when a TDLib session is already on disk. This is what app startup
+     * should call.
+     *
+     * [ensureStarted] loads libtdjni.so — 21.7 MB mapped — and spins up TDLib's actor and network
+     * threads. Calling it unconditionally at launch meant every user paid that, including the
+     * majority who have never signed in to Telegram and for whom the client could only ever sit at
+     * the phone-number prompt. Nothing else auto-starts the client, so gating here is safe: the
+     * playback and cover paths run only for a signed-in user, whose session directory exists, and
+     * the settings and login screens call [ensureStarted] directly to start it cold. logOut()
+     * deletes TDLib's database, so signing out also stops the next launch from starting it.
+     */
+    fun startIfSessionExists(context: Context): Boolean {
+        if (!runCatching { sessionDir(context).exists() }.getOrDefault(false)) return false
+        return ensureStarted(context)
+    }
+
     /**
      * Stops the client and wipes the on-device Telegram session (TDLib LogOut deletes its own
      * database).
