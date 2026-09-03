@@ -678,6 +678,17 @@ fun Queue(
                     // we don't accidentally render an upstream collapsed-content
                     // variant behind the morph.
                 }
+
+                PlayerDesignStyle.BITCHORD -> {
+                    // The Bitchord style renders its queue inline inside its own player (drag the
+                    // sleeve up, or tap the queue glyph), exactly like BitChord upstream. Its
+                    // collapsed peek height is 0dp, so this sheet never visibly collapses either.
+                }
+
+                PlayerDesignStyle.TIKTOK -> {
+                    // The TikTok style owns its queue surface too: the feed IS the queue — every
+                    // page is a queue entry — and its collapsed peek height is 0dp.
+                }
             }
 
             if (showSleepTimerDialog) {

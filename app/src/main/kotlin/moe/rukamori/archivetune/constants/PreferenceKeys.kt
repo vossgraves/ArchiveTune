@@ -1079,6 +1079,18 @@ enum class PlayerDesignStyle {
     V9,
     APPLE_MUSIC,
     V10,
+
+    /**
+     * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their own
+     * package and share nothing with the numbered styles above.
+     *
+     * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
+     * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
+     * page: swipe up for the next song, down for the previous. Both are views over the app's one
+     * playback engine and queue, not players of their own.
+     */
+    BITCHORD,
+    TIKTOK,
 }
 
 enum class PlayerBackgroundStyle {

@@ -121,12 +121,17 @@ private val QueuePillCornerRadius = 16.dp
  * @param playerBottomSheetState The outer player BottomSheetState, forwarded
  *   to PlayerMenu so it can collapse the player before navigating.
  * @param modifier The modifier applied to the root Column.
+ * @param onClose Optional close affordance. When non-null, a close (X) icon renders left of the
+ *   edit-lock in the header row — for hosts that present the sheet as an overlay WITHOUT their own
+ *   header or back path (the TikTok feed). Null (the Apple Music player, the original host) renders
+ *   the header exactly as before: title + lock only.
  */
 @Composable
 fun AppleMusicQueueSheet(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
@@ -440,12 +445,23 @@ fun AppleMusicQueueSheet(
                 fontWeight = FontWeight.Bold,
                 color = adaptivePrimary,
             )
-            IconButton(onClick = { locked = !locked }) {
-                Icon(
-                    painter = painterResource(if (locked) R.drawable.lock else R.drawable.lock_open),
-                    contentDescription = if (locked) "Unlock Queue" else "Lock Queue",
-                    tint = adaptiveSecondary,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onClose != null) {
+                    IconButton(onClick = onClose) {
+                        Icon(
+                            painter = painterResource(R.drawable.player_close),
+                            contentDescription = stringResource(R.string.close_dialog),
+                            tint = adaptiveSecondary,
+                        )
+                    }
+                }
+                IconButton(onClick = { locked = !locked }) {
+                    Icon(
+                        painter = painterResource(if (locked) R.drawable.lock else R.drawable.lock_open),
+                        contentDescription = if (locked) "Unlock Queue" else "Lock Queue",
+                        tint = adaptiveSecondary,
+                    )
+                }
             }
         }
 

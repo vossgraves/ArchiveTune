@@ -349,6 +349,8 @@
     <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material Extended</string>
     <string name="player_design_v10">Editorial</string>
+    <string name="player_design_bitchord">BitChord</string>
+    <string name="player_design_tiktok">TikTok</string>
     <string name="player_design_apple_music">Apple Music</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>
@@ -829,6 +831,8 @@
     <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>
     <string name="yt_oauth_sign_in">Sign in with a code</string>
     <string name="yt_oauth_sign_in_desc">Type a short code at google.com/device. No browser sign-in needed.</string>
+    <string name="tiktok_feed_fullscreen">Full screen</string>
+    <string name="tiktok_feed_exit_fullscreen">Exit full screen</string>
     <string name="gms_sign_in">Sign in with microG</string>
     <string name="gms_sign_in_desc">Uses the Google account already on this device.</string>
     <string name="gms_sign_in_no_microg">Needs microG — Play Services will not issue this token</string>

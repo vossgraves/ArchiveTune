@@ -797,7 +797,12 @@ fun PlayerTopActions(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
+        // BITCHORD and TIKTOK join the styles that draw their own controls: these shared
+        // components are for the numbered layouts, and a self-contained style that fell
+        // through to them would render a second set on top of its own.
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10,
+        PlayerDesignStyle.APPLE_MUSIC, PlayerDesignStyle.BITCHORD, PlayerDesignStyle.TIKTOK,
+        -> {
             Unit
         }
     }
@@ -1868,7 +1873,12 @@ fun PlayerPlaybackControls(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
+        // BITCHORD and TIKTOK join the styles that draw their own controls: these shared
+        // components are for the numbered layouts, and a self-contained style that fell
+        // through to them would render a second set on top of its own.
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10,
+        PlayerDesignStyle.APPLE_MUSIC, PlayerDesignStyle.BITCHORD, PlayerDesignStyle.TIKTOK,
+        -> {
             Unit
         }
     }

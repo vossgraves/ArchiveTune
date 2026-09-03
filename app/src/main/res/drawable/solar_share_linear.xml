@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Solar-style "Share": the reference feed's curved arrow rising to the
+         top right. Geometry constructed so the shaft arrives exactly at the
+         chevron's throat (both tangents aligned at 45 degrees) — the previous
+         hand-drawn approximation had a skewed, undersized arrowhead that read
+         as a deformed glyph on the rail. -->
+    <path
+        android:pathData="M5.5 18.5 C5.5 13.5 12.4 11.5 16 8"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+    />
+    <path
+        android:pathData="M18.5 10.5 L18.5 5.5 L13.5 5.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+    />
+</vector>
