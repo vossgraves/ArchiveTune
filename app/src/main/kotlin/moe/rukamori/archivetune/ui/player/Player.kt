@@ -566,10 +566,6 @@ fun BottomSheetPlayer(
     // (kept in sync with the authoritative artwork resolver, including Tidal fallback commits).
     val paletteArtworkUrl = mediaMetadata?.thumbnailUrl
 
-    // V10 Editorial: exact artwork seeds (primary/secondary) feeding HCT-toned accents.
-    var v10ArtworkSeeds by remember { mutableStateOf<Pair<Color, Color>?>(null) }
-    val v10ArtworkSeedsCache = remember { mutableMapOf<String, Pair<Color, Color>>() }
-
     LaunchedEffect(mediaMetadata?.id, paletteArtworkUrl, playerBackground, useDarkTheme, playerDesignStyle) {
         if (aodModeEnabled) return@LaunchedEffect
         val wantsPalette =
@@ -661,22 +657,6 @@ fun BottomSheetPlayer(
             PlayerPaletteCache.put(cacheKey, extractedColors)
             gradientColors = extractedColors
             hasValidGradientPalette = true
-            // V10 Editorial: exact artwork seeds from the same palette run.
-            if (playerDesignStyle == PlayerDesignStyle.V10) {
-                val primarySeed =
-                    palette.vibrantSwatch ?: palette.lightVibrantSwatch ?: palette.darkVibrantSwatch ?: palette.dominantSwatch
-                val secondarySeed = palette.mutedSwatch ?: palette.lightMutedSwatch ?: palette.darkMutedSwatch ?: primarySeed
-                val seeds =
-                    if (primarySeed != null && secondarySeed != null) {
-                        Pair(Color(primarySeed.rgb), Color(secondarySeed.rgb))
-                    } else {
-                        null
-                    }
-                if (seeds != null) {
-                    v10ArtworkSeedsCache[currentMetadata.id] = seeds
-                    v10ArtworkSeeds = seeds
-                }
-            }
         }
     }
 
@@ -688,18 +668,22 @@ fun BottomSheetPlayer(
     // the artwork (no blur behind the controls — pure color gradient instead).
     val dominantColor = gradientColors.firstOrNull() ?: MaterialTheme.colorScheme.primary
 
-    // ── V10 "Editorial" artwork-seeded accents ──
-    // Exact seeds from the artwork color scheme, HCT-toned so the bento field and
-    // accent track the artwork with correct toning (from rukamori PR #1229).
+    // ── V10 "Editorial" dominant-artwork control theme ──
+    // Both halves of the two-tone contract (field + accent) are derived from the
+    // artwork's DOMINANT palette color — gradientColors.first(), the highest-
+    // weighted swatch of the cover — HCT-toned per theme so they always keep
+    // proper contrast (dark: light accent over dark field; light: dark accent
+    // over light field). Previously these came from the *vibrant* seed, which
+    // only existed on the fresh-extraction path: a PlayerPaletteCache hit left
+    // the seeds null and collapsed both tones onto the same dominant color —
+    // pill text invisible against the pill. Deriving from dominantColor fixes
+    // that and matches the user request (2026-09-01): "button and control theme
+    // based on the dominant color from the album art". dominantColor falls back
+    // to the theme primary only when no palette has ever resolved.
     val targetV10FieldColor =
-        remember(v10ArtworkSeeds, useDarkTheme) {
-            val seeds = v10ArtworkSeeds
-            if (seeds == null) {
-                dominantColor
-            } else {
-                val hct = seeds.first.toHct()
-                if (useDarkTheme) hct.withTone(30.0).toColor() else hct.withTone(90.0).toColor()
-            }
+        remember(dominantColor, useDarkTheme) {
+            val hct = dominantColor.toHct()
+            if (useDarkTheme) hct.withTone(30.0).toColor() else hct.withTone(90.0).toColor()
         }
     val dynamicV10FieldColor by animateColorAsState(
         targetValue = targetV10FieldColor,
@@ -707,14 +691,9 @@ fun BottomSheetPlayer(
         label = "dynamicV10FieldColor",
     )
     val targetV10AccentColor =
-        remember(v10ArtworkSeeds, useDarkTheme) {
-            val seeds = v10ArtworkSeeds
-            if (seeds == null) {
-                dominantColor
-            } else {
-                val hct = seeds.first.toHct()
-                if (useDarkTheme) hct.withTone(90.0).toColor() else hct.withTone(10.0).toColor()
-            }
+        remember(dominantColor, useDarkTheme) {
+            val hct = dominantColor.toHct()
+            if (useDarkTheme) hct.withTone(90.0).toColor() else hct.withTone(10.0).toColor()
         }
     val dynamicV10AccentColor by animateColorAsState(
         targetValue = targetV10AccentColor,
