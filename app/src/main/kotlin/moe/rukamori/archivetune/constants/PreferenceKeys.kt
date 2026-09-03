@@ -1280,6 +1280,14 @@ val InnerTubeOAuthExpiresAtKey = longPreferencesKey("innerTubeOAuthExpiresAt")
  * AccountManager never gives one out. See GmsAccountRepository.
  */
 val GmsAccountNameKey = stringPreferencesKey("gmsAccountName")
+
+/**
+ * Which authenticator issued the session — `app.revanced` for ReVanced GmsCore, `com.mgoogle` for
+ * Vanced-era microG, `com.google` for microG installed in Play Services' place. Stored because a
+ * silent refresh has to invalidate and re-request against the same one, and a device can host more
+ * than one.
+ */
+val GmsAccountTypeKey = stringPreferencesKey("gmsAccountType")
 val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")

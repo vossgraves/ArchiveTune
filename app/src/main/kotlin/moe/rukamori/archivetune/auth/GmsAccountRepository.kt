@@ -11,11 +11,13 @@ import android.accounts.AccountManager
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.GmsAccountNameKey
+import moe.rukamori.archivetune.constants.GmsAccountTypeKey
 import moe.rukamori.archivetune.constants.InnerTubeOAuthExpiresAtKey
 import moe.rukamori.archivetune.constants.InnerTubeOAuthTokenKey
 import moe.rukamori.archivetune.utils.dataStore
@@ -23,22 +25,24 @@ import moe.rukamori.archivetune.utils.get
 import timber.log.Timber
 
 /**
- * YouTube sign-in through the Google account already on the device, served by microG (GmsCore) or
- * by real Play Services — whichever provides the `com.google` account authenticator.
+ * YouTube sign-in through a Google account already on the device, served by microG (GmsCore).
  *
  * This is the third way in, alongside the WebView cookie and the device code, and the least work
- * for the user: the account is already signed in at the system level, so signing in here is one
- * tap on a picker and one consent prompt. microG has allowed third-party apps to request tokens
- * this way, behind an explicit consent prompt, since 0.3.3.
+ * for the user: the account is already signed in at the system level, so signing in here is one tap
+ * on a picker and one consent prompt.
  *
- * **What this is not.** ReVanced's "GmsCore support" is APK patching: a repackaged Google app is
- * rewritten to call `app.revanced.android.gms` instead of `com.google.android.gms`. ArchiveTune is
- * not a repackaged Google app, so there is nothing to redirect — the useful half of microG here is
- * the account authenticator, which is what this uses.
+ * **It needs microG specifically, not "a Google account".** Both microG and real Play Services
+ * register the `com.google` account type, so asking for that type alone lands on whichever one the
+ * system picked — on a device with real Play Services installed, that is Play Services, and it
+ * refuses: an `oauth2:` token for a first-party scope only goes to apps registered as OAuth clients
+ * in a Google Cloud project, which ArchiveTune is not and cannot become for a first-party scope.
+ * microG's authenticator serves the same request after an explicit user consent prompt, which is
+ * the whole reason this route exists. So the providers are enumerated and identified by package,
+ * and a non-microG one is reported as such instead of being tried and failing opaquely.
  *
- * The token is the same shape the device flow produces (an OAuth2 access token for the YouTube
- * scope), so it feeds [InnerTubeOAuthTokenKey] and reaches InnerTube down exactly the same
- * ANDROID_VR Bearer path — see [YouTubeOAuthRepository] for why only that client sends it.
+ * The token is the same shape the device flow produces, so it feeds [InnerTubeOAuthTokenKey] and
+ * reaches InnerTube down exactly the same ANDROID_VR Bearer path — see [YouTubeOAuthRepository] for
+ * why only that client sends it.
  */
 object GmsAccountRepository {
     private const val TAG = "GmsAccount"
@@ -47,37 +51,126 @@ object GmsAccountRepository {
     const val ACCOUNT_TYPE = "com.google"
 
     /**
-     * Matches [YouTubeOAuthRepository.SCOPE]. The `oauth2:` prefix is what tells AccountManager to
+     * The account types a Google account can arrive under.
+     *
+     * `com.google` is what real Play Services registers, and what microG registers when it is
+     * installed *in its place* (a deGoogled ROM, signature spoofing) — only one of the two can own
+     * it. The others are how a microG fork coexists with real Play Services on the same device:
+     * ReVanced GmsCore declares `app.revanced` and Vanced-era microG declares `com.mgoogle`, each
+     * under its own package, precisely so the system does not have to choose.
+     *
+     * Asking only for `com.google` — which this used to do — therefore lands on real Play Services
+     * on any device that has it, no matter what else is installed. That is not a fallback; it is
+     * the one authenticator that will refuse.
+     */
+    private val CANDIDATE_ACCOUNT_TYPES = listOf("app.revanced", "com.mgoogle", ACCOUNT_TYPE)
+
+    /** microG forks that install beside real Play Services rather than replacing it. */
+    private val KNOWN_MICROG_PACKAGES =
+        setOf(
+            "app.revanced.android.gms",
+            "com.mgoogle.android.gms",
+            "org.microg.gms",
+        )
+
+    /**
+     * Matches [YouTubeOAuthRepository]'s scope. The `oauth2:` prefix is what tells AccountManager to
      * return an access token for that scope rather than an authenticator-specific blob.
      */
     private const val AUTH_TOKEN_TYPE = "oauth2:https://www.googleapis.com/auth/youtube"
 
     /**
      * AccountManager gives no expiry. Google's access tokens last an hour; re-fetching a little
-     * early costs one cheap local call, since the authenticator caches and only goes to the
-     * network when its own copy has expired.
+     * early costs one cheap local call, since the authenticator caches and only goes to the network
+     * when its own copy has expired.
      */
     private const val ASSUMED_TOKEN_LIFETIME_MS = 50 * 60 * 1000L
 
-    /**
-     * True when something on the device can serve Google accounts. False on a clean AOSP install
-     * with neither microG nor Play Services, where the sign-in option should not be offered at all.
-     */
-    fun isAvailable(context: Context): Boolean =
-        runCatching {
-            AccountManager.get(context).authenticatorTypes.any { it.type == ACCOUNT_TYPE }
-        }.getOrDefault(false)
+    /** An account authenticator on this device that can serve Google accounts. */
+    data class Provider(
+        val accountType: String,
+        val packageName: String,
+        val isMicroG: Boolean,
+    ) {
+        /** What to call it in the UI. */
+        val label: String get() = if (isMicroG) "microG" else "Google Play Services"
+    }
+
+    sealed interface Result {
+        data class Success(val token: String) : Result
+
+        /** The authenticator wants the user to approve something we cannot show from here. */
+        data object NeedsConsent : Result
+
+        data class Failed(val reason: String) : Result
+    }
 
     /**
-     * Intent for the system account picker.
+     * Every authenticator on the device that can serve a Google account, microG first.
+     *
+     * Ordered rather than filtered: a device with only real Play Services still gets a row that
+     * explains why this will not work, which is more use than a row that silently disappears.
+     */
+    fun providers(context: Context): List<Provider> =
+        runCatching {
+            val manager = AccountManager.get(context)
+            manager.authenticatorTypes
+                .filter { it.type in CANDIDATE_ACCOUNT_TYPES }
+                .map { Provider(it.type, it.packageName, isMicroG(context, it.type, it.packageName)) }
+                // microG first: on a device carrying both, it is the only one that can serve this.
+                .sortedByDescending { it.isMicroG }
+        }.getOrElse {
+            Timber.tag(TAG).w(it, "Could not enumerate account authenticators")
+            emptyList()
+        }
+
+    /**
+     * True when this authenticator is microG (or a fork) rather than real Play Services.
+     *
+     * Three checks, cheapest first. An account type other than `com.google` settles it outright —
+     * real Play Services only ever registers that one, so anything else in [CANDIDATE_ACCOUNT_TYPES]
+     * is a coexisting fork by construction. Otherwise the package name, for the forks that keep
+     * `com.google`. Only then the declared permissions, which is the check that actually works for
+     * microG installed in Play Services' place: it takes the *name* `com.google.android.gms` (that
+     * is what signature spoofing is for), so the name proves nothing there, but it declares its own
+     * `org.microg.*` permissions and Google's build declares none.
+     *
+     * The permission read needs the package to be visible to us — hence the `<queries>` entries in
+     * the manifest. Without them this call throws on Android 11+ and a real microG would be
+     * mistaken for Play Services.
+     */
+    private fun isMicroG(context: Context, accountType: String, packageName: String): Boolean {
+        if (accountType != ACCOUNT_TYPE) return true
+        if (packageName in KNOWN_MICROG_PACKAGES) return true
+        return runCatching {
+            context.packageManager
+                .getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+                .permissions
+                ?.any { it.name.startsWith("org.microg.") } == true
+        }.getOrDefault(false)
+    }
+
+    /** True when something on the device can serve Google accounts at all. */
+    fun isAvailable(context: Context): Boolean = providers(context).isNotEmpty()
+
+    /**
+     * Intent for the system account picker, restricted to [provider]'s account type.
      *
      * Deliberately the picker rather than `getAccountsByType`: since Android O an app only sees
      * accounts it has been made visible to, and choosing one through this intent is what grants
      * that visibility. It also means no GET_ACCOUNTS permission — the app never enumerates
      * accounts, the user hands it exactly one.
      */
-    fun accountPickerIntent(): Intent =
-        AccountManager.newChooseAccountIntent(null, null, arrayOf(ACCOUNT_TYPE), null, null, null, null)
+    fun accountPickerIntent(provider: Provider): Intent =
+        AccountManager.newChooseAccountIntent(
+            null,
+            null,
+            arrayOf(provider.accountType),
+            null,
+            null,
+            null,
+            null,
+        )
 
     /** Account name from the picker's result, or null when the user backed out. */
     fun accountNameFrom(resultCode: Int, data: Intent?): String? =
@@ -86,36 +179,43 @@ object GmsAccountRepository {
             ?.takeIf { resultCode == Activity.RESULT_OK && it.isNotBlank() }
 
     /** True once an account has been chosen and a token stored. */
-    fun isSignedIn(context: Context): Boolean =
-        context.dataStore.get(GmsAccountNameKey, "").isNotBlank()
+    fun isSignedIn(context: Context): Boolean = context.dataStore.get(GmsAccountNameKey, "").isNotBlank()
 
     /**
      * Fetches a token for [accountName] and persists it, running the consent prompt inside
      * [activity] the first time.
      *
      * [activity] is what makes the prompt appear instead of the call failing: without it,
-     * AccountManager can only return a token it is already authorised to give. Returns null when
-     * the user declines or the authenticator refuses the scope.
+     * AccountManager can only return a token it is already authorised to give.
      */
-    suspend fun signIn(activity: Activity, accountName: String): String? =
+    suspend fun signIn(activity: Activity, provider: Provider, accountName: String): Result =
         withContext(Dispatchers.IO) {
-            val token = fetchToken(activity, activity, accountName) ?: return@withContext null
-            activity.dataStore.edit { prefs -> prefs[GmsAccountNameKey] = accountName }
-            persist(activity, token)
-            token
+            when (val result = fetchToken(activity, activity, provider.accountType, accountName)) {
+                is Result.Success -> {
+                    activity.dataStore.edit { prefs ->
+                        prefs[GmsAccountNameKey] = accountName
+                        prefs[GmsAccountTypeKey] = provider.accountType
+                    }
+                    persist(activity, result.token)
+                    result
+                }
+
+                else -> result
+            }
         }
 
     /**
      * A currently valid token for the chosen account, or null when there is no microG session.
      *
-     * Called off the sign-in path, so it passes no Activity: consent was granted at sign-in and
-     * the authenticator can refresh silently from here. If it ever cannot, the session is dropped
-     * rather than left to 401 on every request.
+     * Called off the sign-in path, so it passes no Activity: consent was granted at sign-in and the
+     * authenticator can refresh silently from here. If it ever cannot, the session is dropped rather
+     * than left to 401 on every request.
      */
     suspend fun validAccessToken(context: Context): String? =
         withContext(Dispatchers.IO) {
             val accountName = context.dataStore.get(GmsAccountNameKey, "")
             if (accountName.isBlank()) return@withContext null
+            val accountType = context.dataStore.get(GmsAccountTypeKey, ACCOUNT_TYPE)
 
             val stored = context.dataStore.get(InnerTubeOAuthTokenKey, "")
             val expiresAt = context.dataStore.get(InnerTubeOAuthExpiresAtKey, 0L)
@@ -124,35 +224,45 @@ object GmsAccountRepository {
             // Invalidate first: AccountManager hands back its cached copy otherwise, including the
             // stale one that just expired.
             if (stored.isNotBlank()) {
-                runCatching { AccountManager.get(context).invalidateAuthToken(ACCOUNT_TYPE, stored) }
+                runCatching { AccountManager.get(context).invalidateAuthToken(accountType, stored) }
             }
-            val token = fetchToken(context, null, accountName)
-            if (token == null) {
-                Timber.tag(TAG).w("Silent token refresh failed; clearing the microG session")
-                signOut(context)
-                return@withContext null
+            when (val result = fetchToken(context, null, accountType, accountName)) {
+                is Result.Success -> {
+                    persist(context, result.token)
+                    result.token
+                }
+
+                else -> {
+                    Timber.tag(TAG).w("Silent token refresh failed (%s); clearing the session", result)
+                    signOut(context)
+                    null
+                }
             }
-            persist(context, token)
-            token
         }
 
     /** Drops the local session. The account stays signed in at the system level. */
     suspend fun signOut(context: Context) {
         context.dataStore.edit { prefs ->
             prefs.remove(GmsAccountNameKey)
+            prefs.remove(GmsAccountTypeKey)
             prefs.remove(InnerTubeOAuthTokenKey)
             prefs.remove(InnerTubeOAuthExpiresAtKey)
         }
     }
 
-    private fun fetchToken(context: Context, activity: Activity?, accountName: String): String? =
+    private fun fetchToken(
+        context: Context,
+        activity: Activity?,
+        accountType: String,
+        accountName: String,
+    ): Result =
         runCatching {
             val manager = AccountManager.get(context)
             val account =
                 manager
-                    .getAccountsByType(ACCOUNT_TYPE)
+                    .getAccountsByType(accountType)
                     .firstOrNull { it.name.equals(accountName, ignoreCase = true) }
-                    ?: Account(accountName, ACCOUNT_TYPE)
+                    ?: Account(accountName, accountType)
             // Blocking on purpose — the whole object runs on Dispatchers.IO. getResult() is what
             // surfaces the authenticator's exceptions rather than swallowing them in a callback.
             val future =
@@ -161,10 +271,28 @@ object GmsAccountRepository {
                 } else {
                     manager.getAuthToken(account, AUTH_TOKEN_TYPE, Bundle(), false, null, null)
                 }
-            future.result?.getString(AccountManager.KEY_AUTHTOKEN)?.takeIf { it.isNotBlank() }
-        }.getOrElse {
-            Timber.tag(TAG).w(it, "Could not get a token for %s", accountName)
-            null
+            val bundle = future.result ?: return@runCatching Result.Failed("no response")
+
+            bundle.getString(AccountManager.KEY_AUTHTOKEN)?.takeIf { it.isNotBlank() }?.let {
+                return@runCatching Result.Success(it)
+            }
+            // A bundle with no token but an intent means the authenticator wants the user to
+            // approve something. Returning null here — which this used to do — is what turned a
+            // recoverable "tap approve" into a bare "could not get token".
+            @Suppress("DEPRECATION")
+            if (bundle.get(AccountManager.KEY_INTENT) != null) {
+                return@runCatching Result.NeedsConsent
+            }
+            Result.Failed(
+                bundle.getString(AccountManager.KEY_ERROR_MESSAGE)?.takeIf { it.isNotBlank() }
+                    ?: "no token returned",
+            )
+        }.getOrElse { error ->
+            Timber.tag(TAG).w(error, "Could not get a token for %s", accountName)
+            // The authenticator's own message is the useful part — Play Services puts its real
+            // refusal here (UNREGISTERED_ON_API_CONSOLE, INVALID_AUDIENCE, BadAuthentication), and
+            // that is what tells the user whether this is fixable.
+            Result.Failed(error.message?.takeIf { it.isNotBlank() } ?: error::class.simpleName.orEmpty())
         }
 
     private suspend fun persist(context: Context, token: String) {

@@ -186,23 +186,35 @@ fun AccountSettings(
     // gmsAvailable is false on a device with neither, where the row would only ever fail.
     val (gmsAccountName, _) = rememberPreference(GmsAccountNameKey, "")
     val hasGmsSession = gmsAccountName.isNotBlank()
-    val gmsAvailable = remember(context) { GmsAccountRepository.isAvailable(context) }
+    // Both microG and real Play Services register the com.google account type, so the row has to
+    // know which one it would actually be talking to: Play Services refuses this token, and saying
+    // so up front beats sending the user through a picker to a failure they cannot act on.
+    val gmsProviders = remember(context) { GmsAccountRepository.providers(context) }
+    val gmsProvider = gmsProviders.firstOrNull()
+    val gmsAvailable = gmsProvider != null
     val activity = remember(context) { context.findActivity() }
     val gmsPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val chosen = GmsAccountRepository.accountNameFrom(result.resultCode, result.data) ?: return@rememberLauncherForActivityResult
             val host = activity ?: return@rememberLauncherForActivityResult
+            val provider = gmsProvider ?: return@rememberLauncherForActivityResult
             coroutineScope.launch {
                 // Needs the Activity: the first token request shows microG's consent prompt, and
                 // without one AccountManager can only return a token it may already give out.
-                val token = GmsAccountRepository.signIn(host, chosen)
-                Toast.makeText(
-                    context,
-                    context.getString(
-                        if (token != null) R.string.gms_sign_in_done else R.string.gms_sign_in_failed,
-                    ),
-                    Toast.LENGTH_SHORT,
-                ).show()
+                val message =
+                    when (val outcome = GmsAccountRepository.signIn(host, provider, chosen)) {
+                        is GmsAccountRepository.Result.Success -> context.getString(R.string.gms_sign_in_done)
+                        GmsAccountRepository.Result.NeedsConsent -> context.getString(R.string.gms_sign_in_needs_consent)
+                        // The authenticator's own words. A generic "could not get a token" hid the
+                        // one useful fact — whether this device can do this at all.
+                        is GmsAccountRepository.Result.Failed ->
+                            if (provider.isMicroG) {
+                                context.getString(R.string.gms_sign_in_failed, outcome.reason)
+                            } else {
+                                context.getString(R.string.gms_not_microg_explained)
+                            }
+                    }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             }
         }
     val savedAccounts =
@@ -451,8 +463,29 @@ fun AccountSettings(
                                 ExpressiveActionRow(
                                     icon = painterResource(R.drawable.account),
                                     title = stringResource(R.string.gms_sign_in),
-                                    subtitle = stringResource(R.string.gms_sign_in_desc),
-                                    onClick = { gmsPickerLauncher.launch(GmsAccountRepository.accountPickerIntent()) },
+                                    subtitle =
+                                        stringResource(
+                                            if (gmsProvider?.isMicroG == true) {
+                                                R.string.gms_sign_in_desc
+                                            } else {
+                                                // Named before the tap, not after: on a Play
+                                                // Services device this route cannot succeed.
+                                                R.string.gms_sign_in_no_microg
+                                            },
+                                        ),
+                                    onClick = {
+                                        val provider = gmsProvider ?: return@ExpressiveActionRow
+                                        if (provider.isMicroG) {
+                                            gmsPickerLauncher.launch(GmsAccountRepository.accountPickerIntent(provider))
+                                        } else {
+                                            Toast
+                                                .makeText(
+                                                    context,
+                                                    context.getString(R.string.gms_not_microg_explained),
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
+                                        }
+                                    },
                                     index = gmsIndex,
                                     count = signInRowCount,
                                 )
