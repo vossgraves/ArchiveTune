@@ -20,7 +20,6 @@
 package moe.rukamori.archivetune.ui.component
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarColors
@@ -31,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -70,12 +70,18 @@ fun glassAwareLargeTopAppBarColors(): TopAppBarColors =
  * The two alphas differ because the backdrop does: over a dark backdrop a card has to *add* light
  * to read as raised, over a light one it has to stay mostly opaque or the text underneath shows
  * through. Same values the fork settled on.
+ *
+ * Which of the two applies is read off the surface's own luminance rather than
+ * `isSystemInDarkTheme()`: the app's dark mode is a preference with an AUTO/ON/OFF setting plus a
+ * pure-black variant, so forcing dark on a light system would otherwise paint the light tint over
+ * a dark card and wash the text out.
  */
 @Composable
 fun glassAwareCardColor(): Color =
     when {
         !rememberLiquidGlassEnabled() -> MaterialTheme.colorScheme.surfaceContainerHigh
-        isSystemInDarkTheme() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        MaterialTheme.colorScheme.surface.luminance() < 0.5f ->
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
         else -> Color.White.copy(alpha = 0.65f)
     }
 
