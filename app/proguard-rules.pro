@@ -132,10 +132,27 @@
 -keep class moe.rukamori.archivetune.models.QueueType { *; }
 -keep class moe.rukamori.archivetune.playback.queues.** { *; }
 
-# Keep serialization methods for queue persistence
+# Java serialization writes the CLASS NAME and the FIELD NAMES into the stream, so R8 renaming
+# either of them breaks reading a file written by an earlier build. That is what produced
+#   W/MusicService: Failed to read persistent file: persistent_queue.data
+#   java.io.InvalidClassException: r8.hg7; class invalid for deserialization
+# on every update: the saved queue named a class by its obfuscated name, and in the new build that
+# name belonged to something else. The queue was silently lost each time.
+#
+# The rules above keep the top-level model classes, but `-keep class ...QueueData { *; }` does NOT
+# cover QueueData$YouTubeData and friends, and MediaMetadata — the element type of the list that
+# actually failed to deserialize — was not kept at all. Rather than chase each one, keep the names
+# of everything reachable through Serializable, which is the standard recipe and cannot go stale as
+# models are added.
+-keepnames class * implements java.io.Serializable
 -keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private static final java.io.ObjectStreamField[] serialPersistentFields;
+    !static !transient <fields>;
     private void writeObject(java.io.ObjectOutputStream);
     private void readObject(java.io.ObjectInputStream);
+    java.lang.Object writeReplace();
+    java.lang.Object readResolve();
 }
 
 ## Media3 Protection Rules

@@ -15,6 +15,8 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.GmsAccountNameKey
 import moe.rukamori.archivetune.constants.GmsAccountTypeKey
@@ -46,6 +48,9 @@ import timber.log.Timber
  */
 object GmsAccountRepository {
     private const val TAG = "GmsAccount"
+
+    /** Serialises token refresh and sign-out; see [validAccessToken]. */
+    private val refreshMutex = Mutex()
 
     /** The account type microG and Play Services both register. */
     const val ACCOUNT_TYPE = "com.google"
@@ -101,6 +106,16 @@ object GmsAccountRepository {
 
         /** The authenticator wants the user to approve something we cannot show from here. */
         data object NeedsConsent : Result
+
+        /**
+         * The authenticator's service binding died — `AuthenticatorException: disconnected`.
+         *
+         * Its own category because it says nothing about the account and everything about the
+         * provider: the app that owns [accountType] either crashed handling the request or would
+         * not serve this caller. Reporting it as a credential failure sends the user to re-check a
+         * password that was never the problem.
+         */
+        data class Unreachable(val accountType: String) : Result
 
         data class Failed(val reason: String) : Result
     }
@@ -213,35 +228,53 @@ object GmsAccountRepository {
      */
     suspend fun validAccessToken(context: Context): String? =
         withContext(Dispatchers.IO) {
-            val accountName = context.dataStore.get(GmsAccountNameKey, "")
-            if (accountName.isBlank()) return@withContext null
-            val accountType = context.dataStore.get(GmsAccountTypeKey, ACCOUNT_TYPE)
+            // One refresh at a time. Every authenticated InnerTube request calls through here, so
+            // an expired token had every in-flight request racing into its own getAuthToken — the
+            // log showed five identical failures 11ms apart, five bindings to the authenticator and
+            // five session wipes for one expiry. Holding the lock means the losers re-read the
+            // token the winner just wrote instead of asking again.
+            refreshMutex.withLock {
+                val accountName = context.dataStore.get(GmsAccountNameKey, "")
+                if (accountName.isBlank()) return@withLock null
+                val accountType = context.dataStore.get(GmsAccountTypeKey, ACCOUNT_TYPE)
 
-            val stored = context.dataStore.get(InnerTubeOAuthTokenKey, "")
-            val expiresAt = context.dataStore.get(InnerTubeOAuthExpiresAtKey, 0L)
-            if (stored.isNotBlank() && expiresAt > System.currentTimeMillis()) return@withContext stored
+                val stored = context.dataStore.get(InnerTubeOAuthTokenKey, "")
+                val expiresAt = context.dataStore.get(InnerTubeOAuthExpiresAtKey, 0L)
+                if (stored.isNotBlank() && expiresAt > System.currentTimeMillis()) return@withLock stored
 
-            // Invalidate first: AccountManager hands back its cached copy otherwise, including the
-            // stale one that just expired.
-            if (stored.isNotBlank()) {
-                runCatching { AccountManager.get(context).invalidateAuthToken(accountType, stored) }
-            }
-            when (val result = fetchToken(context, null, accountType, accountName)) {
-                is Result.Success -> {
-                    persist(context, result.token)
-                    result.token
+                // Invalidate first: AccountManager hands back its cached copy otherwise, including
+                // the stale one that just expired.
+                if (stored.isNotBlank()) {
+                    runCatching { AccountManager.get(context).invalidateAuthToken(accountType, stored) }
                 }
+                when (val result = fetchToken(context, null, accountType, accountName)) {
+                    is Result.Success -> {
+                        persist(context, result.token)
+                        result.token
+                    }
 
-                else -> {
-                    Timber.tag(TAG).w("Silent token refresh failed (%s); clearing the session", result)
-                    signOut(context)
-                    null
+                    // The provider is down or refusing this caller — nothing about the session is
+                    // known to be wrong, so it is kept. Wiping it here would silently sign the user
+                    // out every time microG was killed in the background.
+                    is Result.Unreachable -> {
+                        Timber.tag(TAG).w("Authenticator for %s is unreachable; keeping the session", result.accountType)
+                        null
+                    }
+
+                    else -> {
+                        Timber.tag(TAG).w("Silent token refresh failed (%s); clearing the session", result)
+                        signOutLocked(context)
+                        null
+                    }
                 }
             }
         }
 
     /** Drops the local session. The account stays signed in at the system level. */
-    suspend fun signOut(context: Context) {
+    suspend fun signOut(context: Context) = refreshMutex.withLock { signOutLocked(context) }
+
+    /** [signOut]'s body, for callers already holding [refreshMutex] — the mutex is not reentrant. */
+    private suspend fun signOutLocked(context: Context) {
         context.dataStore.edit { prefs ->
             prefs.remove(GmsAccountNameKey)
             prefs.remove(GmsAccountTypeKey)
@@ -258,11 +291,22 @@ object GmsAccountRepository {
     ): Result =
         runCatching {
             val manager = AccountManager.get(context)
+            val known = manager.getAccountsByType(accountType)
             val account =
-                manager
-                    .getAccountsByType(accountType)
-                    .firstOrNull { it.name.equals(accountName, ignoreCase = true) }
+                known.firstOrNull { it.name.equals(accountName, ignoreCase = true) }
                     ?: Account(accountName, accountType)
+            if (known.none { it.name.equals(accountName, ignoreCase = true) }) {
+                // Not necessarily wrong — before Android O visibility is granted we cannot see the
+                // account we were just handed — but it is also exactly what a mismatched provider
+                // looks like, so it goes in the log rather than being inferred later from a
+                // failure that does not mention it.
+                Timber.tag(TAG).w(
+                    "Account %s is not visible under type %s (%d visible); requesting anyway",
+                    accountName,
+                    accountType,
+                    known.size,
+                )
+            }
             // Blocking on purpose — the whole object runs on Dispatchers.IO. getResult() is what
             // surfaces the authenticator's exceptions rather than swallowing them in a callback.
             val future =
@@ -288,11 +332,19 @@ object GmsAccountRepository {
                     ?: "no token returned",
             )
         }.getOrElse { error ->
-            Timber.tag(TAG).w(error, "Could not get a token for %s", accountName)
+            // The account TYPE is the diagnostic that matters and the first version of this line
+            // did not carry it: a log saying only "could not get a token for <email>" cannot tell
+            // you whether the request went to microG or to Play Services, which is the entire
+            // question when this fails.
+            Timber.tag(TAG).w(error, "Token request failed: account=%s type=%s", accountName, accountType)
             // The authenticator's own message is the useful part — Play Services puts its real
             // refusal here (UNREGISTERED_ON_API_CONSOLE, INVALID_AUDIENCE, BadAuthentication), and
-            // that is what tells the user whether this is fixable.
-            Result.Failed(error.message?.takeIf { it.isNotBlank() } ?: error::class.simpleName.orEmpty())
+            // that is what tells the user whether this is fixable. "disconnected" is its own case:
+            // AccountManagerService sends it when the authenticator's service binding dies, which
+            // means the authenticator crashed or refused to serve this caller — not that the
+            // credentials were wrong.
+            val reason = error.message?.takeIf { it.isNotBlank() } ?: error::class.simpleName.orEmpty()
+            if (reason == "disconnected") Result.Unreachable(accountType) else Result.Failed(reason)
         }
 
     private suspend fun persist(context: Context, token: String) {

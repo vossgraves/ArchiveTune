@@ -205,6 +205,11 @@ fun AccountSettings(
                     when (val outcome = GmsAccountRepository.signIn(host, provider, chosen)) {
                         is GmsAccountRepository.Result.Success -> context.getString(R.string.gms_sign_in_done)
                         GmsAccountRepository.Result.NeedsConsent -> context.getString(R.string.gms_sign_in_needs_consent)
+                        // The provider died mid-request rather than refusing the account, so the
+                        // fix is on its side — restart it, or take it off battery optimisation —
+                        // not in re-picking an account.
+                        is GmsAccountRepository.Result.Unreachable ->
+                            context.getString(R.string.gms_sign_in_unreachable, provider.label)
                         // The authenticator's own words. A generic "could not get a token" hid the
                         // one useful fact — whether this device can do this at all.
                         is GmsAccountRepository.Result.Failed ->

@@ -840,6 +840,7 @@
     <string name="gms_sign_in_done">Signed in with your device account</string>
     <string name="gms_sign_in_failed">Sign-in failed: %1$s</string>
     <string name="gms_sign_in_needs_consent">microG needs you to approve the request — try again</string>
+    <string name="gms_sign_in_unreachable">%1$s stopped responding. Make sure it is running and not battery-restricted, then try again.</string>
     <string name="gms_not_microg_explained">This device\'s Google accounts are served by Play Services, which only issues these tokens to apps registered as Google OAuth clients. Install microG to use this sign-in, or use the YouTube OAuth code instead.</string>
     <string name="yt_oauth_sign_out">Sign out of the code session</string>
     <string name="yt_oauth_sign_out_desc">Revokes the token with Google and removes it from this device.</string>
