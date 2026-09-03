@@ -9865,8 +9865,14 @@ class MusicService :
                         .getOrNull()
                 if (poolStream != null) {
                     Timber.tag("MusicService").d("Tidal resolved via pool account (premium=%s)", poolAccount.premium)
+                    PoolAccountManager.noteAccountSuccess("tidal", poolAccount.id)
                     return poolStream
                 }
+                // Threw, or returned null because this account has no match. Either way it just
+                // cost up to 20s, so sort it last for a while rather than paying that again on
+                // the next track — the server's own dead-account handling is far slower than a
+                // listening session.
+                PoolAccountManager.noteAccountFailure("tidal", poolAccount.id)
             }
         }
 

@@ -196,12 +196,68 @@ object PoolAccountManager {
 
     private val legacySourcesUrl: String? get() = poolBaseUrl?.let { "$it/api/sources" }
 
-    /** Premium accounts first; callers try them in order. Paste-list accounts follow pool ones. Never throws. */
-    fun tidalAccounts(): List<TidalPoolAccount> = (tidalCache + PasteListPoolSource.tidalAccounts()).sortedByDescending { it.premium }
+    /**
+     * How long an account that just failed to resolve is tried last for.
+     *
+     * The server needs three reports (or its hourly sweep) before it stops serving a dead account,
+     * and the app only re-reads the feed every 15 minutes — so without this, a dead account was
+     * retried at the front of the list on *every* track, burning its full timeout each time
+     * (20s per Tidal attempt) before anything else was tried. Ten minutes is long enough to cover
+     * a listening session's worth of skips and short enough that an account which recovers, or one
+     * demoted by a single network blip, comes back on its own.
+     */
+    private const val ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000L
 
-    fun qobuzAccounts(): List<QobuzPoolAccount> = (qobuzCache + PasteListPoolSource.qobuzAccounts()).sortedByDescending { it.premium }
+    /** "service:id" -> the time it becomes worth trying first again. */
+    private val accountCooldownUntil = ConcurrentHashMap<String, Long>()
 
-    fun deezerAccounts(): List<DeezerPoolAccount> = (deezerCache + PasteListPoolSource.deezerAccounts()).sortedByDescending { it.premium }
+    private fun cooldownKey(service: String, id: Long?) = "$service:${id ?: 0L}"
+
+    private fun isCoolingDown(service: String, id: Long?): Boolean {
+        val key = cooldownKey(service, id)
+        val until = accountCooldownUntil[key] ?: return false
+        if (until > System.currentTimeMillis()) return true
+        accountCooldownUntil.remove(key, until)
+        return false
+    }
+
+    /**
+     * Records that an account failed to resolve, so it sorts last for [ACCOUNT_COOLDOWN_MS].
+     *
+     * Deliberately a demotion rather than a removal: with a thin pool every account may be cooling
+     * down at once, and a list that went empty would fall straight through to the lossy YouTube
+     * path. Sorted last still means tried — just after everything with a better recent record.
+     */
+    fun noteAccountFailure(service: String, id: Long?) {
+        if (id == null || id <= 0L) return
+        accountCooldownUntil[cooldownKey(service, id)] = System.currentTimeMillis() + ACCOUNT_COOLDOWN_MS
+    }
+
+    /** Records that an account resolved, clearing any cooldown from an earlier blip. */
+    fun noteAccountSuccess(service: String, id: Long?) {
+        if (id == null || id <= 0L) return
+        accountCooldownUntil.remove(cooldownKey(service, id))
+    }
+
+    /**
+     * Accounts that resolved recently first, premium before free within each group. Callers try
+     * them in order, so this is what keeps a known-bad account from costing every skip its timeout.
+     */
+    private fun <T> ordered(
+        service: String,
+        accounts: List<T>,
+        idOf: (T) -> Long?,
+        premiumOf: (T) -> Boolean,
+    ): List<T> = accounts.sortedWith(compareBy({ isCoolingDown(service, idOf(it)) }, { !premiumOf(it) }))
+
+    fun tidalAccounts(): List<TidalPoolAccount> =
+        ordered("tidal", tidalCache + PasteListPoolSource.tidalAccounts(), { it.id }, { it.premium })
+
+    fun qobuzAccounts(): List<QobuzPoolAccount> =
+        ordered("qobuz", qobuzCache + PasteListPoolSource.qobuzAccounts(), { it.id }, { it.premium })
+
+    fun deezerAccounts(): List<DeezerPoolAccount> =
+        ordered("deezer", deezerCache + PasteListPoolSource.deezerAccounts(), { it.id }, { it.premium })
 
     fun appleMusicAccounts(): List<AppleMusicPoolAccount> = (appleMusicCache + PasteListPoolSource.appleMusicAccounts()).sortedByDescending { it.premium }
 
