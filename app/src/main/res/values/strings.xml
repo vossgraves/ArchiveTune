@@ -1709,4 +1709,8 @@
     <string name="spotify_recently_played">Recently played</string>
     <string name="spotify_frequently_listened">Frequently listened</string>
     <string name="home_screen_style_spotify">Spotify</string>
+    <string name="home_source_youtube">YouTube</string>
+    <string name="home_source_spotify">Spotify</string>
+    <string name="spotify_home_style">Spotify home style</string>
+    <string name="spotify_home_style_desc">Layout of the Spotify home page</string>
 </resources>

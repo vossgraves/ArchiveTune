@@ -27,12 +27,11 @@ import androidx.navigation.navArgument
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
-import moe.rukamori.archivetune.constants.SpotifySpDcKey
+import moe.rukamori.archivetune.constants.HomeSource
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
 import moe.rukamori.archivetune.utils.rememberEnumPreference
-import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionDetailsRoute
 import moe.rukamori.archivetune.ui.screens.BrowseScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistAlbumsScreen
@@ -135,6 +134,15 @@ fun NavGraphBuilder.navigationBuilder(
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
 ) {
     composable(Screens.Home.route) {
+        // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
+        // HomeSourceSwitcher that both of them render. They are not layered: whichever is showing
+        // owns the tab, keeps its own layout style, and leaves the other one exactly as it was.
+        // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
+        if (rememberHomeSource() == HomeSource.SPOTIFY) {
+            SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
+            return@composable
+        }
+
         val homeScreenStyle by rememberEnumPreference(HomeScreenStyleKey, HomeScreenStyle.DEFAULT)
         when (homeScreenStyle) {
             HomeScreenStyle.RUKAMORI -> {
@@ -143,22 +151,6 @@ fun NavGraphBuilder.navigationBuilder(
                     headerScrollConnection = homeScrollConnection,
                     listState = homeListState,
                 )
-            }
-
-            // Falls through to the normal home when there is no Spotify session: picking this
-            // style without signing in would otherwise strand the user on an empty home with no
-            // obvious way back.
-            HomeScreenStyle.SPOTIFY -> {
-                val spDc by rememberPreference(SpotifySpDcKey, defaultValue = "")
-                if (spDc.isNotBlank()) {
-                    SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
-                } else {
-                    HomeScreen(
-                        navController,
-                        headerScrollConnection = homeScrollConnection,
-                        listState = homeListState,
-                    )
-                }
             }
 
             HomeScreenStyle.DEFAULT -> {

@@ -78,9 +78,76 @@ import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
+import moe.rukamori.archivetune.constants.SpotifyHomeStyle
+import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
+import moe.rukamori.archivetune.utils.rememberEnumPreference
+
+/**
+ * The geometry that separates the three [SpotifyHomeStyle] looks. The sections themselves are the
+ * same Spotify data in the same order under every style — only how densely they are laid out
+ * changes, which is also the only thing that actually differs between the two YouTube homes.
+ *
+ * Holding it as one value rather than branching inside each row keeps the four section rows to a
+ * single implementation apiece; three copies of each would drift the first time one is touched.
+ */
+@androidx.compose.runtime.Immutable
+data class SpotifyHomeMetrics(
+    /** Rows deep the track grid runs. Spotify stacks two; the Rukamori home packs four. */
+    val trackRows: Int,
+    val trackItemWidth: Dp,
+    /** Height of one row of the track grid; total grid height is this times [trackRows]. */
+    val trackRowHeight: Dp,
+    /** Width of an album/playlist card. */
+    val cardWidth: Dp,
+    val artistSize: Dp,
+    val contentPadding: Dp,
+    val itemSpacing: Dp,
+)
+
+@Composable
+fun rememberSpotifyHomeMetrics(): SpotifyHomeMetrics {
+    val style by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
+    return remember(style) {
+        when (style) {
+            // Spotify's own proportions, and the values this screen shipped with.
+            SpotifyHomeStyle.SPOTIFY ->
+                SpotifyHomeMetrics(
+                    trackRows = 2,
+                    trackItemWidth = 240.dp,
+                    trackRowHeight = 128.dp,
+                    cardWidth = 150.dp,
+                    artistSize = 140.dp,
+                    contentPadding = 16.dp,
+                    itemSpacing = 12.dp,
+                )
+            // Matches HomeScreen: single-row carousels, 12dp gutters, GridThumbnailHeight cards.
+            SpotifyHomeStyle.DEFAULT ->
+                SpotifyHomeMetrics(
+                    trackRows = 1,
+                    trackItemWidth = 300.dp,
+                    trackRowHeight = 72.dp,
+                    cardWidth = 128.dp,
+                    artistSize = 128.dp,
+                    contentPadding = 12.dp,
+                    itemSpacing = 8.dp,
+                )
+            // Matches RukamoriHomeScreen: deep grids, small cards, tight gutters.
+            SpotifyHomeStyle.RUKAMORI ->
+                SpotifyHomeMetrics(
+                    trackRows = 4,
+                    trackItemWidth = 280.dp,
+                    trackRowHeight = 64.dp,
+                    cardWidth = 112.dp,
+                    artistSize = 104.dp,
+                    contentPadding = 8.dp,
+                    itemSpacing = 6.dp,
+                )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -88,10 +155,11 @@ fun SpotifyHomeScreen(
     navController: NavController,
     headerScrollConnection: NestedScrollConnection? = null,
     viewModel: SpotifyHomeViewModel = hiltViewModel(),
-    onSwitchToYoutube: () -> Unit = {}
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
+    val metrics = rememberSpotifyHomeMetrics()
+    val onSwitchToYoutube = rememberSwitchToYouTube()
 
     LaunchedEffect(viewModel) {
         viewModel.navigationEvents.collect { event ->
@@ -156,6 +224,10 @@ fun SpotifyHomeScreen(
                         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        item(key = "home_source_switcher", contentType = "source_switcher") {
+                            HomeSourceSwitcher(modifier = Modifier.animateItem())
+                        }
+
                         item(key = "spotify_recent_panel", contentType = "recent_panel") {
                             SpotifyRecentPanel(
                                 recentItems = state.recentItems,
@@ -195,7 +267,7 @@ fun SpotifyHomeScreen(
                                     SectionType.TRACKS -> {
                                         SpotifyTrackSectionRow(
                                             tracks = section.tracks,
-                                            horizontalItemWidth = 240.dp,
+                                            metrics = metrics,
                                             onTrackClick = { track ->
                                                 playerConnection.playQueue(
                                                     SpotifyTracksQueue(
@@ -211,6 +283,7 @@ fun SpotifyHomeScreen(
                                     SectionType.ARTISTS -> {
                                         SpotifyArtistSectionRow(
                                             artists = section.artists,
+                                            metrics = metrics,
                                             onArtistClick = { artist -> viewModel.onAction(SpotifyHomeAction.ArtistClick(artist)) },
                                             modifier = Modifier.animateItem()
                                         )
@@ -218,6 +291,7 @@ fun SpotifyHomeScreen(
                                     SectionType.ALBUMS -> {
                                         SpotifyAlbumSectionRow(
                                             albums = section.albums,
+                                            metrics = metrics,
                                             onAlbumClick = { album -> viewModel.onAction(SpotifyHomeAction.AlbumClick(album)) },
                                             modifier = Modifier.animateItem()
                                         )
@@ -225,6 +299,7 @@ fun SpotifyHomeScreen(
                                     SectionType.PLAYLISTS -> {
                                         SpotifyPlaylistSectionRow(
                                             playlists = section.playlists,
+                                            metrics = metrics,
                                             onPlaylistClick = { playlist ->
                                                 navController.navigate("spotify_playlist/${playlist.id}")
                                             },
@@ -263,17 +338,20 @@ private fun resolveSpotifySectionTitle(section: SpotifyHomeSection): String {
 @Composable
 fun SpotifyTrackSectionRow(
     tracks: List<SpotifyTrack>,
-    horizontalItemWidth: Dp,
+    metrics: SpotifyHomeMetrics,
     onTrackClick: (SpotifyTrack) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
-        rows = GridCells.Fixed(2),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        rows = GridCells.Fixed(metrics.trackRows),
+        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp * 4)
+            // LazyHorizontalGrid splits its height across the fixed rows, so the box has to be
+            // rowHeight × rows. Capped at the number of tracks actually present, or a short
+            // section leaves a block of empty grid behind it.
+            .height(metrics.trackRowHeight * metrics.trackRows.coerceAtMost(tracks.size).coerceAtLeast(1))
     ) {
         items(
             items = tracks,
@@ -284,7 +362,7 @@ fun SpotifyTrackSectionRow(
                 contentAlignment = Alignment.CenterStart,
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(horizontalItemWidth),
+                    .width(metrics.trackItemWidth),
             ) {
                 SpotifyTrackListItem(
                     track = track,
@@ -301,12 +379,13 @@ fun SpotifyTrackSectionRow(
 @Composable
 fun SpotifyArtistSectionRow(
     artists: List<SpotifyArtist>,
+    metrics: SpotifyHomeMetrics,
     onArtistClick: (SpotifyArtist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
         modifier = modifier,
     ) {
         items(
@@ -322,7 +401,7 @@ fun SpotifyArtistSectionRow(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .width(140.dp)
+                    .width(metrics.artistSize)
                     .pressScaleClickable(onClick = { onArtistClick(artist) }),
             ) {
                 AsyncImage(
@@ -330,7 +409,7 @@ fun SpotifyArtistSectionRow(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(140.dp)
+                        .size(metrics.artistSize)
                         .clip(CircleShape),
                 )
                 Text(
@@ -350,12 +429,13 @@ fun SpotifyArtistSectionRow(
 @Composable
 fun SpotifyAlbumSectionRow(
     albums: List<SpotifyAlbum>,
+    metrics: SpotifyHomeMetrics,
     onAlbumClick: (SpotifyAlbum) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
         modifier = modifier,
     ) {
         items(
@@ -378,7 +458,7 @@ fun SpotifyAlbumSectionRow(
                 isPlaying = false,
                 fillMaxWidth = true,
                 modifier = Modifier
-                    .width(150.dp)
+                    .width(metrics.cardWidth)
                     .pressScaleClickable(onClick = { onAlbumClick(album) }),
             )
         }
@@ -389,12 +469,13 @@ fun SpotifyAlbumSectionRow(
 @Composable
 fun SpotifyPlaylistSectionRow(
     playlists: List<SpotifyPlaylist>,
+    metrics: SpotifyHomeMetrics,
     onPlaylistClick: (SpotifyPlaylist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
         modifier = modifier,
     ) {
         items(
@@ -420,7 +501,7 @@ fun SpotifyPlaylistSectionRow(
                 isPlaying = false,
                 fillMaxWidth = true,
                 modifier = Modifier
-                    .width(150.dp)
+                    .width(metrics.cardWidth)
                     .pressScaleClickable(onClick = { onPlaylistClick(playlist) }),
             )
         }

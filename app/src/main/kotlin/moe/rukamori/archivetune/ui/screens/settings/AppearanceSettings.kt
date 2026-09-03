@@ -93,6 +93,9 @@ import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
+import moe.rukamori.archivetune.constants.SpotifyHomeStyle
+import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
+import moe.rukamori.archivetune.ui.screens.rememberHomeSourceAvailable
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -263,6 +266,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
     val (homeScreenStyle, onHomeScreenStyleChange) =
         rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.DEFAULT)
+    var spotifyHomeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
+    val spotifySignedIn = rememberHomeSourceAvailable()
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -1050,10 +1055,31 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             when (it) {
                                 HomeScreenStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
                                 HomeScreenStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
-                                HomeScreenStyle.SPOTIFY -> stringResource(R.string.home_screen_style_spotify)
                             }
                         },
                     )
+                }
+
+                // Only worth showing once there is a Spotify home to style. Same three-way choice
+                // as above so the two pages can be set independently — the point of splitting them.
+                if (spotifySignedIn) {
+                    item {
+                        EnumListPreference(
+                            modifier = positions.modifierFor("spotify_home_style"),
+                            title = { Text(stringResource(R.string.spotify_home_style)) },
+                            description = stringResource(R.string.spotify_home_style_desc),
+                            icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+                            selectedValue = spotifyHomeStyle,
+                            onValueSelected = { spotifyHomeStyle = it },
+                            valueText = {
+                                when (it) {
+                                    SpotifyHomeStyle.SPOTIFY -> stringResource(R.string.home_screen_style_spotify)
+                                    SpotifyHomeStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
+                                    SpotifyHomeStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
+                                }
+                            },
+                        )
+                    }
                 }
 
                 item {

@@ -383,6 +383,15 @@ private fun HomeContent(
                     // Uses `heroPicks` (3 random songs from listening-preference
                     // based quickPicks) instead of the last-played 3, so the hero
                     // rotates fresh picks each visit. Mirrors the Apple Music /
+                    // Only renders once there is a Spotify session to switch to; see
+                    // HomeSourceSwitcher. Above the hero so the two homes agree on where it lives.
+                    item(
+                        key = "home_source_switcher",
+                        contentType = "source_switcher",
+                    ) {
+                        HomeSourceSwitcher(modifier = Modifier.animateItem())
+                    }
+
                     // Muzo home hero. Skipped entirely if the user has no
                     // listening history yet (e.g. fresh install). PERSISTENT —
                     // renders in both full and minimal modes.
