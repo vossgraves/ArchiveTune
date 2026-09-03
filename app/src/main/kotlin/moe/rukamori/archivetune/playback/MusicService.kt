@@ -7661,6 +7661,14 @@ class MusicService :
     private val directStreamCache = ConcurrentHashMap<String, CachedDirectStream>()
     private var nextMediaItemPrefetchJob: kotlinx.coroutines.Job? = null
 
+    /**
+     * Media id [nextMediaItemPrefetchJob] is resolving, so a still-wanted job is not cancelled.
+     * Only meaningful while that job is active — every read is guarded on `isActive`, so a stale
+     * id left behind by a finished job is inert and needs no clearing.
+     */
+    @Volatile
+    private var prefetchingMediaId: String? = null
+
     private data class CachedDirectStream(
         val stream: DirectStream,
         val expiresAtMs: Long,
@@ -7677,12 +7685,23 @@ class MusicService :
      * silently swallowed — prefetch is an optimization, not a requirement.
      */
     private fun prefetchNextMediaItemStream() {
-        nextMediaItemPrefetchJob?.cancel()
         if (player.mediaItemCount == 0 || player.currentTimeline.isEmpty) return
         val nextIndex = player.nextMediaItemIndex
         if (nextIndex == C.INDEX_UNSET || nextIndex < 0 || nextIndex >= player.mediaItemCount) return
         val nextItem = player.getMediaItemAt(nextIndex)
         val mediaId = nextItem.mediaId.trim().takeIf { it.isNotBlank() } ?: return
+
+        // Don't cancel a prefetch whose result is still wanted. This used to cancel
+        // unconditionally, so skipping twice inside the resolve window killed the in-flight job
+        // for the very track being skipped onto — the one case where the work was about to pay
+        // off — and that track then resolved from scratch, synchronously, while the user waited.
+        // A job for the now-current item is finishing into the same caches the resolver reads.
+        val inFlight = prefetchingMediaId
+        if (nextMediaItemPrefetchJob?.isActive == true && inFlight != null) {
+            val currentId = player.currentMediaItem?.mediaId?.trim()
+            if (inFlight == mediaId || inFlight == currentId) return
+        }
+        nextMediaItemPrefetchJob?.cancel()
         // Skip prefetch for local/telegram files (no network resolution needed).
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
         // Skip if we already have a fresh cached entry.
@@ -7691,6 +7710,7 @@ class MusicService :
         // Skip in low-data mode (user wants minimal background data).
         if (isLowDataModeActive()) return
 
+        prefetchingMediaId = mediaId
         nextMediaItemPrefetchJob =
             scope.launch(Dispatchers.IO + SilentHandler) {
                 runCatching {

@@ -67,6 +67,24 @@ object TidalAccountManager {
             .callTimeout(20, TimeUnit.SECONDS)
             .build()
 
+    /**
+     * Same connection pool and dispatcher as [client] (newBuilder shares both), with deadlines
+     * short enough to abandon one account and move to the next.
+     *
+     * The 20s ceiling on [client] is right for a login or a token exchange, where the user is
+     * waiting on that one request and a slow network should be tolerated. It is wrong inside the
+     * pool-account loop, where each attempt is disposable: three unreachable accounts cost a
+     * minute of silence before playback even reaches Qobuz. Resolution is two small JSON calls
+     * against api.tidal.com, so anything past 8s is a dead account, not a slow one.
+     */
+    private val resolveClient =
+        client
+            .newBuilder()
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(6, TimeUnit.SECONDS)
+            .callTimeout(8, TimeUnit.SECONDS)
+            .build()
+
     /** Result of a successful token exchange. [expiresAtMillis] is an absolute epoch time. */
     data class TokenResult(
         val accessToken: String,
@@ -413,7 +431,7 @@ object TidalAccountManager {
                 .get()
                 .build()
         return runCatching {
-            client.newCall(request).execute().use { response ->
+            resolveClient.newCall(request).execute().use { response ->
                 if (response.code == 401) throw TidalUnauthorizedException()
                 val payload = response.body?.string().orEmpty()
                 if (!response.isSuccessful || payload.isBlank()) return@use null
@@ -496,7 +514,7 @@ object TidalAccountManager {
                 .get()
                 .build()
         return runCatching {
-            client.newCall(request).execute().use { response ->
+            resolveClient.newCall(request).execute().use { response ->
                 if (response.code == 401) throw TidalUnauthorizedException()
                 val payload = response.body?.string().orEmpty()
                 if (!response.isSuccessful || payload.isBlank()) {
