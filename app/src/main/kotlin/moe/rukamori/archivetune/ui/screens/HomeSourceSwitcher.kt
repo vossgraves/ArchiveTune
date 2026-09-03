@@ -78,7 +78,8 @@ fun HomeSourceSwitcher(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp)
+                .padding(vertical = 8.dp),
     ) {
         options.forEachIndexed { index, option ->
             SegmentedButton(

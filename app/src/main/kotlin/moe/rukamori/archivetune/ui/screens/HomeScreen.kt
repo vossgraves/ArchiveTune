@@ -19,20 +19,22 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,9 +43,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -65,14 +64,15 @@ import moe.rukamori.archivetune.home.HomeScreenState
 import moe.rukamori.archivetune.home.HomeUiState
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MenuState
-import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
+import dev.chrisbanes.haze.hazeSource
 
 private val HomeFeedMaxWidth = 1_200.dp
-private val HomeSectionSpacing = 28.dp
+
+/** Gap between the end of one shelf and the header of the next (BitChord: 26dp). */
+private val HomeSectionSpacing = 26.dp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -91,7 +91,6 @@ fun HomeScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
     val lazyListState = listState ?: rememberLazyListState()
-    val forgottenFavoritesGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val scrollToTop =
@@ -124,12 +123,6 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(uiState?.forgottenFavorites) {
-        if (uiState != null) {
-            forgottenFavoritesGridState.scrollToItem(0)
-        }
-    }
-
     if (selectedChip != null) {
         BackHandler {
             viewModel.onAction(HomeAction.SelectChip(selectedChip))
@@ -145,10 +138,17 @@ fun HomeScreen(
     // Attach the shell's floating-header connection inside this screen (Step 2b) so
     // Home's scroll/fling writes Home's own header state and can't leak into another
     // route's header. Bubbling reaches this ancestor Box before any shell connection.
+    //
+    // The same Box is the haze source for the BitChord-style progressive top-fade
+    // blur the shell renders over the Home route (see LocalHomeHazeState): it covers
+    // the full window area including the strip under the pinned top bar, which is
+    // exactly what the blur samples.
+    val homeHazeState = LocalHomeHazeState.current
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
+                .let { m -> if (homeHazeState != null) m.hazeSource(homeHazeState) else m }
                 .then(
                     if (headerScrollConnection != null) {
                         Modifier.nestedScroll(headerScrollConnection)
@@ -159,11 +159,11 @@ fun HomeScreen(
     ) {
         when (val state = screenState) {
             HomeScreenState.Loading -> {
-                HomeStatePane(
-                    iconResId = null,
-                    messageResId = null,
-                    showLoadingIndicator = true,
-                )
+                // BitChord behaviour (2026-09-03 redesign): the first page of shelves
+                // is stood in for by shimmer skeletons laid out to the real metrics,
+                // rather than a centered spinner that throws the layout away and
+                // snaps everything down when the data lands.
+                HomeSkeletonFeed()
             }
 
             HomeScreenState.Empty -> {
@@ -195,7 +195,6 @@ fun HomeScreen(
                     haptic = haptic,
                     scope = scope,
                     lazyListState = lazyListState,
-                    forgottenFavoritesGridState = forgottenFavoritesGridState,
                     onAction = viewModel::onAction,
                 )
             }
@@ -255,8 +254,9 @@ private fun HomeStatePane(
 }
 
 @OptIn(
-    ExperimentalFoundationApi::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
     ExperimentalMaterial3ExpressiveApi::class,
+    ExperimentalMaterial3Api::class,
 )
 @Composable
 private fun HomeContent(
@@ -269,7 +269,6 @@ private fun HomeContent(
     haptic: HapticFeedback,
     scope: CoroutineScope,
     lazyListState: androidx.compose.foundation.lazy.LazyListState,
-    forgottenFavoritesGridState: LazyGridState,
     onAction: (HomeAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -277,44 +276,47 @@ private fun HomeContent(
         uiState
             .takeIf { it.quickPicksMode == QuickPicks.QUICK_PICKS }
             ?.remoteQuickPicks
-    val tonalStart = MaterialTheme.colorScheme.primaryContainer
-    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
     Box(modifier = modifier.fillMaxSize()) {
-        if (uiState.showTonalBackdrop) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(430.dp)
-                        .align(Alignment.TopCenter)
-                        .drawWithCache {
-                            val brush =
-                                Brush.verticalGradient(
-                                    0f to tonalStart.copy(alpha = 0.18f),
-                                    0.42f to tonalMiddle.copy(alpha = 0.08f),
-                                    1f to Color.Transparent,
-                                )
-                            onDrawBehind { drawRect(brush) }
-                        },
-            )
-        }
-
-        ExpressivePullToRefreshBox(
+        // ── Tonal backdrop gradient (fade effect) removed ───────────────────
+        // Per user request (2026-08-28): "Remove the home liquid glass buttons
+        // and fade effect". The 430dp verticalGradient that lived here (fed by
+        // `uiState.showTonalBackdrop`) is the "fade effect" being removed —
+        // the home page now sits on a flat surface colour so the hero cards
+        // and section headers are the only visual rhythm at the top of the
+        // screen, matching the rest of the redesigned pages.
+        //
+        // ── BitChord pull-to-refresh (2026-09-03 redesign) ──────────────────
+        // The usual circular puck is suppressed; the drag feedback is the
+        // loader line along the bottom edge of the top bar instead (rendered
+        // as an overlay below, at the bar's bottom edge = the content's top
+        // inset). It fills left-to-right as the pull approaches the threshold,
+        // then sweeps indefinitely once the refresh is away.
+        val pullState = rememberPullToRefreshState()
+        PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
             onRefresh = { onAction(HomeAction.Refresh) },
+            state = pullState,
+            indicator = {},
             modifier = Modifier.fillMaxSize(),
         ) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val forgottenItemWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
-                val forgottenItemWidth = maxWidth.coerceAtMost(HomeFeedMaxWidth) * forgottenItemWidthFactor
-                val forgottenSnapLayoutInfoProvider =
-                    remember(forgottenFavoritesGridState, forgottenItemWidthFactor) {
-                        SnapLayoutInfoProvider(
-                            lazyGridState = forgottenFavoritesGridState,
-                            positionInLayout = { layoutSize, itemSize ->
-                                layoutSize * forgottenItemWidthFactor / 2f - itemSize / 2f
-                            },
-                        )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+
+                // Partition remote sections into Live-performance and other.
+                // Hoisted outside the LazyColumn content lambda (which is NOT a
+                // @Composable scope) so `remember` is valid here. Without this,
+                // the two `.filter` calls would allocate fresh lists on every
+                // recomposition of HomeContent even when the sections hadn't
+                // changed — a measurable contributor to home-screen jank.
+                val allRemoteSections = uiState.homePage?.sections.orEmpty()
+                val (livePerformanceSections, otherRemoteSections) =
+                    remember(allRemoteSections) {
+                        val live = allRemoteSections.filter { section ->
+                            section.title.contains("Live performance", ignoreCase = true)
+                        }
+                        val other = allRemoteSections.filter { section ->
+                            !section.title.contains("Live performance", ignoreCase = true)
+                        }
+                        live to other
                     }
 
                 LazyColumn(
@@ -326,6 +328,21 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .align(Alignment.TopCenter),
                 ) {
+                    // ── Big in-list page title (BitChord displayLarge) ──────────
+                    // The greeting owns the page title at rest; once the list
+                    // scrolls, the shell's top-bar title fades in over the blur
+                    // (BitChord's Apple Music behaviour — the two never fight
+                    // because the bar's title only exists while scrolled).
+                    item(
+                        key = "home_greeting_title",
+                        contentType = "greeting_title",
+                    ) {
+                        HomeGreetingHeader(
+                            accountName = uiState.accountName,
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+
                     // Home feed layout policy:
                     //
                     //  * "Jump back in" hero is ALWAYS rendered (when there are
@@ -366,18 +383,6 @@ private fun HomeContent(
                     // populated home screen.
 
                     val minimalMode = uiState.minimalHomeMode
-
-                    // Partition remote sections into Live-performance and other.
-                    // Live-performance shelves are rendered in a dedicated block
-                    // right after Speed Dial (both modes); other remote shelves
-                    // are rendered at the bottom (full mode only).
-                    val allRemoteSections = uiState.homePage?.sections.orEmpty()
-                    val livePerformanceSections = allRemoteSections.filter { section ->
-                        section.title.contains("Live performance", ignoreCase = true)
-                    }
-                    val otherRemoteSections = allRemoteSections.filter { section ->
-                        !section.title.contains("Live performance", ignoreCase = true)
-                    }
 
                     // "Jump back in" hero — large card + 2 stacked side cards.
                     // Uses `heroPicks` (3 random songs from listening-preference
@@ -695,9 +700,6 @@ private fun HomeContent(
                                 forgottenFavorites = uiState.forgottenFavorites,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
-                                horizontalLazyGridItemWidth = forgottenItemWidth,
-                                lazyGridState = forgottenFavoritesGridState,
-                                snapLayoutInfoProvider = forgottenSnapLayoutInfoProvider,
                                 navController = navController,
                                 playerConnection = playerConnection,
                                 menuState = menuState,
@@ -782,26 +784,27 @@ private fun HomeContent(
                         }
                     }
 
+                    // BitChord load-more behaviour (2026-09-03): another page of
+                    // shelves is stood in for by a single shelf-shaped skeleton at the
+                    // tail rather than a spinner block.
                     if (uiState.isLoadingMore) {
-                        item(
-                            key = "home_loading_more",
-                            contentType = "loading",
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(32.dp)
-                                        .animateItem(),
-                            ) {
-                                LoadingIndicator()
-                            }
-                        }
+                        homeFeedMoreSkeleton()
                     }
                 }
-            }
         }
+        }
+
+        // The loader line at the bottom edge of the pinned top bar (BitChord
+        // RefreshLine). The home content's top inset is exactly the bar's height,
+        // so offsetting the line by that lands it on the bar's bottom edge.
+        HomePullRefreshLine(
+            refreshing = uiState.isRefreshing,
+            distanceFraction = { pullState.distanceFraction },
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateTopPadding()),
+        )
     }
 }
 
@@ -811,5 +814,35 @@ private fun androidx.compose.foundation.lazy.LazyListScope.sectionSpacer(key: St
         contentType = "section_spacer",
     ) {
         Spacer(Modifier.height(HomeSectionSpacing))
+    }
+}
+
+/**
+ * The home feed while the first page is still loading (BitChord behaviour,
+ * 2026-09-03): the greeting is stood in for by a title-shaped block and the
+ * shelves by skeleton cards laid out to the real metrics, so nothing jumps
+ * when the data lands.
+ */
+@Composable
+private fun HomeSkeletonFeed(modifier: Modifier = Modifier) {
+    LazyColumn(
+        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        modifier =
+            modifier
+                .widthIn(max = HomeFeedMaxWidth)
+                .fillMaxWidth(),
+    ) {
+        item(key = "home_skeleton_greeting") {
+            HomeShimmerBox(
+                modifier =
+                    Modifier
+                        .padding(horizontal = HomeFeedGutter)
+                        .padding(vertical = 14.dp)
+                        .fillMaxWidth(0.55f)
+                        .height(34.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+            )
+        }
+        homeFeedSkeleton()
     }
 }

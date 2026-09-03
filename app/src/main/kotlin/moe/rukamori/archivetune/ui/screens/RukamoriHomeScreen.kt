@@ -50,11 +50,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -126,7 +126,6 @@ import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
-import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 
@@ -150,7 +149,6 @@ fun RukamoriHomeScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
     val lazyListState = listState ?: rememberLazyListState()
-    val forgottenFavoritesGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val scrollToTop =
@@ -180,12 +178,6 @@ fun RukamoriHomeScreen(
             if (shouldLoadMore) {
                 viewModel.onAction(HomeAction.LoadMore(continuation))
             }
-        }
-    }
-
-    LaunchedEffect(uiState?.forgottenFavorites) {
-        if (uiState != null) {
-            forgottenFavoritesGridState.scrollToItem(0)
         }
     }
 
@@ -251,7 +243,6 @@ fun RukamoriHomeScreen(
                     haptic = haptic,
                     scope = scope,
                     lazyListState = lazyListState,
-                    forgottenFavoritesGridState = forgottenFavoritesGridState,
                     onAction = viewModel::onAction,
                 )
             }
@@ -324,7 +315,6 @@ private fun RukamoriHomeContent(
     haptic: HapticFeedback,
     scope: CoroutineScope,
     lazyListState: LazyListState,
-    forgottenFavoritesGridState: LazyGridState,
     onAction: (HomeAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -361,18 +351,6 @@ private fun RukamoriHomeContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val forgottenItemWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
-                val forgottenItemWidth = maxWidth.coerceAtMost(HomeFeedMaxWidth) * forgottenItemWidthFactor
-                val forgottenSnapLayoutInfoProvider =
-                    remember(forgottenFavoritesGridState, forgottenItemWidthFactor) {
-                        SnapLayoutInfoProvider(
-                            lazyGridState = forgottenFavoritesGridState,
-                            positionInLayout = { layoutSize, itemSize ->
-                                layoutSize * forgottenItemWidthFactor / 2f - itemSize / 2f
-                            },
-                        )
-                    }
-
                 LazyColumn(
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -567,9 +545,6 @@ private fun RukamoriHomeContent(
                                 forgottenFavorites = uiState.forgottenFavorites,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
-                                horizontalLazyGridItemWidth = forgottenItemWidth,
-                                lazyGridState = forgottenFavoritesGridState,
-                                snapLayoutInfoProvider = forgottenSnapLayoutInfoProvider,
                                 navController = navController,
                                 playerConnection = playerConnection,
                                 menuState = menuState,

@@ -111,6 +111,9 @@ compose-animation = { module = "androidx.compose.animation:animation-graphics", 
 compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialiconsextended" }
 compose-reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "composeReorderable" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+# Haze materials — BitChord-style ultraThin/regular HazeStyles for the home page's
+# progressive top-fade blur (ported design). Same version as the core haze artifact.
+haze-materials = { module = "dev.chrisbanes.haze:haze-materials", version.ref = "haze" }
 
 squigglyslider = { module = "me.saket.squigglyslider:squigglyslider", version.ref = "squigglyslider" }
 
