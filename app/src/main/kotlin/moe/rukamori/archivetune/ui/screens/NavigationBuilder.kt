@@ -27,10 +27,12 @@ import androidx.navigation.navArgument
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionDetailsRoute
 import moe.rukamori.archivetune.ui.screens.BrowseScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistAlbumsScreen
@@ -141,6 +143,22 @@ fun NavGraphBuilder.navigationBuilder(
                     headerScrollConnection = homeScrollConnection,
                     listState = homeListState,
                 )
+            }
+
+            // Falls through to the normal home when there is no Spotify session: picking this
+            // style without signing in would otherwise strand the user on an empty home with no
+            // obvious way back.
+            HomeScreenStyle.SPOTIFY -> {
+                val spDc by rememberPreference(SpotifySpDcKey, defaultValue = "")
+                if (spDc.isNotBlank()) {
+                    SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
+                } else {
+                    HomeScreen(
+                        navController,
+                        headerScrollConnection = homeScrollConnection,
+                        listState = homeListState,
+                    )
+                }
             }
 
             HomeScreenStyle.DEFAULT -> {

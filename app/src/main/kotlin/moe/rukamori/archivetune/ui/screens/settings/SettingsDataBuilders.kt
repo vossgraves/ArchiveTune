@@ -191,6 +191,7 @@ fun buildSettingsGroups(
                 SettingsChild("Customized background", "customized_background", listOf("customized background", "custom background", "background image", "wallpaper")),
                 SettingsChild("Tablet mode", "tablet_mode", listOf("tablet mode", "tablet", "large screen", "landscape layout")),
                 SettingsChild("Minimal mode", "minimal_home_mode", listOf("minimal mode", "minimal home", "simple home", "clean home")),
+                SettingsChild("Home screen style", "home_screen_style", listOf("home style", "home screen", "spotify home", "home layout")),
                 SettingsChild("Change default library chip", "default_lib_chips", listOf("library chip", "default chip", "library filter", "default library tab")),
                 SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "header glass", "mini player glass")),
                 SettingsChild("Theme creator", "theme_creator", listOf("theme creator", "create theme", "custom theme", "make theme")),

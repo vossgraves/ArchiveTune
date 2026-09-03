@@ -1028,6 +1028,13 @@ enum class PlayerButtonsStyle {
 enum class HomeScreenStyle {
     DEFAULT,
     RUKAMORI,
+
+    /**
+     * Spotify's own home feed in place of the YouTube one. Only reachable with a Spotify
+     * session (SpotifySpDcKey): the route falls back to DEFAULT when that is blank, so picking
+     * this without signing in cannot leave the user on a permanently empty home.
+     */
+    SPOTIFY,
 }
 
 val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")

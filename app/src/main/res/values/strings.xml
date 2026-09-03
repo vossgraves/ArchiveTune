@@ -1698,4 +1698,15 @@
     <string name="telegram_bot_added_to_playlist">Added to \"%1$s\"</string>
     <string name="telegram_bot_choose_option">Bot needs your choice — pick an option below:</string>
     <string name="paste">Paste</string>
+    <string name="home_switch_to_yt">Open YouTube Music</string>
+    <string name="spotify_because_you_like">Because you like %1$s</string>
+    <string name="spotify_top_tracks">Top Tracks</string>
+    <string name="spotify_top_artists">Top Artists</string>
+    <string name="spotify_made_for_you">Made For You</string>
+    <string name="spotify_discover">Discover</string>
+    <string name="spotify_your_playlists">Your Playlists</string>
+    <string name="spotify_new_releases">New Releases</string>
+    <string name="spotify_recently_played">Recently played</string>
+    <string name="spotify_frequently_listened">Frequently listened</string>
+    <string name="home_screen_style_spotify">Spotify</string>
 </resources>

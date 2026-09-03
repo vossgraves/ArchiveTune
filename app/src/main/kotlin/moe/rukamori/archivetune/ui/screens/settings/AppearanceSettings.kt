@@ -1031,32 +1031,13 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
+            // The three settings that decide what the Home tab shows were scattered through
+            // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are
+            // one decision — which home you get — so they read as one group.
             PreferenceGroup(
-                modifier = positions.modifierFor("app_language"),
-                title = stringResource(R.string.misc),
+                modifier = positions.modifierFor("home_screen"),
+                title = stringResource(R.string.home),
             ) {
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("tablet_mode"),
-                        title = { Text(stringResource(R.string.tablet_mode)) },
-                        description = stringResource(R.string.tablet_mode_desc),
-                        icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
-                        checked = tabletModeEnabled,
-                        onCheckedChange = onTabletModeEnabledChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("minimal_home_mode"),
-                        title = { Text(stringResource(R.string.minimal_home_mode)) },
-                        description = stringResource(R.string.minimal_home_mode_desc),
-                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
-                        checked = minimalHomeMode,
-                        onCheckedChange = onMinimalHomeModeChange,
-                    )
-                }
-
                 item {
                     EnumListPreference(
                         modifier = positions.modifierFor("home_screen_style"),
@@ -1069,39 +1050,20 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             when (it) {
                                 HomeScreenStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
                                 HomeScreenStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
+                                HomeScreenStyle.SPOTIFY -> stringResource(R.string.home_screen_style_spotify)
                             }
                         },
                     )
                 }
 
                 item {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("navigation_bar_style"),
-                        title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
-                        description = stringResource(R.string.navigation_bar_settings_subtitle),
-                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
-                        onClick = { navController.navigate("settings/appearance/navigation_bar") },
-                    )
-                }
-
-                item {
                     SwitchPreference(
-                        modifier = positions.modifierFor("hide_scrollbar"),
-                        title = { Text(stringResource(R.string.hide_scrollbar)) },
-                        description = stringResource(R.string.hide_scrollbar_desc),
-                        icon = { Icon(painterResource(R.drawable.filter_alt), null) },
-                        checked = hideScrollbar,
-                        onCheckedChange = onHideScrollbarChange,
-                    )
-                }
-
-                item {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("navigation_bar_settings"),
-                        title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
-                        description = stringResource(R.string.navigation_bar_settings_subtitle),
-                        icon = { Icon(painterResource(R.drawable.tune), null) },
-                        onClick = { navController.navigate("settings/appearance/navigation_bar") },
+                        modifier = positions.modifierFor("minimal_home_mode"),
+                        title = { Text(stringResource(R.string.minimal_home_mode)) },
+                        description = stringResource(R.string.minimal_home_mode_desc),
+                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
+                        checked = minimalHomeMode,
+                        onCheckedChange = onMinimalHomeModeChange,
                     )
                 }
 
@@ -1121,6 +1083,45 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             },
                         )
                     }
+                }
+            }
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("app_language"),
+                title = stringResource(R.string.misc),
+            ) {
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("tablet_mode"),
+                        title = { Text(stringResource(R.string.tablet_mode)) },
+                        description = stringResource(R.string.tablet_mode_desc),
+                        icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
+                        checked = tabletModeEnabled,
+                        onCheckedChange = onTabletModeEnabledChange,
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        // Both keys on the one row: this page used to carry two identical entries
+                        // for the same sub-page, one per key. One row, both aliases.
+                        modifier = positions.modifierFor("navigation_bar_settings", "navigation_bar_style"),
+                        title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
+                        description = stringResource(R.string.navigation_bar_settings_subtitle),
+                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                        onClick = { navController.navigate("settings/appearance/navigation_bar") },
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("hide_scrollbar"),
+                        title = { Text(stringResource(R.string.hide_scrollbar)) },
+                        description = stringResource(R.string.hide_scrollbar_desc),
+                        icon = { Icon(painterResource(R.drawable.filter_alt), null) },
+                        checked = hideScrollbar,
+                        onCheckedChange = onHideScrollbarChange,
+                    )
                 }
 
                 item {
