@@ -16,9 +16,22 @@ on:
         default: false
 
 concurrency:
-  # Serialize dev canary builds; cancel superseded in-progress runs on rapid pushes.
+  # Serialised, and NOT cancelling the run in flight. With cancel-in-progress, any second push
+  # inside a build window (~18 minutes) killed the first one mid-build, so that commit produced no
+  # APK at all — runs 172-176, 179 and 180 all died that way, which is what made shipped fixes look
+  # unshipped. Queueing instead means the build already running finishes and its APK exists.
+  #
+  # Deliberately NOT per-commit (group: ...-${{ github.sha }}), which would let every commit build
+  # in parallel: the release tag is N<yyyyMMddHHmm>, minute-granular, so two builds finishing in the
+  # same minute would collide on `gh release create`. Widening the tag is not an escape — the
+  # in-app updater matches it with Regex("""N\d{8}(?:\d{4})?""") and .matches(), a whole-string
+  # match, so a SHA suffix or a seconds field would make every canary release invisible to already
+  # installed apps. Serialised runs start >=1 build apart, so the timestamp cannot repeat.
+  #
+  # GitHub keeps only the newest PENDING run per group, so a burst still skips intermediate
+  # commits — but the newest commit always builds, and so does whatever was already running.
   group: dev-canary
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   check:
