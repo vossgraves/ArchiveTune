@@ -61,6 +61,8 @@ import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.glassAwareLargeTopAppBarColors
+import moe.rukamori.archivetune.ui.component.glassAwareSurface
 import moe.rukamori.archivetune.ui.component.LocalSettingsDialogShowing
 import moe.rukamori.archivetune.ui.component.rememberSettingsDialogHostState
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
@@ -325,7 +327,7 @@ fun SettingsScreen(
                         },
                     )
                     .nestedScroll(scrollBehavior.nestedScrollConnection),
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = glassAwareSurface(),
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeFlexibleTopAppBar(
@@ -346,11 +348,7 @@ fun SettingsScreen(
                         )
                     }
                 },
-                colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = Color.Transparent,
-                    ),
+                colors = glassAwareLargeTopAppBarColors(),
                 scrollBehavior = scrollBehavior,
             )
         },
