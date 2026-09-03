@@ -8,6 +8,9 @@
 package moe.rukamori.archivetune.ui.screens
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -23,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HomeSource
@@ -52,6 +56,9 @@ fun rememberHomeSource(): HomeSource {
     val stored by rememberEnumPreference(HomeSourceKey, defaultValue = HomeSource.YOUTUBE)
     return if (stored == HomeSource.SPOTIFY && !rememberHomeSourceAvailable()) HomeSource.YOUTUBE else stored
 }
+
+/** Matches the 18dp Material 3 uses inside a segmented button's label. */
+private val IconSize = 18.dp
 
 /**
  * Switches the Home tab between the YouTube and Spotify pages.
@@ -84,11 +91,18 @@ fun HomeSourceSwitcher(modifier: Modifier = Modifier) {
                         Icon(
                             painter = painterResource(option.iconResId()),
                             contentDescription = null,
-                            modifier = Modifier.padding(end = 8.dp),
+                            // Sized explicitly: spotify_icon is a 1438x1425 PNG, and an Icon with
+                            // no size constraint draws its painter at intrinsic size — roughly
+                            // 520dp, which swallowed the row and squeezed the label into a
+                            // one-character-wide column.
+                            modifier = Modifier.size(IconSize),
                         )
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             text = stringResource(option.labelResId()),
                             style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
