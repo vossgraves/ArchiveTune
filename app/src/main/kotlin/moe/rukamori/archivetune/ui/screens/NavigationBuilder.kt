@@ -60,6 +60,8 @@ import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
 import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
+import moe.rukamori.archivetune.ui.screens.settings.AppearanceSection
+import moe.rukamori.archivetune.ui.screens.settings.AppearanceSectionSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
@@ -460,6 +462,24 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         AppearanceSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/appearance/theme?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AppearanceSectionSettings(navController, AppearanceSection.THEME, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/appearance/player?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AppearanceSectionSettings(navController, AppearanceSection.PLAYER, it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/appearance/interface?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AppearanceSectionSettings(navController, AppearanceSection.INTERFACE, it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/appearance/extras?scrollTo={scrollTo}",

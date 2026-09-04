@@ -134,7 +134,7 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "lyrics_romanize_hindi", "lyrics_romanize_other",
         )
         own("lyrics_animations", "lyrics", "lyrics_animations")
-        own("appearance", "lyrics", "lyrics_background_style")
+        own("appearance_player", "lyrics", "lyrics_background_style")
         // The lyrics translator shipped alongside the Discord experiments and still lives there.
         own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
 
@@ -152,6 +152,30 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
         own("qobuz", "sources", "qobuz")
         own("tidal", "sources", "tidal")
 
+        // Appearance is now a hub of three pages, so every row indexed under it has to say which.
+        own(
+            "appearance_theme", "appearance",
+            "dynamic_theme", "random_theme_on_startup", "dark_theme", "pure_black", "color_palette",
+            "color_source", "palette_picker", "theme_creator", "app_icon", "disable_animations",
+            "hide_status_bar", "ui_scale", "blur_intensity", "disable_blur", "backdrop_blur",
+            "backdrop_blur_amount", "font_preference", "use_system_font", "custom_font",
+            "liquid_glass_effects", "wallpaper_permission",
+        )
+        own(
+            "appearance_player", "appearance",
+            "player_design_style", "player_background_style", "lyrics_background_style",
+            "mini_player_background_style", "player_buttons_style", "player_slider_style",
+            "show_player_volume_bar", "hide_player_thumbnail", "crop_thumbnail_to_square",
+            "thumbnail_corner_radius", "customized_background", "album_canvas_enabled",
+            "apple_music_animated_artwork", "simpmusic_lyrics",
+        )
+        own(
+            "appearance_interface", "appearance",
+            "home_screen_style", "spotify_home_style", "minimal_home_mode", "default_open_tab",
+            "tablet_mode", "navigation_bar_style", "navigation_bar_settings", "hide_scrollbar",
+            "grid_layout", "default_lib_chips", "extras", "app_language",
+        )
+
         // Appearance rows that were moved out to their own pages.
         own("navigation_bar", "appearance", "frosted_nav_bar", "liquid_glass_nav_bar", "hide_navigation_bar_labels")
         own("appearance_extras", "appearance", "show_home_category_chips")
@@ -168,6 +192,9 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
         when (ownerKey) {
             "account" -> "settings/account"
             "appearance" -> "settings/appearance"
+            "appearance_theme" -> "settings/appearance/theme"
+            "appearance_player" -> "settings/appearance/player"
+            "appearance_interface" -> "settings/appearance/interface"
             "appearance_extras" -> "settings/appearance/extras"
             "aod" -> "settings/appearance/aod_customized"
             "navigation_bar" -> "settings/appearance/navigation_bar"

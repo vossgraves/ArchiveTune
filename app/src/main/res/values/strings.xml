@@ -394,6 +394,12 @@
     <string name="music_player">Music Player</string>
     <string name="settings">Settings</string>
     <string name="appearance">Appearance</string>
+    <string name="appearance_theme">Theme &amp; colours</string>
+    <string name="appearance_theme_desc">Colour palette, dark mode, fonts, Liquid Glass</string>
+    <string name="appearance_player">Player</string>
+    <string name="appearance_player_desc">Player style, backgrounds, artwork, controls</string>
+    <string name="appearance_interface">Interface</string>
+    <string name="appearance_interface_desc">Home, navigation bar, library layout, extras</string>
     <string name="app_icon_description">Choose the launcher icon</string>
     <string name="app_icon_default">Default</string>
     <string name="app_icon_subtitle">Personalize your launcher</string>
