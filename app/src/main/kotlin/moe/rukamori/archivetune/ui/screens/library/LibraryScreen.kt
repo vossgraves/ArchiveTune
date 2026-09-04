@@ -74,7 +74,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.LibraryFilter
-import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
 import moe.rukamori.archivetune.db.entities.TagEntity
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
@@ -91,30 +90,22 @@ fun LibraryScreen(navController: NavController) {
     val (selectedTagIds, onSelectedTagIdsChange) = rememberPlaylistTagFilterState(database)
     val allTags by database.allTags().collectAsStateWithLifecycle(initialValue = emptyList())
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, defaultValue = true)
-    val (showSpotifyPlaylists) = rememberPreference(ShowSpotifyPlaylistsKey, defaultValue = false)
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
+    // Spotify is no longer a tab of its own. It held playlists and nothing else, which put a
+    // Spotify playlist three taps from a YouTube one and left Spotify songs, artists and albums
+    // with nowhere to live. Every section now carries the same YTM/Spotify pills instead — see
+    // LibrarySourcePills.
     val libraryFilters =
-        remember(showSpotifyPlaylists) {
-            if (showSpotifyPlaylists) {
-                listOf(
-                    LibraryFilter.LIBRARY,
-                    LibraryFilter.PLAYLISTS,
-                    LibraryFilter.SPOTIFY,
-                    LibraryFilter.SONGS,
-                    LibraryFilter.ARTISTS,
-                    LibraryFilter.ALBUMS,
-                )
-            } else {
-                listOf(
-                    LibraryFilter.LIBRARY,
-                    LibraryFilter.PLAYLISTS,
-                    LibraryFilter.SONGS,
-                    LibraryFilter.ARTISTS,
-                    LibraryFilter.ALBUMS,
-                )
-            }
+        remember {
+            listOf(
+                LibraryFilter.LIBRARY,
+                LibraryFilter.PLAYLISTS,
+                LibraryFilter.SONGS,
+                LibraryFilter.ARTISTS,
+                LibraryFilter.ALBUMS,
+            )
         }
 
     if (showTagsManagementDialog) {
@@ -200,7 +191,6 @@ fun LibraryScreen(navController: NavController) {
                     when (targetFilter) {
                         LibraryFilter.LIBRARY -> 116.dp
                         LibraryFilter.PLAYLISTS -> 132.dp
-                        LibraryFilter.SPOTIFY -> 168.dp
                         LibraryFilter.SONGS -> 102.dp
                         LibraryFilter.ARTISTS -> 116.dp
                         LibraryFilter.ALBUMS -> 110.dp
@@ -270,10 +260,6 @@ fun LibraryScreen(navController: NavController) {
                         )
                     }
 
-                    LibraryFilter.SPOTIFY -> {
-                        LibrarySpotifyPlaylistsScreen(navController = navController)
-                    }
-
                     LibraryFilter.SONGS -> {
                         LibrarySongsScreen(
                             navController = navController,
@@ -329,7 +315,6 @@ fun LibraryScreen(navController: NavController) {
                             when (filter) {
                                 LibraryFilter.LIBRARY -> stringResource(R.string.filter_library)
                                 LibraryFilter.PLAYLISTS -> stringResource(R.string.playlists)
-                                LibraryFilter.SPOTIFY -> stringResource(R.string.spotify_playlists)
                                 LibraryFilter.SONGS -> stringResource(R.string.songs)
                                 LibraryFilter.ARTISTS -> stringResource(R.string.artists)
                                 LibraryFilter.ALBUMS -> stringResource(R.string.albums)
@@ -338,7 +323,6 @@ fun LibraryScreen(navController: NavController) {
                             when (filter) {
                                 LibraryFilter.LIBRARY -> R.drawable.graphic_eq
                                 LibraryFilter.PLAYLISTS -> R.drawable.queue_music
-                                LibraryFilter.SPOTIFY -> R.drawable.spotify_icon
                                 LibraryFilter.SONGS -> R.drawable.music_note
                                 LibraryFilter.ARTISTS -> R.drawable.person
                                 LibraryFilter.ALBUMS -> R.drawable.album

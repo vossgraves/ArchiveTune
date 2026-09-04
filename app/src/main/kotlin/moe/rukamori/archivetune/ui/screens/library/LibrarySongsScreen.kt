@@ -69,6 +69,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LibrarySource
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.SongFilter
@@ -97,6 +98,14 @@ fun LibrarySongsScreen(
     onDeselect: () -> Unit,
     viewModel: LibrarySongsViewModel = hiltViewModel(),
 ) {
+    // The Spotify half of this section is a remote list with none of the sorting, filtering
+    // or multi-select below it, so it is its own screen rather than a branch threaded through
+    // this one. Both render the pills.
+    if (rememberLibrarySource() == LibrarySource.SPOTIFY) {
+        LibrarySpotifySongsScreen()
+        return
+    }
+
     val context = LocalContext.current
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
@@ -173,6 +182,8 @@ fun LibrarySongsScreen(
                     .fillMaxSize()
                     .padding(top = LibraryHeaderContentPadding),
         ) {
+            LibrarySourcePills()
+
             // Sub-Filters Row (All Songs, Downloaded, Liked)
             Row(
                 modifier =

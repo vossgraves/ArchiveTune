@@ -1718,6 +1718,7 @@
     <string name="home_source_youtube">YouTube</string>
     <string name="home_source_spotify">Spotify</string>
     <string name="home_source_switch_to">Switch to %1$s</string>
+    <string name="library_source_ytm">YTM</string>
     <string name="spotify_home_style">Spotify home style</string>
     <string name="spotify_home_style_desc">Layout of the Spotify home page</string>
 </resources>

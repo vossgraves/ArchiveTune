@@ -1317,6 +1317,9 @@ val SpotifyAccessTokenExpiresAtKey = longPreferencesKey("spotify_access_token_ex
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")
 val SpotifyAccountAvatarUrlKey = stringPreferencesKey("spotify_account_avatar_url")
 val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
+
+/** Which service the Library's sections read from — see [moe.rukamori.archivetune.constants.LibrarySource]. */
+val LibrarySourceKey = stringPreferencesKey("library_source")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
 /**

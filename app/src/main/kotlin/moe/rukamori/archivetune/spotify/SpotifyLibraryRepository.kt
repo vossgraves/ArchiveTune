@@ -34,6 +34,7 @@ import moe.rukamori.archivetune.constants.SpotifyAccountNameKey
 import moe.rukamori.archivetune.constants.SpotifyLibraryPlaylistsCacheKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
+import moe.rukamori.archivetune.spotify.models.SpotifyPaging
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
@@ -281,6 +282,47 @@ class SpotifyLibraryRepository
 
                 tracks
             }
+
+        /**
+         * Every artist the user follows, paged out. Backs the Library's Artists section on the
+         * Spotify source — the same shape [likedSongs] has, and for the same reason: the Library
+         * shows one list, not one page of one.
+         */
+        suspend fun libraryArtists(): List<SpotifyArtist> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                collectPages { limit, offset ->
+                    spotifyCallWithTokenRetry { Spotify.myArtists(limit = limit, offset = offset).getOrThrow() }
+                }
+            }
+
+        /** Every album the user has saved. Backs the Library's Albums section on the Spotify source. */
+        suspend fun libraryAlbums(): List<SpotifyAlbum> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                collectPages { limit, offset ->
+                    spotifyCallWithTokenRetry { Spotify.myAlbums(limit = limit, offset = offset).getOrThrow() }
+                }
+            }
+
+        /**
+         * Drains a paged Spotify endpoint. Stops on an empty page, on reaching the reported total,
+         * or on a short page — the last of those matters because `total` is not always accurate on
+         * the libraryV3 responses, and without it the loop would spin on the final page.
+         */
+        private suspend fun <T> collectPages(page: suspend (limit: Int, offset: Int) -> SpotifyPaging<T>): List<T> {
+            val all = ArrayList<T>()
+            var offset = 0
+            val limit = 50
+            while (true) {
+                val result = page(limit, offset)
+                if (result.items.isEmpty()) break
+                all += result.items
+                offset += result.items.size
+                if (offset >= result.total || result.items.size < limit) break
+            }
+            return all
+        }
 
         suspend fun likedSongs(): List<SpotifyTrack> =
             withContext(Dispatchers.IO) {

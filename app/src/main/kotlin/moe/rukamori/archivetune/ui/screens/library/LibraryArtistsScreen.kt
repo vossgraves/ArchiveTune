@@ -74,6 +74,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LibrarySource
 import moe.rukamori.archivetune.constants.ArtistFilter
 import moe.rukamori.archivetune.constants.ArtistFilterKey
 import moe.rukamori.archivetune.constants.ArtistSongSortType
@@ -98,6 +99,14 @@ fun LibraryArtistsScreen(
     onDeselect: () -> Unit,
     viewModel: LibraryArtistsViewModel = hiltViewModel(),
 ) {
+    // The Spotify half of this section is a remote list with none of the sorting, filtering
+    // or multi-select below it, so it is its own screen rather than a branch threaded through
+    // this one. Both render the pills.
+    if (rememberLibrarySource() == LibrarySource.SPOTIFY) {
+        LibrarySpotifyArtistsScreen()
+        return
+    }
+
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
@@ -153,6 +162,12 @@ fun LibraryArtistsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
+            item(span = { GridItemSpan(2) }, key = "library_source_pills") {
+                // The grid already insets 24dp, so the pills add none of their own here — with
+                // both they would sit 48dp in while every other section's sit at 24.
+                LibrarySourcePills(horizontalPadding = 0.dp)
+            }
+
             // Featured Spotlight Row
             item(span = { GridItemSpan(2) }, key = "spotlight_row") {
                 Row(

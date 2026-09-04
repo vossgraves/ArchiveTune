@@ -708,8 +708,8 @@
     <string name="spotify_account">Spotify account</string>
     <string name="spotify_playlists">Spotify Playlist</string>
     <string name="spotify_waiting_for_login">Waiting for Spotify login</string>
-    <string name="spotify_show_playlist">Show Playlist</string>
-    <string name="spotify_show_playlist_desc">Show Spotify playlists in Library.</string>
+    <string name="spotify_show_playlist">Show Spotify in Library</string>
+    <string name="spotify_show_playlist_desc">Adds a Spotify pill to each Library section, so playlists, songs, artists and albums can be browsed from either service.</string>
     <string name="spotify_reload_playlist">Reload Playlist</string>
     <string name="spotify_reload_playlist_desc">Refresh Spotify playlists from your account.</string>
     <string name="spotify_no_tracks">No Spotify tracks found.</string>
