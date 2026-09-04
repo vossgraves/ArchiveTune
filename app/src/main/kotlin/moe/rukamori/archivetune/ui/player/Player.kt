@@ -1051,6 +1051,17 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
+    // The lyrics overlay belongs to the EXPANDED player: it is opened from it, drawn over it, and
+    // every way out of it — the BackHandler below, LyricsScreen's own, and the top-edge dismiss
+    // drag — is gated on `state.isExpandedOrExpanding`. Nothing tied the overlay's own lifetime to
+    // that, so collapsing the player while lyrics were open (a drag on the sheet, ON_STOP, or a
+    // restore from process death, since the flag is rememberSaveable) left the overlay covering
+    // the whole app with all three of those disabled at once: back did nothing at all and there
+    // was no way back to the player. It closes with the player it was opened from now.
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding) isLyricsScreenVisible = false
+    }
+
     // ISSUE 1 FIX: track Apple Music's INLINE lyrics open state separately from
     // the standalone lyrics overlay (isLyricsScreenVisible). Both feed into
     // lyricsFullScreenActive so back-stack screens suspend GPU work during ANY

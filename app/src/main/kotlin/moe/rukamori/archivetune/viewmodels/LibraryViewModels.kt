@@ -177,7 +177,16 @@ class LibrarySongsViewModel
                             }
                         }
                     }
-                }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+                }
+                    // Off Main. Room emits on its own executor, but every operator applied DOWNSTREAM of it
+                    // runs in the COLLECTOR's context, and `stateIn(viewModelScope, ...)` collects on
+                    // Dispatchers.Main.immediate. So the sorts, the collator comparisons and the
+                    // filterExplicit/filterVideo passes above re-ran over the whole list on the UI thread
+                    // every time any row this query touches changed — liking one song, for instance. And
+                    // SharingStarted.Lazily never stops, so it kept doing it long after the screen was gone.
+                    // flowOn moves that upstream work to IO; stateIn still publishes on Main.
+                    .flowOn(Dispatchers.IO)
+                    .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         fun refresh(filter: SongFilter) {
             if (_isRefreshing.value) return
@@ -231,7 +240,9 @@ class LibraryArtistsViewModel
                         ArtistFilter.LIBRARY -> database.artists(sortType, descending)
                         ArtistFilter.LIKED -> database.artistsBookmarked(sortType, descending)
                     }
-                }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+                }
+                    .flowOn(Dispatchers.IO)
+                    .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         fun refresh(filter: ArtistFilter) {
             if (filter != ArtistFilter.LIKED) return
@@ -353,7 +364,9 @@ class LibraryAlbumsViewModel
                             database.albumsLiked(sortType, descending).map { it.filterExplicitAlbums(hideExplicit) }
                         }
                     }
-                }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+                }
+                    .flowOn(Dispatchers.IO)
+                    .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         fun refresh(filter: AlbumFilter) {
             if (filter != AlbumFilter.LIKED) return
@@ -481,7 +494,9 @@ class ArtistSongsViewModel
                     database.artistSongs(artistId, sortType, descending).map {
                         it.filterExplicit(hideExplicit).filterVideo(hideVideo)
                     }
-                }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+                }
+                    .flowOn(Dispatchers.IO)
+                    .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     }
 
 @HiltViewModel
@@ -724,7 +739,9 @@ class LibraryMixViewModel
                 .distinctUntilChanged()
                 .flatMapLatest { hideExplicit ->
                     database.albumsLiked(AlbumSortType.CREATE_DATE, true).map { it.filterExplicitAlbums(hideExplicit) }
-                }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+                }
+                    .flowOn(Dispatchers.IO)
+                    .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
         var playlists =
             context.dataStore.data
                 .map {
