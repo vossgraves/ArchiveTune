@@ -277,6 +277,9 @@ fun LyricsEnhanced(
     modifier: Modifier = Modifier,
     textColorOverride: Color? = null,
     lyricsLineBlurOverride: Boolean? = null,
+    // Non-null when the caller is not a full screen. The SimpMusic style embeds this in a 300dp
+    // card, where the user's full-screen size fits about four words in the box.
+    textSizeOverride: Float? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
@@ -295,7 +298,8 @@ fun LyricsEnhanced(
     val playbackParameters by playerConnection.playbackParameters.collectAsStateWithLifecycle()
 
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
-    val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
+    val (lyricsTextSizePreference) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
+    val lyricsTextSize = textSizeOverride ?: lyricsTextSizePreference
     // Per-line RenderEffect blur (see useBlurEffect below) is the single heaviest
     // per-frame cost in the karaoke view -- default it OFF so word-synced lyrics
     // are smooth out of the box; users who want the effect can re-enable it in

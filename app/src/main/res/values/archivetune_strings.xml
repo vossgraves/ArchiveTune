@@ -352,6 +352,11 @@
     <string name="player_design_bitchord">BitChord</string>
     <string name="player_design_tiktok">TikTok</string>
     <string name="player_design_simpmusic">SimpMusic</string>
+    <string name="rich_synced">Rich Synced</string>
+    <string name="line_synced">Line Synced</string>
+    <string name="unsynced">Unsynced</string>
+    <string name="show">Show</string>
+    <string name="lyrics_provided_by">Lyrics provided by %1$s</string>
     <string name="collapse">Collapse</string>
     <string name="published_on">Published on %1$s</string>
     <string name="view_count_value">%1$s views</string>

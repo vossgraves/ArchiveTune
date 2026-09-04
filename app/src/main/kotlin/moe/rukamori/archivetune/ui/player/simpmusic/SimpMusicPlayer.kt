@@ -43,6 +43,22 @@
 package moe.rukamori.archivetune.ui.player.simpmusic
 
 import androidx.activity.compose.BackHandler
+import moe.rukamori.archivetune.ui.menu.AddToPlaylistDialog
+import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.extensions.toMediaItem
+import androidx.room.withTransaction
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -117,6 +133,7 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -139,7 +156,6 @@ import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.Locale
 
@@ -151,6 +167,12 @@ private val CardPanel = Color(0xFF212121)
 
 /** A YouTube video id: 11 chars of the URL-safe alphabet. Nothing else resolves in getMediaInfo. */
 private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
+
+/** SimpMusic's accent, the tint its shuffle and repeat take when active. */
+private val Seed = Color(0xFF8ECAE6)
+
+/** Lyrics inside the 300dp card, not on a full screen — the renderers' own default is far too big. */
+private const val CARD_LYRICS_SIZE_SP = 16f
 
 /** Side gutter for everything below the artwork, and for the cards. */
 private val Gutter = 20.dp
@@ -183,6 +205,7 @@ fun SimpMusicPlayerContent(
     currentFormat: FormatEntity?,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
+    onShowLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -291,10 +314,6 @@ fun SimpMusicPlayerContent(
                         SimpMusicTrackInfoRow(
                             mediaMetadata = mediaMetadata,
                             playerConnection = playerConnection,
-                            navController = navController,
-                            state = state,
-                            menuState = menuState,
-                            bottomSheetPageState = bottomSheetPageState,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = Gutter),
                         )
 
@@ -322,7 +341,8 @@ fun SimpMusicPlayerContent(
                         )
 
                         SimpMusicActionRow(
-                            mediaId = mediaMetadata.id,
+                            mediaMetadata = mediaMetadata,
+                            playerConnection = playerConnection,
                             bottomSheetPageState = bottomSheetPageState,
                             onOpenQueue = { queueOpen = true },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = Gutter),
@@ -365,6 +385,7 @@ fun SimpMusicPlayerContent(
                     // visibility, so without this a karaoke loop ran permanently, from the moment
                     // the player opened, for a card nobody had scrolled to.
                     renderLyrics = hasScrolled,
+                    onShowLyrics = onShowLyrics,
                     modifier = Modifier.padding(top = 10.dp),
                 )
                 Spacer(Modifier.height(10.dp))
@@ -649,30 +670,47 @@ private fun SimpMusicLyricLine(
     }
 }
 
-/** Title and artist on the left, like and overflow on the right. */
+/**
+ * Title and artist on the left; add-to-playlist and like on the right.
+ *
+ * SimpMusic's own row, button for button: AddCircleOutline then a 32dp heart. The overflow menu is
+ * NOT here — it lives in the top bar, which is where SimpMusic keeps it.
+ */
 @Composable
 private fun SimpMusicTrackInfoRow(
     mediaMetadata: MediaMetadata,
     playerConnection: PlayerConnection,
-    navController: NavController,
-    state: BottomSheetState,
-    menuState: MenuState,
-    bottomSheetPageState: BottomSheetPageState,
     modifier: Modifier = Modifier,
 ) {
+    val database = LocalDatabase.current
     val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val liked = currentSong?.song?.liked == true
+    var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
+
+    AddToPlaylistDialog(
+        isVisible = showPlaylistDialog,
+        onGetSong = {
+            database.withTransaction { insert(mediaMetadata) }
+            listOf(mediaMetadata.id)
+        },
+        onDismiss = { showPlaylistDialog = false },
+    )
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = mediaMetadata.title,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier.basicMarquee(
+                        iterations = Int.MAX_VALUE,
+                        animationMode = MarqueeAnimationMode.Immediately,
+                    ),
             )
+            Spacer(Modifier.height(3.dp))
             Text(
                 text = mediaMetadata.artists.joinToString { it.name },
                 style = MaterialTheme.typography.bodyMedium,
@@ -681,41 +719,38 @@ private fun SimpMusicTrackInfoRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(onClick = playerConnection::toggleLike) {
+        IconButton(onClick = { showPlaylistDialog = true }, modifier = Modifier.size(36.dp)) {
+            Icon(
+                painter = painterResource(R.drawable.simpmusic_add_circle_outline),
+                contentDescription = stringResource(R.string.add_to_playlist),
+                tint = Color.White,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        Spacer(Modifier.size(12.dp))
+        IconButton(onClick = playerConnection::toggleLike, modifier = Modifier.size(40.dp)) {
             Icon(
                 painter =
                     painterResource(
-                        if (liked) R.drawable.player_favorite else R.drawable.player_favorite_border,
+                        if (liked) R.drawable.simpmusic_favorite else R.drawable.simpmusic_favorite_border,
                     ),
                 contentDescription = stringResource(R.string.action_like),
                 tint = if (liked) MaterialTheme.colorScheme.error else Color.White,
-            )
-        }
-        IconButton(
-            onClick = {
-                menuState.show {
-                    PlayerMenu(
-                        mediaMetadata = mediaMetadata,
-                        navController = navController,
-                        playerBottomSheetState = state,
-                        onShowDetailsDialog = {
-                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                        },
-                        onDismiss = menuState::dismiss,
-                    )
-                }
-            },
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.player_more_horiz),
-                contentDescription = stringResource(R.string.more_options),
-                tint = Color.White,
+                modifier = Modifier.size(32.dp),
             )
         }
     }
 }
 
-/** The scrubber, the two timestamps, and the quality badge centred between them. */
+/**
+ * The scrubber and the two timestamps.
+ *
+ * SimpMusic's slider, not the stock one: a 5dp track and an 8dp square thumb. The default M3
+ * Slider draws a tall pill thumb with a gap either side of it, which is the fat white bar the
+ * screenshot showed. Both labels are elapsed and TOTAL, zero-padded — the right-hand one is not a
+ * negative remaining count.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SimpMusicProgressRow(
     sliderPosition: Long?,
@@ -730,52 +765,78 @@ private fun SimpMusicProgressRow(
     val hasDuration = duration > 0L && duration != C.TIME_UNSET
     val safeDuration = if (hasDuration) duration else 1L
     val shown = (sliderPosition ?: position).coerceIn(0L, safeDuration)
+    val trackColor = Color.White
 
     Column(modifier = modifier) {
         Slider(
-            value = shown.toFloat(),
-            valueRange = 0f..safeDuration.toFloat(),
-            onValueChange = { onSeek(it.toLong()) },
+            value = shown.toFloat() / safeDuration.toFloat(),
+            onValueChange = { onSeek((it * safeDuration).toLong()) },
             onValueChangeFinished = onSeekFinished,
-            // Pinned to white rather than the theme's primary: this style paints its own dark
-            // ground under a palette wash, so a dynamic-themed accent lands on an unrelated
-            // colour every track.
-            colors =
-                SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.24f),
-                ),
+            track = { sliderState ->
+                SliderDefaults.Track(
+                    modifier = Modifier.height(5.dp),
+                    enabled = true,
+                    sliderState = sliderState,
+                    colors =
+                        SliderDefaults.colors().copy(
+                            thumbColor = trackColor,
+                            activeTrackColor = trackColor,
+                            // SimpMusic leaves this transparent and paints the buffered bar
+                            // behind instead; a flat grey is the same picture without a second
+                            // progress source to keep in step with the playhead.
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                        ),
+                    thumbTrackGapSize = 0.dp,
+                    drawTick = { _, _ -> },
+                    drawStopIndicator = null,
+                )
+            },
+            thumb = {
+                SliderDefaults.Thumb(
+                    modifier = Modifier.height(18.dp).width(8.dp).padding(vertical = 4.dp),
+                    thumbSize = DpSize(8.dp, 8.dp),
+                    interactionSource = remember { MutableInteractionSource() },
+                    colors = SliderDefaults.colors().copy(thumbColor = trackColor),
+                    enabled = true,
+                )
+            },
             modifier = Modifier.fillMaxWidth(),
         )
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = makeTimeString(shown),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.55f),
-                )
-                Text(
-                    text = if (hasDuration) "-${makeTimeString(safeDuration - shown)}" else "",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.55f),
-                )
-            }
-            // Centred rather than placed in the gap between the timestamps: that gap changes width
-            // by a digit every time a minute rolls over.
-            LosslessOrStats(
-                isLoading = isLoading,
-                format = currentFormat,
-                modifier = Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = clockTime(shown),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.weight(1f),
+            )
+            // SimpMusic keeps this middle slot for its "Crossfading" shimmer. ArchiveTune knows
+            // what it is actually streaming, so the slot carries that instead of sitting empty.
+            LosslessOrStats(isLoading = isLoading, format = currentFormat)
+            Text(
+                text = if (hasDuration) clockTime(duration) else "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f),
             )
         }
     }
 }
 
-/** Shuffle, previous, play/pause, next, repeat. */
+/** `mm:ss`, zero-padded, the way SimpMusic's formatDuration writes it. */
+private fun clockTime(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0L)
+    return String.format(Locale.getDefault(), "%02d:%02d", total / 60, total % 60)
+}
+
+/**
+ * Shuffle, previous, play/pause, next, repeat — SimpMusic's PlayerControlLayout.
+ *
+ * The sizes are theirs, not approximations: a 96dp row, each control centred in its own weighted
+ * cell, 32dp for shuffle and repeat, 42dp for the skips, and 72dp for the play button — which is a
+ * FILLED DISC glyph (PlayCircle), not a bare triangle with a circle drawn round it. The active
+ * tint is SimpMusic's seed blue.
+ */
 @Composable
 private fun SimpMusicTransportRow(
     isPlaying: Boolean,
@@ -788,44 +849,67 @@ private fun SimpMusicTransportRow(
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
 
     Row(
-        modifier = modifier,
+        modifier = modifier.height(96.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled }) {
-            Icon(
-                painter = painterResource(R.drawable.player_shuffle),
-                contentDescription = stringResource(R.string.shuffle),
-                tint = Color.White.copy(alpha = if (shuffleEnabled) 1f else 0.45f),
-            )
-        }
-        IconButton(enabled = canSkipPrevious, onClick = playerConnection::seekToPrevious) {
-            Icon(
-                painter = painterResource(R.drawable.player_skip_previous),
-                contentDescription = stringResource(R.string.widget_previous),
-                tint = Color.White.copy(alpha = if (canSkipPrevious) 1f else 0.35f),
-            )
-        }
-        IconButton(onClick = { playerConnection.player.togglePlayPause() }) {
-            Icon(
-                painter =
-                    painterResource(
-                        if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
-                    ),
-                contentDescription =
-                    stringResource(if (isPlaying) R.string.widget_pause else R.string.play),
-                tint = Color.White,
-                modifier = Modifier.size(44.dp),
-            )
-        }
-        IconButton(enabled = canSkipNext, onClick = playerConnection::seekToNext) {
-            Icon(
-                painter = painterResource(R.drawable.player_skip_next),
-                contentDescription = stringResource(R.string.next),
-                tint = Color.White.copy(alpha = if (canSkipNext) 1f else 0.35f),
-            )
-        }
-        IconButton(
+        SimpMusicControl(
+            cell = 42.dp,
+            icon = 32.dp,
+            painter = painterResource(R.drawable.simpmusic_shuffle),
+            contentDescription = stringResource(R.string.shuffle),
+            tint = if (shuffleEnabled) Seed else Color.White,
+            onClick = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled },
+        )
+        SimpMusicControl(
+            cell = 52.dp,
+            icon = 42.dp,
+            painter = painterResource(R.drawable.simpmusic_skip_previous),
+            contentDescription = stringResource(R.string.widget_previous),
+            tint = Color.White.copy(alpha = if (canSkipPrevious) 1f else 0.4f),
+            enabled = canSkipPrevious,
+            onClick = playerConnection::seekToPrevious,
+        )
+        SimpMusicControl(
+            cell = 96.dp,
+            icon = 72.dp,
+            painter =
+                painterResource(
+                    if (isPlaying) R.drawable.simpmusic_pause_circle else R.drawable.simpmusic_play_circle,
+                ),
+            contentDescription = stringResource(if (isPlaying) R.string.widget_pause else R.string.play),
+            tint = Color.White,
+            onClick = { playerConnection.player.togglePlayPause() },
+        )
+        SimpMusicControl(
+            cell = 52.dp,
+            icon = 42.dp,
+            painter = painterResource(R.drawable.simpmusic_skip_next),
+            contentDescription = stringResource(R.string.next),
+            tint = Color.White.copy(alpha = if (canSkipNext) 1f else 0.4f),
+            enabled = canSkipNext,
+            onClick = playerConnection::seekToNext,
+        )
+        SimpMusicControl(
+            cell = 42.dp,
+            icon = 32.dp,
+            painter =
+                painterResource(
+                    if (repeatMode == Player.REPEAT_MODE_ONE) {
+                        R.drawable.simpmusic_repeat_one
+                    } else {
+                        R.drawable.simpmusic_repeat
+                    },
+                ),
+            contentDescription =
+                stringResource(
+                    when (repeatMode) {
+                        Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
+                        Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
+                        else -> R.string.repeat_mode_off
+                    },
+                ),
+            tint = if (repeatMode == Player.REPEAT_MODE_OFF) Color.White else Seed,
             onClick = {
                 playerConnection.player.repeatMode =
                     when (repeatMode) {
@@ -834,80 +918,127 @@ private fun SimpMusicTransportRow(
                         else -> Player.REPEAT_MODE_OFF
                     }
             },
-        ) {
-            Icon(
-                painter =
-                    painterResource(
-                        when (repeatMode) {
-                            Player.REPEAT_MODE_ONE -> R.drawable.player_repeat_one_on
-                            Player.REPEAT_MODE_ALL -> R.drawable.player_repeat_on
-                            else -> R.drawable.player_repeat
-                        },
-                    ),
-                contentDescription =
-                    stringResource(
-                        when (repeatMode) {
-                            Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
-                            Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
-                            else -> R.string.repeat_mode_off
-                        },
-                    ),
-                tint = Color.White.copy(alpha = if (repeatMode == Player.REPEAT_MODE_OFF) 0.45f else 1f),
-            )
-        }
+        )
     }
 }
 
-/** Track details on the left, the queue on the right — SimpMusic's row under the transport. */
+/**
+ * One transport control: a circular ripple [cell] wide holding an [icon]-wide glyph, centred in its
+ * own weighted slot. A plain IconButton cannot express this — it forces a 48dp touch target and its
+ * own icon size, which is what made the row's spacing wrong.
+ */
 @Composable
-private fun SimpMusicActionRow(
-    mediaId: String,
-    bottomSheetPageState: BottomSheetPageState,
-    onOpenQueue: () -> Unit,
-    modifier: Modifier = Modifier,
+private fun RowScope.SimpMusicControl(
+    cell: androidx.compose.ui.unit.Dp,
+    icon: androidx.compose.ui.unit.Dp,
+    painter: androidx.compose.ui.graphics.painter.Painter,
+    contentDescription: String,
+    tint: Color,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { bottomSheetPageState.show { ShowMediaInfo(mediaId) } }) {
+    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+        Box(
+            modifier =
+                Modifier
+                    .size(cell)
+                    .clip(CircleShape)
+                    .clickable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
-                painter = painterResource(R.drawable.info),
-                contentDescription = stringResource(R.string.details),
-                tint = Color.White.copy(alpha = 0.8f),
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onOpenQueue) {
-            Icon(
-                painter = painterResource(R.drawable.player_queue_music),
-                contentDescription = stringResource(R.string.queue),
-                tint = Color.White.copy(alpha = 0.8f),
+                painter = painter,
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier.size(icon),
             )
         }
     }
 }
 
 /**
- * The lyrics card. Which renderer it holds is the SimpMusic-lyrics setting — SimpMusic's own view,
- * or the app's Enhanced one. Fixed height, like SimpMusic's: a card that grew with the lyric count
- * would push the two cards under it an unpredictable distance down the page.
+ * SimpMusic's row under the transport: track details on the left, add-to-queue and the queue on
+ * the right. Three 24dp glyphs in a 32dp row, which is what that style has there.
+ */
+@Composable
+private fun SimpMusicActionRow(
+    mediaMetadata: MediaMetadata,
+    playerConnection: PlayerConnection,
+    bottomSheetPageState: BottomSheetPageState,
+    onOpenQueue: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier.height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+        SimpMusicActionIcon(
+            painter = painterResource(R.drawable.simpmusic_info),
+            contentDescription = stringResource(R.string.details),
+            onClick = { bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) } },
+        )
+        Spacer(Modifier.weight(1f))
+        SimpMusicActionIcon(
+            painter = painterResource(R.drawable.simpmusic_playlist_add),
+            contentDescription = stringResource(R.string.play_next),
+            onClick = { playerConnection.playNext(mediaMetadata.toMediaItem()) },
+        )
+        Spacer(Modifier.size(12.dp))
+        SimpMusicActionIcon(
+            painter = painterResource(R.drawable.simpmusic_queue_music),
+            contentDescription = stringResource(R.string.queue),
+            onClick = onOpenQueue,
+        )
+    }
+}
+
+@Composable
+private fun SimpMusicActionIcon(
+    painter: androidx.compose.ui.graphics.painter.Painter,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(24.dp).clip(CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painter = painter, contentDescription = contentDescription, tint = Color.White)
+    }
+}
+
+/**
+ * The lyrics card: a header row (label, share, "Show"), the lyrics, and a footer crediting the
+ * sync type and provider. The first version had the label and nothing else — the share button, the
+ * "Show" affordance and the "Line Synced / Lyrics provided by …" footer were all missing, which is
+ * most of what tells you where the lyrics came from.
+ *
+ * Which renderer sits inside is the SimpMusic-lyrics setting. Either way it is scaled DOWN for the
+ * card: both renderers size themselves for a full screen, and at that size four words fill the
+ * 300dp box.
  */
 @Composable
 private fun SimpMusicLyricsCard(
     playerConnection: PlayerConnection,
     containerColor: Color,
     renderLyrics: Boolean,
+    onShowLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val (simpMusicLyrics) = rememberPreference(SimpMusicLyricsKey, defaultValue = false)
-    // Null unless the user is scrubbing, matching every other caller: the renderers run their own
-    // clock off the player, and a polled position would step.
     val lyricsPositionProvider = remember { { null as Long? } }
 
     // A renderer with nothing to render still fills its 300dp box, so without this the card was a
     // blank panel on every track with no lyrics — and it pushed the two real cards down behind it.
     val lyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
-    val hasLyrics =
-        lyricsEntity?.lyrics?.isNotBlank() == true && lyricsEntity?.lyrics != LYRICS_NOT_FOUND
+    val lyricsText = lyricsEntity?.lyrics
+    val hasLyrics = lyricsText?.isNotBlank() == true && lyricsText != LYRICS_NOT_FOUND
     if (!hasLyrics) return
+
+    val syncLabel =
+        when {
+            LyricsUtils.isTtml(lyricsText!!) -> stringResource(R.string.rich_synced)
+            LyricsUtils.isLineSyncedLrc(lyricsText) -> stringResource(R.string.line_synced)
+            else -> stringResource(R.string.unsynced)
+        }
+    val provider = lyricsEntity?.providerName?.takeIf { it.isNotBlank() }
 
     ElevatedCard(
         shape = RoundedCornerShape(8.dp),
@@ -915,11 +1046,40 @@ private fun SimpMusicLyricsCard(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(15.dp)) {
-            Text(
-                text = stringResource(R.string.lyrics),
-                style = MaterialTheme.typography.labelLarge,
-                color = Color.White,
-            )
+            Spacer(Modifier.height(5.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.lyrics),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                )
+                Spacer(Modifier.weight(1f))
+                SimpMusicActionIcon(
+                    painter = painterResource(R.drawable.simpmusic_share),
+                    contentDescription = stringResource(R.string.share),
+                    onClick = {
+                        val body = lyricsText.lineSequence().joinToString("\n") { it.substringAfter("]") }
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, body)
+                                },
+                                null,
+                            ),
+                        )
+                    },
+                )
+                Spacer(Modifier.size(8.dp))
+                TextButton(
+                    onClick = onShowLyrics,
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.height(20.dp),
+                ) {
+                    Text(text = stringResource(R.string.show), color = Color.White)
+                }
+            }
+            Spacer(Modifier.height(18.dp))
             Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
                 if (!renderLyrics) {
                     // Deliberately empty, and deliberately still 300dp: the height is what keeps
@@ -928,6 +1088,7 @@ private fun SimpMusicLyricsCard(
                     SimpMusicLyrics(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,
+                        textSizeSp = CARD_LYRICS_SIZE_SP,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -936,6 +1097,25 @@ private fun SimpMusicLyricsCard(
                         lyricsSyncOffset = 0,
                         modifier = Modifier.fillMaxSize(),
                         textColorOverride = Color.White,
+                        textSizeOverride = CARD_LYRICS_SIZE_SP,
+                    )
+                }
+            }
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                Text(
+                    text = syncLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.45f),
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
+                if (provider != null) {
+                    Text(
+                        text = stringResource(R.string.lyrics_provided_by, provider),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.45f),
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

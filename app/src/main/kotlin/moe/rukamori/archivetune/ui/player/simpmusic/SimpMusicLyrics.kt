@@ -101,13 +101,16 @@ fun SimpMusicLyrics(
     lyricsSyncOffset: Int,
     modifier: Modifier = Modifier,
     textColorOverride: Color? = null,
+    // Non-null when this is rendered in the player's lyrics CARD rather than full screen.
+    textSizeSp: Float? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
     val currentColor = textColorOverride ?: Color.White
 
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
-    val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
+    val (lyricsTextSizePreference) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
+    val lyricsTextSize = textSizeSp ?: lyricsTextSizePreference
 
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics = currentLyrics?.lyrics
