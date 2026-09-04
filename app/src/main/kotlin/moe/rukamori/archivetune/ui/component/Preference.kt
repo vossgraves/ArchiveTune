@@ -17,6 +17,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1161,6 +1162,65 @@ fun PreferenceGroup(
                 ) {
                     itemContent()
                 }
+            }
+        }
+    }
+}
+
+/**
+ * [PreferenceGroup] for a `LazyColumn`: same DSL, same shapes and spacing, but every row is its own
+ * lazy item so a long settings page composes only what is on screen.
+ *
+ * The `verticalScroll` version composes every row before the first frame — sixty of them on
+ * Appearance, each with a vector icon to inflate and text to lay out — which is why that screen was
+ * slow to open and why its enter animation looked like it was missing: the slide had finished
+ * before the content existed.
+ *
+ * [modifier] is applied to the group's leading item (the title, or the first row when there is
+ * none), which is where a group-level [PreferencePositions.modifierFor] anchor wants to be — the
+ * deep link scrolls to the top of the group. `scrollToKey` already copes with lazy lists: it walks
+ * the list a viewport at a time to bring an uncomposed target into composition.
+ */
+fun LazyListScope.preferenceGroup(
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    content: PreferenceGroupScope.() -> Unit,
+) {
+    val items = PreferenceGroupScope().apply(content).items
+    if (items.isEmpty()) return
+
+    if (title != null) {
+        item(contentType = "preference_group_title") {
+            PreferenceGroupTitle(
+                title = title,
+                modifier = modifier.padding(horizontal = PreferenceGroupHorizontalPadding),
+            )
+        }
+    }
+
+    itemsIndexed(items, contentType = { _, _ -> "preference_row" }) { index, itemContent ->
+        val position =
+            when {
+                items.size == 1 -> PreferenceGroupPosition.Single
+                index == 0 -> PreferenceGroupPosition.First
+                index == items.lastIndex -> PreferenceGroupPosition.Last
+                else -> PreferenceGroupPosition.Middle
+            }
+        CompositionLocalProvider(
+            LocalPreferenceInGroup provides true,
+            LocalPreferenceGroupPosition provides position,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        // The Column version used Arrangement.spacedBy(2.dp); lazy items have no
+                        // arrangement, so the gap becomes padding on every row but the first.
+                        .padding(top = if (index == 0) 0.dp else 2.dp)
+                        .then(if (title == null && index == 0) modifier else Modifier)
+                        .fillMaxWidth()
+                        .padding(horizontal = PreferenceGroupHorizontalPadding),
+            ) {
+                itemContent()
             }
         }
     }

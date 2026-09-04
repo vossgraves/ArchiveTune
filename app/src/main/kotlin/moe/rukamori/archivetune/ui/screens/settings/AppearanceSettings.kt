@@ -22,6 +22,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,9 +38,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -123,7 +124,7 @@ import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
-import moe.rukamori.archivetune.ui.component.PreferenceGroup
+import moe.rukamori.archivetune.ui.component.preferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.ThumbnailCornerRadiusSelectorButton
 import moe.rukamori.archivetune.ui.player.StyledPlaybackSlider
@@ -469,23 +470,40 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 .asPaddingValues()
                 .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
-        val scrollState = rememberScrollState()
+        // Lazy, not a verticalScroll Column: this page carries about sixty preference rows and the
+        // Column composed every one of them before it could draw a frame, which is what made
+        // opening Appearance lag and swallowed its enter animation.
+        val listState = rememberLazyListState()
         val positions = rememberPreferencePositions()
 
-        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+        // Read here rather than in the group calls: the LazyColumn builder is a plain lambda, so
+        // stringResource cannot be called from inside it.
+        val themeTitle = stringResource(R.string.theme)
+        val playerTitle = stringResource(R.string.player)
+        val albumPageTitle = stringResource(R.string.album_page)
+        val homeTitle = stringResource(R.string.home)
+        val miscTitle = stringResource(R.string.misc)
+        val extrasTitle = stringResource(R.string.extras)
 
-        Column(
-            Modifier
-                .padding(top = topPadding)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
-                .then(positions.containerModifier())
-                .verticalScroll(scrollState)
-                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
+
+        LazyColumn(
+            state = listState,
+            contentPadding =
+                PaddingValues(
+                    bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
+                ),
+            modifier =
+                Modifier
+                    .padding(top = topPadding)
+                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                    // Measures the viewport rather than the scrolling content, so scrollToKey can
+                    // work in pure deltas.
+                    .then(positions.containerModifier()),
         ) {
-            PreferenceGroup(
+            preferenceGroup(
                 modifier = positions.modifierFor("dynamic_theme"),
-                title = stringResource(R.string.theme),
+                title = themeTitle,
             ) {
                 // Liquid glass used to sit in its own PreferenceGroup, also titled "Theme", so the
                 // screen opened with a Theme header, one switch, and a second Theme header. Same
@@ -755,9 +773,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(
+            preferenceGroup(
                 modifier = positions.modifierFor("disable_blur"),
-                title = stringResource(R.string.player),
+                title = playerTitle,
             ) {
                 item {
                     Column(modifier = positions.modifierFor("player_design_style")) {
@@ -1072,9 +1090,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(
+            preferenceGroup(
                 modifier = positions.modifierFor("album_page"),
-                title = stringResource(R.string.album_page),
+                title = albumPageTitle,
             ) {
                 item {
                     SwitchPreference(
@@ -1091,9 +1109,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             // The three settings that decide what the Home tab shows were scattered through
             // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are
             // one decision — which home you get — so they read as one group.
-            PreferenceGroup(
+            preferenceGroup(
                 modifier = positions.modifierFor("home_screen"),
-                title = stringResource(R.string.home),
+                title = homeTitle,
             ) {
                 item {
                     EnumListPreference(
@@ -1164,9 +1182,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(
+            preferenceGroup(
                 modifier = positions.modifierFor("app_language"),
-                title = stringResource(R.string.misc),
+                title = miscTitle,
             ) {
                 item {
                     SwitchPreference(
@@ -1231,9 +1249,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(
+            preferenceGroup(
                 modifier = positions.modifierFor("extras"),
-                title = stringResource(R.string.extras),
+                title = extrasTitle,
             ) {
                 item {
                     PreferenceEntry(
