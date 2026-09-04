@@ -349,6 +349,7 @@
     <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material Extended</string>
     <string name="player_design_v10">Editorial</string>
+    <string name="spotify_liked_songs">Liked Songs</string>
     <string name="apple_music_animated_artwork">Animated artwork</string>
     <string name="apple_music_animated_artwork_desc">Play a song’s Canvas loop or music video in place of the cover.</string>
     <string name="player_design_bitchord">BitChord</string>

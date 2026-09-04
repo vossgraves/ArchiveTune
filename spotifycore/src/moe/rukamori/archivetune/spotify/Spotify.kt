@@ -371,6 +371,27 @@ object Spotify {
     private fun parseGqlImages(sources: JsonArray?): List<SpotifyImage> =
         sources?.mapNotNull { parseGqlImage(it.jsonObject) } ?: emptyList()
 
+    /**
+     * The URL of the largest image in a GraphQL `sources` array.
+     *
+     * The home feed used to take `sources.firstOrNull()`, which is why its playlist, album and
+     * artist tiles were soft while the same artwork looked sharp everywhere else in the app: every
+     * other call site keeps the whole array via [parseGqlImages] and its consumers pick the widest,
+     * but these three threw the array away and kept whichever entry Spotify happened to put first —
+     * in these payloads the small one.
+     *
+     * Chosen by declared width rather than by position, so it does not depend on an ordering
+     * Spotify never promised. If nothing in the array declares a width there is nothing to compare,
+     * and it falls back to the first entry — the previous behaviour, for the case where the old
+     * behaviour was the only information available.
+     */
+    private fun largestGqlSourceUrl(sources: JsonArray?): String? {
+        val entries = sources?.mapNotNull { it.jsonObject.takeIf { obj -> obj.str("url") != null } }
+        if (entries.isNullOrEmpty()) return null
+        val widest = entries.maxByOrNull { it.int("width") ?: 0 }
+        return (widest ?: entries.first()).str("url")
+    }
+
     private fun parseGqlSimpleArtist(artistObj: JsonObject): SpotifySimpleArtist? {
         val uri = artistObj.str("uri") ?: return null
         return SpotifySimpleArtist(
@@ -1561,12 +1582,7 @@ object Spotify {
                 ?.arr("items")
                 ?.firstOrNull()
                 ?.jsonObject
-        val imageUrl =
-            imageItem
-                ?.arr("sources")
-                ?.firstOrNull()
-                ?.jsonObject
-                ?.str("url")
+        val imageUrl = largestGqlSourceUrl(imageItem?.arr("sources"))
         val colorHex = imageItem?.obj("extractedColors")?.obj("colorDark")?.str("hex")
         val madeFor =
             data
@@ -1595,13 +1611,7 @@ object Spotify {
             data.obj("artists")?.arr("items")?.mapNotNull {
                 parseGqlSimpleArtist(it.jsonObject)
             } ?: emptyList()
-        val imageUrl =
-            data
-                .obj("coverArt")
-                ?.arr("sources")
-                ?.firstOrNull()
-                ?.jsonObject
-                ?.str("url")
+        val imageUrl = largestGqlSourceUrl(data.obj("coverArt")?.arr("sources"))
 
         return moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem.Album(
             uri = uri,
@@ -1616,14 +1626,7 @@ object Spotify {
     private fun parseHomeArtist(data: JsonObject): moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem.Artist? {
         val uri = data.str("uri") ?: return null
         val profile = data.obj("profile")
-        val imageUrl =
-            data
-                .obj("visuals")
-                ?.obj("avatarImage")
-                ?.arr("sources")
-                ?.firstOrNull()
-                ?.jsonObject
-                ?.str("url")
+        val imageUrl = largestGqlSourceUrl(data.obj("visuals")?.obj("avatarImage")?.arr("sources"))
         return moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem.Artist(
             uri = uri,
             id = uri.substringAfterLast(":"),

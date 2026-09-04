@@ -626,7 +626,7 @@ class MediaLibrarySessionCallback
                                     drawableUri(R.drawable.download),
                                     MediaMetadata.MEDIA_TYPE_PLAYLIST,
                                 ),
-                            ) + spotifyPlaylistFolder() +
+                            ) + spotifyLikedFolder() + spotifyPlaylistFolder() +
                                 database.playlists(PlaylistSortType.CUSTOM, descending = false).first().map { playlist ->
                                     queueMediaItem(
                                         "${MusicService.PLAYLIST}/${playlist.id}",
@@ -640,6 +640,23 @@ class MediaLibrarySessionCallback
                                         MediaMetadata.MEDIA_TYPE_PLAYLIST,
                                     )
                                 }
+                        }
+
+                        MusicService.SPOTIFY_LIKED -> {
+                            spotifyLikedMediaItems().map { mediaItem ->
+                                mediaItem
+                                    .buildUpon()
+                                    .setMediaId("${MusicService.SPOTIFY_LIKED}/${mediaItem.mediaId}")
+                                    .setMediaMetadata(
+                                        mediaItem.mediaMetadata
+                                            .buildUpon()
+                                            .setIsPlayable(true)
+                                            .setIsBrowsable(false)
+                                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                                            .setExtras(playableExtras())
+                                            .build(),
+                                    ).build()
+                            }
                         }
 
                         MusicService.SPOTIFY_PLAYLIST -> {
@@ -910,6 +927,23 @@ class MediaLibrarySessionCallback
                         )
                     }
 
+                    mediaId == MusicService.SPOTIFY_LIKED -> {
+                        spotifyLikedFolder().firstOrNull()?.let {
+                            LibraryResult.ofItem(it, null)
+                        } ?: LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+                    }
+
+                    mediaId.startsWith("${MusicService.SPOTIFY_LIKED}/") -> {
+                        val songId = mediaId.pathSegments().getOrNull(1)
+                        spotifyLikedMediaItems()
+                            .firstOrNull { it.mediaId == songId }
+                            ?.buildUpon()
+                            ?.setMediaId(mediaId)
+                            ?.build()
+                            ?.let { LibraryResult.ofItem(it, null) }
+                            ?: LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+                    }
+
                     mediaId == MusicService.SPOTIFY_PLAYLIST -> {
                         spotifyPlaylistFolder().firstOrNull()?.let {
                             LibraryResult.ofItem(it, null)
@@ -1157,6 +1191,18 @@ class MediaLibrarySessionCallback
                         )
                     }
 
+                    MusicService.SPOTIFY_LIKED -> {
+                        val selectedSongId = path.getOrNull(1)
+                        val songs = spotifyLikedMediaItems()
+                        MediaSession.MediaItemsWithStartPosition(
+                            songs,
+                            selectedSongId?.let { songId ->
+                                songs.indexOfFirst { it.mediaId == songId }.takeIf { it != -1 }
+                            } ?: 0,
+                            startPositionMs,
+                        )
+                    }
+
                     MusicService.SPOTIFY_PLAYLIST -> {
                         val playlistId = path.getOrNull(1) ?: return@future defaultResult
                         val selectedSongId = path.getOrNull(2)
@@ -1267,24 +1313,92 @@ class MediaLibrarySessionCallback
             return root in AUTO_QUEUE_SONG_ROOTS && contains("/")
         }
 
+        /**
+         * The "Liked Songs" folder for the Auto browse tree.
+         *
+         * Spotify's liked songs were reachable nowhere in the car: the tree carried the playlist
+         * folder and nothing else, so the one collection most people actually drive to was the one
+         * they could not open. It sits above the playlists for the same reason it does in Spotify's
+         * own apps.
+         *
+         * Resolved lazily — the folder is offered whenever Spotify browsing is enabled, without
+         * paging the whole liked library first. Auto asks for a node's children only when the user
+         * opens it, and doing that work up front would put a full library walk on the callback that
+         * draws the root.
+         */
+        private suspend fun spotifyLikedFolder(): List<MediaItem> {
+            if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
+            return listOf(
+                browsableMediaItem(
+                    MusicService.SPOTIFY_LIKED,
+                    context.getString(R.string.spotify_liked_songs),
+                    null,
+                    drawableUri(R.drawable.favorite),
+                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                ),
+            )
+        }
+
+        /**
+         * The liked songs as playable items, resolved to real streams and cached for the session.
+         *
+         * Same resolve-in-batches shape as [spotifyPlaylistMediaItems]: a Spotify track is not
+         * playable on its own, it has to be matched to a stream first, and doing that one track at
+         * a time over a library of hundreds is the difference between a list that appears and a
+         * browse callback that times out.
+         */
+        private suspend fun spotifyLikedMediaItems(): List<MediaItem> {
+            spotifyPlaylistItemCache[SPOTIFY_LIKED_CACHE_KEY]?.let { return it }
+            if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
+            val resolved =
+                runCatching {
+                    spotifyLibraryRepository
+                        .likedSongs()
+                        // Capped like every other Auto list. A Spotify track is not playable until
+                        // it has been matched to a stream, and a liked library runs to hundreds or
+                        // thousands — resolving all of them is a browse callback that never
+                        // returns. AUTO_BROWSE_LIMIT is what the rest of the tree already shows.
+                        .take(AUTO_BROWSE_LIMIT)
+                        .chunked(SPOTIFY_RESOLVE_BATCH_SIZE)
+                        .flatMap { batch ->
+                            coroutineScope {
+                                batch.map { track ->
+                                    async { SpotifyPlaybackResolver.resolveToMediaItem(track) }
+                                }.awaitAll()
+                            }.filterNotNull()
+                        }
+                }.getOrElse { emptyList() }
+            if (resolved.isNotEmpty()) spotifyPlaylistItemCache[SPOTIFY_LIKED_CACHE_KEY] = resolved
+            return resolved
+        }
+
+        /**
+         * The Spotify playlists folder, drawn from cache only.
+         *
+         * This runs while the PARENT list is being built, so it must not go to the network: it used
+         * to call [spotifyPlaylistsForAuto], which refreshes from Spotify when the cache is cold,
+         * and the whole "Playlists" screen in the car sat empty until that request came back. The
+         * folder is now offered whenever Spotify browsing is on, with a count only when one is
+         * already known — opening it is what fetches, and Auto asks for children only then.
+         */
         private suspend fun spotifyPlaylistFolder(): List<MediaItem> {
-            val playlists = spotifyPlaylistsForAuto()
-            if (playlists.isEmpty()) return emptyList()
+            if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
+            spotifyLibraryRepository.restoreCachedPlaylists()
+            val cached = spotifyLibraryRepository.playlists.value
             return listOf(
                 browsableMediaItem(
                     MusicService.SPOTIFY_PLAYLIST,
                     context.getString(R.string.spotify_playlists),
-                    context.resources.getQuantityString(
-                        R.plurals.n_playlist,
-                        playlists.size,
-                        playlists.size,
-                    ),
+                    cached.size.takeIf { it > 0 }?.let {
+                        context.resources.getQuantityString(R.plurals.n_playlist, it, it)
+                    },
                     drawableUri(R.drawable.spotify_icon),
                     MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
                 ),
             )
         }
 
+        /** The playlists themselves — fetched when the folder is opened, not when it is listed. */
         private suspend fun spotifyPlaylistsForAuto() =
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) {
                 emptyList()
@@ -2186,6 +2300,11 @@ class MediaLibrarySessionCallback
             private const val AUTO_HOME_PLAYLIST_LIMIT = 20
             private const val SPOTIFY_RESOLVE_BATCH_SIZE = 20
             private const val HOME_RECENT_WINDOW_MS = 86400000L * 14L
+            /**
+             * Liked songs share [spotifyPlaylistItemCache] under a key no Spotify playlist id can
+             * collide with — ids are base62, so a colon cannot appear in one.
+             */
+            private const val SPOTIFY_LIKED_CACHE_KEY = "liked:songs"
             private const val PLAYLIST_ACTION_SHUFFLE = "_shuffle"
             private const val PLAYLIST_ACTION_SORT = "_sort"
             private const val PLAYLIST_ACTION_ADD_CURRENT_SONG = "_add_current_song"

@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.spotify
 
+import moe.rukamori.archivetune.spotify.models.SpotifyImage
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 
@@ -82,23 +83,30 @@ object SpotifyMapper {
     }
 
     /**
-     * Returns the best thumbnail URL from a Spotify playlist, preferring medium resolution.
+     * The best artwork URL Spotify offers for a playlist.
+     *
+     * Was a medium-size preference — the first image 200..400px wide — which is where the blurry
+     * covers on the Spotify home came from: those tiles are around 180dp, and on a 3x screen that
+     * is ~540 physical pixels being filled by a 300px image. Spotify publishes 640x640 for
+     * playlists and albums, so the largest entry is the right one to ask for; Coil downsamples to
+     * whatever the tile actually needs, and the smaller variants only ever cost detail.
+     *
+     * `width` is nullable in Spotify's payloads (and null for the ones this app synthesises), so
+     * an entry that does not declare a size sorts last rather than winning by accident.
      */
-    fun getPlaylistThumbnail(playlist: SpotifyPlaylist): String? =
-        playlist.images.let { images ->
-            // Prefer 300x300 or similar medium size, fallback to first
-            images.firstOrNull { it.width in 200..400 }?.url
-                ?: images.firstOrNull()?.url
-        }
+    fun getPlaylistThumbnail(playlist: SpotifyPlaylist): String? = largestImageUrl(playlist.images)
 
     /**
-     * Returns the best thumbnail URL from a Spotify track's album art.
+     * The best artwork URL from a Spotify track's album art. Same reasoning as
+     * [getPlaylistThumbnail].
      */
-    fun getTrackThumbnail(track: SpotifyTrack): String? =
-        track.album?.images?.let { images ->
-            images.firstOrNull { it.width in 200..400 }?.url
-                ?: images.firstOrNull()?.url
-        }
+    fun getTrackThumbnail(track: SpotifyTrack): String? = largestImageUrl(track.album?.images)
+
+    private fun largestImageUrl(images: List<SpotifyImage>?): String? =
+        images
+            ?.maxByOrNull { it.width ?: 0 }
+            ?.url
+            ?.takeIf { it.isNotBlank() }
 
     /**
      * Pre-computes normalized title/artist and their bigrams for a Spotify track.
