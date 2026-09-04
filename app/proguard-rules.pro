@@ -139,13 +139,19 @@
 # on every update: the saved queue named a class by its obfuscated name, and in the new build that
 # name belonged to something else. The queue was silently lost each time.
 #
-# The rules above keep the top-level model classes, but `-keep class ...QueueData { *; }` does NOT
-# cover QueueData$YouTubeData and friends, and MediaMetadata — the element type of the list that
-# actually failed to deserialize — was not kept at all. Rather than chase each one, keep the names
-# of everything reachable through Serializable, which is the standard recipe and cannot go stale as
-# models are added.
--keepnames class * implements java.io.Serializable
--keepclassmembers class * implements java.io.Serializable {
+# SCOPED TO THIS APP'S OWN CLASSES, and it must stay that way. The first attempt at this used
+# `class *`, and java.lang.Throwable implements Serializable — so it matched every exception class
+# in the app and in every library it depends on. Keeping names and fields across that whole surface
+# changed R8's naming and merging decisions enough that it emitted a class the ART verifier
+# rejects outright:
+#   java.lang.VerifyError: Verifier rejected class r8.my3 ...
+#   'this' argument 'Uninitialized Reference: org.json.JSONException'
+#       not instance of 'Reference: java.lang.RuntimeException'
+# — two unrelated exception types horizontally merged into one class. The app died on launch.
+#
+# Only this app's models are ever written with Java serialization, so only they need the rule.
+-keepnames class moe.rukamori.archivetune.** implements java.io.Serializable
+-keepclassmembers class moe.rukamori.archivetune.** implements java.io.Serializable {
     static final long serialVersionUID;
     private static final java.io.ObjectStreamField[] serialPersistentFields;
     !static !transient <fields>;
