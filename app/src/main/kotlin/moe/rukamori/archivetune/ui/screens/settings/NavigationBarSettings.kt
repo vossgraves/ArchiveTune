@@ -256,38 +256,27 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-                    Column {
-                        SwitchPreference(
-                            modifier = positions.modifierFor("liquid_glass_nav_bar"),
-                            title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
-                            description = stringResource(R.string.liquid_glass_nav_bar_desc),
-                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                            checked = liquidGlassNavBarEnabled,
-                            // Disable the toggle when the master Liquid Glass switch is off
-                            // (Appearance → Liquid Glass effects) or on pre-Android 12. The
-                            // kyant RuntimeShader stack requires API 31+.
-                            isEnabled = liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
-                            onCheckedChange = onLiquidGlassNavBarEnabledChange,
-                        )
-                        when {
-                            !liquidGlassEnabled -> {
-                                Text(
-                                    text = stringResource(R.string.liquid_glass_nav_bar_disabled),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
-                                )
-                            }
-                            Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassNavBarEnabled -> {
-                                Text(
-                                    text = stringResource(R.string.liquid_glass_effects_unsupported),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
-                                )
-                            }
-                        }
-                    }
+                    // Why the row is greyed out belongs IN the row, as its description — a loose
+                    // Text hung underneath was a second, differently-styled thing to read, and it
+                    // only ever appeared in the state where the row is already unusable.
+                    val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    SwitchPreference(
+                        modifier = positions.modifierFor("liquid_glass_nav_bar"),
+                        title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
+                        description =
+                            when {
+                                !supported -> stringResource(R.string.liquid_glass_effects_unsupported)
+                                !liquidGlassEnabled -> stringResource(R.string.liquid_glass_nav_bar_disabled)
+                                else -> stringResource(R.string.liquid_glass_nav_bar_desc)
+                            },
+                        icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                        checked = liquidGlassNavBarEnabled,
+                        // Disabled when the master Liquid Glass switch is off (Appearance →
+                        // Liquid Glass effects) or on pre-Android 12: the kyant RuntimeShader
+                        // stack requires API 31+.
+                        isEnabled = liquidGlassEnabled && supported,
+                        onCheckedChange = onLiquidGlassNavBarEnabledChange,
+                    )
                 }
 
                 item {

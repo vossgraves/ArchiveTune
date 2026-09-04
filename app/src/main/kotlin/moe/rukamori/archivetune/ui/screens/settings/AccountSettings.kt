@@ -388,53 +388,48 @@ fun AccountSettings(
                 }
 
                 item {
-                    // Two sign-ins that are not interchangeable, so both are named rather than
-                    // hidden behind one "Login": the browser route yields the WEB_REMIX cookie the
-                    // library and browse need, the device code yields a VR Bearer that only signs
-                    // /player. They can be held at the same time, hence the independent rows.
+                    // Browser sign-in is the only route offered now. The device-code flow used to
+                    // sit beside it, but it yields a VR Bearer that only signs /player — it cannot
+                    // reach the library, playlists or browse the way the WEB_REMIX cookie can — so
+                    // offering it as a peer of the full sign-in mostly produced half-working
+                    // accounts. The SIGN-OUT row stays: anyone who completed that flow before this
+                    // change still holds a session and must be able to end it.
                     val browserRowVisible = !isLoggedIn
-                    val signInRowCount = (if (browserRowVisible) 1 else 0) + 1
-                    ExpressiveSectionCard(title = loginLabel) {
-                        if (browserRowVisible) {
-                            ExpressiveActionRow(
-                                icon = painterResource(R.drawable.login),
-                                title = stringResource(R.string.yt_browser_sign_in),
-                                subtitle = stringResource(R.string.yt_browser_sign_in_desc),
-                                onClick = { navController.navigate(buildLoginRoute()) },
-                                index = 0,
-                                count = signInRowCount,
-                            )
-                        }
+                    val rowCount = (if (browserRowVisible) 1 else 0) + (if (hasOAuthSession) 1 else 0)
+                    if (rowCount > 0) {
+                        ExpressiveSectionCard(title = loginLabel) {
+                            if (browserRowVisible) {
+                                ExpressiveActionRow(
+                                    icon = painterResource(R.drawable.login),
+                                    title = stringResource(R.string.yt_browser_sign_in),
+                                    subtitle = stringResource(R.string.yt_browser_sign_in_desc),
+                                    onClick = { navController.navigate(buildLoginRoute()) },
+                                    index = 0,
+                                    count = rowCount,
+                                )
+                            }
 
-                        if (hasOAuthSession) {
-                            ExpressiveActionRow(
-                                icon = painterResource(R.drawable.logout),
-                                title = stringResource(R.string.yt_oauth_sign_out),
-                                subtitle = stringResource(R.string.yt_oauth_sign_out_desc),
-                                accent = MaterialTheme.colorScheme.error,
-                                onClick = {
-                                    coroutineScope.launch {
-                                        YouTubeOAuthRepository.signOut(context)
-                                        Toast
-                                            .makeText(
-                                                context,
-                                                context.getString(R.string.yt_oauth_signed_out),
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                    }
-                                },
-                                index = signInRowCount - 1,
-                                count = signInRowCount,
-                            )
-                        } else {
-                            ExpressiveActionRow(
-                                icon = painterResource(R.drawable.token),
-                                title = stringResource(R.string.yt_oauth_sign_in),
-                                subtitle = stringResource(R.string.yt_oauth_sign_in_desc),
-                                onClick = { navController.navigate(YOUTUBE_OAUTH_ROUTE) },
-                                index = signInRowCount - 1,
-                                count = signInRowCount,
-                            )
+                            if (hasOAuthSession) {
+                                ExpressiveActionRow(
+                                    icon = painterResource(R.drawable.logout),
+                                    title = stringResource(R.string.yt_oauth_sign_out),
+                                    subtitle = stringResource(R.string.yt_oauth_sign_out_desc),
+                                    accent = MaterialTheme.colorScheme.error,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            YouTubeOAuthRepository.signOut(context)
+                                            Toast
+                                                .makeText(
+                                                    context,
+                                                    context.getString(R.string.yt_oauth_signed_out),
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                        }
+                                    },
+                                    index = rowCount - 1,
+                                    count = rowCount,
+                                )
+                            }
                         }
                     }
                 }

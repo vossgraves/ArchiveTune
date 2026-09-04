@@ -43,6 +43,8 @@
 package moe.rukamori.archivetune.ui.player.simpmusic
 
 import androidx.activity.compose.BackHandler
+import moe.rukamori.archivetune.ui.utils.smoothFadingEdge
+import androidx.compose.ui.graphics.luminance
 import moe.rukamori.archivetune.ui.player.viewportEdgeFade
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextLayoutResult
@@ -172,6 +174,32 @@ private val CardPanel = Color(0xFF212121)
 /** A YouTube video id: 11 chars of the URL-safe alphabet. Nothing else resolves in getMediaInfo. */
 private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
 
+/**
+ * Ceiling on how light a palette colour may be before it is used as a surface under light text.
+ *
+ * Palette's dark-vibrant swatch is only "dark" relative to the artwork. A gold or yellow sleeve
+ * yields a genuinely bright swatch, and every glyph this style draws on top — the lyrics, the
+ * timestamps, the transport — is white or a low-alpha grey. That is the yellow card with
+ * invisible lyrics: the colour was faithful to the artwork and unusable as a surface.
+ */
+private const val MAX_SURFACE_LUMINANCE = 0.10f
+
+/**
+ * Pulls a palette colour toward the backdrop until light text reads on it.
+ *
+ * Iterative rather than one lerp: how far a colour must travel depends on where it starts, and a
+ * fixed factor either leaves a bright yellow unusable or crushes an already-dark blue to black.
+ * Bounded, so it always terminates.
+ */
+private fun Color.asSurface(): Color {
+    var c = this
+    var steps = 0
+    while (c.luminance() > MAX_SURFACE_LUMINANCE && steps++ < 16) {
+        c = lerp(c, Backdrop, 0.2f)
+    }
+    return c
+}
+
 /** SimpMusic's accent, the tint its shuffle and repeat take when active. */
 private val Seed = Color(0xFF8ECAE6)
 
@@ -226,7 +254,10 @@ fun SimpMusicPlayerContent(
     // SimpMusic ramps ONE colour into the backdrop — dark vibrant, resolving into the ground —
     // rather than blending two palette tones. Ramping to a second palette colour, which is what
     // this did, never resolves into the surface below and reads as a flat two-tone poster.
-    val startColor = rememberSimpMusicWashColor(artUrl)
+    val washColor = rememberSimpMusicWashColor(artUrl)
+    // Everything in this style draws light-on-dark, so the palette colour is admitted as a surface
+    // only after it is dark enough to carry that text — see asSurface().
+    val startColor = remember(washColor) { washColor.asSurface() }
 
     // The two lower cards are YouTube facts about the track, and only a YouTube id can produce
     // them. Gated on the id SHAPE rather than fired blindly: a Tidal, Qobuz, Spotify or local id
@@ -1126,7 +1157,16 @@ private fun SimpMusicLyricsCard(
                 }
             }
             Spacer(Modifier.height(18.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        // Lines dissolve at the card's edges instead of being cut off at them,
+                        // which is what Spotify's card does and what this was missing. DstIn on
+                        // the box, so it masks at the card edge while the list scrolls under it.
+                        .smoothFadingEdge(vertical = 36.dp),
+            ) {
                 if (!renderLyrics) {
                     // Deliberately empty, and deliberately still 300dp: the height is what keeps
                     // the page scrollable so `renderLyrics` can ever become true.
