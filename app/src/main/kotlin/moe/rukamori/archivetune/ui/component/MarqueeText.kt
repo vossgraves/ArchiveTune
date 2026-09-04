@@ -1,0 +1,165 @@
+/*
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
+package moe.rukamori.archivetune.ui.component
+
+import androidx.compose.foundation.MarqueeAnimationMode
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Text
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import moe.rukamori.archivetune.ui.utils.fadingEdge
+
+/**
+ * One line of text that scrolls sideways when it does not fit, with a soft fade at both edges
+ * while it is scrolling.
+ *
+ * Two details make this work, and both were re-derived separately in three places before this
+ * existed:
+ *
+ * The fade sits on the BOX — the line's viewport — never on the Text. The Text scrolls inside the
+ * Box, so a mask on the Text would travel with the glyphs and leave the visible edge hard-clipped:
+ * the boxy cut. On the Box, the DstIn gradient masks at fixed edges and the text moves underneath.
+ *
+ * The fade is applied only while the line actually overflows, and overflow is decided by comparing
+ * the laid-out text width against the viewport width — NOT by `hasVisualOverflow`, which never
+ * fires here because `basicMarquee` measures its child with unbounded width. `basicMarquee` also
+ * scrolls if and only if the text is wider than the viewport, so the same comparison is exactly
+ * "fade while scrolling".
+ */
+@Composable
+fun MarqueeText(
+    text: AnnotatedString,
+    modifier: Modifier = Modifier,
+    style: TextStyle = LocalTextStyle.current,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    textAlign: TextAlign? = null,
+    inlineContent: Map<String, InlineTextContent> = emptyMap(),
+    fadeWidth: Dp = 24.dp,
+    animationMode: MarqueeAnimationMode = MarqueeAnimationMode.Immediately,
+) {
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    val overflows = viewportWidth > 0 && (layout?.size?.width ?: 0) > viewportWidth
+
+    Box(
+        modifier =
+            (if (overflows) modifier.fadingEdge(horizontal = fadeWidth) else modifier)
+                .clipToBounds()
+                .onSizeChanged { viewportWidth = it.width },
+    ) {
+        Text(
+            text = text,
+            inlineContent = inlineContent,
+            style = style,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            textAlign = textAlign,
+            maxLines = 1,
+            // Reached only in the frame before the marquee has measured; after that the marquee
+            // owns the overflow.
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { layout = it },
+            modifier =
+                Modifier.fillMaxWidth().basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    animationMode = animationMode,
+                ),
+        )
+    }
+}
+
+/**
+ * [MarqueeText] for content you do not own — a caller-supplied `@Composable` slot, where there is
+ * no `Text` to put `maxLines` or `onTextLayout` on.
+ *
+ * `basicMarquee` measures its child with unbounded width, which is what forces the content onto one
+ * line here: with no width limit there is nothing to wrap at. That same unbounded measurement is
+ * why overflow has to be measured rather than asked for — the inner box reports the content's
+ * natural width, the outer one reports the space available, and the fade goes on when the first
+ * exceeds the second, which is also exactly when the marquee scrolls.
+ */
+@Composable
+fun MarqueeRow(
+    modifier: Modifier = Modifier,
+    fadeWidth: Dp = 24.dp,
+    animationMode: MarqueeAnimationMode = MarqueeAnimationMode.Immediately,
+    content: @Composable () -> Unit,
+) {
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    var contentWidth by remember { mutableIntStateOf(0) }
+    val overflows = viewportWidth > 0 && contentWidth > viewportWidth
+
+    Box(
+        modifier =
+            (if (overflows) modifier.fadingEdge(horizontal = fadeWidth) else modifier)
+                .clipToBounds()
+                .onSizeChanged { viewportWidth = it.width },
+    ) {
+        Box(
+            modifier =
+                Modifier.basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    animationMode = animationMode,
+                ),
+        ) {
+            Box(modifier = Modifier.onSizeChanged { contentWidth = it.width }) {
+                content()
+            }
+        }
+    }
+}
+
+/** [MarqueeText] for plain text, which is most of them. */
+@Composable
+fun MarqueeText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = LocalTextStyle.current,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    textAlign: TextAlign? = null,
+    fadeWidth: Dp = 24.dp,
+    animationMode: MarqueeAnimationMode = MarqueeAnimationMode.Immediately,
+) {
+    MarqueeText(
+        text = remember(text) { AnnotatedString(text) },
+        modifier = modifier,
+        style = style,
+        color = color,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        fadeWidth = fadeWidth,
+        animationMode = animationMode,
+    )
+}

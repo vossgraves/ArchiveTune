@@ -156,6 +156,7 @@ import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.player.AppleMusicQueueSheet
@@ -786,14 +787,14 @@ private fun SimpMusicTrackInfoRow(
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
-            SimpMusicMarqueeText(
+            MarqueeText(
                 text = mediaMetadata.title,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
             )
             Spacer(Modifier.height(3.dp))
-            SimpMusicMarqueeText(
+            MarqueeText(
                 text = mediaMetadata.artists.joinToString { it.name },
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal,
@@ -820,49 +821,6 @@ private fun SimpMusicTrackInfoRow(
                 modifier = Modifier.size(32.dp),
             )
         }
-    }
-}
-
-/**
- * One marquee line with the same edge fade every other player style uses.
- *
- * The fade sits on the BOX (the line's viewport), not the Text: the Text scrolls inside it, so a
- * mask on the Text would travel with the glyphs and leave the visible edge hard-clipped — the boxy
- * cut this style had. [viewportEdgeFade] is the shared helper PlayerComponents applies for exactly
- * this, and as there it is only applied while the line actually overflows, because basicMarquee
- * measures its child unbounded so `hasVisualOverflow` never fires.
- */
-@Composable
-private fun SimpMusicMarqueeText(
-    text: String,
-    fontSize: androidx.compose.ui.unit.TextUnit,
-    fontWeight: FontWeight,
-    color: Color,
-) {
-    val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
-    val viewportWidth = remember { mutableStateOf(0) }
-    val shouldFade = viewportWidth.value > 0 && (layout.value?.size?.width ?: 0) > viewportWidth.value
-
-    Box(
-        modifier =
-            (if (shouldFade) Modifier.viewportEdgeFade(24.dp) else Modifier)
-                .clipToBounds()
-                .onSizeChanged { viewportWidth.value = it.width },
-    ) {
-        Text(
-            text = text,
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { layout.value = it },
-            modifier =
-                Modifier.fillMaxWidth().basicMarquee(
-                    iterations = Int.MAX_VALUE,
-                    animationMode = MarqueeAnimationMode.Immediately,
-                ),
-        )
     }
 }
 

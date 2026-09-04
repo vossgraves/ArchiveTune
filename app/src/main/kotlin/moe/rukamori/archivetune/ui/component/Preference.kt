@@ -227,8 +227,19 @@ fun PreferenceEntry(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-                ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
-                    title()
+                // The title is kept to ONE line and marquees with an edge fade when it does not
+                // fit, so every row is the same height whatever it is called. A title that wrapped
+                // pushed the row taller and left the switch or chevron floating against a
+                // two-line block. `basicMarquee` only animates while the text actually overflows,
+                // so short titles cost nothing.
+                //
+                // The description is left wrapping on purpose. It is prose, sometimes two
+                // sentences, and scrolling that sideways at reading speed is worse than a second
+                // line, not better — the complaint was about titles.
+                MarqueeRow {
+                    ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
+                        title()
+                    }
                 }
                 if (description != null) {
                     Spacer(Modifier.height(2.dp))

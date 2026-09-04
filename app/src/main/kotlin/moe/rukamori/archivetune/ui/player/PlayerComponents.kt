@@ -116,6 +116,7 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import me.saket.squiggles.SquigglySlider
+import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
@@ -159,7 +160,6 @@ internal fun PlayerTitleText(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = TextUnit.Unspecified,
     textAlign: TextAlign? = null,
-    titleThreshold: Int = PlayerFadeConfig.forStyle(PlayerDesignStyle.V1).titleMinChars,
     fadeWidth: Dp = 24.dp,
 ) {
     val annotatedTitle =
@@ -199,42 +199,19 @@ internal fun PlayerTitleText(
             }
         }
 
-    // Fade lives on the BOX (the line's viewport), not the Text. The Text scrolls
-    // with basicMarquee inside the Box; the DstIn gradient masks at the Box's
-    // fixed edges (size.width = viewport width) so the fade stays put while the
-    // text moves underneath — same technique as fadingEdge on the playlist
-    // screen. Applying it to the Text node would mask at the full scroll width
-    // instead and leave the visible edge hard-clipped (the "boxy" look).
-    // Fade shows ONLY while the line is actually scrolling: basicMarquee measures
-    // its child with unbounded width, so hasVisualOverflow never fires — compare
-    // the laid-out text width against the box (viewport) width instead. The
-    // marquee scrolls iff the text is wider than the viewport, so this is
-    // exactly "fade while scrolling", nothing else.
-    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
-    val titleViewportWidth = remember { mutableStateOf(0) }
-    val shouldFade =
-        titleViewportWidth.value > 0 &&
-            (titleLayout.value?.size?.width ?: 0) > titleViewportWidth.value
-    Box(
-        modifier =
-            (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier)
-                .clipToBounds()
-                .onSizeChanged { titleViewportWidth.value = it.width },
-    ) {
-        Text(
-            text = annotatedTitle,
-            inlineContent = inlineContent,
-            color = color,
-            style = style,
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            textAlign = textAlign,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { titleLayout.value = it },
-            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
-        )
-    }
+    // The viewport fade, the marquee and the "only fade while it actually scrolls" measurement all
+    // live in the shared [MarqueeText]; this adds only the inline explicit badge.
+    MarqueeText(
+        text = annotatedTitle,
+        modifier = modifier,
+        style = style,
+        color = color,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        inlineContent = inlineContent,
+        fadeWidth = fadeWidth,
+    )
 }
 
 @Composable
@@ -263,22 +240,6 @@ internal fun PlayerTextBackdrop(
 internal fun Modifier.viewportEdgeFade(
     width: Dp = 24.dp,
 ): Modifier = fadingEdge(horizontal = width)
-
-/**
- * Legacy: edge fade on Text node. Kept for call sites not yet migrated to
- * viewportEdgeFade. Behavior is now identical to viewportEdgeFade (fixed at
- * the node's edges). New code should use viewportEdgeFade on the Box viewport.
- */
-@Composable
-internal fun Modifier.marqueeEdgeFade(
-    layoutState: State<TextLayoutResult?>,
-    width: Dp = 24.dp,
-): Modifier = viewportEdgeFade(width)
-
-@Composable
-internal fun Modifier.marqueeEdgeFade(
-    width: Dp = 24.dp,
-): Modifier = viewportEdgeFade(width)
 
 @Composable
 fun PlayerTitleSection(
@@ -311,7 +272,6 @@ fun PlayerTitleSection(
                     color = textBackgroundColor,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    titleThreshold = PlayerFadeConfig.forStyle(playerDesignStyle).titleMinChars,
                     fadeWidth = PlayerFadeConfig.forStyle(playerDesignStyle).fadeWidth,
                     modifier =
                         Modifier
