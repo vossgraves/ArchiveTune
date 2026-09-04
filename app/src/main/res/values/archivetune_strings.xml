@@ -352,6 +352,10 @@
     <string name="player_design_bitchord">BitChord</string>
     <string name="player_design_tiktok">TikTok</string>
     <string name="player_design_simpmusic">SimpMusic</string>
+    <string name="collapse">Collapse</string>
+    <string name="published_on">Published on %1$s</string>
+    <string name="view_count_value">%1$s views</string>
+    <string name="like_and_dislike">%1$s like(s), %2$s dislike(s)</string>
     <string name="simpmusic_lyrics">SimpMusic lyrics</string>
     <string name="simpmusic_lyrics_desc">Use SimpMusic’s lyrics view instead of Enhanced.</string>
     <string name="player_design_apple_music">Apple Music</string>
