@@ -184,12 +184,20 @@ fun <T> rememberPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    // Seeded from the in-memory snapshot, not from [defaultValue]. DataStore's flow is
+    // asynchronous, so seeding with the default paints one frame of the default before the stored
+    // value arrives — visible as a flash of the wrong screen whenever a preference chooses WHICH ui
+    // to show (the Home tab briefly rendering the YouTube page before the stored Spotify one).
+    // [PreferenceStore] keeps a hot copy of the whole Preferences object for exactly this, so the
+    // first frame is already correct; the fallback still applies before the store has loaded.
+    val initial = remember { PreferenceStore.get(key) ?: defaultValue }
+
     val state =
         remember {
             context.dataStore.data
                 .map { it[key] ?: defaultValue }
                 .distinctUntilChanged()
-        }.collectAsStateWithLifecycle(initialValue = defaultValue)
+        }.collectAsStateWithLifecycle(initialValue = initial)
 
     return remember {
         object : MutableState<T> {
@@ -215,12 +223,15 @@ inline fun <reified T : Enum<T>> rememberEnumPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    // See [rememberPreference] — same first-frame seeding, same reason.
+    val initial = remember { PreferenceStore.get(key).toEnum(defaultValue = defaultValue) }
+
     val state =
         remember {
             context.dataStore.data
                 .map { it[key].toEnum(defaultValue = defaultValue) }
                 .distinctUntilChanged()
-        }.collectAsStateWithLifecycle(initialValue = defaultValue)
+        }.collectAsStateWithLifecycle(initialValue = initial)
 
     return remember {
         object : MutableState<T> {

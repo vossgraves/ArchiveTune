@@ -224,10 +224,6 @@ fun SpotifyHomeScreen(
                         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        item(key = "home_source_switcher", contentType = "source_switcher") {
-                            HomeSourceSwitcher(modifier = Modifier.animateItem())
-                        }
-
                         item(key = "spotify_recent_panel", contentType = "recent_panel") {
                             SpotifyRecentPanel(
                                 recentItems = state.recentItems,

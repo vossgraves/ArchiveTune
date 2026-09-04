@@ -7,26 +7,15 @@
 
 package moe.rukamori.archivetune.ui.screens
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HomeSource
@@ -36,9 +25,9 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
 /**
- * True when the Home tab has two pages to offer. The switcher and the Spotify page both hang off
- * this: with no Spotify session there is only the YouTube home, and a switcher with one option is
- * just clutter.
+ * True when the Home tab has two pages to offer. The toggle and the Spotify page both hang off
+ * this: with no Spotify session there is only the YouTube home, and a toggle with one destination
+ * is just clutter.
  */
 @Composable
 fun rememberHomeSourceAvailable(): Boolean {
@@ -57,58 +46,40 @@ fun rememberHomeSource(): HomeSource {
     return if (stored == HomeSource.SPOTIFY && !rememberHomeSourceAvailable()) HomeSource.YOUTUBE else stored
 }
 
-/** Matches the 18dp Material 3 uses inside a segmented button's label. */
-private val IconSize = 18.dp
+/** Matches the account avatar this sits beside, so the two read as one pair of controls. */
+private val ToggleIconSize = 20.dp
 
 /**
- * Switches the Home tab between the YouTube and Spotify pages.
+ * The Home tab's source toggle, sized for the top app bar and meant to sit immediately left of the
+ * account avatar.
  *
- * Rendered as the first row inside each home's own scrolling content rather than as a bar above
- * both: each screen already owns its Scaffold, insets and scroll behaviour, and hoisting the
- * switcher above them would mean restructuring both to hand that back.
+ * It shows the logo of the page it will take you TO, not the one you are on. The icon is a
+ * destination the way a "switch account" chip is: labelling it with the current source would make
+ * a button that looks like a status readout, and the user already knows which page they are
+ * looking at.
+ *
+ * Renders nothing without a Spotify session — [rememberHomeSourceAvailable] — so signed-out users
+ * get the plain avatar rather than a control with one destination.
  */
 @Composable
-fun HomeSourceSwitcher(modifier: Modifier = Modifier) {
+fun HomeSourceToggleButton(modifier: Modifier = Modifier) {
     if (!rememberHomeSourceAvailable()) return
 
     var source by rememberEnumPreference(HomeSourceKey, defaultValue = HomeSource.YOUTUBE)
-    val options = HomeSource.entries
+    val target = if (source == HomeSource.SPOTIFY) HomeSource.YOUTUBE else HomeSource.SPOTIFY
 
-    SingleChoiceSegmentedButtonRow(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp)
-                .padding(vertical = 8.dp),
+    IconButton(
+        onClick = { source = target },
+        modifier = modifier,
     ) {
-        options.forEachIndexed { index, option ->
-            SegmentedButton(
-                selected = source == option,
-                onClick = { source = option },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                icon = {},
-                label = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            painter = painterResource(option.iconResId()),
-                            contentDescription = null,
-                            // Sized explicitly: spotify_icon is a 1438x1425 PNG, and an Icon with
-                            // no size constraint draws its painter at intrinsic size — roughly
-                            // 520dp, which swallowed the row and squeezed the label into a
-                            // one-character-wide column.
-                            modifier = Modifier.size(IconSize),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(option.labelResId()),
-                            style = MaterialTheme.typography.labelLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-            )
-        }
+        Icon(
+            painter = painterResource(target.iconResId()),
+            contentDescription =
+                stringResource(R.string.home_source_switch_to, stringResource(target.labelResId())),
+            // Sized explicitly: spotify_icon is a 1438x1425 PNG, and an Icon with no size
+            // constraint draws its painter at intrinsic size — roughly 520dp.
+            modifier = Modifier.size(ToggleIconSize),
+        )
     }
 }
 

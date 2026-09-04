@@ -364,62 +364,75 @@ class BottomSheetState(
         }
     }
 
-    val preUpPostDownNestedScrollConnection
-        get() =
-            object : NestedScrollConnection {
-                var isTopReached = false
+    /**
+     * One instance per sheet, deliberately — this used to be a `get()` that minted a fresh
+     * connection on every read.
+     *
+     * `isTopReached` is per-GESTURE state: it latches when the inner scrollable can give no more,
+     * and it is what lets the rest of that same drag pull the sheet down. Call sites write
+     * `Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)`, which re-reads the
+     * property on every recomposition — so a new object arrived mid-drag, `nestedScroll` swapped
+     * it in, and the latch reset to false. The drag then finished scrolling nothing and the sheet
+     * never collapsed. Only the SimpMusic style showed it, because it is the only player style
+     * with a full-page `verticalScroll` inside the sheet; everywhere else the drag reaches the
+     * sheet's own draggable without passing through here.
+     */
+    val preUpPostDownNestedScrollConnection: NestedScrollConnection by lazy {
+        object : NestedScrollConnection {
+            var isTopReached = false
 
-                override fun onPreScroll(
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset {
-                    if (isExpanded && available.y < 0) {
-                        isTopReached = false
-                    }
-
-                    return if (isTopReached && available.y < 0 && source == NestedScrollSource.UserInput) {
-                        dispatchRawDelta(available.y)
-                        available
-                    } else {
-                        Offset.Zero
-                    }
-                }
-
-                override fun onPostScroll(
-                    consumed: Offset,
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset {
-                    if (!isTopReached) {
-                        isTopReached = consumed.y == 0f && available.y > 0
-                    }
-
-                    return if (isTopReached && source == NestedScrollSource.UserInput) {
-                        dispatchRawDelta(available.y)
-                        available
-                    } else {
-                        Offset.Zero
-                    }
-                }
-
-                override suspend fun onPreFling(available: Velocity): Velocity =
-                    if (isTopReached) {
-                        val velocity = -available.y
-                        performFling(velocity, null)
-
-                        available
-                    } else {
-                        Velocity.Zero
-                    }
-
-                override suspend fun onPostFling(
-                    consumed: Velocity,
-                    available: Velocity,
-                ): Velocity {
+            override fun onPreScroll(
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (isExpanded && available.y < 0) {
                     isTopReached = false
-                    return Velocity.Zero
+                }
+
+                return if (isTopReached && available.y < 0 && source == NestedScrollSource.UserInput) {
+                    dispatchRawDelta(available.y)
+                    available
+                } else {
+                    Offset.Zero
                 }
             }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (!isTopReached) {
+                    isTopReached = consumed.y == 0f && available.y > 0
+                }
+
+                return if (isTopReached && source == NestedScrollSource.UserInput) {
+                    dispatchRawDelta(available.y)
+                    available
+                } else {
+                    Offset.Zero
+                }
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity =
+                if (isTopReached) {
+                    val velocity = -available.y
+                    performFling(velocity, null)
+
+                    available
+                } else {
+                    Velocity.Zero
+                }
+
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity {
+                isTopReached = false
+                return Velocity.Zero
+            }
+        }
+    }
 }
 
 const val EXPANDED_ANCHOR = 2

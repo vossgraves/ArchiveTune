@@ -146,6 +146,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import moe.rukamori.archivetune.ui.screens.HomeSourceToggleButton
 import moe.rukamori.archivetune.ui.screens.HomeTopFadeBlur
 import moe.rukamori.archivetune.ui.screens.LocalHomeHazeState
 import dev.chrisbanes.haze.HazeState
@@ -2399,6 +2400,14 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 actions = {
+                                                    // Home only, and only with a Spotify session:
+                                                    // the toggle swaps which home page the tab
+                                                    // shows, which means nothing anywhere else.
+                                                    // Sits left of the avatar, and carries the
+                                                    // logo of the page it switches TO.
+                                                    if (isHomeRoute) {
+                                                        HomeSourceToggleButton()
+                                                    }
                                                     Box(
                                                         modifier = Modifier.padding(end = 4.dp),
                                                     ) {

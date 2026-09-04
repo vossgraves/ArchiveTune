@@ -135,7 +135,7 @@ fun NavGraphBuilder.navigationBuilder(
 ) {
     composable(Screens.Home.route) {
         // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
-        // HomeSourceSwitcher that both of them render. They are not layered: whichever is showing
+        // HomeSourceToggleButton in the top app bar. They are not layered: whichever is showing
         // owns the tab, keeps its own layout style, and leaves the other one exactly as it was.
         // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
         if (rememberHomeSource() == HomeSource.SPOTIFY) {

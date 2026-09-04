@@ -277,6 +277,13 @@ fun SimpMusicPlayerContent(
         snapshotFlow { scrollState.value > 0 }.first { it }
         hasScrolled = true
     }
+    // Reopening the player must land on the hero, not two screens down where it was left. Keyed on
+    // `isExpandedOrExpanding` rather than `isExpanded` so this fires the moment the collapse starts
+    // — by the time the sheet has finished shrinking there is nothing left to hide the jump.
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding) scrollState.scrollTo(0)
+    }
+
     var queueOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = queueOpen) { queueOpen = false }
 
@@ -312,7 +319,15 @@ fun SimpMusicPlayerContent(
                     // Gated on the sheet being expanded, so a drag on the collapsed mini-player is
                     // never eaten by this. Up-drags at the top still reach the sheet through the
                     // nested-scroll connection the caller attached.
-                    .verticalScroll(scrollState, enabled = state.isExpanded),
+                    //
+                    // `isExpandedOrExpanding`, NOT `isExpanded`: the latter is exact equality with
+                    // the upper bound, so the first pixel of a drag that pulls the sheet down makes
+                    // it false and disables this scrollable MID-GESTURE. The drag it owned is
+                    // cancelled with it, the sheet stops receiving deltas through onPostScroll, and
+                    // onPreFling never runs — leaving the sheet stranded part-way instead of
+                    // collapsing. The anchor stays EXPANDED for the whole drag and only flips when
+                    // the fling resolves, which is exactly the window this needs to stay alive for.
+                    .verticalScroll(scrollState, enabled = state.isExpandedOrExpanding),
         ) {
             // ── HERO: exactly one screen ─────────────────────────────────────────────────────
             Box(modifier = Modifier.fillMaxWidth().height(screenHeight)) {
@@ -458,6 +473,9 @@ fun SimpMusicPlayerContent(
                 mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
                 playerConnection = playerConnection,
+                // The hero's own chevron has scrolled away by the time this appears, so the
+                // toolbar has to carry one: without it the only way back is the system gesture.
+                onCollapse = state::collapseSoft,
                 containerColor = lerp(startColor, Color.Black, 0.18f),
             )
         }
@@ -1338,6 +1356,7 @@ private fun SimpMusicStickyToolbar(
     mediaMetadata: MediaMetadata,
     isPlaying: Boolean,
     playerConnection: PlayerConnection,
+    onCollapse: () -> Unit,
     containerColor: Color,
 ) {
     val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
@@ -1353,9 +1372,16 @@ private fun SimpMusicStickyToolbar(
             modifier =
                 Modifier
                     .padding(WindowInsets.statusBars.asPaddingValues())
-                    .padding(start = Gutter, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconButton(onClick = onCollapse) {
+                Icon(
+                    painter = painterResource(R.drawable.player_expand_more),
+                    contentDescription = stringResource(R.string.collapse),
+                    tint = Color.White,
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = mediaMetadata.title,
