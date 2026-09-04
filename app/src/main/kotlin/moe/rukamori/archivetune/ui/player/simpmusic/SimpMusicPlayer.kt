@@ -43,6 +43,11 @@
 package moe.rukamori.archivetune.ui.player.simpmusic
 
 import androidx.activity.compose.BackHandler
+import moe.rukamori.archivetune.ui.player.viewportEdgeFade
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.clipToBounds
 import moe.rukamori.archivetune.ui.menu.AddToPlaylistDialog
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -153,7 +158,6 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.player.AppleMusicQueueSheet
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
 import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
-import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -171,8 +175,11 @@ private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
 /** SimpMusic's accent, the tint its shuffle and repeat take when active. */
 private val Seed = Color(0xFF8ECAE6)
 
-/** Lyrics inside the 300dp card, not on a full screen — the renderers' own default is far too big. */
-private const val CARD_LYRICS_SIZE_SP = 16f
+/**
+ * Lyrics inside the 300dp card, not on a full screen. The renderers' own default (26sp) fits about
+ * four words in the box; 16sp overcorrected and read as fine print, so this sits between them.
+ */
+private const val CARD_LYRICS_SIZE_SP = 21f
 
 /** Side gutter for everything below the artwork, and for the cards. */
 private val Gutter = 20.dp
@@ -216,9 +223,10 @@ fun SimpMusicPlayerContent(
         remember(mediaMetadata.id, mediaMetadata.thumbnailUrl) {
             mediaMetadata.thumbnailUrl?.highRes()
         }
-    val palette = rememberMeshPalette(artUrl)
-    val startColor = palette.colors.getOrNull(0) ?: Backdrop
-    val endColor = palette.colors.getOrNull(1) ?: lerp(startColor, Backdrop, 0.6f)
+    // SimpMusic ramps ONE colour into the backdrop — dark vibrant, resolving into the ground —
+    // rather than blending two palette tones. Ramping to a second palette colour, which is what
+    // this did, never resolves into the surface below and reads as a flat two-tone poster.
+    val startColor = rememberSimpMusicWashColor(artUrl)
 
     // The two lower cards are YouTube facts about the track, and only a YouTube id can produce
     // them. Gated on the id SHAPE rather than fired blindly: a Tidal, Qobuz, Spotify or local id
@@ -269,7 +277,7 @@ fun SimpMusicPlayerContent(
                 Modifier
                     .fillMaxSize()
                     .background(Backdrop)
-                    .simpMusicHeroWash(startColor, endColor, screenHeightPx)
+                    .simpMusicHeroWash(startColor, screenHeightPx)
                     // Gated on the sheet being expanded, so a drag on the collapsed mini-player is
                     // never eaten by this. Up-drags at the top still reach the sheet through the
                     // nested-scroll connection the caller attached.
@@ -448,15 +456,17 @@ fun SimpMusicPlayerContent(
  */
 private fun Modifier.simpMusicHeroWash(
     start: Color,
-    end: Color,
     screenHeightPx: Float,
 ): Modifier =
     this.drawBehind {
         val area = Size(size.width, screenHeightPx)
         drawRect(
             brush =
+                // CW135: top-left to bottom-right, SimpMusic's GradientAngle. The far end is the
+                // BACKDROP, so the ramp lands on the same colour the fade below and the area past
+                // the hero use, and the glow resolves into the surface instead of a colour seam.
                 Brush.linearGradient(
-                    colors = listOf(start, end),
+                    colors = listOf(start, Backdrop),
                     start = Offset.Zero,
                     end = Offset(size.width, screenHeightPx),
                 ),
@@ -698,25 +708,18 @@ private fun SimpMusicTrackInfoRow(
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            SimpMusicMarqueeText(
                 text = mediaMetadata.title,
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
-                maxLines = 1,
-                modifier =
-                    Modifier.basicMarquee(
-                        iterations = Int.MAX_VALUE,
-                        animationMode = MarqueeAnimationMode.Immediately,
-                    ),
             )
             Spacer(Modifier.height(3.dp))
-            Text(
+            SimpMusicMarqueeText(
                 text = mediaMetadata.artists.joinToString { it.name },
-                style = MaterialTheme.typography.bodyMedium,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Normal,
                 color = Color.White.copy(alpha = 0.66f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         IconButton(onClick = { showPlaylistDialog = true }, modifier = Modifier.size(36.dp)) {
@@ -739,6 +742,49 @@ private fun SimpMusicTrackInfoRow(
                 modifier = Modifier.size(32.dp),
             )
         }
+    }
+}
+
+/**
+ * One marquee line with the same edge fade every other player style uses.
+ *
+ * The fade sits on the BOX (the line's viewport), not the Text: the Text scrolls inside it, so a
+ * mask on the Text would travel with the glyphs and leave the visible edge hard-clipped — the boxy
+ * cut this style had. [viewportEdgeFade] is the shared helper PlayerComponents applies for exactly
+ * this, and as there it is only applied while the line actually overflows, because basicMarquee
+ * measures its child unbounded so `hasVisualOverflow` never fires.
+ */
+@Composable
+private fun SimpMusicMarqueeText(
+    text: String,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    fontWeight: FontWeight,
+    color: Color,
+) {
+    val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    val viewportWidth = remember { mutableStateOf(0) }
+    val shouldFade = viewportWidth.value > 0 && (layout.value?.size?.width ?: 0) > viewportWidth.value
+
+    Box(
+        modifier =
+            (if (shouldFade) Modifier.viewportEdgeFade(24.dp) else Modifier)
+                .clipToBounds()
+                .onSizeChanged { viewportWidth.value = it.width },
+    ) {
+        Text(
+            text = text,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { layout.value = it },
+            modifier =
+                Modifier.fillMaxWidth().basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    animationMode = MarqueeAnimationMode.Immediately,
+                ),
+        )
     }
 }
 
