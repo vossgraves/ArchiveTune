@@ -183,6 +183,11 @@ import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.ui.player.MeshBackdrop
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.ui.component.LyricsV2
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.runtime.MutableFloatState
@@ -1264,29 +1269,60 @@ fun BitChordPlayerContent(
                 }
 
                 if (lyricsOpen) {
-                    LyricsPanel(
-                        lines = lyrics.orEmpty(),
-                        positionMs = lyricsPosition,
-                        isPlaying = isPlaying,
-                        onSeekToLine = { player.seekTo(it) },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = HEADER_HEIGHT + 10.dp)
-                            // Arrives once the sleeve has finished collapsing
-                            // into the header, the same beat the queue below
-                            // already waits for — fading lyrics in over a
-                            // sleeve still mid-collapse doubled the same
-                            // movement in two places on screen at once.
-                            .graphicsLayer {
-                                alpha = ((p - 0.45f) / 0.55f).coerceIn(0f, 1f)
-                                translationY = (1f - p) * 26.dp.toPx()
-                            },
-                        // Plain untimestamped lyrics: no sweep / follow / seek.
-                        synced = lyricsSynced,
-                        // Romanisation + translation engines key off these.
-                        mediaId = mediaMetadata.id,
-                        rawLyrics = lyricsEntity?.lyrics,
-                    )
+                    // The app's own lyrics view, in whichever style the Lyrics settings select —
+                    // the same component every other player style opens.
+                    //
+                    // BitChord shipped its own panel, which swept the highlight through a line by
+                    // fractional CHARACTER index: within a word it interpolated linearly across
+                    // that word's span, so the light crept through the middle of letters instead of
+                    // landing on words. It also ignored the lyrics-style preference outright, so
+                    // choosing Enhanced or Spotify changed every surface in the app except this
+                    // one. Routing to the shared renderer fixes both, and drops ~450 lines of a
+                    // second implementation of scrolling, follow, tap-to-seek and romanisation.
+                    //
+                    // The one-line strip on the collapsed player keeps BitChord's sweep: it shows a
+                    // single line with no list around it, which is what that treatment was for.
+                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.V2)
+                    val panelModifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = HEADER_HEIGHT + 10.dp)
+                        // Arrives once the sleeve has finished collapsing into the header, the
+                        // same beat the queue below already waits for — fading lyrics in over a
+                        // sleeve still mid-collapse doubled the same movement in two places on
+                        // screen at once.
+                        .graphicsLayer {
+                            alpha = ((p - 0.45f) / 0.55f).coerceIn(0f, 1f)
+                            translationY = (1f - p) * 26.dp.toPx()
+                        }
+                    // Null unless the user is scrubbing, matching LyricsScreen: the renderers run
+                    // their own frame clock off the player, and a polled position would step.
+                    val lyricsPositionProvider = remember { { null as Long? } }
+                    when (lyricsMode) {
+                        LyricsMode.ENHANCED ->
+                            LyricsEnhanced(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
+                            )
+
+                        LyricsMode.SPOTIFY ->
+                            LyricsV2(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
+                                spotifyStyle = true,
+                            )
+
+                        LyricsMode.V2 ->
+                            LyricsV2(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
+                            )
+                    }
                 }
 
                 // Toggles and the queue arrive after the sleeve has finished
