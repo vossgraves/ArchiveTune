@@ -191,7 +191,7 @@ private val LyricsSwipeDismissThreshold = 96.dp
  * LazyListState internally) to [LyricsScreen] without changing every signature along the way.
  *
  * Default value is a no-op. [LyricsScreen] supplies a real setter that flips
- * `isUserScrollingLyrics`, which is OR'd into `controlsVisible` / `controlsExpanded` so the
+ * `isUserScrollingLyrics`, which the controls no longer consume — they are always visible now.
  * bottom controls slide in when the user scrolls lyrics — even when the
  * "Show lyrics player controls" preference is OFF.
  */

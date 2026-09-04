@@ -1283,7 +1283,7 @@ fun BitChordPlayerContent(
                     //
                     // The one-line strip on the collapsed player keeps BitChord's sweep: it shows a
                     // single line with no list around it, which is what that treatment was for.
-                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.V2)
+                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
                     val panelModifier = Modifier
                         .fillMaxSize()
                         .padding(top = HEADER_HEIGHT + 10.dp)

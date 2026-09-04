@@ -2264,21 +2264,11 @@ class MainActivity : ComponentActivity() {
                                                 else -> topAppBarScrollBehavior
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
-                                        // BitChord home redesign (2026-09-03): the Home route's bar is
-                                        // pinned — content scrolls under it into a progressive blur —
-                                        // while its bar title fades in only once the list is scrolled
-                                        // (the big in-list greeting owns the title at rest).
+                                        // Home keeps its bar pinned so content scrolls under it into
+                                        // the progressive blur. The title stays put with it — see the
+                                        // note on AutoResizeText below for why the fade that came with
+                                        // this design was wrong here.
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
-                                        val homeBarScrolled by remember(isHomeRoute) {
-                                            derivedStateOf {
-                                                homeScrollBehavior.state.collapsedFraction > 0.05f
-                                            }
-                                        }
-                                        val homeBarTitleAlpha by animateFloatAsState(
-                                            targetValue = if (isHomeRoute && homeBarScrolled) 1f else 0f,
-                                            animationSpec = tween(220),
-                                            label = "homeBarTitleAlpha",
-                                        )
 
                                         var headerHeightPx by remember { mutableIntStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
@@ -2389,11 +2379,14 @@ class MainActivity : ComponentActivity() {
                                                                     .size(35.dp)
                                                                     .padding(end = 3.dp),
                                                         )
-                                                        // On Home the bar title only exists while
-                                                        // scrolled: the big in-list greeting owns the
-                                                        // page title at rest, and the app name fades
-                                                        // in over the blur once the list moves. Every
-                                                        // other route keeps it at full opacity.
+                                                        // Always visible, on Home too. The BitChord
+                                                        // design this came from fades the bar title in
+                                                        // only once scrolled, because there the big
+                                                        // in-list header IS the page title and the two
+                                                        // would otherwise say the same thing twice.
+                                                        // Ours is a greeting — "Good morning, <name>" —
+                                                        // so fading the bar title left nothing on the
+                                                        // home screen naming the app at all.
                                                         AutoResizeText(
                                                             text = stringResource(R.string.app_name),
                                                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
@@ -2401,12 +2394,7 @@ class MainActivity : ComponentActivity() {
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Visible,
                                                             softWrap = true,
-                                                            modifier =
-                                                                Modifier
-                                                                    .weight(1f, fill = false)
-                                                                    .graphicsLayer {
-                                                                        alpha = if (isHomeRoute) homeBarTitleAlpha else 1f
-                                                                    },
+                                                            modifier = Modifier.weight(1f, fill = false),
                                                         )
                                                     }
                                                 },
