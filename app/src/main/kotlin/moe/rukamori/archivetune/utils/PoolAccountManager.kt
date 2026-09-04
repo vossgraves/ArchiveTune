@@ -251,27 +251,22 @@ object PoolAccountManager {
     ): List<T> = accounts.sortedWith(compareBy({ isCoolingDown(service, idOf(it)) }, { !premiumOf(it) }))
 
     fun tidalAccounts(): List<TidalPoolAccount> =
-        ordered("tidal", tidalCache + PasteListPoolSource.tidalAccounts(), { it.id }, { it.premium })
+        ordered("tidal", tidalCache, { it.id }, { it.premium })
 
     fun qobuzAccounts(): List<QobuzPoolAccount> =
-        ordered("qobuz", qobuzCache + PasteListPoolSource.qobuzAccounts(), { it.id }, { it.premium })
+        ordered("qobuz", qobuzCache, { it.id }, { it.premium })
 
     fun deezerAccounts(): List<DeezerPoolAccount> =
-        ordered("deezer", deezerCache + PasteListPoolSource.deezerAccounts(), { it.id }, { it.premium })
+        ordered("deezer", deezerCache, { it.id }, { it.premium })
 
-    fun appleMusicAccounts(): List<AppleMusicPoolAccount> = (appleMusicCache + PasteListPoolSource.appleMusicAccounts()).sortedByDescending { it.premium }
+    fun appleMusicAccounts(): List<AppleMusicPoolAccount> = appleMusicCache.sortedByDescending { it.premium }
 
     fun hasAccounts(): Boolean =
-        tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() || appleMusicCache.isNotEmpty() ||
-            PasteListPoolSource.tidalAccounts().isNotEmpty() || PasteListPoolSource.qobuzAccounts().isNotEmpty() ||
-            PasteListPoolSource.deezerAccounts().isNotEmpty() || PasteListPoolSource.appleMusicAccounts().isNotEmpty()
+        tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() || appleMusicCache.isNotEmpty()
 
     /** True when every pooled service has at least one account, i.e. nothing is left to discover. */
     private fun hasEveryService(): Boolean =
-        (tidalCache.isNotEmpty() || PasteListPoolSource.tidalAccounts().isNotEmpty()) &&
-            (qobuzCache.isNotEmpty() || PasteListPoolSource.qobuzAccounts().isNotEmpty()) &&
-            (deezerCache.isNotEmpty() || PasteListPoolSource.deezerAccounts().isNotEmpty()) &&
-            (appleMusicCache.isNotEmpty() || PasteListPoolSource.appleMusicAccounts().isNotEmpty())
+        tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
     /**
      * How long a non-forced [refresh] may be skipped for. Full caches are re-read once a day; a
@@ -291,7 +286,6 @@ object PoolAccountManager {
         appContext = context.applicationContext
         withContext(Dispatchers.IO) {
             runCatching {
-                PasteListPoolSource.loadCached(context)
                 // The persisted cache stores DECRYPTED plaintext JSON (PoolCacheCrypto handles the
                 // at-rest layer), so the parse-time decryptor is a pure pass-through.
                 val passthrough: (String) -> String? = { raw -> raw }
@@ -330,9 +324,7 @@ object PoolAccountManager {
     ): Boolean =
         withContext(Dispatchers.IO) {
             appContext = context.applicationContext
-            // Paste lists work with no Source Pool URL baked in — only skip when there is
-            // neither a pool URL nor any paste-list URL configured.
-            if (!isEnabled && !PasteListPoolSource.hasUrls(context)) return@withContext false
+            if (!isEnabled) return@withContext false
             loadCached(context)
 
             val now = System.currentTimeMillis()
@@ -347,10 +339,9 @@ object PoolAccountManager {
                 }
                 val url = accountsUrl ?: legacySourcesUrl
                 if (url == null) {
-                    // No Source Pool URL baked in — paste lists are the only account source, so
-                    // there is no pool failure to report.
+                    // isEnabled already guarantees a URL, so this only guards the impossible.
                     lastFeedError = null
-                    Timber.tag(TAG).d("No Source Pool URL configured; refreshing paste lists only")
+                    Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
                     // A key pasted by the user on-device (pool site /dashboard → copy) wins over
                     // the CI-baked build key, so personal accounts work without a custom APK.
@@ -414,11 +405,6 @@ object PoolAccountManager {
                         }
                 } // else (pool URL configured)
 
-                // Second source: user-configured community paste lists (rentry/gist tables).
-                // Runs inside the same mutex so the settings refresh button covers both.
-                runCatching {
-                    PasteListPoolSource.refresh(context, force = force)
-                }.onFailure { Timber.tag(TAG).w(it, "Paste-list refresh failed") }
                 hasAccounts()
             }
         }

@@ -593,11 +593,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            // Per-source audio quality (Tidal / Qobuz / Apple Music / Deezer / JioSaavn).
-            // Shares preference keys with Settings → Sources, so both views stay in sync.
-            // The YouTube-quality picker above (audio_quality) covers YouTube.
-            PlaybackQualitySections(positions)
-
             PreferenceGroup(
                 modifier = positions.modifierFor("archive_tune_canvas"),
                 title = stringResource(R.string.tidal_artwork),
