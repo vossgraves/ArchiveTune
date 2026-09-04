@@ -46,6 +46,13 @@ val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
 val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
+/**
+ * Whether the Apple Music player style plays moving artwork — a Spotify Canvas loop, or the music
+ * video when the song has one — in place of the still cover. Default true: that is how the style
+ * has always behaved, and the setting exists to be able to turn it off, not to change the default.
+ */
+val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtwork")
+
 val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
@@ -1284,22 +1291,6 @@ val InnerTubeOAuthRefreshTokenKey = stringPreferencesKey("innerTubeOAuthRefreshT
 /** Epoch millis at which [InnerTubeOAuthTokenKey] expires, so a refresh happens before a 401. */
 val InnerTubeOAuthExpiresAtKey = longPreferencesKey("innerTubeOAuthExpiresAt")
 
-/**
- * Google account chosen from the system picker, when signed in via microG / Play Services.
- *
- * Set means the token in [InnerTubeOAuthTokenKey] came from AccountManager rather than the device
- * flow, and so is refreshed by asking the authenticator again instead of with a refresh token —
- * AccountManager never gives one out. See GmsAccountRepository.
- */
-val GmsAccountNameKey = stringPreferencesKey("gmsAccountName")
-
-/**
- * Which authenticator issued the session — `app.revanced` for ReVanced GmsCore, `com.mgoogle` for
- * Vanced-era microG, `com.google` for microG installed in Play Services' place. Stored because a
- * silent refresh has to invalidate and re-request against the same one, and a device can host more
- * than one.
- */
-val GmsAccountTypeKey = stringPreferencesKey("gmsAccountType")
 val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")

@@ -17,7 +17,6 @@ import moe.rukamori.archivetune.constants.AccountEmailKey
 import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
-import moe.rukamori.archivetune.constants.GmsAccountNameKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.InnerTubeOAuthExpiresAtKey
 import moe.rukamori.archivetune.constants.InnerTubeOAuthRefreshTokenKey
@@ -63,7 +62,6 @@ fun MutablePreferences.clearPlaybackAuthSession(clearAccountIdentity: Boolean = 
     remove(InnerTubeOAuthTokenKey)
     remove(InnerTubeOAuthRefreshTokenKey)
     remove(InnerTubeOAuthExpiresAtKey)
-    remove(GmsAccountNameKey)
     if (clearAccountIdentity) {
         remove(AccountNameKey)
         remove(AccountImageUrlKey)

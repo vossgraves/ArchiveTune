@@ -472,10 +472,6 @@ fun BitChordPlayerContent(
 
     val reduceAnimations = LocalAnimationsDisabled.current
 
-    // ArchiveTune's codec/quality readout stands in for BitChord's nerd stats.
-    val (showCodecOnPlayer) =
-        rememberPreference(booleanPreferencesKey("show_codec_on_player"), false)
-
     // ── Lyrics, out of ArchiveTune's database ──
     // The music service stores (and backfills) fetched lyrics with their
     // provider name; LYRICS_NOT_FOUND marks a lookup that came back empty.
@@ -1160,41 +1156,11 @@ fun BitChordPlayerContent(
                         )
                     }
 
-                    // Measured stats, pinned to the sleeve's own bottom-centre
-                    // rather than squeezed under the seek bar with the
-                    // "Lossless" badge — the badge is a claim, this is the
-                    // evidence. Fades out with the sleeve as it collapses to a
-                    // thumbnail, where there's no room to read it anyway.
-                    if (showCodecOnPlayer && currentFormat != null && p < 0.5f) {
-                        // A plain white line reads fine over the usual dark
-                        // tile, but a light stretch of a cover — sky, snow, a
-                        // pale sleeve — washes it out entirely. The shadow costs
-                        // nothing on a dark background and is what keeps it
-                        // legible on a bright one.
-                        val nerdStyle = MaterialTheme.typography.labelSmall.copy(
-                            shadow = androidx.compose.ui.graphics.Shadow(
-                                color = Color.Black.copy(alpha = 0.55f),
-                                offset = Offset(0f, 1f),
-                                blurRadius = 4f,
-                            ),
-                        )
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
-                                .graphicsLayer { alpha = 1f - p * 2f },
-                        ) {
-                            Text(
-                                text = currentFormat.describe(),
-                                style = nerdStyle,
-                                color = Color.White.copy(alpha = 0.65f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
+                    // The measured codec/quality line used to be drawn here too, pinned to the
+                    // sleeve's bottom edge. It read as a caption floating loose over the artwork,
+                    // anchored to nothing the eye could see, and it duplicated LosslessOrStats in
+                    // the transport row below — which is where the same information already sits,
+                    // in a slot that visibly holds it.
                 }
 
                 // Sits in the gap under the sleeve, clear of its rounded

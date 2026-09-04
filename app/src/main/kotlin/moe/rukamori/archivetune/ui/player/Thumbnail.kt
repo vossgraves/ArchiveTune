@@ -154,14 +154,17 @@ fun Thumbnail(
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V4,
     )
-    // Editorial (V10) is the one style that opts out: its bento layout gives the artwork a
-    // fixed slot the three-line pane does not fit. Apple Music never reaches this composable —
-    // it draws its own artwork and wires the pane itself (see AppleMusicPlayer).
+    // Styles that opt out of the three-line pane, because their artwork slot is not a plain
+    // square the pane can stand in for: Editorial's (V10) bento layout and Minimal's (V3)
+    // compact one both gave it a box it did not fit, and it rendered broken in both. Apple
+    // Music opted out for the same reason and never reaches this composable anyway — it draws
+    // its own artwork.
     val inlineLyricsAvailable =
         showLyricsOnPlayer &&
             isPlayerExpanded &&
             inlineLines.isNotEmpty() &&
-            playerDesignStyle != PlayerDesignStyle.V10
+            playerDesignStyle != PlayerDesignStyle.V10 &&
+            playerDesignStyle != PlayerDesignStyle.V3
     val (maxCanvasCacheSize, _) =
         rememberPreference(
             key = MaxCanvasCacheSizeKey,

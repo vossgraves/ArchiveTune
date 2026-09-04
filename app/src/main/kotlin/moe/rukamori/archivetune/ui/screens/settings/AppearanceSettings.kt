@@ -69,6 +69,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
+import moe.rukamori.archivetune.constants.AppleMusicAnimatedArtworkKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
@@ -159,6 +160,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
+        )
+    val (appleMusicAnimatedArtwork, onAppleMusicAnimatedArtworkChange) =
+        rememberPreference(
+            AppleMusicAnimatedArtworkKey,
+            defaultValue = true,
         )
     val (showPlayerVolumeBar, onShowPlayerVolumeBarChange) =
         rememberPreference(
@@ -775,6 +781,23 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                         stringResource(R.string.player_design_tiktok)
                                 }
                             },
+                        )
+                    }
+                }
+
+                // Only for the Apple Music style: it is the one style that plays a Canvas loop or
+                // a music video in the cover's place, so the switch would control nothing anywhere
+                // else. Hidden rather than disabled — a permanently greyed row is a worse
+                // explanation than no row.
+                if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+                    item {
+                        SwitchPreference(
+                            modifier = positions.modifierFor("apple_music_animated_artwork"),
+                            title = { Text(stringResource(R.string.apple_music_animated_artwork)) },
+                            description = stringResource(R.string.apple_music_animated_artwork_desc),
+                            icon = { Icon(painterResource(R.drawable.animation), null) },
+                            checked = appleMusicAnimatedArtwork,
+                            onCheckedChange = onAppleMusicAnimatedArtworkChange,
                         )
                     }
                 }

@@ -99,7 +99,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import moe.rukamori.archivetune.auth.GmsAccountRepository
 import moe.rukamori.archivetune.auth.YouTubeOAuthRepository
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -110,7 +109,6 @@ import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
 import moe.rukamori.archivetune.constants.ForceSyncOnAccountSwitchKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
-import moe.rukamori.archivetune.constants.GmsAccountNameKey
 import moe.rukamori.archivetune.constants.InnerTubeOAuthRefreshTokenKey
 import moe.rukamori.archivetune.constants.SavedAccountsKey
 import moe.rukamori.archivetune.constants.SelectedYtmPlaylistsKey
@@ -182,46 +180,6 @@ fun AccountSettings(
     val (oauthRefreshToken, _) = rememberPreference(InnerTubeOAuthRefreshTokenKey, "")
     val hasOAuthSession = oauthRefreshToken.isNotBlank()
 
-    // microG / Play Services sign-in. Observed the same way and for the same reason as above.
-    // gmsAvailable is false on a device with neither, where the row would only ever fail.
-    val (gmsAccountName, _) = rememberPreference(GmsAccountNameKey, "")
-    val hasGmsSession = gmsAccountName.isNotBlank()
-    // Both microG and real Play Services register the com.google account type, so the row has to
-    // know which one it would actually be talking to: Play Services refuses this token, and saying
-    // so up front beats sending the user through a picker to a failure they cannot act on.
-    val gmsProviders = remember(context) { GmsAccountRepository.providers(context) }
-    val gmsProvider = gmsProviders.firstOrNull()
-    val gmsAvailable = gmsProvider != null
-    val activity = remember(context) { context.findActivity() }
-    val gmsPickerLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val chosen = GmsAccountRepository.accountNameFrom(result.resultCode, result.data) ?: return@rememberLauncherForActivityResult
-            val host = activity ?: return@rememberLauncherForActivityResult
-            val provider = gmsProvider ?: return@rememberLauncherForActivityResult
-            coroutineScope.launch {
-                // Needs the Activity: the first token request shows microG's consent prompt, and
-                // without one AccountManager can only return a token it may already give out.
-                val message =
-                    when (val outcome = GmsAccountRepository.signIn(host, provider, chosen)) {
-                        is GmsAccountRepository.Result.Success -> context.getString(R.string.gms_sign_in_done)
-                        GmsAccountRepository.Result.NeedsConsent -> context.getString(R.string.gms_sign_in_needs_consent)
-                        // The provider died mid-request rather than refusing the account, so the
-                        // fix is on its side — restart it, or take it off battery optimisation —
-                        // not in re-picking an account.
-                        is GmsAccountRepository.Result.Unreachable ->
-                            context.getString(R.string.gms_sign_in_unreachable, provider.label)
-                        // The authenticator's own words. A generic "could not get a token" hid the
-                        // one useful fact — whether this device can do this at all.
-                        is GmsAccountRepository.Result.Failed ->
-                            if (provider.isMicroG) {
-                                context.getString(R.string.gms_sign_in_failed, outcome.reason)
-                            } else {
-                                context.getString(R.string.gms_not_microg_explained)
-                            }
-                    }
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-            }
-        }
     val savedAccounts =
         remember(savedAccountsJson) {
             SavedAccountCollection(decodeSavedAccounts(savedAccountsJson))
@@ -435,9 +393,7 @@ fun AccountSettings(
                     // library and browse need, the device code yields a VR Bearer that only signs
                     // /player. They can be held at the same time, hence the independent rows.
                     val browserRowVisible = !isLoggedIn
-                    val gmsRowVisible = gmsAvailable
-                    val signInRowCount =
-                        (if (browserRowVisible) 1 else 0) + (if (gmsRowVisible) 1 else 0) + 1
+                    val signInRowCount = (if (browserRowVisible) 1 else 0) + 1
                     ExpressiveSectionCard(title = loginLabel) {
                         if (browserRowVisible) {
                             ExpressiveActionRow(
@@ -448,53 +404,6 @@ fun AccountSettings(
                                 index = 0,
                                 count = signInRowCount,
                             )
-                        }
-
-                        if (gmsRowVisible) {
-                            val gmsIndex = if (browserRowVisible) 1 else 0
-                            if (hasGmsSession) {
-                                ExpressiveActionRow(
-                                    icon = painterResource(R.drawable.logout),
-                                    title = stringResource(R.string.gms_sign_out),
-                                    subtitle = gmsAccountName,
-                                    accent = MaterialTheme.colorScheme.error,
-                                    onClick = {
-                                        coroutineScope.launch { GmsAccountRepository.signOut(context) }
-                                    },
-                                    index = gmsIndex,
-                                    count = signInRowCount,
-                                )
-                            } else {
-                                ExpressiveActionRow(
-                                    icon = painterResource(R.drawable.account),
-                                    title = stringResource(R.string.gms_sign_in),
-                                    subtitle =
-                                        stringResource(
-                                            if (gmsProvider?.isMicroG == true) {
-                                                R.string.gms_sign_in_desc
-                                            } else {
-                                                // Named before the tap, not after: on a Play
-                                                // Services device this route cannot succeed.
-                                                R.string.gms_sign_in_no_microg
-                                            },
-                                        ),
-                                    onClick = {
-                                        val provider = gmsProvider ?: return@ExpressiveActionRow
-                                        if (provider.isMicroG) {
-                                            gmsPickerLauncher.launch(GmsAccountRepository.accountPickerIntent(provider))
-                                        } else {
-                                            Toast
-                                                .makeText(
-                                                    context,
-                                                    context.getString(R.string.gms_not_microg_explained),
-                                                    Toast.LENGTH_LONG,
-                                                ).show()
-                                        }
-                                    },
-                                    index = gmsIndex,
-                                    count = signInRowCount,
-                                )
-                            }
                         }
 
                         if (hasOAuthSession) {

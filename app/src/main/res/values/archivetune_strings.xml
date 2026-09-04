@@ -349,6 +349,8 @@
     <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material Extended</string>
     <string name="player_design_v10">Editorial</string>
+    <string name="apple_music_animated_artwork">Animated artwork</string>
+    <string name="apple_music_animated_artwork_desc">Play a song’s Canvas loop or music video in place of the cover.</string>
     <string name="player_design_bitchord">BitChord</string>
     <string name="player_design_tiktok">TikTok</string>
     <string name="player_design_apple_music">Apple Music</string>
@@ -833,15 +835,6 @@
     <string name="yt_oauth_sign_in_desc">Type a short code at google.com/device. No browser sign-in needed.</string>
     <string name="tiktok_feed_fullscreen">Full screen</string>
     <string name="tiktok_feed_exit_fullscreen">Exit full screen</string>
-    <string name="gms_sign_in">Sign in with microG</string>
-    <string name="gms_sign_in_desc">Uses the Google account already on this device.</string>
-    <string name="gms_sign_in_no_microg">Needs microG — Play Services will not issue this token</string>
-    <string name="gms_sign_out">Sign out of the device account</string>
-    <string name="gms_sign_in_done">Signed in with your device account</string>
-    <string name="gms_sign_in_failed">Sign-in failed: %1$s</string>
-    <string name="gms_sign_in_needs_consent">microG needs you to approve the request — try again</string>
-    <string name="gms_sign_in_unreachable">%1$s stopped responding. Make sure it is running and not battery-restricted, then try again.</string>
-    <string name="gms_not_microg_explained">This device\'s Google accounts are served by Play Services, which only issues these tokens to apps registered as Google OAuth clients. Install microG to use this sign-in, or use the YouTube OAuth code instead.</string>
     <string name="yt_oauth_sign_out">Sign out of the code session</string>
     <string name="yt_oauth_sign_out_desc">Revokes the token with Google and removes it from this device.</string>
     <string name="yt_oauth_step_open">Open google.com/device on any device, sign in to Google, then enter this code:</string>

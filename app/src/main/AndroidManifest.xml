@@ -30,15 +30,6 @@
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
 
     <queries>
-        <!-- microG / GmsCore, so the account sign-in can tell it apart from real Play Services.
-             AccountManager reports which package owns each authenticator without visibility, but
-             reading that package's declared permissions — the check that identifies microG when it
-             is installed under Google's own package name — needs it. Without these, the check
-             throws on Android 11+ and a real microG is mistaken for Play Services. -->
-        <package android:name="com.google.android.gms" />
-        <package android:name="app.revanced.android.gms" />
-        <package android:name="com.mgoogle.android.gms" />
-        <package android:name="org.microg.gms" />
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
