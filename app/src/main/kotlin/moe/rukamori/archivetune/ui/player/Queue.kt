@@ -689,6 +689,11 @@ fun Queue(
                     // The TikTok style owns its queue surface too: the feed IS the queue — every
                     // page is a queue entry — and its collapsed peek height is 0dp.
                 }
+
+                PlayerDesignStyle.SIMPMUSIC -> {
+                    // Same for the SimpMusic style: its artwork pager is a page per queue entry,
+                    // and its collapsed peek height is 0dp.
+                }
             }
 
             if (showSleepTimerDialog) {

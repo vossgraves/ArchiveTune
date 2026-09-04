@@ -351,6 +351,9 @@
     <string name="apple_music_animated_artwork_desc">Play a song’s Canvas loop or music video in place of the cover.</string>
     <string name="player_design_bitchord">BitChord</string>
     <string name="player_design_tiktok">TikTok</string>
+    <string name="player_design_simpmusic">SimpMusic</string>
+    <string name="simpmusic_lyrics">SimpMusic lyrics</string>
+    <string name="simpmusic_lyrics_desc">Use SimpMusic’s lyrics view instead of Enhanced.</string>
     <string name="player_design_apple_music">Apple Music</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>
