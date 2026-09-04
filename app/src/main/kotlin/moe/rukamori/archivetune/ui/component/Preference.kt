@@ -174,19 +174,33 @@ fun PreferenceEntry(
 ) {
     val inGroup = LocalPreferenceInGroup.current
     val groupPosition = LocalPreferenceGroupPosition.current
-    val preferenceIconShape = rememberPreferenceIconShape()
     val preferenceItemShape =
         remember(groupPosition) {
             preferenceItemShapeForPosition(groupPosition)
         }
+    val preferenceIconShape = rememberPreferenceIconShape()
     val resolvedShape = shape ?: preferenceItemShape
+    // Only rows that can actually be pressed pay for the press animation. It costs an
+    // InteractionSource, a coroutine collecting it, an Animatable and a render node PER ROW, and
+    // roughly half the rows on a settings page are switches and sliders with no onClick at all —
+    // for those the whole thing animated nothing.
+    val clickable = isEnabled && onClick != null
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.98f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
-        label = "prefScale",
-    )
+    val pressScale =
+        if (clickable) {
+            val isPressed by interactionSource.collectIsPressedAsState()
+            val scale by animateFloatAsState(
+                targetValue = if (isPressed) 0.98f else 1f,
+                animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                label = "prefScale",
+            )
+            Modifier.graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+        } else {
+            Modifier
+        }
 
     val rowContent: @Composable () -> Unit = {
         Row(
@@ -195,11 +209,11 @@ fun PreferenceEntry(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = PreferenceEntryMinHeight)
-                    .then(if (isEnabled && onClick != null) Modifier.focusable() else Modifier)
+                    .then(if (clickable) Modifier.focusable() else Modifier)
                     .clickable(
                         interactionSource = interactionSource,
                         indication = LocalIndication.current,
-                        enabled = isEnabled && onClick != null,
+                        enabled = clickable,
                         onClick = onClick ?: {},
                     ).alpha(if (isEnabled) 1f else 0.5f)
                     .padding(
@@ -274,10 +288,7 @@ fun PreferenceEntry(
                 .padding(
                     horizontal = if (inGroup) 0.dp else 16.dp,
                     vertical = if (inGroup) 0.dp else 3.dp,
-                ).graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                },
+                ).then(pressScale),
     ) {
         rowContent()
     }
