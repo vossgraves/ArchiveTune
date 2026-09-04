@@ -73,6 +73,7 @@ import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
 import moe.rukamori.archivetune.constants.ShowLyricsKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
+import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
@@ -159,6 +160,7 @@ fun buildSettingsGroups(
                 SettingsChild("Thumbnail corner radius", "thumbnail_corner_radius", listOf("thumbnail corner", "corner radius", "rounded thumbnail", "thumbnail shape")),
                 SettingsChild("Crop thumbnail to square", "crop_thumbnail_to_square", listOf("crop thumbnail", "square thumbnail", "thumbnail crop")) { SearchResultSwitch(CropThumbnailToSquareKey, false) },
                 SettingsChild("Enable canvas in albums page", "album_canvas_enabled", listOf("album canvas", "canvas in album", "album motion artwork", "album animated cover", "album header video")) { SearchResultSwitch(AlbumCanvasEnabledKey, true) },
+                SettingsChild("Apple Music Experience", "apple_music_experience", listOf("apple music", "apple music experience", "ios style", "ios header", "playlist header")) { SearchResultSwitch(AppleMusicExperienceKey, false) },
                 SettingsChild("Player design style", "player_design_style", listOf("player design", "player layout", "player style")),
                 SettingsChild("Player background style", "player_background_style", listOf("player background", "player bg", "background style")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),

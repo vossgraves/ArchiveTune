@@ -167,7 +167,7 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "mini_player_background_style", "player_buttons_style", "player_slider_style",
             "show_player_volume_bar", "hide_player_thumbnail", "crop_thumbnail_to_square",
             "thumbnail_corner_radius", "customized_background", "album_canvas_enabled",
-            "apple_music_animated_artwork", "simpmusic_lyrics",
+            "apple_music_animated_artwork", "simpmusic_lyrics", "apple_music_experience",
         )
         own(
             "appearance_interface", "appearance",

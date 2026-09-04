@@ -1320,6 +1320,12 @@ val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 
 /** Which service the Library's sections read from — see [moe.rukamori.archivetune.constants.LibrarySource]. */
 val LibrarySourceKey = stringPreferencesKey("library_source")
+
+/**
+ * The Apple Music Experience: the iOS-inspired hero on playlist, album and library detail pages —
+ * a big left-aligned title with pink accent pills, in place of the artwork backdrop.
+ */
+val AppleMusicExperienceKey = booleanPreferencesKey("apple_music_experience")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
 /**
