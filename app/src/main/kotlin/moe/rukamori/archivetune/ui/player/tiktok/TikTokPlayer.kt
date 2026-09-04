@@ -755,7 +755,6 @@ fun TikTokPlayerContent(
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                     onDismiss = menuState::dismiss,
-                    showControlsToggles = false,
                 )
             }
         }

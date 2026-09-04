@@ -606,7 +606,6 @@
     <string name="music_recognition_notification_recording_failed_text">Il se peut que l\'application de lecture bloque la capture audio ou que la lecture se soit arrêtée.</string>
     <string name="music_recognition_notification_signature_failed_text">L\'enregistrement audio ne contenait pas suffisamment de musique pour permettre une identification.</string>
     <string name="music_recognition_notification_recognition_failed_text">Le service de reconnaissance n\'a pas pu identifier cet enregistrement audio. Veuillez réessayer dans quelques instants.</string>
-    <string name="show_lyrics_player_controls">Afficher les commandes du lecteur</string>
     <string name="stats_top_songs">Meilleurs Titres</string>
     <string name="stats_show_all_songs">Afficher les %1$d titres</string>
     <string name="stats_show_top_songs">Afficher les 5 meilleurs</string>

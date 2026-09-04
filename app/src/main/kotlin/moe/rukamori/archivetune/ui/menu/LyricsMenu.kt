@@ -100,7 +100,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ai.AiLyricsDocumentParser
 import moe.rukamori.archivetune.ai.AiLyricsSegment
 import moe.rukamori.archivetune.constants.AiApiKeyKey
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
 import moe.rukamori.archivetune.constants.AiCustomEndpointKey
@@ -143,15 +142,8 @@ fun LyricsMenu(
     viewModel: LyricsMenuViewModel = hiltViewModel(),
     // The control preferences are optional because the standalone lyrics screen owns their state;
     // callers that do not provide callbacks keep the menu focused on lyric actions only.
-    showPlayerControlsState: State<Boolean>? = null,
-    onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
-    onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
-    showControlsToggles: Boolean = true,
 ) {
     val context = LocalContext.current
-    val showPlayerControls = showPlayerControlsState?.value ?: true
-    val (autoHidePlayerControls, onAutoHidePlayerControlsPreferenceChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, true)
 
     var showEditDialog by rememberSaveable {
         mutableStateOf(false)
@@ -837,62 +829,6 @@ fun LyricsMenu(
                         ),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                 )
-                // "Show player controls" / "Auto-hide player controls" toggles
-                // are gated behind showControlsToggles. The Apple Music in-place
-                // lyrics view passes false because those toggles were suspected
-                // of contributing to the lyrics animation stutter; the standalone
-                // LyricsScreen still renders them.
-                if (showControlsToggles) {
-                    NewMenuItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.show_lyrics_player_controls))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = showPlayerControls,
-                                onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
-                            )
-                        },
-                        onClick = {
-                            onShowPlayerControlsChange?.invoke(!showPlayerControls)
-                        },
-                        modifier =
-                            Modifier.padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                            ),
-                    )
-                    NewMenuItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.auto_hide_lyrics_player_controls))
-                        },
-                        supportingContent = {
-                            Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = autoHidePlayerControls,
-                                onCheckedChange = {
-                                    onAutoHidePlayerControlsPreferenceChange(it)
-                                    onAutoHidePlayerControlsChange(it)
-                                },
-                                enabled = showPlayerControls,
-                            )
-                        },
-                        enabled = showPlayerControls,
-                        onClick = {
-                            val nextValue = !autoHidePlayerControls
-                            onAutoHidePlayerControlsPreferenceChange(nextValue)
-                            onAutoHidePlayerControlsChange(nextValue)
-                        },
-                        modifier =
-                            Modifier.padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                                bottom = 8.dp,
-                            ),
-                    )
-                }
             }
         }
     }
