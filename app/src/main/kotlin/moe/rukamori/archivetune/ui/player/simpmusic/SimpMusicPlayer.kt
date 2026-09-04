@@ -114,7 +114,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -146,6 +148,9 @@ private val Backdrop = Color(0xFF121212)
 
 /** The artist card's panel, the one card SimpMusic keeps off the palette. */
 private val CardPanel = Color(0xFF212121)
+
+/** A YouTube video id: 11 chars of the URL-safe alphabet. Nothing else resolves in getMediaInfo. */
+private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
 
 /** Side gutter for everything below the artwork, and for the cards. */
 private val Gutter = 20.dp
@@ -192,15 +197,24 @@ fun SimpMusicPlayerContent(
     val startColor = palette.colors.getOrNull(0) ?: Backdrop
     val endColor = palette.colors.getOrNull(1) ?: lerp(startColor, Backdrop, 0.6f)
 
-    // The three cards below the fold are YouTube facts about the track. A Tidal/Qobuz/Spotify id
-    // resolves to nothing, which is the right outcome — each card hides itself when its data is
-    // absent rather than showing an empty frame.
+    // The two lower cards are YouTube facts about the track, and only a YouTube id can produce
+    // them. Gated on the id SHAPE rather than fired blindly: a Tidal, Qobuz, Spotify or local id
+    // can never resolve here, so without this every skip on those sources spent a network
+    // round-trip to be told so. Each card still hides itself when the lookup returns nothing.
     var mediaInfo by remember(mediaMetadata.id) { mutableStateOf<MediaInfo?>(null) }
     LaunchedEffect(mediaMetadata.id) {
+        if (!YOUTUBE_ID.matches(mediaMetadata.id)) return@LaunchedEffect
         mediaInfo = runCatching { YouTube.getMediaInfo(mediaMetadata.id).getOrNull() }.getOrNull()
     }
 
     val scrollState = rememberScrollState()
+    // Latched, not a live predicate: once the reader has gone below the fold, keep the card's
+    // contents mounted rather than tearing the renderer down every time they scroll back up.
+    var hasScrolled by remember { mutableStateOf(false) }
+    LaunchedEffect(scrollState) {
+        snapshotFlow { scrollState.value > 0 }.first { it }
+        hasScrolled = true
+    }
     var queueOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = queueOpen) { queueOpen = false }
 
@@ -262,7 +276,9 @@ fun SimpMusicPlayerContent(
                     // of its own, so the controls below never move when a line arrives or leaves.
                     SimpMusicLyricLine(
                         playerConnection = playerConnection,
-                        isPlaying = isPlaying,
+                        // Collapsed, this composable stays composed but nothing it draws is on
+                        // screen, so the poll below is pure background cost. `active` stops it.
+                        active = isPlaying && state.isExpanded,
                         modifier = Modifier.fillMaxWidth().height(gap),
                     )
 
@@ -342,6 +358,13 @@ fun SimpMusicPlayerContent(
                 SimpMusicLyricsCard(
                     playerConnection = playerConnection,
                     containerColor = startColor,
+                    // The card's frame is composed from the start so the page has something to
+                    // scroll to; the RENDERER inside it only mounts once the user actually scrolls.
+                    // Both renderers drive their own frame clock — LyricsEnhanced polls at 16ms on
+                    // a word-synced track — and `verticalScroll` composes every child regardless of
+                    // visibility, so without this a karaoke loop ran permanently, from the moment
+                    // the player opened, for a card nobody had scrolled to.
+                    renderLyrics = hasScrolled,
                     modifier = Modifier.padding(top = 10.dp),
                 )
                 Spacer(Modifier.height(10.dp))
@@ -380,12 +403,16 @@ fun SimpMusicPlayerContent(
         }
 
         if (queueOpen) {
-            AppleMusicQueueSheet(
-                navController = navController,
-                playerBottomSheetState = state,
-                onClose = { queueOpen = false },
-                modifier = Modifier.fillMaxSize(),
-            )
+            // Scrim first: the sheet's own rows are translucent, so without something behind them
+            // the player's artwork and controls read straight through the queue.
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))) {
+                AppleMusicQueueSheet(
+                    navController = navController,
+                    playerBottomSheetState = state,
+                    onClose = { queueOpen = false },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
@@ -581,7 +608,7 @@ private fun SimpMusicArtwork(
 @Composable
 private fun SimpMusicLyricLine(
     playerConnection: PlayerConnection,
-    isPlaying: Boolean,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val lines = rememberInlineLyricLines(playerConnection)
@@ -589,16 +616,16 @@ private fun SimpMusicLyricLine(
 
     // Polled rather than derived from a recomposing position: a line changes a few times a minute,
     // so a 200ms tick is already far finer than it needs while costing almost nothing. Stops
-    // entirely when there is nothing to show.
-    LaunchedEffect(lines, isPlaying) {
-        if (lines.isEmpty()) {
+    // entirely when there is nothing to show, or when nothing is watching.
+    LaunchedEffect(lines, active) {
+        if (lines.isEmpty() || !active) {
             line = ""
             return@LaunchedEffect
         }
         while (true) {
             val index = findCurrentLineIndex(lines, playerConnection.player.currentPosition)
             line = lines.getOrNull(index)?.text.orEmpty()
-            kotlinx.coroutines.delay(if (isPlaying) 200L else 500L)
+            delay(200L)
         }
     }
 
@@ -867,6 +894,7 @@ private fun SimpMusicActionRow(
 private fun SimpMusicLyricsCard(
     playerConnection: PlayerConnection,
     containerColor: Color,
+    renderLyrics: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val (simpMusicLyrics) = rememberPreference(SimpMusicLyricsKey, defaultValue = false)
@@ -893,7 +921,10 @@ private fun SimpMusicLyricsCard(
                 color = Color.White,
             )
             Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                if (simpMusicLyrics) {
+                if (!renderLyrics) {
+                    // Deliberately empty, and deliberately still 300dp: the height is what keeps
+                    // the page scrollable so `renderLyrics` can ever become true.
+                } else if (simpMusicLyrics) {
                     SimpMusicLyrics(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,
@@ -923,6 +954,7 @@ private fun SimpMusicArtistCard(
         val authorId = info?.authorId
         ElevatedCard(
             onClick = { authorId?.let(onOpenArtist) },
+            enabled = authorId != null,
             shape = RoundedCornerShape(8.dp),
             colors = CardDefaults.elevatedCardColors().copy(containerColor = CardPanel),
             modifier = Modifier.fillMaxWidth(),
