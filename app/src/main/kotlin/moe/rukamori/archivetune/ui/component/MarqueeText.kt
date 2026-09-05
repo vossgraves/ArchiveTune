@@ -95,47 +95,6 @@ fun MarqueeText(
     }
 }
 
-/**
- * [MarqueeText] for content you do not own — a caller-supplied `@Composable` slot, where there is
- * no `Text` to put `maxLines` or `onTextLayout` on.
- *
- * `basicMarquee` measures its child with unbounded width, which is what forces the content onto one
- * line here: with no width limit there is nothing to wrap at. That same unbounded measurement is
- * why overflow has to be measured rather than asked for — the inner box reports the content's
- * natural width, the outer one reports the space available, and the fade goes on when the first
- * exceeds the second, which is also exactly when the marquee scrolls.
- */
-@Composable
-fun MarqueeRow(
-    modifier: Modifier = Modifier,
-    fadeWidth: Dp = 24.dp,
-    animationMode: MarqueeAnimationMode = MarqueeAnimationMode.Immediately,
-    content: @Composable () -> Unit,
-) {
-    var viewportWidth by remember { mutableIntStateOf(0) }
-    var contentWidth by remember { mutableIntStateOf(0) }
-    val overflows = viewportWidth > 0 && contentWidth > viewportWidth
-
-    Box(
-        modifier =
-            (if (overflows) modifier.fadingEdge(horizontal = fadeWidth) else modifier)
-                .clipToBounds()
-                .onSizeChanged { viewportWidth = it.width },
-    ) {
-        Box(
-            modifier =
-                Modifier.basicMarquee(
-                    iterations = Int.MAX_VALUE,
-                    animationMode = animationMode,
-                ),
-        ) {
-            Box(modifier = Modifier.onSizeChanged { contentWidth = it.width }) {
-                content()
-            }
-        }
-    }
-}
-
 /** [MarqueeText] for plain text, which is most of them. */
 @Composable
 fun MarqueeText(

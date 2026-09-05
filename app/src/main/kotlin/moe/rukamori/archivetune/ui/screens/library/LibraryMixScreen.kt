@@ -246,6 +246,13 @@ fun LibraryMixScreen(
                     ),
                 modifier = Modifier.fillMaxSize(),
             ) {
+                // The source pills come first: they decide what the whole screen is showing, and a
+                // control that governs the page belongs above the page, not buried under the first
+                // card. Renders nothing without a usable Spotify session.
+                item(key = "library_source_pills", contentType = "library_source_pills") {
+                    LibrarySourcePills()
+                }
+
                 item(key = "most_played_album_spotlight", contentType = "spotlight") {
                     val state = mostPlayedAlbumUiState
                     if (state is MostPlayedAlbumUiState.Success) {
@@ -274,12 +281,6 @@ fun LibraryMixScreen(
                             onShuffle = shuffleAlbum,
                         )
                     }
-                }
-
-                // The Library's source pills, above the shortcut cards they steer. Renders nothing
-                // without a usable Spotify session.
-                item(key = "library_source_pills", contentType = "library_source_pills") {
-                    LibrarySourcePills()
                 }
 
                 // 2. Shortcuts Grid

@@ -72,6 +72,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppleMusicAnimatedArtworkKey
 import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
+import moe.rukamori.archivetune.constants.StyleBeforeAppleMusicKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
@@ -109,6 +110,7 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.PlayerButtonsStyle
 import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
+import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
@@ -309,6 +311,14 @@ fun AppearanceSectionSettings(
         rememberPreference(
             AppleMusicExperienceKey,
             defaultValue = false,
+        )
+    // The player style in force when the experience was switched on, so switching it off can put
+    // it back. Stored rather than held in composition: the switch survives process death, and a
+    // style we cannot give back is a style we should not have taken.
+    val (styleBeforeAppleMusic, onStyleBeforeAppleMusicChange) =
+        rememberPreference(
+            StyleBeforeAppleMusicKey,
+            defaultValue = PlayerDesignStyle.V4.name,
         )
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
@@ -922,11 +932,21 @@ fun AppearanceSectionSettings(
                             checked = appleMusicExperience,
                             onCheckedChange = { enabled ->
                                 onAppleMusicExperienceChange(enabled)
-                                // Turning the experience on also puts the player in Apple Music's
-                                // style: half an Apple Music app is not an experience. Turning it
-                                // off leaves the player alone — someone who liked that player and
-                                // only wanted the old headers back should keep it.
-                                if (enabled) onPlayerDesignStyleChange(PlayerDesignStyle.APPLE_MUSIC)
+                                // The experience owns the player style while it is on, so turning
+                                // it off has to give back the style it took. Anything else is a
+                                // one-way door: the switch says "off" and the player is still
+                                // Apple Music, with nothing to tell you which style you had.
+                                if (enabled) {
+                                    onStyleBeforeAppleMusicChange(playerDesignStyle.name)
+                                    onPlayerDesignStyleChange(PlayerDesignStyle.APPLE_MUSIC)
+                                } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+                                    // Only restore when the experience still owns the style. If
+                                    // they picked something else by hand in the meantime, that
+                                    // choice is newer than ours and wins.
+                                    onPlayerDesignStyleChange(
+                                        styleBeforeAppleMusic.toEnum(PlayerDesignStyle.V4),
+                                    )
+                                }
                             },
                         )
                     }

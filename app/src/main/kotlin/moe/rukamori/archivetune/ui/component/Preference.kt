@@ -249,19 +249,16 @@ fun PreferenceEntry(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-                // The title is kept to ONE line and marquees with an edge fade when it does not
-                // fit, so every row is the same height whatever it is called. A title that wrapped
-                // pushed the row taller and left the switch or chevron floating against a
-                // two-line block. `basicMarquee` only animates while the text actually overflows,
-                // so short titles cost nothing.
+                // Neither line scrolls. A settings row is a static label, not a now-playing
+                // ticker: sideways motion on something you are trying to read down a list is
+                // noise, and every visible row doing it at once is worse. Titles are short and
+                // simply wrap on the rare occasion they need to.
                 //
-                // The description is left wrapping on purpose. It is prose, sometimes two
-                // sentences, and scrolling that sideways at reading speed is worse than a second
-                // line, not better — the complaint was about titles.
-                MarqueeRow {
-                    ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
-                        title()
-                    }
+                // Row height is bounded by clamping the description instead — two lines and an
+                // ellipsis, which is the shape the rest of the app already uses for prose under a
+                // heading. That keeps rows near-uniform without taking the text away.
+                ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
+                    title()
                 }
                 if (description != null) {
                     Spacer(Modifier.height(2.dp))
@@ -269,6 +266,8 @@ fun PreferenceEntry(
                         text = description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 content?.invoke()

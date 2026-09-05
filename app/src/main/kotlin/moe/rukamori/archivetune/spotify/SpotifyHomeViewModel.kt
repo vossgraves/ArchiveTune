@@ -87,8 +87,11 @@ sealed interface SpotifyHomeAction {
         val tracks: List<SpotifyTrack>,
         val title: String,
     ) : SpotifyHomeAction
-    data class AlbumClick(val album: SpotifyAlbum) : SpotifyHomeAction
-    data class ArtistClick(val artist: SpotifyArtist) : SpotifyHomeAction
+    // Identity plus the words the catalogue search needs, rather than a whole Spotify model. The
+    // callers hold four different shapes for the same album (feed item, recent item, search
+    // result), and every one of them was rebuilding a SpotifyAlbum just to be taken apart again.
+    data class AlbumClick(val id: String, val name: String, val artist: String?) : SpotifyHomeAction
+    data class ArtistClick(val id: String, val name: String) : SpotifyHomeAction
 }
 
 @HiltViewModel
@@ -131,15 +134,15 @@ class SpotifyHomeViewModel @Inject constructor(
                     )
                 }
             }
-            is SpotifyHomeAction.AlbumClick -> resolveSelection("album:${action.album.id}") {
-                val query = listOfNotNull(action.album.name, action.album.artists.firstOrNull()?.name)
+            is SpotifyHomeAction.AlbumClick -> resolveSelection("album:${action.id}") {
+                val query = listOfNotNull(action.name, action.artist)
                     .filter(String::isNotBlank)
                     .joinToString(" ")
                 searchCatalogItem<AlbumItem>(query, YouTube.SearchFilter.FILTER_ALBUM)
                     ?.let { SpotifyHomeNavigationEvent.OpenAlbum(it.browseId) }
             }
-            is SpotifyHomeAction.ArtistClick -> resolveSelection("artist:${action.artist.id}") {
-                searchCatalogItem<ArtistItem>(action.artist.name, YouTube.SearchFilter.FILTER_ARTIST)
+            is SpotifyHomeAction.ArtistClick -> resolveSelection("artist:${action.id}") {
+                searchCatalogItem<ArtistItem>(action.name, YouTube.SearchFilter.FILTER_ARTIST)
                     ?.let { SpotifyHomeNavigationEvent.OpenArtist(it.id) }
             }
         }
@@ -219,10 +222,9 @@ class SpotifyHomeViewModel @Inject constructor(
                 topTracksResult.onSuccess { topTracks ->
                     if (topTracks.items.isNotEmpty()) {
                         sections.add(
-                            SpotifyHomeSection(
+                            SpotifyHomeSection.Tracks(
                                 title = "spotify_top_tracks",
-                                type = SectionType.TRACKS,
-                                tracks = topTracks.items
+                                tracks = topTracks.items,
                             )
                         )
                     }
@@ -232,10 +234,18 @@ class SpotifyHomeViewModel @Inject constructor(
                     val albums = newReleases.albums?.items.orEmpty()
                     if (albums.isNotEmpty()) {
                         sections.add(
-                            SpotifyHomeSection(
+                            SpotifyHomeSection.Cards(
                                 title = "spotify_new_releases",
-                                type = SectionType.ALBUMS,
-                                albums = albums
+                                items = albums.map { album ->
+                                    SpotifyHomeFeedItem.Album(
+                                        uri = album.uri.orEmpty(),
+                                        id = album.id,
+                                        name = album.name,
+                                        albumType = album.albumType,
+                                        artists = album.artists,
+                                        imageUrl = album.images.maxByOrNull { it.width ?: 0 }?.url,
+                                    )
+                                },
                             )
                         )
                     }
@@ -249,13 +259,12 @@ class SpotifyHomeViewModel @Inject constructor(
 
                 homeResult.onSuccess { feed ->
                     feed.sections.forEach { raw ->
-                        if (raw.sectionUri.contains("recent", ignoreCase = true) ||
-                            raw.title?.contains("Jump back in", ignoreCase = true) == true || 
-                            raw.title?.contains("Recently", ignoreCase = true) == true ||
-                            raw.title?.contains("Недавно", ignoreCase = true) == true ||
-                            raw.title?.contains("Снова в деле", ignoreCase = true) == true ||
-                            raw.title?.contains("Недавние", ignoreCase = true) == true ||
-                            raw.title?.contains("Прослушано", ignoreCase = true) == true) {
+                        // Recognised by the section URI alone. It used to also match the title
+                        // against "Jump back in", "Recently" and five Russian phrases — which meant
+                        // the shelf was only ever recognised in two of the forty-odd languages the
+                        // app ships, and Spotify returns titles in the account's language. The URI
+                        // is the same string whatever the user reads.
+                        if (raw.sectionUri.contains("recent", ignoreCase = true)) {
                             recentItems = raw.items.mapNotNull { item ->
                                 when (item) {
                                     is SpotifyHomeFeedItem.Album -> SpotifyRecentItem.Album(
@@ -307,64 +316,14 @@ class SpotifyHomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * A feed shelf, kept whole. Every item stays, in the order Spotify sent it, carrying its own
+     * kind — so a shelf mixing albums with playlists renders both and each tile opens its own
+     * thing. The previous version kept only the majority kind and dropped the rest.
+     */
     private fun convertHomeSection(feedSection: SpotifyHomeFeedSection): SpotifyHomeSection? {
         val title = feedSection.title ?: return null
-
-        val playlists = feedSection.items.filterIsInstance<SpotifyHomeFeedItem.Playlist>()
-        val albums = feedSection.items.filterIsInstance<SpotifyHomeFeedItem.Album>()
-        val artists = feedSection.items.filterIsInstance<SpotifyHomeFeedItem.Artist>()
-
-        val counts = arrayOf(
-            SectionType.PLAYLISTS to playlists.size,
-            SectionType.ALBUMS to albums.size,
-            SectionType.ARTISTS to artists.size,
-        )
-        val (dominant, size) = counts.maxByOrNull { it.second } ?: return null
-        if (size == 0) return null
-
-        return when (dominant) {
-            SectionType.PLAYLISTS -> SpotifyHomeSection(
-                title = title,
-                type = SectionType.PLAYLISTS,
-                playlists = playlists.map {
-                    SpotifyPlaylist(
-                        id = it.id,
-                        name = it.name,
-                        description = it.description,
-                        images = listOfNotNull(it.imageUrl?.let { url -> SpotifyImage(url, null, null) }),
-                        owner = it.ownerName?.let { owner -> SpotifyPlaylistOwner(id = "", displayName = owner) },
-                        tracks = SpotifyPlaylistTracksRef(total = it.totalCount),
-                        uri = it.uri
-                    )
-                }
-            )
-            SectionType.ALBUMS -> SpotifyHomeSection(
-                title = title,
-                type = SectionType.ALBUMS,
-                albums = albums.map {
-                    SpotifyAlbum(
-                        id = it.id,
-                        name = it.name,
-                        albumType = it.albumType,
-                        artists = it.artists,
-                        images = listOfNotNull(it.imageUrl?.let { url -> SpotifyImage(url, null, null) }),
-                        uri = it.uri
-                    )
-                }
-            )
-            SectionType.ARTISTS -> SpotifyHomeSection(
-                title = title,
-                type = SectionType.ARTISTS,
-                artists = artists.map {
-                    SpotifyArtist(
-                        id = it.id,
-                        name = it.name,
-                        images = listOfNotNull(it.imageUrl?.let { url -> SpotifyImage(url, null, null) }),
-                        uri = it.uri
-                    )
-                }
-            )
-            else -> null
-        }
+        if (feedSection.items.isEmpty()) return null
+        return SpotifyHomeSection.Cards(title = title, items = feedSection.items)
     }
 }

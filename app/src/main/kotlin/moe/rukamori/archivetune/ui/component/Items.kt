@@ -320,24 +320,23 @@ fun GridItem(
     fillMaxWidth: Boolean = false,
 ) = GridItem(
     modifier = modifier,
+    // Both lines scroll when they do not fit. A grid tile is narrow enough that ellipsis routinely
+    // ate the part that told two releases apart ("Greatest Hits (Deluxe…" twice over), and this is
+    // the tile every home shelf is built from, so fixing it here fixes both home screens at once.
     title = {
-        Text(
+        MarqueeText(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
             modifier = Modifier.fillMaxWidth(),
         )
     },
     subtitle = {
-        Text(
+        MarqueeText(
             text = subtitle,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     },
     thumbnailContent = thumbnailContent,
