@@ -1656,6 +1656,19 @@ object Spotify {
                 parseHomeItem(itemElem.jsonObject)
             }
 
+        // Named, and counted against what came in: a section that arrives with tiles and leaves
+        // with fewer says exactly which wrapper was thrown away, which is the only way to find a
+        // tile that never appears. Spotify renames these periodically.
+        if (items.size != itemElements.size) {
+            val seen =
+                itemElements.mapNotNull {
+                    it.jsonObject
+                        .obj("content")
+                        ?.str("__typename")
+                }
+            log("W", "parseHomeSection('$title'): kept ${items.size}/${itemElements.size} — wrappers=$seen")
+        }
+
         if (items.isEmpty()) return null
 
         return moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedSection(
