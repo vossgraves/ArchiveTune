@@ -695,6 +695,20 @@ interface DatabaseDao {
     fun allSongs(): Flow<List<Song>>
 
     @Transaction
+    @Query(
+        """
+        SELECT * FROM song
+        WHERE blockedAt IS NULL AND NOT EXISTS (
+            SELECT 1 FROM song_artist_map
+            JOIN artist ON artist.id = song_artist_map.artistId
+            WHERE song_artist_map.songId = song.id AND artist.blockedAt IS NOT NULL
+        )
+        ORDER BY RANDOM() LIMIT :limit
+        """,
+    )
+    suspend fun quickPickCandidates(limit: Int): List<Song>
+
+    @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
     @Query("SELECT * FROM album ORDER BY rowId")
     fun allAlbumsForDownloads(): Flow<List<Album>>
@@ -894,6 +908,13 @@ interface DatabaseDao {
         "SELECT *, (SELECT COUNT(1) FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = artist.id AND song.inLibrary IS NOT NULL) AS songCount FROM artist WHERE id = :id",
     )
     fun artist(id: String): Flow<Artist?>
+
+    @Transaction
+    @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
+    @Query(
+        "SELECT *, (SELECT COUNT(1) FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = artist.id AND song.inLibrary IS NOT NULL) AS songCount FROM artist WHERE id IN (:ids)",
+    )
+    suspend fun getArtistsByIds(ids: List<String>): List<Artist>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
@@ -1258,6 +1279,12 @@ interface DatabaseDao {
         "SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE id = :playlistId LIMIT 1",
     )
     suspend fun getPlaylistById(playlistId: String): Playlist?
+
+    @Transaction
+    @Query(
+        "SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE id IN (:ids)",
+    )
+    suspend fun getPlaylistsByIds(ids: List<String>): List<Playlist>
 
     @Transaction
     @Query(

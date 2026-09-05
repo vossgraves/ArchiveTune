@@ -401,6 +401,7 @@ class MainActivity : ComponentActivity() {
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var isMusicServiceBound = false
+    private var serviceBindingJob: Job? = null
     private var immersiveStatusBarsHidden = false
 
     private val serviceConnection =
@@ -411,6 +412,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 isMusicServiceBound = true
                 if (service is MusicBinder) {
+                    playerConnection?.dispose()
                     playerConnection =
                         PlayerConnection(this@MainActivity, service, database, lifecycleScope)
                     playPendingDeepLinkQueueIfReady()
@@ -421,7 +423,7 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                isMusicServiceBound = false
+                // The binding remains registered; Android can reconnect it until unbindService.
                 pendingAodModeJob?.cancel()
                 pendingAodModeJob = null
                 playerConnection?.dispose()
@@ -501,14 +503,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        isMusicServiceBound =
-            bindService(
-                Intent(this, MusicService::class.java),
-                serviceConnection,
-                Context.BIND_AUTO_CREATE,
-            )
-        playPendingDeepLinkQueueIfReady()
-        openPendingAodModeIfReady()
+        serviceBindingJob = lifecycleScope.launch {
+            try {
+                App.startupReadiness.awaitReady()
+                if (!isMusicServiceBound) {
+                    isMusicServiceBound = bindService(
+                        Intent(this@MainActivity, MusicService::class.java),
+                        serviceConnection,
+                        Context.BIND_AUTO_CREATE,
+                    )
+                }
+                playPendingDeepLinkQueueIfReady()
+                openPendingAodModeIfReady()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                reportException(error)
+            }
+        }
 
         // Qobuz cache staleness fix: clear the transient failure cache and
         // instance cooldowns on app foreground so Qobuz is retried without
@@ -533,7 +545,9 @@ class MainActivity : ComponentActivity() {
         // the 30-min throttle). This ensures Qobuz tokens are fresh when
         // the user returns to the app, without hammering the pool API.
         lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { PoolAccountManager.refresh(this@MainActivity, force = false) }
+            App.startupReadiness.runOptional {
+                runCatching { PoolAccountManager.refresh(this@MainActivity, force = false) }
+            }
         }
     }
 
@@ -550,6 +564,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        serviceBindingJob?.cancel()
+        serviceBindingJob = null
         safeUnbindMusicService()
         super.onStop()
     }
@@ -568,8 +584,12 @@ class MainActivity : ComponentActivity() {
             playerConnection?.service?.stopAndClearPlayback(clearPersistentState = true)
             safeUnbindMusicService()
             stopService(Intent(this, MusicService::class.java))
-            playerConnection = null
         }
+        pendingAodModeJob?.cancel()
+        pendingAodModeJob = null
+        playerConnection?.dispose()
+        playerConnection = null
+        safeUnbindMusicService()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -666,13 +686,11 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        moe.rukamori.archivetune.utils.traceStartup("ArchiveTune.activityInjection") {
+            super.onCreate(savedInstanceState)
+        }
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { downloadUtil.prewarmDownloadConnections() }
-        }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
@@ -721,6 +739,12 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val startupResult by App.startupReadiness.result.collectAsStateWithLifecycle()
+            LaunchedEffect(Unit) {
+                androidx.compose.runtime.withFrameNanos { }
+                androidx.compose.runtime.withFrameNanos { }
+                App.startupReadiness.onFirstFrame()
+            }
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             val effectiveUpdateChannel = if (isCanaryBuild) UpdateChannel.CANARY else updateChannel
@@ -1045,6 +1069,20 @@ class MainActivity : ComponentActivity() {
                 fontPreference = fontPreference,
                 customFontUri = customFontUri,
             ) {
+                if (startupResult?.isSuccess != true) {
+                    Surface(Modifier.fillMaxSize()) {
+                        if (startupResult == null) {
+                            moe.rukamori.archivetune.ui.screens.HomeSkeletonFeed(
+                                contentPadding = WindowInsets.systemBars.asPaddingValues(),
+                            )
+                        } else {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(stringResource(R.string.error_unknown))
+                            }
+                        }
+                    }
+                    return@ArchiveTuneTheme
+                }
                 val navController = rememberNavController()
                 // Keep top-level list state outside destination content. MainActivity unbinds the
                 // music service in onStop; HomeScreen otherwise disappears while the connection is

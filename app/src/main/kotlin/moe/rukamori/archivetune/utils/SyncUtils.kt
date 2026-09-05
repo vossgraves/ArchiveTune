@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -50,6 +51,25 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal suspend fun <T> forEachBoundedIndexed(
+    items: List<T>,
+    parallelism: Int = 2,
+    block: suspend (Int, T) -> Unit,
+) = coroutineScope {
+    require(parallelism > 0)
+    val nextIndex = java.util.concurrent.atomic.AtomicInteger()
+    repeat(minOf(parallelism, items.size)) {
+        launch {
+            while (true) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                val index = nextIndex.getAndIncrement()
+                if (index >= items.size) return@launch
+                block(index, items[index])
+            }
+        }
+    }
+}
+
 @Singleton
 class SyncUtils
     @Inject
@@ -57,7 +77,7 @@ class SyncUtils
         private val database: MusicDatabase,
         @ApplicationContext private val context: Context,
     ) {
-        private val syncScope = CoroutineScope(Dispatchers.IO)
+        private val syncScope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
         private val syncEnabled = MutableStateFlow(true)
         private val syncGeneration = AtomicLong(0L)
 
@@ -81,8 +101,8 @@ class SyncUtils
 
         suspend fun performFullSync(authoritative: Boolean = false) =
             withContext(Dispatchers.IO) {
+                val generation = if (authoritative) syncGeneration.incrementAndGet() else syncGeneration.get()
                 if (authoritative) {
-                    syncGeneration.incrementAndGet()
                     syncMutex.lock()
                 } else if (!syncMutex.tryLock()) {
                     Timber.d("Sync already in progress, skipping")
@@ -100,19 +120,25 @@ class SyncUtils
                     }
 
                     supervisorScope {
+                        if (!isSyncStillEnabled(generation)) return@supervisorScope
                         syncLikedSongs(authoritative = authoritative)
+                        if (!isSyncStillEnabled(generation)) return@supervisorScope
                         syncLibrarySongs(authoritative = authoritative)
+                        if (!isSyncStillEnabled(generation)) return@supervisorScope
 
                         listOf(
                             async { syncLikedAlbums(authoritative = authoritative) },
                             async { syncArtistsSubscriptions(authoritative = authoritative) },
                         ).awaitAll()
 
+                        if (!isSyncStillEnabled(generation)) return@supervisorScope
                         syncSavedPlaylists(authoritative = authoritative)
-                        if (!authoritative) {
+                        if (!authoritative && isSyncStillEnabled(generation)) {
                             syncAutoSyncPlaylists()
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.e(e, "Error during full sync")
                 } finally {
@@ -193,6 +219,7 @@ class SyncUtils
                 }
 
         private suspend fun isLoggedIn(): Boolean {
+            moe.rukamori.archivetune.App.startupReadiness.awaitReady()
             val cookie =
                 context.dataStore.data
                     .map { it[InnerTubeCookieKey] }
@@ -307,24 +334,22 @@ class SyncUtils
                         }
                         val baseTimestamp = LocalDateTime.now()
 
-                        remoteSongs.forEachIndexed { index, song ->
+                        forEachBoundedIndexed(remoteSongs) { index, song ->
                             val timestamp = likedSongTimestamp(baseTimestamp, index)
-                            launch {
-                                if (!isSyncStillEnabled(gen)) return@launch
-                                dbWriteSemaphore.withPermit {
-                                    if (!isSyncStillEnabled(gen)) return@withPermit
-                                    val dbSong = database.song(song.id).firstOrNull()
-                                    val mediaMetadata = song.toMediaMetadata()
-                                    database.withTransaction {
-                                        if (!isSyncStillEnabled(gen)) return@withTransaction
-                                        if (dbSong == null) {
-                                            insert(mediaMetadata) { it.copy(liked = true, likedDate = timestamp) }
-                                        } else {
-                                            update(dbSong, mediaMetadata)
-                                            if (!dbSong.song.liked || dbSong.song.likedDate == null) {
-                                                getSongByIdBlocking(song.id)?.song?.let { refreshedSong ->
-                                                    update(refreshedSong.copy(liked = true, likedDate = timestamp))
-                                                }
+                            if (!isSyncStillEnabled(gen)) return@forEachBoundedIndexed
+                            dbWriteSemaphore.withPermit {
+                                if (!isSyncStillEnabled(gen)) return@withPermit
+                                val dbSong = database.song(song.id).firstOrNull()
+                                val mediaMetadata = song.toMediaMetadata()
+                                database.withTransaction {
+                                    if (!isSyncStillEnabled(gen)) return@withTransaction
+                                    if (dbSong == null) {
+                                        insert(mediaMetadata) { it.copy(liked = true, likedDate = timestamp) }
+                                    } else {
+                                        update(dbSong, mediaMetadata)
+                                        if (!dbSong.song.liked || dbSong.song.likedDate == null) {
+                                            getSongByIdBlocking(song.id)?.song?.let { refreshedSong ->
+                                                update(refreshedSong.copy(liked = true, likedDate = timestamp))
                                             }
                                         }
                                     }
@@ -374,23 +399,21 @@ class SyncUtils
                             }
                         }
 
-                        remoteSongs.forEach { song ->
-                            launch {
-                                if (!isSyncStillEnabled(gen)) return@launch
-                                dbWriteSemaphore.withPermit {
-                                    if (!isSyncStillEnabled(gen)) return@withPermit
-                                    val dbSong = database.song(song.id).firstOrNull()
-                                    val mediaMetadata = song.toMediaMetadata()
-                                    database.withTransaction {
-                                        if (!isSyncStillEnabled(gen)) return@withTransaction
-                                        if (dbSong == null) {
-                                            insert(mediaMetadata) { it.toggleLibrary() }
-                                        } else {
-                                            update(dbSong, mediaMetadata)
-                                            if (dbSong.song.inLibrary == null) {
-                                                getSongByIdBlocking(song.id)?.song?.let { refreshedSong ->
-                                                    update(refreshedSong.toggleLibrary())
-                                                }
+                        forEachBoundedIndexed(remoteSongs) { _, song ->
+                            if (!isSyncStillEnabled(gen)) return@forEachBoundedIndexed
+                            dbWriteSemaphore.withPermit {
+                                if (!isSyncStillEnabled(gen)) return@withPermit
+                                val dbSong = database.song(song.id).firstOrNull()
+                                val mediaMetadata = song.toMediaMetadata()
+                                database.withTransaction {
+                                    if (!isSyncStillEnabled(gen)) return@withTransaction
+                                    if (dbSong == null) {
+                                        insert(mediaMetadata) { it.toggleLibrary() }
+                                    } else {
+                                        update(dbSong, mediaMetadata)
+                                        if (dbSong.song.inLibrary == null) {
+                                            getSongByIdBlocking(song.id)?.song?.let { refreshedSong ->
+                                                update(refreshedSong.toggleLibrary())
                                             }
                                         }
                                     }

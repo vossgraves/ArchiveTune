@@ -8,7 +8,6 @@
 package moe.rukamori.archivetune.utils
 
 import android.content.Context
-import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -101,6 +100,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 object PreferenceStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _prefs = MutableStateFlow<Preferences?>(null)
+    private val initialSnapshot = kotlinx.coroutines.CompletableDeferred<Preferences>()
 
     @Volatile private var started = false
 
@@ -110,14 +110,26 @@ object PreferenceStore {
             if (started) return
             started = true
             scope.launch {
-                context.dataStore.data.collect { preferences ->
-                    _prefs.value = preferences
+                try {
+                    context.applicationContext.dataStore.data.collect { preferences ->
+                        _prefs.value = preferences
+                        initialSnapshot.complete(preferences)
+                    }
+                } catch (error: Throwable) {
+                    initialSnapshot.completeExceptionally(error)
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    reportException(error)
                 }
             }
         }
     }
 
-    fun <T> get(key: Preferences.Key<T>): T? = _prefs.value?.get(key)
+    val snapshot: Preferences?
+        get() = _prefs.value
+
+    suspend fun awaitSnapshot(): Preferences = snapshot ?: initialSnapshot.await()
+
+    fun <T> get(key: Preferences.Key<T>): T? = snapshot?.get(key)
 
     fun launchEdit(
         dataStore: DataStore<Preferences>,
@@ -131,32 +143,20 @@ object PreferenceStore {
     }
 }
 
-operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? =
-    PreferenceStore.get(key)
-        ?: if (Looper.getMainLooper().thread == Thread.currentThread()) {
-            null
-        } else {
-            runBlocking(Dispatchers.IO) {
-                withTimeoutOrNull(1500) {
-                    data.first()[key]
-                }
-            }
-        }
+operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
+    val snapshot = PreferenceStore.snapshot
+    if (snapshot != null) return snapshot[key]
+    // UI startup awaits readiness without blocking. Keep the bounded fallback
+    // for synchronous, headless Android entrypoints rather than silently using defaults.
+    return runBlocking(Dispatchers.IO) {
+        withTimeoutOrNull(1500) { data.first()[key] }
+    }
+}
 
 fun <T> DataStore<Preferences>.get(
     key: Preferences.Key<T>,
     defaultValue: T,
-): T =
-    PreferenceStore.get(key)
-        ?: if (Looper.getMainLooper().thread == Thread.currentThread()) {
-            defaultValue
-        } else {
-            runBlocking(Dispatchers.IO) {
-                withTimeoutOrNull(1500) {
-                    data.first()[key]
-                } ?: defaultValue
-            }
-        }
+): T = get(key) ?: defaultValue
 
 suspend fun <T> DataStore<Preferences>.getAsync(key: Preferences.Key<T>): T? = data.first()[key]
 

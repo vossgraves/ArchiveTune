@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,6 +77,9 @@ class PlayerConnection(
     val database: MusicDatabase,
     scope: CoroutineScope,
 ) : Player.Listener {
+    private val connectionJob = SupervisorJob(scope.coroutineContext[Job])
+    private val connectionScope = CoroutineScope(scope.coroutineContext + connectionJob)
+    private var disposed = false
     val service = binder.service
 
     /**
@@ -96,7 +100,7 @@ class PlayerConnection(
         combine(playbackState, playWhenReady) { playbackState, playWhenReady ->
             playWhenReady && playbackState != STATE_ENDED
         }.stateIn(
-            scope,
+            connectionScope,
             SharingStarted.Lazily,
             player.playWhenReady && player.playbackState != STATE_ENDED,
         )
@@ -104,15 +108,15 @@ class PlayerConnection(
     val currentSong =
         mediaMetadata.flatMapLatest {
             database.song(it?.id)
-        }
+        }.stateIn(connectionScope, SharingStarted.WhileSubscribed(5_000), null)
     val currentLyrics =
         mediaMetadata.flatMapLatest { mediaMetadata ->
             database.lyrics(mediaMetadata?.id)
-        }
+        }.stateIn(connectionScope, SharingStarted.WhileSubscribed(5_000), null)
     val currentFormat =
         mediaMetadata.flatMapLatest { mediaMetadata ->
             database.format(mediaMetadata?.id)
-        }
+        }.stateIn(connectionScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val queueTitle = MutableStateFlow<String?>(null)
     val queueWindows = MutableStateFlow<List<Timeline.Window>>(emptyList())
@@ -149,7 +153,7 @@ class PlayerConnection(
         }
 
         // Follow player promotions (e.g. crossfade) and re-attach to the new active player.
-        scope.launch {
+        connectionScope.launch {
             service.playerFlow.collect { newPlayer ->
                 if (newPlayer != null && newPlayer !== attachedPlayer) {
                     attachToPlayer(newPlayer)
@@ -158,7 +162,7 @@ class PlayerConnection(
         }
 
         metadataExtractionJob =
-            scope.launch(Dispatchers.IO) {
+            connectionScope.launch(Dispatchers.IO) {
                 mediaMetadata
                     .distinctUntilChangedBy { it?.id }
                     .collectLatest { metadata ->
@@ -329,6 +333,7 @@ class PlayerConnection(
         }
 
     private fun attachToPlayer(newPlayer: Player) {
+        if (disposed) return
         attachedPlayer?.removeListener(this)
         attachedPlayer = newPlayer
         newPlayer.addListener(this)
@@ -554,9 +559,11 @@ class PlayerConnection(
     }
 
     fun dispose() {
+        if (disposed) return
+        disposed = true
+        connectionJob.cancel()
         attachedPlayer?.removeListener(this)
         attachedPlayer = null
-        metadataExtractionJob?.cancel()
         metadataExtractionJob = null
     }
 

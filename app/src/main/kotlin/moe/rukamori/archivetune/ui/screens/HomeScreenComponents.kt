@@ -206,7 +206,8 @@ fun SpeedDialSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -332,7 +333,7 @@ fun SpeedDialSection(
 
     fun playSpeedDialQueue(startIndex: Int) {
         if (speedDialSongs.isEmpty()) return
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.speed_dial),
                 items = speedDialSongs.map { it.toMediaItem() },
@@ -425,7 +426,7 @@ fun SpeedDialSection(
                                                                 when (localItem) {
                                                                     is Song -> {
                                                                         if (isActive) {
-                                                                            playerConnection.player.togglePlayPause()
+                                                                            playerConnection?.player?.togglePlayPause()
                                                                         } else {
                                                                             playSpeedDialQueue(songIndex)
                                                                         }
@@ -585,7 +586,8 @@ fun KeepListeningSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -609,7 +611,7 @@ fun KeepListeningSection(
     fun playFromSection(songId: String) {
         val index = songsInSection.indexOfFirst { it.id == songId }
         if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.keep_listening),
                 items = songsInSection.map { it.toMediaItem() },
@@ -662,7 +664,8 @@ fun ForgottenFavoritesSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
@@ -683,7 +686,7 @@ fun ForgottenFavoritesSection(
     fun playSectionQueue(startIndex: Int) {
         if (distinctForgottenFavorites.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, distinctForgottenFavorites.lastIndex)
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.forgotten_favorites),
                 items = distinctForgottenFavorites.map { it.toMediaItem() },
@@ -726,7 +729,8 @@ fun AccountPlaylistsSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -767,7 +771,8 @@ fun SimilarRecommendationsSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -806,7 +811,8 @@ fun HomePageSectionContent(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -830,7 +836,7 @@ fun HomePageSectionContent(
     fun playFromSection(songId: String) {
         val index = songsInSection.indexOfFirst { it.id == songId }
         if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = sectionTitle ?: context.getString(R.string.quick_picks),
                 items = songsInSection.map { it.toMediaItem() },
@@ -1121,7 +1127,8 @@ fun JumpBackInHeroSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
@@ -1139,7 +1146,7 @@ fun JumpBackInHeroSection(
     fun playFromSection(startIndex: Int) {
         if (recentlyPlayed.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, recentlyPlayed.lastIndex)
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.home_jump_back_in_badge),
                 items = recentlyPlayed.map { it.toMediaItem() },
@@ -1172,7 +1179,7 @@ fun JumpBackInHeroSection(
                         isPlaying = isPlaying,
                         onClick = {
                             if (song.id == mediaMetadata?.id) {
-                                playerConnection.player.togglePlayPause()
+                                playerConnection?.player?.togglePlayPause()
                             } else {
                                 playFromSection(index)
                             }
@@ -1208,7 +1215,8 @@ fun RecentlyPlayedSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
@@ -1226,7 +1234,7 @@ fun RecentlyPlayedSection(
     fun playFromSection(startIndex: Int) {
         if (distinctSongs.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, distinctSongs.lastIndex)
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.recently_played),
                 items = distinctSongs.map { it.toMediaItem() },

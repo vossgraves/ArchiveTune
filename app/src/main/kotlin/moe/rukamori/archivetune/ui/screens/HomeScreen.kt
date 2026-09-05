@@ -39,6 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.playback.queues.Queue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -82,13 +85,24 @@ fun HomeScreen(
     listState: LazyListState? = null,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    val playerConnection = LocalPlayerConnection.current ?: return
+    val playerConnection = LocalPlayerConnection.current
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
 
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
-    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val isPlaying = playerConnection?.isPlaying?.collectAsStateWithLifecycle()?.value ?: false
+    val mediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
+    var pendingQueue by remember { mutableStateOf<Queue?>(null) }
+    val onPlayQueue: (Queue) -> Unit = { queue ->
+        if (playerConnection == null) pendingQueue = queue else playerConnection.playQueue(queue)
+    }
+    LaunchedEffect(playerConnection, pendingQueue) {
+        val connection = playerConnection ?: return@LaunchedEffect
+        val queue = pendingQueue ?: return@LaunchedEffect
+        pendingQueue = null
+        connection.playQueue(queue)
+    }
+    androidx.activity.compose.ReportDrawnWhen { screenState !is HomeScreenState.Loading }
 
     val lazyListState = listState ?: rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -191,6 +205,7 @@ fun HomeScreen(
                     isPlaying = isPlaying,
                     navController = navController,
                     playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                     menuState = menuState,
                     haptic = haptic,
                     scope = scope,
@@ -264,7 +279,8 @@ private fun HomeContent(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (Queue) -> Unit,
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -411,6 +427,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 modifier = Modifier.animateItem(),
@@ -457,6 +474,7 @@ private fun HomeContent(
                                     isPlaying = isPlaying,
                                     navController = navController,
                                     playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -502,6 +520,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 modifier = Modifier.animateItem(),
@@ -539,6 +558,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -572,6 +592,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -608,6 +629,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -644,6 +666,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -670,6 +693,7 @@ private fun HomeContent(
                                     isPlaying = isPlaying,
                                     navController = navController,
                                     playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -702,6 +726,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 modifier = Modifier.animateItem(),
@@ -732,6 +757,7 @@ private fun HomeContent(
                                     isPlaying = isPlaying,
                                     navController = navController,
                                     playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -775,6 +801,7 @@ private fun HomeContent(
                                     isPlaying = isPlaying,
                                     navController = navController,
                                     playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -824,9 +851,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.sectionSpacer(key: St
  * when the data lands.
  */
 @Composable
-private fun HomeSkeletonFeed(modifier: Modifier = Modifier) {
+internal fun HomeSkeletonFeed(
+    modifier: Modifier = Modifier,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+) {
     LazyColumn(
-        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        contentPadding = contentPadding,
         modifier =
             modifier
                 .widthIn(max = HomeFeedMaxWidth)

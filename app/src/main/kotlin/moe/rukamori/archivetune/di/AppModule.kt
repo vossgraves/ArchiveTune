@@ -62,19 +62,22 @@ interface CanvasCacheEntryPoint {
     fun playerCache(): Cache
 }
 
-private class LazyCache(
-    private val create: () -> SimpleCache,
+internal class LazyCache(
+    private val create: () -> Cache,
 ) : Cache {
     private val lock = Any()
+    private var cache: Cache? = null
+    private var released = false
 
-    @Volatile private var cache: SimpleCache? = null
-
-    private fun delegateLocked(): SimpleCache = cache ?: create().also { cache = it }
-
-    private inline fun <T> withDelegate(block: (SimpleCache) -> T): T =
+    private fun delegate(): Cache =
         synchronized(lock) {
-            block(delegateLocked())
+            check(!released) { "Cache has been released" }
+            cache ?: create().also { cache = it }
         }
+
+    // Media3 releases its own monitor while waiting for a hole span. An outer
+    // monitor here would prevent the writer from committing or releasing that span.
+    private inline fun <T> withDelegate(block: (Cache) -> T): T = block(delegate())
 
     override fun addListener(
         key: String,
@@ -84,7 +87,10 @@ private class LazyCache(
     override fun removeListener(
         key: String,
         listener: Cache.Listener,
-    ) = withDelegate { cache -> cache.removeListener(key, listener) }
+    ) {
+        val existing = synchronized(lock) { cache } ?: return
+        existing.removeListener(key, listener)
+    }
 
     override fun getCachedSpans(key: String): NavigableSet<CacheSpan> = withDelegate { cache -> cache.getCachedSpans(key) }
 
@@ -149,10 +155,14 @@ private class LazyCache(
     ): Boolean = withDelegate { cache -> cache.isCached(key, position, length) }
 
     override fun release() {
-        synchronized(lock) {
-            cache?.release()
-            cache = null
+        val toRelease = synchronized(lock) {
+            if (released) return
+            // Storage migration releases these process-scoped caches before moving
+            // their directories and restarting. Never reopen the old directory.
+            released = true
+            cache.also { cache = null }
         }
+        toRelease?.release()
     }
 }
 

@@ -4,13 +4,9 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * Ytdlnis-compatible fallback resolver: mirrors YTDLnis's data-fetching switch
- * (NewPipe ↔ yt-dlp) but without bundling Python. Tries:
- *   1) NewPipe (MetrolistExtractor) via core's NewPipeUtils — pure Kotlin, no Python, handles
- *      age-restricted and signatureCipher via NewPipe's JS player.
- *   2) External yt-dlp via CompactYtDlp (YTDLnis plugin APK) — only if a plugin APK is installed
- *      (com.deniscerri.ytdl.python etc). No Python is bundled; the APK's libpython.so is probed
- *      at runtime (see CompactYtDlp.kt). This is the YTDLnis fallback path but compact.
+ * External yt-dlp fallback via CompactYtDlp, used only when a compatible runtime
+ * is installed. No Python is bundled. Extractor/signature handling remains in
+ * the working native core; the former reflection stage never resolved a stream.
  *
  * ResolveAudioStreamUseCase tries NativeStreamRepository (InnerTubeX/BotGuard) first; only on
  * failure does it delegate here, so the hot path stays native and fast.
@@ -20,6 +16,9 @@ package moe.rukamori.archivetune.playback.stream
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 import javax.inject.Singleton
 import moe.rukamori.archivetune.ytdlp.CompactYtDlp
@@ -34,41 +33,22 @@ class YtdlnisStreamRepository
     ) : AudioStreamRepository {
 
         override suspend fun resolve(request: AudioStreamRequest): ResolvedAudioStream {
-            // 1) Try NewPipe extractor (MetrolistExtractor) if available — this is what YTDLnis
-            // calls "NewPipe" data fetching. It handles signatureCipher without Python.
+            currentCoroutineContext().ensureActive()
+            if (!CompactYtDlp.isAvailable(context)) {
+                throw YtDlpExtractionException("No external yt-dlp runtime is available for ${request.mediaId}")
+            }
+
             try {
-                val newPipeResult = tryNewPipe(request)
-                if (newPipeResult != null) return newPipeResult
-            } catch (e: Exception) {
-                Timber.tag(TAG).d(e, "NewPipe fallback failed for %s", request.mediaId)
+                val result = tryExternalYtDlp(request)
+                currentCoroutineContext().ensureActive()
+                if (result != null) return result
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Timber.tag(TAG).d(error, "External yt-dlp fallback failed for %s", request.mediaId)
+                throw YtDlpExtractionException("External yt-dlp failed for ${request.mediaId}", error)
             }
-
-            // 2) Try external yt-dlp via CompactYtDlp (YTDLnis plugin model)
-            if (CompactYtDlp.isAvailable(context)) {
-                try {
-                    val ytdlpResult = tryExternalYtDlp(request)
-                    if (ytdlpResult != null) return ytdlpResult
-                } catch (e: Exception) {
-                    Timber.tag(TAG).d(e, "External yt-dlp fallback failed for %s", request.mediaId)
-                }
-            }
-
-            throw YtDlpExtractionException("All Ytdlnis fallbacks failed for ${request.mediaId}")
-        }
-
-        private suspend fun tryNewPipe(request: AudioStreamRequest): ResolvedAudioStream? {
-            // Use core's NewPipeUtils if present; keep reflection to avoid hard dependency at compile
-            // when the core is the MetrolistExtractor fork (same org.schabi.newpipe.extractor package).
-            return try {
-                val clazz = Class.forName("moe.rukamori.archivetune.innertube.NewPipeUtils")
-                val method = clazz.getMethod("getStreamUrl", String::class.java, String::class.java)
-                // NewPipeUtils.getStreamUrl(format, videoId) is not directly usable here without a format;
-                // instead try NewPipeExtractor.getStreamUrl style — fall back to null to let external yt-dlp try.
-                // This stub keeps the NewPipe path as a placeholder for a full MetrolistExtractor integration.
-                null
-            } catch (_: ClassNotFoundException) {
-                null
-            }
+            throw YtDlpExtractionException("External yt-dlp returned no audio stream for ${request.mediaId}")
         }
 
         private suspend fun tryExternalYtDlp(request: AudioStreamRequest): ResolvedAudioStream? {
