@@ -142,8 +142,6 @@ class PlayerConnection(
     private val _canvasArtworkUpdates = MutableSharedFlow<CanvasArtworkUpdate>(extraBufferCapacity = 1)
     internal val canvasArtworkUpdates = _canvasArtworkUpdates.asSharedFlow()
 
-    private var metadataExtractionJob: Job? = null
-
     init {
         attachToPlayer(service.player)
 
@@ -161,32 +159,31 @@ class PlayerConnection(
             }
         }
 
-        metadataExtractionJob =
-            connectionScope.launch(Dispatchers.IO) {
-                mediaMetadata
-                    .distinctUntilChangedBy { it?.id }
-                    .collectLatest { metadata ->
-                        val mediaId = metadata?.id ?: return@collectLatest
-                        if (mediaId.isLocalMediaId()) {
-                            val storedFormat = database.format(mediaId).first()
-                            if (storedFormat != null && storedFormat.bitrate == 0 && storedFormat.sampleRate == null) {
-                                val result =
-                                    extractLocalAudioProperties(context, mediaId)
-                                        ?: return@collectLatest
-                                ensureActive()
-                                val finalBitrate =
-                                    if (result.first <= 0 && result.second == null) {
-                                        -1
-                                    } else {
-                                        result.first
-                                    }
-                                database.updateLocalAudioMetadata(mediaId, finalBitrate, result.second)
-                            }
-                        } else if (mediaId.isTelegramMediaId()) {
-                            refineTelegramFormat(mediaId)
+        connectionScope.launch(Dispatchers.IO) {
+            mediaMetadata
+                .distinctUntilChangedBy { it?.id }
+                .collectLatest { metadata ->
+                    val mediaId = metadata?.id ?: return@collectLatest
+                    if (mediaId.isLocalMediaId()) {
+                        val storedFormat = database.format(mediaId).first()
+                        if (storedFormat != null && storedFormat.bitrate == 0 && storedFormat.sampleRate == null) {
+                            val result =
+                                extractLocalAudioProperties(context, mediaId)
+                                    ?: return@collectLatest
+                            ensureActive()
+                            val finalBitrate =
+                                if (result.first <= 0 && result.second == null) {
+                                    -1
+                                } else {
+                                    result.first
+                                }
+                            database.updateLocalAudioMetadata(mediaId, finalBitrate, result.second)
                         }
+                    } else if (mediaId.isTelegramMediaId()) {
+                        refineTelegramFormat(mediaId)
                     }
-            }
+                }
+        }
     }
 
     /**
@@ -564,7 +561,6 @@ class PlayerConnection(
         connectionJob.cancel()
         attachedPlayer?.removeListener(this)
         attachedPlayer = null
-        metadataExtractionJob = null
     }
 
     private companion object {

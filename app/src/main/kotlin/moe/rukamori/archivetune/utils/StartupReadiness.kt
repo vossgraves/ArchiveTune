@@ -9,6 +9,8 @@ package moe.rukamori.archivetune.utils
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -37,7 +39,6 @@ internal suspend fun <T> traceStartupAsync(name: String, block: suspend () -> T)
 }
 
 class StartupReadiness {
-    private val configuration = CompletableDeferred<Unit>()
     private val firstFrame = CompletableDeferred<Unit>()
     private val initializationMutex = Mutex()
     private val optionalWorkPermits = Semaphore(2)
@@ -46,16 +47,15 @@ class StartupReadiness {
 
     suspend fun initialize(configure: suspend () -> Unit) {
         initializationMutex.withLock {
-            if (configuration.isCompleted) {
-                configuration.await()
+            val completed = _result.value
+            if (completed != null) {
+                completed.getOrThrow()
                 return
             }
             try {
                 configure()
-                configuration.complete(Unit)
                 _result.value = Result.success(Unit)
             } catch (error: Throwable) {
-                configuration.completeExceptionally(error)
                 _result.value = Result.failure(error)
                 throw error
             }
@@ -64,7 +64,7 @@ class StartupReadiness {
 
     // Service, widget and download entrypoints wait for configuration only,
     // never for an activity or a rendered frame.
-    suspend fun awaitReady() = configuration.await()
+    suspend fun awaitReady() = (result.value ?: result.filterNotNull().first()).getOrThrow()
 
     fun onFirstFrame() {
         firstFrame.complete(Unit)
