@@ -9,6 +9,13 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.border
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -276,11 +283,17 @@ fun PreferenceEntry(
         }
     }
 
+    val glass = rememberSettingsGlassEnabled()
+
     Card(
         shape = resolvedShape,
         colors =
             CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                // Transparent under glass: the tint and the hairline are drawn by the modifier
+                // below, which needs to paint them itself to get the vertical gradient on the
+                // border. Card's own container colour would sit on top of that.
+                containerColor =
+                    if (glass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
             ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier =
@@ -289,11 +302,72 @@ fun PreferenceEntry(
                 .padding(
                     horizontal = if (inGroup) 0.dp else 16.dp,
                     vertical = if (inGroup) 0.dp else 3.dp,
-                ).then(pressScale),
+                ).then(pressScale)
+                .then(if (glass) Modifier.preferenceGlass(resolvedShape, groupPosition) else Modifier),
     ) {
         rowContent()
     }
 }
+
+/**
+ * True when settings rows should wear the glass treatment.
+ *
+ * Tied to the Liquid Glass switch in Appearance rather than a setting of its own: it is the same
+ * decision, and two toggles for one look is how the glass options got scattered in the first
+ * place. Below Android 12 the app's glass effects are unsupported, so the rows stay solid there.
+ */
+@Composable
+private fun rememberSettingsGlassEnabled(): Boolean {
+    val (enabled) = rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    return enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+}
+
+/**
+ * The glass surface: a translucent fill and a hairline that fades from bright at the top of the
+ * row to almost nothing at the bottom, so a group of rows reads as one pane catching light down
+ * its leading edge rather than four separate outlined boxes.
+ *
+ * The alphas vary by the row's position in its group — a first row is bright at the top and half
+ * as bright where it meets the next, a middle row is even, a last row fades out — which is what
+ * makes a stack of them look continuous. Same treatment as Yuma's settings, driven off the
+ * position this file already tracks for the corner radii.
+ */
+@Composable
+private fun Modifier.preferenceGlass(
+    shape: Shape,
+    position: PreferenceGroupPosition?,
+): Modifier {
+    val dark = !MaterialTheme.colorScheme.surface.isLight()
+    val fill =
+        if (dark) {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        } else {
+            Color.White.copy(alpha = 0.65f)
+        }
+    val stroke = MaterialTheme.colorScheme.primary.copy(alpha = if (dark) 0.10f else 0.14f)
+    val (topAlpha, bottomAlpha) =
+        when (position) {
+            null, PreferenceGroupPosition.Single -> 0.20f to 0.04f
+            PreferenceGroupPosition.First -> 0.20f to 0.08f
+            PreferenceGroupPosition.Middle -> 0.08f to 0.08f
+            PreferenceGroupPosition.Last -> 0.08f to 0.04f
+        }
+
+    return this
+        .background(fill, shape)
+        .border(
+            width = 1.dp,
+            brush =
+                Brush.verticalGradient(
+                    0f to stroke.copy(alpha = stroke.alpha * topAlpha / 0.20f),
+                    1f to stroke.copy(alpha = stroke.alpha * bottomAlpha / 0.20f),
+                ),
+            shape = shape,
+        )
+}
+
+/** Luminance test, so the glass fill can lighten a light theme and darken a dark one. */
+private fun Color.isLight(): Boolean = luminance() > 0.5f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

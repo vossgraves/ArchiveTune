@@ -11,6 +11,12 @@ package moe.rukamori.archivetune.ui.screens.onboarding
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.animation.core.animateDpAsState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -1046,10 +1052,10 @@ private fun OnboardingInlineActions(
     val showBack = currentPage > 0
     val isLastPage = currentPage >= pageCount - 1
     val nextLabel =
-        if (isLastPage) {
-            stringResource(R.string.onboarding_finish)
-        } else {
-            stringResource(R.string.next)
+        when {
+            currentPage == 0 -> stringResource(R.string.onboarding_lets_go)
+            isLastPage -> stringResource(R.string.onboarding_finish)
+            else -> stringResource(R.string.next)
         }
 
     Column(
@@ -1059,7 +1065,14 @@ private fun OnboardingInlineActions(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(top = 28.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        OnboardingPageDots(
+            currentPage = currentPage,
+            pageCount = pageCount,
+            modifier = Modifier.padding(bottom = 20.dp),
+        )
+
         AnimatedVisibility(
             visible = !showBack,
             enter =
@@ -1106,6 +1119,50 @@ private fun OnboardingInlineActions(
                     modifier = Modifier.weight(1f),
                 )
             }
+        }
+    }
+}
+
+/**
+ * How far through the first run you are: one pill per page, the current one stretched wide.
+ *
+ * Ported from Yuma's onboarding, which is where the idea of showing progress at all came from —
+ * ArchiveTune's had Back and Next and no sense of how many more there were. Drawn in the theme's
+ * own colours rather than Yuma's glass: the first-run screen is the one place a new install has
+ * not chosen a look yet, so it should not open wearing an effect the user never asked for.
+ */
+@Composable
+private fun OnboardingPageDots(
+    currentPage: Int,
+    pageCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(pageCount) { index ->
+            val selected = index == currentPage
+            val width by animateDpAsState(
+                targetValue = if (selected) 26.dp else 10.dp,
+                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                label = "onboardingDotWidth",
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .height(10.dp)
+                        .width(width)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                            },
+                        ),
+            )
         }
     }
 }
