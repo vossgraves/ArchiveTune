@@ -278,7 +278,7 @@ object CatalogueCoverProvider {
                     client.newCall(
                         Request.Builder()
                             .url(searchUrl)
-                            .header("User-Agent", "ArchiveTune/1.0 (https://github.com/rukamori/ArchiveTune)")
+                            .header("User-Agent", "ArchiveTune/1.0 (https://github.com/vossgraves/ArchiveTune)")
                             .get()
                             .build(),
                     ).execute()
