@@ -65,7 +65,7 @@ fun LibrarySpotifyPlaylistsScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "library_source_pills", contentType = "library_source_pills") {
-                LibrarySourcePills(modifier = Modifier.padding(bottom = 4.dp))
+                LibrarySourcePills(modifier = Modifier.padding(bottom = 4.dp), horizontalPadding = 0.dp)
             }
 
             if (playlists.isEmpty()) {

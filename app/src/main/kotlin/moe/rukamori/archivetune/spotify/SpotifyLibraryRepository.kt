@@ -15,10 +15,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -63,6 +67,11 @@ class SpotifyLibraryRepository
 
         private val _errorMessage = MutableStateFlow<String?>(null)
         val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+        internal val accountChanges = context.dataStore.data
+            .map { it[SpotifySpDcKey].orEmpty() }
+            .distinctUntilChanged()
+            .map { Unit }
 
         private val tokenRefreshMutex = Mutex()
         private data class CachedSearch(
@@ -274,11 +283,9 @@ class SpotifyLibraryRepository
                                     offset = offset,
                                 ).getOrThrow()
                         }
-                    if (page.items.isEmpty()) break
-                    val pageTracks = page.items.mapNotNull { it.track?.takeUnless(SpotifyTrack::isLocal) }
-                    tracks += pageTracks
-                    offset += page.items.size
-                    if (offset >= page.total || page.items.size < limit) break
+                    currentCoroutineContext().ensureActive()
+                    tracks += page.items.mapNotNull { it.track?.takeUnless(SpotifyTrack::isLocal) }
+                    offset = page.nextOffset?.takeIf { it > offset } ?: break
                 }
 
                 tracks
@@ -327,10 +334,9 @@ class SpotifyLibraryRepository
             val limit = 50
             while (true) {
                 val result = page(limit, offset)
-                if (result.items.isEmpty()) break
+                currentCoroutineContext().ensureActive()
                 all += result.items
-                offset += result.items.size
-                if (offset >= result.total || result.items.size < limit) break
+                offset = result.nextOffset?.takeIf { it > offset } ?: break
             }
             return all
         }
@@ -347,10 +353,9 @@ class SpotifyLibraryRepository
                         spotifyCallWithTokenRetry {
                             Spotify.likedSongs(limit = limit, offset = offset).getOrThrow()
                         }
-                    if (page.items.isEmpty()) break
+                    currentCoroutineContext().ensureActive()
                     tracks += page.items.mapNotNull { it.track.takeUnless(SpotifyTrack::isLocal) }
-                    offset += page.items.size
-                    if (offset >= page.total || page.items.size < limit) break
+                    offset = page.nextOffset?.takeIf { it > offset } ?: break
                 }
 
                 tracks

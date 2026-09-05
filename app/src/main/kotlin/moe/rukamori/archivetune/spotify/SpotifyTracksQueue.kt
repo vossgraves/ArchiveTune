@@ -12,6 +12,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.queues.Queue
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
@@ -23,52 +24,27 @@ class SpotifyTracksQueue(
     override val preloadItem: MediaMetadata? = null,
 ) : Queue {
     private val allTracks = initialTracks.toList()
-    private var resolveOffset = 0
-    private var isInitialized = false
 
     override suspend fun getInitialStatus(): Queue.Status =
         withContext(Dispatchers.IO) {
-            try {
-                if (allTracks.isEmpty()) {
-                    return@withContext Queue.Status(title = title, items = emptyList(), mediaItemIndex = 0)
-                }
-
-                val targetIndex = startIndex.coerceIn(allTracks.indices)
-                val resolvedEntries = resolveTrackEntries(allTracks)
-                val resolvedItems = resolvedEntries.map { it.second }
-
-                resolveOffset = allTracks.size
-                if (resolvedItems.isEmpty()) {
-                    return@withContext Queue.Status(title = title, items = emptyList(), mediaItemIndex = 0)
-                }
-
-                Queue.Status(
-                    title = title,
-                    items = resolvedItems,
-                    mediaItemIndex =
-                        resolvedEntries
-                            .indexOfFirst { it.first >= targetIndex }
-                            .takeIf { it >= 0 }
-                            ?: resolvedItems.lastIndex,
-                )
-            } finally {
-                isInitialized = true
+            if (allTracks.isEmpty()) {
+                return@withContext Queue.Status(title = title, items = emptyList(), mediaItemIndex = 0)
             }
+
+            val targetIndex = startIndex.coerceIn(allTracks.indices)
+            val resolvedEntries = resolveTrackEntries(allTracks)
+            val resolvedItems = resolvedEntries.map { it.second }
+            Queue.Status(
+                title = title,
+                items = resolvedItems,
+                mediaItemIndex = resolvedEntries.indexOfFirst { it.first >= targetIndex }
+                    .takeIf { it >= 0 } ?: resolvedItems.lastIndex.coerceAtLeast(0),
+            )
         }
 
-    override fun hasNextPage(): Boolean = isInitialized && resolveOffset < allTracks.size
+    override fun hasNextPage(): Boolean = false
 
-    override suspend fun nextPage(): List<MediaItem> =
-        withContext(Dispatchers.IO) {
-            if (resolveOffset >= allTracks.size) return@withContext emptyList()
-
-            val end = (resolveOffset + RESOLVE_BATCH_SIZE).coerceAtMost(allTracks.size)
-            val batch = allTracks.subList(resolveOffset, end)
-            resolveOffset = end
-            resolveTracks(batch)
-        }
-
-    private suspend fun resolveTracks(tracks: List<SpotifyTrack>): List<MediaItem> = resolveTrackEntries(tracks).map { it.second }
+    override suspend fun nextPage(): List<MediaItem> = emptyList()
 
     private suspend fun resolveTrackEntries(tracks: List<SpotifyTrack>): List<Pair<Int, MediaItem>> =
         buildList {
@@ -79,9 +55,11 @@ class SpotifyTracksQueue(
                         chunk
                             .mapIndexed { index, track ->
                                 async {
-                                    SpotifyPlaybackResolver
-                                        .resolveToMediaItem(track)
-                                        ?.let { mediaItem -> chunkOffset + index to mediaItem }
+                                    val mediaItem = preloadItem
+                                        ?.takeIf { it.spotifyTrackId == track.id }
+                                        ?.toMediaItem()
+                                        ?: SpotifyPlaybackResolver.resolveToMediaItem(track)
+                                    mediaItem?.let { chunkOffset + index to it }
                                 }
                             }.awaitAll()
                             .filterNotNull()
@@ -91,6 +69,6 @@ class SpotifyTracksQueue(
         }
 
     companion object {
-        private const val RESOLVE_BATCH_SIZE = 20
+        private const val RESOLVE_BATCH_SIZE = 4
     }
 }

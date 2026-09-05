@@ -18,4 +18,14 @@ data class SpotifyPaging<T>(
     val next: String? = null,
     val previous: String? = null,
     val href: String? = null,
-)
+    @kotlinx.serialization.Transient val rawItemCount: Int = items.size,
+) {
+    // Filtering unsupported wrappers must not change the server's pagination position.
+    val nextOffset: Int?
+        get() {
+            if (rawItemCount <= 0 || rawItemCount < limit) return null
+            val nextOffset = offset + rawItemCount
+            if (nextOffset <= offset || (total > 0 && nextOffset >= total)) return null
+            return nextOffset
+        }
+}

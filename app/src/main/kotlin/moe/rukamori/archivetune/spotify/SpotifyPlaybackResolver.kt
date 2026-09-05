@@ -9,6 +9,8 @@ package moe.rukamori.archivetune.spotify
 
 import androidx.media3.common.MediaItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -51,24 +53,18 @@ object SpotifyPlaybackResolver {
             // chain, so identifying the matching YouTube item must also work without a YouTube
             // login. Try anonymous search first; a stale account context must not make Spotify
             // playlist tracks appear unplayable for signed-out users.
-            val searchResult =
-                YouTube
-                    .search(
-                        query = youtubeQuery,
-                        filter = YouTube.SearchFilter.FILTER_SONG,
-                        useAccountContext = false,
-                    ).getOrNull()
-                    ?: YouTube
-                        .search(
-                            query = youtubeQuery,
-                            filter = YouTube.SearchFilter.FILTER_SONG,
-                        ).getOrNull()
-                    ?: return@withContext null
-
-            val candidates =
-                searchResult.items
-                    .filterIsInstance<SongItem>()
-                    .distinctBy { it.id }
+            val anonymousResult = YouTube.search(
+                query = youtubeQuery,
+                filter = YouTube.SearchFilter.FILTER_SONG,
+                useAccountContext = false,
+            )
+            currentCoroutineContext().ensureActive()
+            val anonymousCandidates = anonymousResult.getOrNull()?.items.orEmpty().filterIsInstance<SongItem>()
+            val candidates = anonymousCandidates.ifEmpty {
+                val fallback = YouTube.search(query = youtubeQuery, filter = YouTube.SearchFilter.FILTER_SONG)
+                currentCoroutineContext().ensureActive()
+                fallback.getOrNull()?.items.orEmpty().filterIsInstance<SongItem>()
+            }.distinctBy { it.id }
             if (candidates.isEmpty()) return@withContext null
 
             val precomputed =

@@ -9,8 +9,15 @@ package moe.rukamori.archivetune.spotify
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,6 +30,9 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.YTItem
+import moe.rukamori.archivetune.spotify.models.SpotifyTrack
+import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem
@@ -66,10 +76,17 @@ sealed interface SpotifyHomeScreenState {
 sealed interface SpotifyHomeNavigationEvent {
     data class OpenAlbum(val browseId: String) : SpotifyHomeNavigationEvent
     data class OpenArtist(val id: String) : SpotifyHomeNavigationEvent
+    data class PlayTracks(val queue: SpotifyTracksQueue) : SpotifyHomeNavigationEvent
+    data class ShowMessage(val messageResId: Int) : SpotifyHomeNavigationEvent
 }
 
 sealed interface SpotifyHomeAction {
     data object Refresh : SpotifyHomeAction
+    data class TrackClick(
+        val track: SpotifyTrack,
+        val tracks: List<SpotifyTrack>,
+        val title: String,
+    ) : SpotifyHomeAction
     data class AlbumClick(val album: SpotifyAlbum) : SpotifyHomeAction
     data class ArtistClick(val artist: SpotifyArtist) : SpotifyHomeAction
 }
@@ -82,48 +99,101 @@ class SpotifyHomeViewModel @Inject constructor(
     private val _screenState = MutableStateFlow<SpotifyHomeScreenState>(SpotifyHomeScreenState.Loading)
     val screenState: StateFlow<SpotifyHomeScreenState> = _screenState.asStateFlow()
 
-    private val _navigationEvents = MutableSharedFlow<SpotifyHomeNavigationEvent>(extraBufferCapacity = 1)
+    private val _navigationEvents = MutableSharedFlow<SpotifyHomeNavigationEvent>()
     val navigationEvents: SharedFlow<SpotifyHomeNavigationEvent> = _navigationEvents.asSharedFlow()
 
+    private val _resolvingItemKey = MutableStateFlow<String?>(null)
+    val resolvingItemKey = _resolvingItemKey.asStateFlow()
+    private var selectionJob: Job? = null
+    private var loadJob: Job? = null
+
     init {
-        load()
+        viewModelScope.launch {
+            repository.accountChanges.collect { load() }
+        }
     }
 
     fun onAction(action: SpotifyHomeAction) {
         when (action) {
             SpotifyHomeAction.Refresh -> load()
-            is SpotifyHomeAction.AlbumClick -> resolveAlbum(action.album)
-            is SpotifyHomeAction.ArtistClick -> resolveArtist(action.artist)
-        }
-    }
-
-    private fun resolveAlbum(album: SpotifyAlbum) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val browseId = YouTube.search(album.name, YouTube.SearchFilter.FILTER_ALBUM)
-                .getOrNull()
-                ?.items
-                ?.firstOrNull() as? AlbumItem
-            if (browseId != null) {
-                _navigationEvents.emit(SpotifyHomeNavigationEvent.OpenAlbum(browseId.browseId))
+            is SpotifyHomeAction.TrackClick -> resolveSelection(
+                key = "track:${action.track.id}",
+                unavailableMessageResId = R.string.spotify_track_unavailable,
+            ) {
+                SpotifyPlaybackResolver.resolveToMetadata(action.track)?.let { metadata ->
+                    SpotifyHomeNavigationEvent.PlayTracks(
+                        SpotifyTracksQueue(
+                            title = action.title,
+                            initialTracks = action.tracks,
+                            startIndex = action.tracks.indexOf(action.track).coerceAtLeast(0),
+                            preloadItem = metadata,
+                        ),
+                    )
+                }
+            }
+            is SpotifyHomeAction.AlbumClick -> resolveSelection("album:${action.album.id}") {
+                val query = listOfNotNull(action.album.name, action.album.artists.firstOrNull()?.name)
+                    .filter(String::isNotBlank)
+                    .joinToString(" ")
+                searchCatalogItem<AlbumItem>(query, YouTube.SearchFilter.FILTER_ALBUM)
+                    ?.let { SpotifyHomeNavigationEvent.OpenAlbum(it.browseId) }
+            }
+            is SpotifyHomeAction.ArtistClick -> resolveSelection("artist:${action.artist.id}") {
+                searchCatalogItem<ArtistItem>(action.artist.name, YouTube.SearchFilter.FILTER_ARTIST)
+                    ?.let { SpotifyHomeNavigationEvent.OpenArtist(it.id) }
             }
         }
     }
 
-    private fun resolveArtist(artist: SpotifyArtist) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val artistItem = YouTube.search(artist.name, YouTube.SearchFilter.FILTER_ARTIST)
-                .getOrNull()
-                ?.items
-                ?.firstOrNull() as? ArtistItem
-            if (artistItem != null) {
-                _navigationEvents.emit(SpotifyHomeNavigationEvent.OpenArtist(artistItem.id))
+    fun cancelSelection() {
+        selectionJob?.cancel()
+        selectionJob = null
+        _resolvingItemKey.value = null
+    }
+
+    private fun resolveSelection(
+        key: String,
+        unavailableMessageResId: Int = R.string.no_results_found,
+        resolve: suspend () -> SpotifyHomeNavigationEvent?,
+    ) {
+        if (_resolvingItemKey.value == key && selectionJob?.isActive == true) return
+        cancelSelection()
+        _resolvingItemKey.value = key
+        selectionJob = viewModelScope.launch {
+            try {
+                val event = withTimeoutOrNull(20_000L) {
+                    withContext(Dispatchers.IO) { resolve() }
+                }
+                currentCoroutineContext().ensureActive()
+                _navigationEvents.emit(event ?: SpotifyHomeNavigationEvent.ShowMessage(unavailableMessageResId))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                reportException(error)
+                _navigationEvents.emit(SpotifyHomeNavigationEvent.ShowMessage(unavailableMessageResId))
+            } finally {
+                if (currentCoroutineContext().isActive) _resolvingItemKey.value = null
             }
         }
+    }
+
+    private suspend inline fun <reified T : YTItem> searchCatalogItem(
+        query: String,
+        filter: YouTube.SearchFilter,
+    ): T? {
+        val anonymous = YouTube.search(query, filter, useAccountContext = false)
+        currentCoroutineContext().ensureActive()
+        anonymous.getOrNull()?.items?.filterIsInstance<T>()?.firstOrNull()?.let { return it }
+        val fallback = YouTube.search(query, filter)
+        currentCoroutineContext().ensureActive()
+        return fallback.getOrThrow().items.filterIsInstance<T>().firstOrNull()
     }
 
     private fun load() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _screenState.update { SpotifyHomeScreenState.Loading }
+        loadJob?.cancel()
+        cancelSelection()
+        _screenState.value = SpotifyHomeScreenState.Loading
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
 
             try {
                 val session = repository.restoreSession()
@@ -144,6 +214,7 @@ class SpotifyHomeViewModel @Inject constructor(
                 val newReleasesResult = newReleasesDeferred.await()
                 val homeResult = homeDeferred.await()
                 val topArtistsResult = topArtistsDeferred.await()
+                currentCoroutineContext().ensureActive()
 
                 topTracksResult.onSuccess { topTracks ->
                     if (topTracks.items.isNotEmpty()) {
@@ -210,7 +281,8 @@ class SpotifyHomeViewModel @Inject constructor(
                     }
                 }
 
-                if (sections.isEmpty()) {
+                currentCoroutineContext().ensureActive()
+                if (sections.isEmpty() && recentItems.isEmpty() && frequentArtists.isEmpty()) {
                     _screenState.update { SpotifyHomeScreenState.Empty }
                 } else {
                     _screenState.update {
@@ -222,7 +294,10 @@ class SpotifyHomeViewModel @Inject constructor(
                     }
                 }
 
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
                 if (e is Spotify.SpotifyException && e.statusCode == 401) {
                     _screenState.update { SpotifyHomeScreenState.Error(R.string.spotify_not_connected, notAuthenticated = true) }
                 } else {

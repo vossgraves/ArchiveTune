@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -22,7 +21,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -65,9 +63,9 @@ fun MarqueeText(
     fadeWidth: Dp = 24.dp,
     animationMode: MarqueeAnimationMode = MarqueeAnimationMode.Immediately,
 ) {
-    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var contentWidth by remember { mutableIntStateOf(0) }
     var viewportWidth by remember { mutableIntStateOf(0) }
-    val overflows = viewportWidth > 0 && (layout?.size?.width ?: 0) > viewportWidth
+    val overflows = viewportWidth > 0 && contentWidth > viewportWidth
 
     Box(
         modifier =
@@ -87,7 +85,7 @@ fun MarqueeText(
             // Reached only in the frame before the marquee has measured; after that the marquee
             // owns the overflow.
             overflow = TextOverflow.Ellipsis,
-            onTextLayout = { layout = it },
+            onTextLayout = { contentWidth = it.size.width },
             modifier =
                 Modifier.fillMaxWidth().basicMarquee(
                     iterations = Int.MAX_VALUE,

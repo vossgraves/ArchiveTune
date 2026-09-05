@@ -8,6 +8,8 @@
 package moe.rukamori.archivetune.ui.screens.library
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -47,36 +49,42 @@ import moe.rukamori.archivetune.ui.component.SpotifyPlayableRow
  */
 @Composable
 fun LibrarySpotifySongsScreen(viewModel: SpotifyLibraryViewModel = hiltViewModel()) {
-    val tracks by viewModel.likedSongs.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { viewModel.loadLikedSongs() }
+    val state by viewModel.likedSongs.collectAsStateWithLifecycle()
+    val accountRevision by viewModel.accountRevision.collectAsStateWithLifecycle()
+    LaunchedEffect(viewModel, accountRevision) { viewModel.loadLikedSongs() }
 
     SpotifySectionList(
-        items = remember(tracks) { tracks.map(SpotifySearchItem::Track) },
-        isRefreshing = viewModel.isLoadingSection.collectAsStateWithLifecycle().value,
+        items = remember(state.items) { state.items.orEmpty().map(SpotifySearchItem::Track) },
+        isRefreshing = state.isLoading || (state.items == null && state.errorMessage == null),
+        errorMessage = state.errorMessage,
         onRefresh = { viewModel.loadLikedSongs(force = true) },
     )
 }
 
 @Composable
 fun LibrarySpotifyArtistsScreen(viewModel: SpotifyLibraryViewModel = hiltViewModel()) {
-    val artists by viewModel.artists.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { viewModel.loadArtists() }
+    val state by viewModel.artists.collectAsStateWithLifecycle()
+    val accountRevision by viewModel.accountRevision.collectAsStateWithLifecycle()
+    LaunchedEffect(viewModel, accountRevision) { viewModel.loadArtists() }
 
     SpotifySectionList(
-        items = remember(artists) { artists.map(SpotifySearchItem::Artist) },
-        isRefreshing = viewModel.isLoadingSection.collectAsStateWithLifecycle().value,
+        items = remember(state.items) { state.items.orEmpty().map(SpotifySearchItem::Artist) },
+        isRefreshing = state.isLoading || (state.items == null && state.errorMessage == null),
+        errorMessage = state.errorMessage,
         onRefresh = { viewModel.loadArtists(force = true) },
     )
 }
 
 @Composable
 fun LibrarySpotifyAlbumsScreen(viewModel: SpotifyLibraryViewModel = hiltViewModel()) {
-    val albums by viewModel.albums.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { viewModel.loadAlbums() }
+    val state by viewModel.albums.collectAsStateWithLifecycle()
+    val accountRevision by viewModel.accountRevision.collectAsStateWithLifecycle()
+    LaunchedEffect(viewModel, accountRevision) { viewModel.loadAlbums() }
 
     SpotifySectionList(
-        items = remember(albums) { albums.map(SpotifySearchItem::Album) },
-        isRefreshing = viewModel.isLoadingSection.collectAsStateWithLifecycle().value,
+        items = remember(state.items) { state.items.orEmpty().map(SpotifySearchItem::Album) },
+        isRefreshing = state.isLoading || (state.items == null && state.errorMessage == null),
+        errorMessage = state.errorMessage,
         onRefresh = { viewModel.loadAlbums(force = true) },
     )
 }
@@ -85,6 +93,7 @@ fun LibrarySpotifyAlbumsScreen(viewModel: SpotifyLibraryViewModel = hiltViewMode
 private fun SpotifySectionList(
     items: List<SpotifySearchItem>,
     isRefreshing: Boolean,
+    errorMessage: String?,
     onRefresh: () -> Unit,
 ) {
     val playerAwareBottomPadding =
@@ -113,12 +122,25 @@ private fun SpotifySectionList(
                 LibrarySourcePills(modifier = Modifier.padding(bottom = 4.dp))
             }
 
-            if (items.isEmpty() && !isRefreshing) {
+            if (errorMessage != null) {
+                item(key = "spotify_section_error", contentType = "spotify_section_error") {
+                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(onClick = onRefresh) {
+                            Text(stringResource(R.string.retry))
+                        }
+                    }
+                }
+            } else if (items.isEmpty() && !isRefreshing) {
                 item(key = "spotify_section_empty", contentType = "spotify_section_empty") {
                     Text(
-                        text = stringResource(R.string.spotify_no_sources),
+                        text = stringResource(R.string.no_results_found),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                     )
                 }
