@@ -322,7 +322,6 @@ import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.setAppLocale
 import moe.rukamori.archivetune.viewmodels.BackupCategory
 import moe.rukamori.archivetune.viewmodels.BackupRestoreViewModel
-import moe.rukamori.archivetune.viewmodels.GatekeeperViewModel
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 import moe.rukamori.archivetune.viewmodels.NetworkBannerViewModel
 import moe.rukamori.archivetune.viewmodels.NewsViewModel
@@ -584,13 +583,6 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val gatekeeperViewModel: GatekeeperViewModel = hiltViewModel()
-            LaunchedEffect(Unit) {
-                gatekeeperViewModel.blockedMessages.collect { message ->
-                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                }
-            }
-
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             LaunchedEffect(Unit) {
