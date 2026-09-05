@@ -99,6 +99,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
@@ -699,15 +701,6 @@ object ThemePalettes {
             neutral = Color(0xFFFF5F1F),
         )
 
-    val Cyberpunk =
-        ThemePalette(
-            id = "cyberpunk",
-            nameResId = R.string.palette_cyberpunk,
-            primary = Color(0xFFFF00FF),
-            secondary = Color(0xFFFF00FF),
-            tertiary = Color(0xFFFF00FF),
-            neutral = Color(0xFFFF00FF),
-        )
 
     val Synthwave =
         ThemePalette(
@@ -799,25 +792,7 @@ object ThemePalettes {
             neutral = Color(0xFF00FF7F),
         )
 
-    val Candy =
-        ThemePalette(
-            id = "candy",
-            nameResId = R.string.palette_candy,
-            primary = Color(0xFFFF69B4),
-            secondary = Color(0xFFFF69B4),
-            tertiary = Color(0xFFFF69B4),
-            neutral = Color(0xFFFF69B4),
-        )
 
-    val Rainbow =
-        ThemePalette(
-            id = "rainbow",
-            nameResId = R.string.palette_rainbow,
-            primary = Color(0xFFFF0000),
-            secondary = Color(0xFFFF0000),
-            tertiary = Color(0xFFFF0000),
-            neutral = Color(0xFFFF0000),
-        )
 
     val allPalettes: List<ThemePalette> =
         listOf(
@@ -877,7 +852,6 @@ object ThemePalettes {
             NeonPink,
             NeonBlue,
             NeonOrange,
-            Cyberpunk,
             Synthwave,
             Ocean,
             Forest,
@@ -887,13 +861,29 @@ object ThemePalettes {
             Summer,
             Twilight,
             Aurora,
-            Candy,
-            Rainbow,
+        )
+
+    /**
+     * Palettes that were removed for being pixel-identical to another entry, mapped to the one
+     * that stayed.
+     *
+     * Cyberpunk was Magenta Pop, Candy was Hot Pink and Rainbow was YouTube Red — same colour in
+     * all four roles, so the picker showed the same dot twice and picking either gave the same
+     * theme. The selection is stored by id, so without this a user sitting on one of the three
+     * would silently drop back to the default theme on the next launch.
+     */
+    private val RetiredPaletteIds =
+        mapOf(
+            "cyberpunk" to "magenta_pop",
+            "candy" to "hot_pink",
+            "rainbow" to "youtube_red",
         )
 
     fun findByPrimaryColor(colorHex: String): ThemePalette? = allPalettes.find { it.primary.toHexString() == colorHex }
 
-    fun findById(id: String): ThemePalette? = allPalettes.find { it.id == id }
+    fun findById(id: String): ThemePalette? =
+        allPalettes.find { it.id == id }
+            ?: RetiredPaletteIds[id]?.let { survivor -> allPalettes.find { it.id == survivor } }
 
     fun getRandomPalette(): ThemePalette = allPalettes.random()
 
@@ -1441,6 +1431,9 @@ private fun ColorPaletteSelector(
     }
 }
 
+/** Fixed so the labelled swatches form an even row instead of each cell sizing to its own name. */
+private val MiniPaletteWidth = 84.dp
+
 @Composable
 private fun SelectableMiniPalette(
     palette: ThemePalette,
@@ -1454,8 +1447,17 @@ private fun SelectableMiniPalette(
         label = "miniPaletteScale",
     )
 
+    // The swatch alone identifies nothing. Every palette in this app sets all four Material roles
+    // to the same colour, so the tri-circle mark below renders as one flat dot — sixty-five flat
+    // dots in a row, several of them close enough in hue to be indistinguishable, and no way to
+    // tell which one is "Sage Green". Each palette already carries a name string that nothing had
+    // ever rendered; it is the label under the swatch now.
+    Column(
+        modifier = modifier.width(MiniPaletteWidth),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
     Surface(
-        modifier = modifier.scale(scale),
+        modifier = Modifier.scale(scale),
         shape = RoundedCornerShape(16.dp),
         color =
             if (isSelected) {
@@ -1488,7 +1490,7 @@ private fun SelectableMiniPalette(
                             .offset(24.dp, 24.dp),
                     color = palette.secondary,
                 ) {}
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = isSelected,
                     modifier =
                         Modifier
@@ -1510,6 +1512,25 @@ private fun SelectableMiniPalette(
                 }
             }
         }
+    }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = stringResource(palette.nameResId),
+            style = MaterialTheme.typography.labelSmall,
+            color =
+                if (isSelected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            minLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 13.sp,
+        )
     }
 }
 
