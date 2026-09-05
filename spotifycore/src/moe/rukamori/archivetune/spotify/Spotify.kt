@@ -42,6 +42,7 @@ import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyImage
 import moe.rukamori.archivetune.spotify.models.SpotifyPaging
+import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistOwner
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTrack
@@ -1198,6 +1199,23 @@ object Spotify {
                 parameter("time_range", timeRange)
                 parameter("limit", limit)
                 parameter("offset", offset)
+            }
+        }
+
+    // ── Recently played (REST — no GQL equivalent) ──────────────────────
+
+    /**
+     * The user's play history, most recent first. Spotify caps this at the last 50 plays and
+     * pages it by cursor rather than offset, so there is no `offset` here and no way to reach
+     * further back — the endpoint simply does not offer it.
+     *
+     * `failFastOn429` for the same reason [topTracks] uses it: this is a nice-to-have panel, and
+     * a rate-limited retry storm is worse than an empty one.
+     */
+    suspend fun recentlyPlayed(limit: Int = 50): Result<SpotifyPaging<SpotifyPlayHistory>> =
+        runCatching {
+            authenticatedGet("me/player/recently-played", failFastOn429 = true) {
+                parameter("limit", limit.coerceIn(1, 50))
             }
         }
 

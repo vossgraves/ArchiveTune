@@ -44,6 +44,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -102,6 +104,11 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
+import moe.rukamori.archivetune.ui.screens.library.rememberLibrarySourceAvailable
+import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.SpotifyPlayableRow
+import moe.rukamori.archivetune.spotify.SpotifySearchItem
+import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -178,6 +185,8 @@ fun HistoryScreen(
     // the skeleton loader when the back button was pressed.
     val localSearchListState = rememberLazyListState()
     val remoteSearchListState = rememberLazyListState()
+    val spotifyListState = rememberLazyListState()
+    val spotifySearchListState = rememberLazyListState()
     val scrollBehavior =
         appBarScrollBehavior(
             canScroll = { !isSearching && selectedEventIds.isEmpty() },
@@ -233,12 +242,30 @@ fun HistoryScreen(
         remember(filteredRemoteSections) {
             filteredRemoteSections.flatMap { it.songs }
         }
+    // Spotify's play history sits beside the YouTube account's. Gated on the same pair of
+    // conditions the Library's Spotify source uses — signed in, and Spotify content switched on in
+    // Integration — so a user who has not opted in sees exactly the two pills they had before.
+    val spotifyHistoryAvailable = rememberLibrarySourceAvailable()
+    val spotifyViewModel: SpotifyLibraryViewModel = hiltViewModel()
+    val spotifyHistory by spotifyViewModel.recentlyPlayed.collectAsStateWithLifecycle()
+    val spotifyHistoryLoading by spotifyViewModel.isLoadingSection.collectAsStateWithLifecycle()
+    val spotifyHistoryItems =
+        remember(spotifyHistory, searchQuery) {
+            spotifyHistory
+                .mapNotNull { it.track }
+                .filter { track ->
+                    searchQuery.isBlank() ||
+                        track.name.contains(searchQuery, ignoreCase = true) ||
+                        track.artists.any { it.name.contains(searchQuery, ignoreCase = true) }
+                }.map(SpotifySearchItem::Track)
+        }
+
     val availableSources =
-        remember(isLoggedIn) {
-            if (isLoggedIn) {
-                listOf(HistorySource.LOCAL, HistorySource.REMOTE)
-            } else {
-                listOf(HistorySource.LOCAL)
+        remember(isLoggedIn, spotifyHistoryAvailable) {
+            buildList {
+                add(HistorySource.LOCAL)
+                if (isLoggedIn) add(HistorySource.REMOTE)
+                if (spotifyHistoryAvailable) add(HistorySource.SPOTIFY)
             }
         }
     val activeListState = if (historySource == HistorySource.REMOTE) remoteListState else localListState
@@ -271,10 +298,10 @@ fun HistoryScreen(
         }
 
     val currentVisibleCount =
-        if (historySource == HistorySource.REMOTE) {
-            remoteVisibleSongs.size
-        } else {
-            localVisibleEvents.size
+        when (historySource) {
+            HistorySource.REMOTE -> remoteVisibleSongs.size
+            HistorySource.SPOTIFY -> spotifyHistoryItems.size
+            HistorySource.LOCAL -> localVisibleEvents.size
         }
 
     val historySourceDock: @Composable () -> Unit = {
@@ -286,6 +313,9 @@ fun HistoryScreen(
                 if (newSource == historySource) return@HistorySourceDock
 
                 viewModel.historySource.value = newSource
+                if (newSource == HistorySource.SPOTIFY) {
+                    spotifyViewModel.loadRecentlyPlayed()
+                }
                 if (newSource == HistorySource.REMOTE) {
                     when (remoteHistoryState) {
                         is RemoteHistoryUiState.Error -> {
@@ -347,6 +377,17 @@ fun HistoryScreen(
                                 )
                             }
                         },
+                    )
+                }
+
+                HistorySource.SPOTIFY -> {
+                    SpotifyHistoryFeed(
+                        listState = if (searchMode) spotifySearchListState else spotifyListState,
+                        topPadding = topPadding,
+                        headerContent = historySourceDock,
+                        items = spotifyHistoryItems,
+                        isLoading = spotifyHistoryLoading,
+                        onRefresh = { spotifyViewModel.loadRecentlyPlayed(force = true) },
                     )
                 }
 
@@ -412,6 +453,12 @@ fun HistoryScreen(
     LaunchedEffect(isSearching) {
         if (isSearching) {
             focusRequester.requestFocus()
+        }
+    }
+
+    LaunchedEffect(historySource, spotifyHistoryAvailable) {
+        if (historySource == HistorySource.SPOTIFY) {
+            if (spotifyHistoryAvailable) spotifyViewModel.loadRecentlyPlayed() else viewModel.historySource.value = HistorySource.LOCAL
         }
     }
 
@@ -988,26 +1035,12 @@ private fun HistorySourceDock(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
-                            text =
-                                stringResource(
-                                    if (currentSource == HistorySource.LOCAL) {
-                                        R.string.local_history
-                                    } else {
-                                        R.string.remote_history
-                                    },
-                                ),
+                            text = stringResource(currentSource.titleResId()),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            text =
-                                stringResource(
-                                    if (currentSource == HistorySource.LOCAL) {
-                                        R.string.history_local_summary
-                                    } else {
-                                        R.string.history_remote_summary
-                                    },
-                                ),
+                            text = stringResource(currentSource.summaryResId()),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -1168,14 +1201,7 @@ private fun HistorySourceSelector(
                     ),
             ) {
                 Text(
-                    text =
-                        stringResource(
-                            if (source == HistorySource.LOCAL) {
-                                R.string.local_history
-                            } else {
-                                R.string.remote_history
-                            },
-                        ),
+                    text = stringResource(source.titleResId()),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1374,3 +1400,74 @@ private fun filterRemoteSections(
 }
 
 private const val HISTORY_LOAD_MORE_THRESHOLD = 12
+
+/** The pill's own name, and the line under the header that says what the source actually holds. */
+private fun HistorySource.titleResId(): Int =
+    when (this) {
+        HistorySource.LOCAL -> R.string.local_history
+        HistorySource.REMOTE -> R.string.remote_history
+        HistorySource.SPOTIFY -> R.string.spotify_history
+    }
+
+private fun HistorySource.summaryResId(): Int =
+    when (this) {
+        HistorySource.LOCAL -> R.string.history_local_summary
+        HistorySource.REMOTE -> R.string.history_remote_summary
+        HistorySource.SPOTIFY -> R.string.history_spotify_summary
+    }
+
+/**
+ * Spotify's play history: the last fifty tracks, most recent first.
+ *
+ * Flat rather than grouped by day like the local feed, because Spotify's endpoint returns a fixed
+ * fifty plays with no way to page further back — a "Yesterday" heading over the tail of a
+ * fifty-item window would promise an archive that is not there.
+ */
+@Composable
+private fun SpotifyHistoryFeed(
+    listState: LazyListState,
+    topPadding: Dp,
+    headerContent: @Composable () -> Unit,
+    items: List<SpotifySearchItem>,
+    isLoading: Boolean,
+    onRefresh: () -> Unit,
+) {
+    ExpressivePullToRefreshBox(
+        isRefreshing = isLoading,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(
+            state = listState,
+            contentPadding =
+                PaddingValues(
+                    top = topPadding,
+                    bottom =
+                        LocalPlayerAwareWindowInsets.current
+                            .only(WindowInsetsSides.Bottom)
+                            .asPaddingValues()
+                            .calculateBottomPadding(),
+                ),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "history_source_dock", contentType = "dock") { headerContent() }
+
+            if (items.isEmpty() && !isLoading) {
+                item(key = "spotify_history_empty", contentType = "empty") {
+                    HistoryStateCard(
+                        title = stringResource(R.string.spotify_history),
+                        description = stringResource(R.string.history_spotify_summary),
+                    )
+                }
+            }
+
+            items(
+                items = items,
+                key = { "spotify_history_${it.key}" },
+                contentType = { "spotify_history_row" },
+            ) { item ->
+                SpotifyPlayableRow(item)
+            }
+        }
+    }
+}

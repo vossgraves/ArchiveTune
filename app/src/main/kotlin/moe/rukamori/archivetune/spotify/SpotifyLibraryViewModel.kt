@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
+import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import javax.inject.Inject
@@ -50,6 +51,10 @@ class SpotifyLibraryViewModel
         private val _albums = MutableStateFlow<List<SpotifyAlbum>>(emptyList())
         val albums: StateFlow<List<SpotifyAlbum>> = _albums.asStateFlow()
 
+        // Play history, for the Spotify pill on the History screen.
+        private val _recentlyPlayed = MutableStateFlow<List<SpotifyPlayHistory>>(emptyList())
+        val recentlyPlayed: StateFlow<List<SpotifyPlayHistory>> = _recentlyPlayed.asStateFlow()
+
         private val _isLoadingSection = MutableStateFlow(false)
         val isLoadingSection: StateFlow<Boolean> = _isLoadingSection.asStateFlow()
 
@@ -75,6 +80,9 @@ class SpotifyLibraryViewModel
         fun loadArtists(force: Boolean = false) = load(force, _artists) { repository.libraryArtists() }
 
         fun loadAlbums(force: Boolean = false) = load(force, _albums) { repository.libraryAlbums() }
+
+        fun loadRecentlyPlayed(force: Boolean = false) =
+            load(force, _recentlyPlayed) { repository.recentlyPlayed() }
 
         private fun <T> load(
             force: Boolean,

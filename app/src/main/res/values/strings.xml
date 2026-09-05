@@ -1720,6 +1720,8 @@
     <string name="home_source_spotify">Spotify</string>
     <string name="home_source_switch_to">Switch to %1$s</string>
     <string name="library_source_ytm">YTM</string>
+    <string name="spotify_history">Spotify</string>
+    <string name="history_spotify_summary">The last 50 tracks played on your Spotify account. Spotify does not offer any further back.</string>
     <string name="lyrics_mode_simpmusic">SimpMusic</string>
     <string name="apple_music_experience">Apple Music Experience</string>
     <string name="apple_music_experience_desc">Replaces the artwork header on playlist, album and library pages with Apple Music\u2019s: a large title over the page, pink accent pills, no backdrop. Turning it on also switches the player to the Apple Music style.</string>

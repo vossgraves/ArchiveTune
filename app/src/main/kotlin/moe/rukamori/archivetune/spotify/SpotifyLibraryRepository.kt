@@ -35,6 +35,7 @@ import moe.rukamori.archivetune.constants.SpotifyLibraryPlaylistsCacheKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
 import moe.rukamori.archivetune.spotify.models.SpotifyPaging
+import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
@@ -294,6 +295,16 @@ class SpotifyLibraryRepository
                 collectPages { limit, offset ->
                     spotifyCallWithTokenRetry { Spotify.myArtists(limit = limit, offset = offset).getOrThrow() }
                 }
+            }
+
+        /**
+         * The user's play history, most recent first. Not paged: Spotify caps this endpoint at the
+         * last 50 plays and offers no way further back, so [collectPages] would spin on one page.
+         */
+        suspend fun recentlyPlayed(): List<SpotifyPlayHistory> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                spotifyCallWithTokenRetry { Spotify.recentlyPlayed().getOrThrow() }.items
             }
 
         /** Every album the user has saved. Backs the Library's Albums section on the Spotify source. */
