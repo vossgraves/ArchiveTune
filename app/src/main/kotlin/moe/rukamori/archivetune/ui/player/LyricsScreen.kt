@@ -146,6 +146,7 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
@@ -1690,6 +1691,15 @@ private fun LyricsContent(
                 modifier = modifier,
                 textColorOverride = textColor,
                 spotifyStyle = true,
+            )
+        }
+
+        LyricsMode.SIMPMUSIC -> {
+            SimpMusicLyrics(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
             )
         }
     }

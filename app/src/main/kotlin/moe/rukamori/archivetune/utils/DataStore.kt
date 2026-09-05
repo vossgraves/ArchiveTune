@@ -34,6 +34,8 @@ import moe.rukamori.archivetune.constants.HISTORY_DURATION_LEGACY_FLOAT_KEY
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MAX
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MIN
 import moe.rukamori.archivetune.constants.HistoryDuration
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.constants.UpdateChannel
@@ -78,6 +80,21 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
+            // SimpMusic's lyrics renderer used to be a boolean of its own, read only by the
+            // SimpMusic player style's lyrics card. It is a LyricsMode now, so it applies to the
+            // lyrics page under every style — carry anyone who had it switched on across.
+            object : DataMigration<Preferences> {
+                override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+                    currentData[LEGACY_SIMPMUSIC_LYRICS_KEY] == true
+
+                override suspend fun migrate(currentData: Preferences): Preferences =
+                    currentData.toMutablePreferences().apply {
+                        this[LyricsModeKey] = LyricsMode.SIMPMUSIC.name
+                        remove(LEGACY_SIMPMUSIC_LYRICS_KEY)
+                    }
+
+                override suspend fun cleanUp() {}
+            },
             // ARCHIVETUNE_EXTRACTOR resolved to ANDROID_MUSIC (with login) or WEB_REMIX
             // (without). The option has been removed along with the gatekeeper machinery
             // that conditioned it; rewrite stale values to WEB_REMIX so existing users
@@ -97,6 +114,9 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
         )
     },
 )
+
+/** The retired `simpMusicLyrics` boolean, kept only so the migration above can read it. */
+private val LEGACY_SIMPMUSIC_LYRICS_KEY = androidx.datastore.preferences.core.booleanPreferencesKey("simpMusicLyrics")
 
 object PreferenceStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

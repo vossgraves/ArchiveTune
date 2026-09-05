@@ -143,7 +143,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.extensions.metadata
@@ -164,6 +165,7 @@ import moe.rukamori.archivetune.ui.player.LosslessOrStats
 import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.Locale
 
@@ -1104,7 +1106,7 @@ private fun SimpMusicLyricsCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val (simpMusicLyrics) = rememberPreference(SimpMusicLyricsKey, defaultValue = false)
+    val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
     val lyricsPositionProvider = remember { { null as Long? } }
 
     // A renderer with nothing to render still fills its 300dp box, so without this the card was a
@@ -1175,7 +1177,7 @@ private fun SimpMusicLyricsCard(
                 if (!renderLyrics) {
                     // Deliberately empty, and deliberately still 300dp: the height is what keeps
                     // the page scrollable so `renderLyrics` can ever become true.
-                } else if (simpMusicLyrics) {
+                } else if (lyricsMode == LyricsMode.SIMPMUSIC) {
                     SimpMusicLyrics(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,
@@ -1183,6 +1185,9 @@ private fun SimpMusicLyricsCard(
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
+                    // Every other mode renders as Enhanced here on purpose: the card is a 300dp
+                    // preview, and the karaoke sweep the other renderers are built around needs a
+                    // full screen to read as anything but flicker.
                     LyricsEnhanced(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,

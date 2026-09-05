@@ -53,14 +53,6 @@ val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
  */
 val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtwork")
 
-/**
- * Which lyrics surface the SimpMusic player style opens: SimpMusic's own (true) or the app's
- * Enhanced renderer (false, the default). Only the SimpMusic style reads this — every other style
- * follows [LyricsModeKey] — so the setting is only offered while that style is selected. Default
- * false so choosing the style does not silently replace the lyrics view the user already had.
- */
-val SimpMusicLyricsKey = booleanPreferencesKey("simpMusicLyrics")
-
 val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
@@ -1239,6 +1231,14 @@ enum class LyricsMode {
     V2,
     ENHANCED,
     SPOTIFY,
+
+    /**
+     * SimpMusic's renderer. Used to be a boolean of its own that only the SimpMusic player style's
+     * lyrics CARD read, so picking it changed a 300dp preview and left the actual lyrics page on
+     * whatever this enum said — "it just shows the same one". It is one of the modes now, so it
+     * applies wherever lyrics are drawn, under any player style.
+     */
+    SIMPMUSIC,
 }
 
 val LyricsV2BounceFactorKey = floatPreferencesKey("lyricsV2BounceFactor")
@@ -1351,7 +1351,6 @@ val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 
 // When ON (default), synced lyrics render in place of the player artwork (BitChord-style
 // inline lyrics on the player screen). The lyrics button still opens the full lyrics page.
-val ShowLyricsOnPlayerKey = booleanPreferencesKey("showLyricsOnPlayer")
 
 // Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")

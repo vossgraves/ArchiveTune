@@ -113,7 +113,6 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
-import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -264,11 +263,6 @@ fun AppearanceSectionSettings(
         rememberPreference(
             AppleMusicAnimatedArtworkKey,
             defaultValue = true,
-        )
-    val (simpMusicLyrics, onSimpMusicLyricsChange) =
-        rememberPreference(
-            SimpMusicLyricsKey,
-            defaultValue = false,
         )
     val (showPlayerVolumeBar, onShowPlayerVolumeBarChange) =
         rememberPreference(
@@ -982,23 +976,6 @@ fun AppearanceSectionSettings(
                             icon = { Icon(painterResource(R.drawable.animation), null) },
                             checked = appleMusicAnimatedArtwork,
                             onCheckedChange = onAppleMusicAnimatedArtworkChange,
-                        )
-                    }
-                }
-
-                // Same rule for the SimpMusic style: it is the only one that carries a second
-                // lyrics surface of its own, so the choice between that and the app's Enhanced
-                // renderer means nothing under any other style. Sits directly under the style
-                // picker, where the style it belongs to was just chosen.
-                if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
-                    item {
-                        SwitchPreference(
-                            modifier = positions.modifierFor("simpmusic_lyrics"),
-                            title = { Text(stringResource(R.string.simpmusic_lyrics)) },
-                            description = stringResource(R.string.simpmusic_lyrics_desc),
-                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                            checked = simpMusicLyrics,
-                            onCheckedChange = onSimpMusicLyricsChange,
                         )
                     }
                 }

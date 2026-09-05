@@ -185,6 +185,7 @@ import moe.rukamori.archivetune.ui.player.MeshBackdrop
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -1314,6 +1315,14 @@ fun BitChordPlayerContent(
                                 modifier = panelModifier,
                                 textColorOverride = Color.White,
                                 spotifyStyle = true,
+                            )
+
+                        LyricsMode.SIMPMUSIC ->
+                            SimpMusicLyrics(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
                             )
 
                         LyricsMode.V2 ->

@@ -96,7 +96,6 @@ import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
-import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
@@ -145,26 +144,12 @@ fun Thumbnail(
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
     val hidePlayerThumbnail by rememberPreference(HidePlayerThumbnailKey, false)
-    // BitChord-style inline lyrics: synced lyrics replace the artwork on the player.
-    val showLyricsOnPlayer by rememberPreference(ShowLyricsOnPlayerKey, true)
-    val inlineLines = rememberInlineLyricLines(playerConnection)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val lowDataModeActive = rememberLowDataModeActive()
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V4,
     )
-    // Styles that opt out of the three-line pane, because their artwork slot is not a plain
-    // square the pane can stand in for: Editorial's (V10) bento layout and Minimal's (V3)
-    // compact one both gave it a box it did not fit, and it rendered broken in both. Apple
-    // Music opted out for the same reason and never reaches this composable anyway — it draws
-    // its own artwork.
-    val inlineLyricsAvailable =
-        showLyricsOnPlayer &&
-            isPlayerExpanded &&
-            inlineLines.isNotEmpty() &&
-            playerDesignStyle != PlayerDesignStyle.V10 &&
-            playerDesignStyle != PlayerDesignStyle.V3
     val (maxCanvasCacheSize, _) =
         rememberPreference(
             key = MaxCanvasCacheSizeKey,
@@ -545,28 +530,11 @@ fun Thumbnail(
                                             modifier = Modifier.size(120.dp),
                                         )
                                     }
-                                } else if (inlineLyricsAvailable &&
-                                    !(
-                                        LocalVideoArtworkState.current != null &&
-                                            item.metadata?.isMusicVideo == true &&
-                                            item.mediaId == currentMediaItem?.mediaId &&
-                                            !item.mediaId.isLocalMediaId()
-                                    )
-                                ) {
-                                    // Synced lyrics live on the player (BitChord-style); the
-                                    // lyrics button still opens the full lyrics page.
-                                    PlayerInlineLyrics(
-                                        lines = inlineLines,
-                                        positionProvider = { playerConnection.player.currentPosition },
-                                        isPlaying = isPlaying,
-                                        textColor = textBackgroundColor,
-                                        artworkUrl =
-                                            item.metadata?.thumbnailUrl?.highRes()
-                                                ?: item.mediaMetadata.artworkUri?.toString(),
-                                        modifier = Modifier.fillMaxSize(),
-                                        onOpenLyrics = onOpenLyrics,
-                                    )
                                 } else {
+                                    // Synced lyrics used to replace the artwork here, with the
+                                    // player's own scrubber and transport still around them —
+                                    // lyrics wearing the player as a frame. The lyrics page is the
+                                    // lyrics surface now, for every style; the artwork stays put.
                                     val primaryCanvasUrl = canvasArtwork?.animated
                                     val fallbackCanvasUrl = canvasArtwork?.videoUrl
 
