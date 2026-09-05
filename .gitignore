@@ -128,3 +128,6 @@ core.*
 /.env
 /.cursor/
 /.windsurf/
+
+# graphify knowledge-graph state (regenerable, ~60MB)
+.graphify/
