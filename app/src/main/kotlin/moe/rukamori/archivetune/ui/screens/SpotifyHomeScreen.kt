@@ -6,6 +6,12 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import moe.rukamori.archivetune.spotify.isSpotifyDj
+import moe.rukamori.archivetune.spotify.SPOTIFY_DJ_PLAYLIST_ID
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import android.net.Uri
+import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -150,12 +156,45 @@ fun rememberSpotifyHomeMetrics(): SpotifyHomeMetrics {
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
+/**
+ * Opens a Spotify playlist tile, or hands the DJ off to Spotify.
+ *
+ * The DJ arrives shaped like a playlist and is not one — see [isSpotifyDj]. Navigating to it gave
+ * an empty playlist page, which read as the tile being broken; Spotify's own app is the only place
+ * it can actually play.
+ */
+@Composable
+private fun rememberOpenSpotifyPlaylist(navController: NavController): (String) -> Unit {
+    val context = LocalContext.current
+    return remember(context, navController) {
+        { playlistId: String ->
+            if (isSpotifyDj(playlistId)) {
+                Toast
+                    .makeText(context, context.getString(R.string.spotify_dj_unsupported), Toast.LENGTH_LONG)
+                    .show()
+                runCatching {
+                    context.startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://open.spotify.com/playlist/$SPOTIFY_DJ_PLAYLIST_ID"),
+                        ),
+                    )
+                }
+            } else {
+                navController.navigate("spotify_playlist/$playlistId")
+            }
+            Unit
+        }
+    }
+}
+
 @Composable
 fun SpotifyHomeScreen(
     navController: NavController,
     headerScrollConnection: NestedScrollConnection? = null,
     viewModel: SpotifyHomeViewModel = hiltViewModel(),
 ) {
+    val openSpotifyPlaylist = rememberOpenSpotifyPlaylist(navController)
     val playerConnection = LocalPlayerConnection.current ?: return
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val metrics = rememberSpotifyHomeMetrics()
@@ -228,7 +267,7 @@ fun SpotifyHomeScreen(
                             SpotifyRecentPanel(
                                 recentItems = state.recentItems,
                                 frequentArtists = state.frequentArtists,
-                                onPlaylistClick = { playlist -> navController.navigate("spotify_playlist/${playlist.id}") },
+                                onPlaylistClick = { playlist -> openSpotifyPlaylist(playlist.id) },
                                 onAlbumClick = { album -> 
                                     viewModel.onAction(SpotifyHomeAction.AlbumClick(
                                         moe.rukamori.archivetune.spotify.models.SpotifyAlbum(
@@ -297,7 +336,7 @@ fun SpotifyHomeScreen(
                                             playlists = section.playlists,
                                             metrics = metrics,
                                             onPlaylistClick = { playlist ->
-                                                navController.navigate("spotify_playlist/${playlist.id}")
+                                                openSpotifyPlaylist(playlist.id)
                                             },
                                             modifier = Modifier.animateItem()
                                         )

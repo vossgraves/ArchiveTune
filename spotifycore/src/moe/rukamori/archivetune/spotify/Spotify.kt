@@ -1673,10 +1673,19 @@ object Spotify {
         val data = content.obj("data") ?: return null
 
         return when (wrapper) {
-            "PlaylistResponseWrapper" -> parseHomePlaylist(data)
+            // PseudoPlaylist is how Spotify ships the tiles that are not really playlists — DJ,
+            // Liked Songs, daylist. Same uri/name/images shape as a playlist, so it parses the
+            // same way; whether the app can DO anything with one is decided at the tap, not here.
+            // Dropping them meant those tiles silently never appeared at all.
+            "PlaylistResponseWrapper", "PseudoPlaylistResponseWrapper" -> parseHomePlaylist(data)
             "AlbumResponseWrapper" -> parseHomeAlbum(data)
             "ArtistResponseWrapper" -> parseHomeArtist(data)
-            else -> null
+            else -> {
+                // Logged rather than dropped in silence: a tile that vanishes leaves no trace to
+                // debug from, and Spotify has renamed these wrappers before.
+                log("D", "parseHomeItem: unhandled content __typename='$wrapper'")
+                null
+            }
         }
     }
 

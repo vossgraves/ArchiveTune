@@ -61,6 +61,18 @@ class SpotifyPlaylistViewModel
                 _uiState.value = SpotifyPlaylistUiState(errorMessage = "Missing Spotify playlist")
                 return
             }
+            // The DJ is not a playlist — see [SPOTIFY_DJ_PLAYLIST_ID]. Fetching it returns nothing
+            // to play, so say why instead of showing an empty list that reads as a failure. The
+            // home feed hands the tile to Spotify before it ever gets here; this catches every
+            // other way in — a deep link, a search result, a stale cached feed.
+            if (isSpotifyDj(playlistId)) {
+                _uiState.value =
+                    SpotifyPlaylistUiState(
+                        isLoading = false,
+                        errorMessage = context.getString(R.string.spotify_dj_unsupported),
+                    )
+                return
+            }
             reloadJob?.cancel()
             downloadResolutionJob?.cancel()
             downloadResolutionJob = null

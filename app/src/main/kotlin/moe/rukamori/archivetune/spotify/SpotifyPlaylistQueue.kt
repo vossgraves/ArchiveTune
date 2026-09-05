@@ -19,6 +19,23 @@ import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 
 internal const val SPOTIFY_LIKED_SONGS_ID = "__spotify_liked_songs__"
 
+/**
+ * Spotify's AI DJ, which shows up on the home feed shaped like a playlist and is not one.
+ *
+ * There is no track list behind this id. The DJ is generated per listening session on Spotify's
+ * side — the running order is chosen live and the spoken commentary between tracks is synthesised
+ * as you go — and none of it exists until Spotify's own client asks for it. Fetching the "playlist"
+ * returns nothing to play, and even if it returned a running order ArchiveTune would only have the
+ * songs: the commentary, which is the entire point of the DJ, is audio only Spotify can produce.
+ *
+ * So the tile is not opened in the app. It hands off to Spotify, the way Spotify albums and artists
+ * already do, instead of dead-ending on an empty playlist page.
+ */
+const val SPOTIFY_DJ_PLAYLIST_ID = "37i9dQZF1EYkqdzj48dyYq"
+
+/** True for the DJ tile, whether it arrives as a bare id or a `spotify:playlist:…` uri. */
+fun isSpotifyDj(idOrUri: String): Boolean = idOrUri.substringAfterLast(":") == SPOTIFY_DJ_PLAYLIST_ID
+
 class SpotifyPlaylistQueue(
     private val playlistId: String,
     private val title: String? = null,
