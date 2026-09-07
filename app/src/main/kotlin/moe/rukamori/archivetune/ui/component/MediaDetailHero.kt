@@ -65,8 +65,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
@@ -700,18 +698,6 @@ private enum class MediaDetailActionLayoutId {
     Shuffle,
     Play,
     ToggleAdd,
-}
-
-/**
- * True when the Apple Music Experience is on.
- *
- * A read helper rather than the raw preference so the call sites — this file today, the Appearance
- * toggle, anything that grows one later — cannot disagree about the key or the default.
- */
-@Composable
-fun rememberAppleMusicExperience(): Boolean {
-    val (enabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
-    return enabled
 }
 
 /**
