@@ -31,8 +31,11 @@
  *  - BitChord's per-lyric lyric-clock follows the player position; the entry
  *    composable passes position + isPlaying in.
  *
- * Belongs exclusively to the Bitchord player style; not shared with any other
- * player style, per the self-containment rule for player styles (2026-09-01).
+ * Belongs to the Bitchord player style, with one deliberate exception to the self-containment rule
+ * (2026-09-01, amended 2026-09-07): [SweptLyricLine], [rememberLyricClock] and [toBitChordLyrics]
+ * are also drawn by SimpMusic's current-line band. That band highlighted whole lines while this one
+ * swept word by word off the same timings, and a second copy of the sweep is a second thing to fix
+ * every time a provider changes shape. Everything else here stays Bitchord's.
  */
 
 package moe.rukamori.archivetune.ui.player.bitchord
@@ -466,7 +469,7 @@ internal fun rememberLyricClock(positionMs: Long, isPlaying: Boolean): MutableLo
  * rather than a drop shadow sitting under the line.
  */
 @Composable
-private fun SweptLyricLine(
+internal fun SweptLyricLine(
     line: LyricLine,
     clock: MutableLongState,
     style: TextStyle,
