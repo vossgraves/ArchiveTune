@@ -313,6 +313,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.EmptyQueue
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.Queue
+import moe.rukamori.archivetune.sponsorblock.SponsorBlockPlaybackController
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.playback.queues.filterBlockedArtists
 import moe.rukamori.archivetune.playback.queues.filterExplicit
@@ -405,6 +406,9 @@ class MusicService :
 
     @Inject
     lateinit var equalizerPlaybackController: EqualizerPlaybackController
+
+    @Inject
+    lateinit var sponsorBlockPlaybackController: SponsorBlockPlaybackController
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -1277,6 +1281,9 @@ class MusicService :
                 }
         _playerFlow.value = player
         playerInitialized.value = true
+        // ioScope, not scope: the lookup is network plus a JSON parse, and the controller hops to
+        // the main thread itself for every player read.
+        sponsorBlockPlaybackController.attach(player, ioScope)
 
         // The single authoritative artwork resolver. Every artwork source decision flows
         // through here so the player, notification and palette extractor can never diverge.
@@ -3182,6 +3189,9 @@ class MusicService :
                     }
             sleepTimer.player = player
             player.addListener(sleepTimer)
+            // Promotion builds a new session player and releases the old one, so anything holding a
+            // listener on it has to be moved across or it goes deaf for the rest of the session.
+            sponsorBlockPlaybackController.attach(player, ioScope)
             castPlaybackRepository.releasePlayer(oldSessionPlayer)
 
             // 3. Listeners/analytics that were attached to the old local player.
@@ -11722,6 +11732,7 @@ class MusicService :
 
     override fun onDestroy() {
         equalizerPlaybackController.detach(this)
+        sponsorBlockPlaybackController.detach()
         discordServiceStopping = true
         requestDiscordSync(
             reason = "service_destroy",

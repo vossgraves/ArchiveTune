@@ -78,6 +78,9 @@ import moe.rukamori.archivetune.constants.PermanentShuffleKey
 import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
+import moe.rukamori.archivetune.constants.SponsorBlockCategoriesKey
+import moe.rukamori.archivetune.constants.SponsorBlockEnabledKey
+import moe.rukamori.archivetune.sponsorblock.SponsorBlockCategory
 import moe.rukamori.archivetune.constants.PreferredArtworkProvider
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
@@ -121,6 +124,13 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             PermanentShuffleKey,
             defaultValue = false,
+        )
+    val (sponsorBlockEnabled, onSponsorBlockEnabledChange) =
+        rememberPreference(SponsorBlockEnabledKey, defaultValue = false)
+    val (sponsorBlockCategories, onSponsorBlockCategoriesChange) =
+        rememberPreference(
+            SponsorBlockCategoriesKey,
+            defaultValue = SponsorBlockCategory.Defaults.map { it.apiName }.toSet(),
         )
     val (skipSilence, onSkipSilenceChange) =
         rememberPreference(
@@ -472,6 +482,41 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             checked = audioNormalization,
                             onCheckedChange = onAudioNormalizationChange,
                         )
+                    }
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("sponsor_block")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.sponsor_block)) },
+                            description = stringResource(R.string.sponsor_block_description),
+                            icon = { Icon(painterResource(R.drawable.fast_forward), null) },
+                            checked = sponsorBlockEnabled,
+                            onCheckedChange = onSponsorBlockEnabledChange,
+                        )
+                    }
+                }
+
+                if (sponsorBlockEnabled) {
+                    item {
+                        Column(modifier = positions.modifierFor("sponsor_block_categories")) {
+                            SponsorBlockCategory.entries.forEach { category ->
+                                SwitchPreference(
+                                    title = { Text(stringResource(category.titleRes())) },
+                                    icon = { Icon(painterResource(R.drawable.fast_forward), null) },
+                                    checked = category.apiName in sponsorBlockCategories,
+                                    onCheckedChange = { checked ->
+                                        onSponsorBlockCategoriesChange(
+                                            if (checked) {
+                                                sponsorBlockCategories + category.apiName
+                                            } else {
+                                                sponsorBlockCategories - category.apiName
+                                            },
+                                        )
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
                 item {
@@ -998,3 +1043,16 @@ internal fun ArtworkProviderOrderDialog(
         }
     }
 }
+
+@androidx.annotation.StringRes
+private fun SponsorBlockCategory.titleRes(): Int =
+    when (this) {
+        SponsorBlockCategory.SPONSOR -> R.string.sponsor_block_category_sponsor
+        SponsorBlockCategory.SELFPROMO -> R.string.sponsor_block_category_selfpromo
+        SponsorBlockCategory.INTERACTION -> R.string.sponsor_block_category_interaction
+        SponsorBlockCategory.INTRO -> R.string.sponsor_block_category_intro
+        SponsorBlockCategory.OUTRO -> R.string.sponsor_block_category_outro
+        SponsorBlockCategory.PREVIEW -> R.string.sponsor_block_category_preview
+        SponsorBlockCategory.MUSIC_OFFTOPIC -> R.string.sponsor_block_category_music_offtopic
+        SponsorBlockCategory.FILLER -> R.string.sponsor_block_category_filler
+    }

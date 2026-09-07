@@ -1327,6 +1327,19 @@ val LibrarySourceKey = stringPreferencesKey("library_source")
  */
 val AppleMusicExperienceKey = booleanPreferencesKey("apple_music_experience")
 
+/**
+ * SponsorBlock: skip the stretches of a video the community has marked. Off by default -- it is a
+ * third-party lookup, so it is the user's call whether to make it.
+ */
+val SponsorBlockEnabledKey = booleanPreferencesKey("sponsor_block_enabled")
+
+/** Which segment kinds to skip, as SponsorBlockCategory.apiName values. */
+val SponsorBlockCategoriesKey = stringSetPreferencesKey("sponsor_block_categories")
+
+/** Origin of the SponsorBlock instance to ask; blank means the public one. */
+val SponsorBlockApiUrlKey = stringPreferencesKey("sponsor_block_api_url")
+
+
 /** The player design style [AppleMusicExperienceKey] displaced, so switching it off can restore it. */
 val StyleBeforeAppleMusicKey = stringPreferencesKey("style_before_apple_music")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
