@@ -17,6 +17,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,17 +88,21 @@ class SpotifyPlaylistViewModel
             }
             reloadJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
+                    // Bounded: without it a Spotify call that never answers leaves the page
+                    // spinning for as long as the user is willing to watch it.
                     val (playlist, tracks) =
-                        if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
-                            val likedTracks = repository.likedSongs()
-                            SpotifyPlaylist(
-                                id = playlistId,
-                                name = context.getString(R.string.liked_songs),
-                                tracks = SpotifyPlaylistTracksRef(total = likedTracks.size),
-                            ) to likedTracks
-                        } else {
-                            repository.playlist(playlistId) to repository.playlistTracks(playlistId)
-                        }
+                        withTimeoutOrNull(PLAYLIST_LOAD_TIMEOUT_MS) {
+                            if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
+                                val likedTracks = repository.likedSongs()
+                                SpotifyPlaylist(
+                                    id = playlistId,
+                                    name = context.getString(R.string.liked_songs),
+                                    tracks = SpotifyPlaylistTracksRef(total = likedTracks.size),
+                                ) to likedTracks
+                            } else {
+                                repository.playlist(playlistId) to repository.playlistTracks(playlistId)
+                            }
+                        } ?: throw TimeoutException(context.getString(R.string.spotify_load_timeout))
                     _uiState.value =
                         SpotifyPlaylistUiState(
                             playlist = playlist,
@@ -110,7 +116,7 @@ class SpotifyPlaylistViewModel
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = error.message,
+                            errorMessage = error.message ?: context.getString(R.string.spotify_load_failed),
                         )
                     }
                 }
@@ -151,6 +157,11 @@ class SpotifyPlaylistViewModel
                         eventChannel.send(SpotifyPlaylistEvent.DownloadResolutionFailed)
                     }
                 }
+        }
+
+        private companion object {
+            /** A Spotify call that has not answered in this long is not going to. */
+            const val PLAYLIST_LOAD_TIMEOUT_MS = 20_000L
         }
     }
 
