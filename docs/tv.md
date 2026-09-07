@@ -30,12 +30,17 @@ far, from reading the code only:
 - Play Services client libraries being present in a GMS build on a device with no
   Play Services is not automatically fatal; they generally degrade. So "it is the
   GMS flavour" is a hypothesis, not a finding.
-- Focus handling exists in only a handful of components (`Dialog.kt`,
-  `Material3SettingsGroup.kt`, `Preference.kt`, `SearchBar.kt`, `Player.kt` and some
-  playlist screens). Most of the 60-plus settings screens and every bottom-sheet menu
-  have none, so D-pad navigation very likely dead-ends there. This is the most
-  plausible "does not work properly" of the candidates, and it is verifiable by
-  reading, unlike the others.
+- Settings are **not** unreachable by remote, contrary to a first reading. Every
+  settings row is a `PreferenceEntry` (`ui/component/Preference.kt`), which is
+  clickable and therefore a focus target, and `SwitchPreference` routes the whole row
+  through it. `ListPreference`, `EnumListPreference` and friends do the same.
+- What was wrong there: `PreferenceEntry` chained `Modifier.focusable()` *and*
+  `Modifier.clickable()`. `clickable` is already focusable, so every row had two focus
+  targets and a remote stopped on one of them that did nothing when OK was pressed.
+  The redundant modifier is gone (2026-09-07).
+- Still unaudited: bottom-sheet menus (`ui/menu/`) and the various dialogs. Those are
+  built from `ListItem`/custom rows rather than `PreferenceEntry`, so whether they
+  take focus has not been checked.
 
 When someone does have a Firestick in front of them, the cheap first step is
 `ui/screens/settings/LogcatScreen.kt`, which is reachable in-app.

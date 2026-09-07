@@ -28,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -217,7 +216,10 @@ fun PreferenceEntry(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = PreferenceEntryMinHeight)
-                    .then(if (clickable) Modifier.focusable() else Modifier)
+                    // No explicit focusable(): clickable() already makes this a focus target, and
+                    // chaining both left two of them per row. On a remote that is a stop that
+                    // highlights the row and then does nothing when OK is pressed, because the
+                    // click handler hangs off the other one.
                     .clickable(
                         interactionSource = interactionSource,
                         indication = LocalIndication.current,
