@@ -100,6 +100,17 @@ class PlayerConnection(
             SharingStarted.Lazily,
             player.playWhenReady && player.playbackState != STATE_ENDED,
         )
+
+    /**
+     * Media3's own definition: ready, wanted, and not suppressed. Unlike [isPlaying] this is false
+     * while buffering and while playback is suppressed (audio focus lost), so it is the only safe
+     * signal for anything that advances a clock in step with the audio — a lyric highlight driven
+     * by [isPlaying] keeps sweeping through a stall with nothing coming out of the speaker.
+     *
+     * [isPlaying] stays as it is: play/pause affordances should flip the moment they are tapped
+     * rather than waiting out the buffer.
+     */
+    val isAudioAdvancing = MutableStateFlow(player.isPlaying)
     val mediaMetadata = service.currentMediaMetadata
     val currentSong =
         mediaMetadata.flatMapLatest {
@@ -335,6 +346,7 @@ class PlayerConnection(
 
         playbackState.value = newPlayer.playbackState
         playWhenReady.value = newPlayer.playWhenReady
+        isAudioAdvancing.value = newPlayer.isPlaying
         playbackParameters.value = newPlayer.playbackParameters
         queueWindows.value = newPlayer.getQueueWindows()
         currentWindowIndex.value = newPlayer.getCurrentQueueIndex()
@@ -459,6 +471,10 @@ class PlayerConnection(
     override fun onPlaybackStateChanged(state: Int) {
         playbackState.value = state
         updatePlaybackError(player.playerError)
+    }
+
+    override fun onIsPlayingChanged(playing: Boolean) {
+        isAudioAdvancing.value = playing
     }
 
     override fun onPlayWhenReadyChanged(

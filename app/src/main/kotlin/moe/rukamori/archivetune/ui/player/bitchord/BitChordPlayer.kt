@@ -589,6 +589,11 @@ fun BitChordPlayerContent(
     // The position the lyrics follow: the player's own, nudged by the offset.
     val lyricsPosition = (position + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
 
+    // Not [isPlaying]: that one is true through a buffer and through a suppressed
+    // (focus-lost) stretch, and the lyric clock free-runs on it while the track is
+    // still loading and nothing is audible.
+    val audioAdvancing by playerConnection.isAudioAdvancing.collectAsStateWithLifecycle()
+
     // Back out of the lyrics panel to the player, and only from the player
     // itself out to the mini player. The sheet the player is drawn in keeps
     // its own back handling while no panel is open (predictive-back shrink).
@@ -1396,7 +1401,7 @@ fun BitChordPlayerContent(
                         lines = lyrics,
                         trackKey = mediaMetadata.id,
                         positionMs = lyricsPosition,
-                        isPlaying = isPlaying,
+                        isPlaying = audioAdvancing,
                         durationMs = duration,
                         // Still visible over the queue, so still a valid way
                         // in: opens the same full lyrics panel it always has,
