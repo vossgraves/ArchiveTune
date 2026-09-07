@@ -56,7 +56,7 @@ object Updater {
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
     private const val CanaryCacheCheckIntervalMs: Long = 15 * 60 * 1000L
-    private const val OWNER = "vossgraves/ArchiveTune"
+    private const val OWNER = "Ankitkumar1062/ArchiveTune"
     private const val StableReleaseBaseUrl = "https://github.com/$OWNER/releases"
     private const val CanaryReleaseBaseUrl =
         "https://github.com/$OWNER/releases"

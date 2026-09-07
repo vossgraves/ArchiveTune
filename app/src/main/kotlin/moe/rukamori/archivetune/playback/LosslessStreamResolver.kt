@@ -85,7 +85,9 @@ object LosslessStreamResolver {
         album: String?,
         durationMs: Long?,
         formatId: Int,
+        isrc: String? = null,
     ): DirectStream? {
+        val resolvedIsrc = isrc ?: moe.rukamori.archivetune.audiosource.IsrcResolver.resolveBlocking(mediaId, title, artists, durationMs)
         val userInstances = parseMultiline(context, QobuzInstancesKey)
         val discoveredInstances = runCatching { QobuzAudioProvider.discoverInstances() }
             .getOrDefault(emptyList())
@@ -124,6 +126,7 @@ object LosslessStreamResolver {
                         artists = artists,
                         album = album,
                         durationMs = durationMs,
+                        isrc = resolvedIsrc,
                     ),
                     formatId = formatId,
                 )
@@ -157,7 +160,9 @@ object LosslessStreamResolver {
         durationMs: Long?,
         audioQuality: TidalAudioQuality,
         cacheDir: File,
+        isrc: String? = null,
     ): DirectStream? {
+        val resolvedIsrc = isrc ?: moe.rukamori.archivetune.audiosource.IsrcResolver.resolveBlocking(mediaId, title, artists, durationMs)
         val apiQuality = when (audioQuality) {
             TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
             TidalAudioQuality.FLAC -> "LOSSLESS"
@@ -165,8 +170,8 @@ object LosslessStreamResolver {
         }
         val accountFirst = readBoolean(context, TidalAccountFirstKey, true)
         Timber.tag("LosslessResolver").d(
-            "Tidal resolve start | quality=%s accountFirst=%s poolAccounts=%d",
-            audioQuality.name, accountFirst, PoolAccountManager.tidalAccounts().size,
+            "Tidal resolve start | quality=%s accountFirst=%s poolAccounts=%d isrc=%s",
+            audioQuality.name, accountFirst, PoolAccountManager.tidalAccounts().size, resolvedIsrc,
         )
 
         if (accountFirst) {
@@ -198,28 +203,8 @@ object LosslessStreamResolver {
             // 2) Shared premium Tidal accounts from the community Source Pool.
             //    These are real subscriber tokens, so they resolve full-quality
             //    FLAC directly via the official API — no proxy instance needed.
-            //
-            //    PARALLEL RACE: race all pool accounts in parallel — the first
-            //    hit wins, the rest are cancelled. With N pool accounts this
-            //    reduces the worst-case wall time from N × resolve_time to
-            //    ~1 × resolve_time (typical speedup: 10× for a 10-account pool
-            //    where the user's first 9 accounts don't have the track).
-            //    Previously this loop ran each account sequentially, so a song
-            //    that wasn't on the user's first N-1 pool accounts took
-            //    N × ~3s = ~30s+ before the chain moved on to Deezer/YT Music.
             val poolAccounts = PoolAccountManager.tidalAccounts()
             if (poolAccounts.isNotEmpty()) {
-                // PARALLEL RACE: race all pool accounts in parallel — the first
-                // hit wins, the rest are cancelled. With N pool accounts this
-                // reduces the worst-case wall time from N × resolve_time to
-                // ~1 × resolve_time (typical speedup: 10× for a 10-account pool
-                // where the user's first 9 accounts don't have the track).
-                // Previously this loop ran each account sequentially, so a song
-                // that wasn't on the user's first N-1 pool accounts took
-                // N × ~3s = ~30s+ before the chain moved on to Deezer/YT Music.
-                //
-                // resolveTidal is NOT a suspend function, so we wrap the
-                // coroutineScope in runBlocking to bridge into the suspend world.
                 val stream = runCatching {
                     runBlocking(Dispatchers.IO) {
                         coroutineScope {
@@ -254,7 +239,6 @@ object LosslessStreamResolver {
                                 val result = job.await()
                                 if (result != null) {
                                     winner = result
-                                    // Cancel any still-pending jobs — we have a winner.
                                     jobs.forEach { other -> if (!other.isCompleted) other.cancel() }
                                     break
                                 }
@@ -275,9 +259,6 @@ object LosslessStreamResolver {
         }
 
         // 3) Fallback: public HiFi/QQDL instances (user-configured + pool-discovered).
-        //    These proxy servers do NOT require any account — they re-stream Tidal
-        //    lossless audio publicly. Quality is lower than the account path but
-        //    still FLAC when the instance supports it.
         val configuredInstances = parseMultiline(context, TidalInstancesKey)
         val discoveredInstances = TidalInstanceHealthManager.healthyUrls(context)
         val mergedInstances = LinkedHashSet<String>().apply {
@@ -294,7 +275,7 @@ object LosslessStreamResolver {
                         title = title,
                         artists = artists,
                         album = album,
-                        isrc = null,
+                        isrc = resolvedIsrc,
                         durationMs = durationMs,
                     ),
                     cacheDir = cacheDir,
@@ -391,7 +372,9 @@ object LosslessStreamResolver {
         album: String?,
         durationMs: Long?,
         format: String,
+        isrc: String? = null,
     ): DirectStream? {
+        val resolvedIsrc = isrc ?: moe.rukamori.archivetune.audiosource.IsrcResolver.resolveBlocking(mediaId, title, artists, durationMs)
         if (!DeezerAudioProvider.hasAccounts()) {
             Timber.tag("LosslessResolver").d("Deezer skip: no manual or pooled accounts available")
             return null
@@ -407,6 +390,7 @@ object LosslessStreamResolver {
                                 artists = artists,
                                 album = album,
                                 durationMs = durationMs,
+                                isrc = resolvedIsrc,
                             ),
                         format = format,
                     )?.let { resolved ->

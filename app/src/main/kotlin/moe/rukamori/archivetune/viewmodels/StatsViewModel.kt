@@ -13,13 +13,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -137,7 +140,7 @@ class StatsViewModel
                         limit = -1,
                         toTimeStamp = toTimestamp(selection, t),
                     )
-                }
+                }.distinctUntilChanged()
 
         private val mostPlayedSongs =
             periodPair()
@@ -148,7 +151,7 @@ class StatsViewModel
                             limit = -1,
                             toTimeStamp = toTimestamp(selection, t),
                         ).map { songs -> songs.filter { song -> song.artists.none { it.blockedAt != null } } }
-                }
+                }.distinctUntilChanged()
 
         private val mostPlayedArtists =
             periodPair()
@@ -161,7 +164,7 @@ class StatsViewModel
                         ).map { artists ->
                             artists.filter { it.artist.blockedAt == null && it.artist.isYouTubeArtist }
                         }
-                }
+                }.distinctUntilChanged()
 
         private val mostPlayedAlbums =
             periodPair()
@@ -172,7 +175,7 @@ class StatsViewModel
                             limit = -1,
                             toTimeStamp = toTimestamp(selection, t),
                         ).map { albums -> albums.filter { album -> album.artists.none { it.blockedAt != null } } }
-                }
+                }.distinctUntilChanged()
 
         private val listeningByHour =
             periodPair()
@@ -181,7 +184,7 @@ class StatsViewModel
                         fromTimestamp = statToPeriod(selection, t),
                         toTimestamp = toTimestamp(selection, t),
                     )
-                }
+                }.distinctUntilChanged()
 
         private val listeningByDayOfWeek =
             periodPair()
@@ -190,7 +193,7 @@ class StatsViewModel
                         fromTimestamp = statToPeriod(selection, t),
                         toTimestamp = toTimestamp(selection, t),
                     )
-                }
+                }.distinctUntilChanged()
 
         private val listeningTotals =
             periodPair()
@@ -199,11 +202,12 @@ class StatsViewModel
                         fromTimestamp = statToPeriod(selection, t),
                         toTimestamp = toTimestamp(selection, t),
                     )
-                }
+                }.distinctUntilChanged()
 
         private val firstEvent =
             database
                 .firstEvent()
+                .distinctUntilChanged()
 
         private val primaryStats =
             combine(
@@ -218,7 +222,7 @@ class StatsViewModel
                     artists = artists,
                     albums = albums,
                 )
-            }
+            }.distinctUntilChanged()
 
         private val listeningStats =
             combine(
@@ -233,7 +237,7 @@ class StatsViewModel
                     totals = totals,
                     firstEvent = first,
                 )
-            }
+            }.distinctUntilChanged()
 
         val screenState: StateFlow<StatsScreenState> =
             refreshRequest
@@ -279,7 +283,9 @@ class StatsViewModel
                                 ),
                             )
                         }
-                    }.catch { throwable ->
+                    }
+                    .flowOn(Dispatchers.Default)
+                    .catch { throwable ->
                         if (throwable is CancellationException) throw throwable
                         reportException(throwable)
                         emit(StatsScreenState.Error(R.string.error_unknown))
@@ -291,46 +297,50 @@ class StatsViewModel
                 )
 
         init {
-            viewModelScope.launch {
-                mostPlayedArtists.collect { artists ->
-                    artists
-                        .map { it.artist }
-                        .filter {
-                            it.thumbnailUrl == null || Duration.between(
-                                it.lastUpdateTime,
-                                LocalDateTime.now(),
-                            ) > Duration.ofDays(10)
-                        }.forEach { artist ->
-                            YouTube.artist(artist.id).onSuccess { artistPage ->
-                                database.query {
-                                    update(artist, artistPage)
+            viewModelScope.launch(Dispatchers.IO) {
+                mostPlayedArtists
+                    .distinctUntilChanged()
+                    .collect { artists ->
+                        artists
+                            .map { it.artist }
+                            .filter {
+                                it.thumbnailUrl == null || Duration.between(
+                                    it.lastUpdateTime,
+                                    LocalDateTime.now(),
+                                ) > Duration.ofDays(10)
+                            }.forEach { artist ->
+                                YouTube.artist(artist.id).onSuccess { artistPage ->
+                                    database.query {
+                                        update(artist, artistPage)
+                                    }
                                 }
                             }
-                        }
-                }
+                    }
             }
-            viewModelScope.launch {
-                mostPlayedAlbums.collect { albums ->
-                    albums
-                        .filter {
-                            it.album.songCount == 0
-                        }.forEach { album ->
-                            YouTube
-                                .album(album.id)
-                                .onSuccess { albumPage ->
-                                    database.query {
-                                        update(album.album, albumPage, album.artists)
-                                    }
-                                }.onFailure {
-                                    reportException(it)
-                                    if (it.message?.contains("NOT_FOUND") == true) {
+            viewModelScope.launch(Dispatchers.IO) {
+                mostPlayedAlbums
+                    .distinctUntilChanged()
+                    .collect { albums ->
+                        albums
+                            .filter {
+                                it.album.songCount == 0
+                            }.forEach { album ->
+                                YouTube
+                                    .album(album.id)
+                                    .onSuccess { albumPage ->
                                         database.query {
-                                            delete(album.album)
+                                            update(album.album, albumPage, album.artists)
+                                        }
+                                    }.onFailure {
+                                        reportException(it)
+                                        if (it.message?.contains("NOT_FOUND") == true) {
+                                            database.query {
+                                                delete(album.album)
+                                            }
                                         }
                                     }
-                                }
-                        }
-                }
+                            }
+                    }
             }
         }
 

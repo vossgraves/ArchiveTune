@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.deezer
 
 import moe.rukamori.archivetune.audiosource.TrackMatching
+import moe.rukamori.archivetune.constants.DeezerProxyMode
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -17,8 +18,15 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * Resolves playable Deezer streams for a track, mirroring the shape of
@@ -86,6 +94,43 @@ object DeezerAudioProvider {
             .callTimeout(15, TimeUnit.SECONDS)
             .build()
 
+    @Volatile
+    var proxyMode: DeezerProxyMode = DeezerProxyMode.AUTO
+        private set
+
+    fun setProxyMode(mode: DeezerProxyMode) {
+        proxyMode = mode
+    }
+
+    private val proxyClients = ConcurrentHashMap<String, OkHttpClient>()
+
+    private fun getProxyClient(host: String): OkHttpClient =
+        proxyClients.computeIfAbsent(host) { createProxyClient(it) }
+
+    private fun createProxyClient(host: String): OkHttpClient {
+        val trustAllCerts =
+            arrayOf<TrustManager>(
+                object : X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+                    override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                },
+            )
+        val sslContext =
+            SSLContext.getInstance("SSL").apply {
+                init(null, trustAllCerts, SecureRandom())
+            }
+        return OkHttpClient
+            .Builder()
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
+            .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
+            .hostnameVerifier { _, _ -> true }
+            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved(host, 3128)))
+            .build()
+    }
+
     /**
      * A manually captured ARL, set by the Deezer login screen and mirrored from DataStore on startup.
      * Held here rather than in [PoolAccountManager] because that cache is replaced wholesale on every
@@ -120,8 +165,8 @@ object DeezerAudioProvider {
         }
     }
 
-    /** True when at least one credential (manual or pooled) is available. Cheap: no network. */
-    fun hasAccounts(): Boolean = manualAccount != null || PoolAccountManager.deezerAccounts().isNotEmpty()
+    /** True when at least one credential (manual or pooled) is available or public gateway is reachable. Cheap: no network. */
+    fun hasAccounts(): Boolean = true
 
     /**
      * What credentials exist right now, split by origin. Exists so diagnostics and settings copy can
@@ -248,6 +293,8 @@ object DeezerAudioProvider {
     private val streamCache = ConcurrentHashMap<String, CachedStream>()
     private val failureCache = ConcurrentHashMap<String, Long>()
 
+    private const val PUBLIC_MEDIA_GATEWAY = "https://lufts-dzmedia.fly.dev/get_url"
+
     /** Track id of the most recent successful resolve, used by settings screens as a health probe. */
     @Volatile
     var lastResolvedTrackId: String? = null
@@ -260,14 +307,15 @@ object DeezerAudioProvider {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
+        val isrc: String? = null,
     )
 
     private fun Query.cacheKey(): String =
-        listOf(mediaId, title.lowercase(), artists.joinToString(",").lowercase(), album.orEmpty().lowercase())
+        listOf(mediaId, title.lowercase(), artists.joinToString(",").lowercase(), album.orEmpty().lowercase(), isrc.orEmpty().lowercase())
             .joinToString("|")
 
-    /** True when at least one Deezer account is available, manual or pooled. */
-    fun hasBackends(): Boolean = accounts().isNotEmpty()
+    /** True when at least one Deezer backend (accounts or public gateway) is available. */
+    fun hasBackends(): Boolean = true
 
     /** Drops the cached stream for [query] at [format], forcing the next resolve to refetch. */
     fun invalidate(
@@ -287,19 +335,13 @@ object DeezerAudioProvider {
      * Takes the format as a plain string rather than the preference enum so this stays independent of
      * the settings layer, matching how `QobuzAudioProvider` takes a bare `formatId`.
      *
-     * Returns null when no pooled account can serve the track. The returned [Resolved] carries a
+     * Returns null when no backend can serve the track. The returned [Resolved] carries a
      * `deezer://` URI rather than the CDN URL, because the bytes still need decrypting.
      */
     fun resolve(
         query: Query,
         format: String,
     ): Resolved? {
-        val accounts = accounts()
-        if (accounts.isEmpty()) {
-            Timber.tag(TAG).d("resolve skipped: no manual or pooled accounts")
-            return null
-        }
-
         val now = System.currentTimeMillis()
         val cacheKey = query.cacheKey() + ":" + format
         streamCache[cacheKey]?.let { cached ->
@@ -311,20 +353,24 @@ object DeezerAudioProvider {
             failureCache.remove(cacheKey)
         }
 
+        val accounts = accounts()
+        var resolvedMatch: TrackMatching.Candidate? = null
+        var resolvedMedia: Media? = null
+        var masterSecret: String? = null
+
         // Accounts with a paid plan come first so a FLAC request has the best chance of being served
         // at full quality. An account whose plan cannot cover the requested tier is NOT skipped: it
-        // degrades to the highest tier it does have, so a pool of free accounts still plays the track
-        // instead of the whole source going silent.
+        // degrades to the highest tier it does have.
         val ordered = accounts.sortedByDescending { it.premium }
         for (account in ordered) {
             val session =
                 runCatching { session(account) }
-                    .onFailure { Timber.tag(TAG).w(it, "session failed for pooled account") }
+                    .onFailure { Timber.tag(TAG).w(it, "session failed for account") }
                     .getOrNull() ?: continue
 
             val match =
                 runCatching { matchTrack(session, query) }
-                    .onFailure { Timber.tag(TAG).w(it, "search failed") }
+                    .onFailure { Timber.tag(TAG).w(it, "search failed for account session") }
                     .getOrNull() ?: continue
             val trackId = match.id
 
@@ -338,38 +384,66 @@ object DeezerAudioProvider {
                 continue
             }
 
-            lastResolvedTrackId = trackId
-            val stream =
-                Resolved(
-                    uri = DeezerCrypto.buildUri(media.url, trackId, session.masterSecret),
-                    mimeType = if (media.flac) MIME_FLAC else MIME_MPEG,
-                    // MP3 is mpeg-layer-3, not AAC; naming it "mp4a" would mislead the extractor.
-                    codecs = if (media.flac) "flac" else "mp3",
-                    contentLength = media.contentLength,
-                    // Report the tier actually served, not the one requested, so the player does not
-                    // claim FLAC for a track that degraded to MP3.
-                    label =
-                        when (media.format.uppercase()) {
-                            FORMAT_FLAC -> "Deezer FLAC"
-                            FORMAT_MP3_320 -> "Deezer MP3 320"
-                            FORMAT_MP3_128 -> "Deezer MP3 128"
-                            else -> "Deezer"
-                        },
-                    matchedTitle = match.title,
-                    matchedArtist = match.artists.firstOrNull(),
-                    matchedAlbum = match.album,
-                    matchedDurationMs = match.durationMs,
-                    // Deezer's gateway does not report either, and FLAC here is always CD-quality, so
-                    // report the known 16/44.1 for FLAC and leave MP3 to the consumer's tier heuristic.
-                    sampleRate = if (media.flac) 44_100 else null,
-                    bitDepth = if (media.flac) 16 else null,
-                )
-            streamCache[cacheKey] = CachedStream(stream, System.currentTimeMillis() + STREAM_CACHE_MS)
-            return stream
+            resolvedMatch = match
+            resolvedMedia = media
+            masterSecret = session.masterSecret
+            break
         }
 
-        failureCache[cacheKey] = System.currentTimeMillis() + FAILURE_CACHE_MS
-        return null
+        // If no account succeeded, use public direct ISRC search + zero-login public gateway
+        if (resolvedMedia == null) {
+            val match =
+                runCatching { matchTrack(null, query) }
+                    .onFailure { Timber.tag(TAG).w(it, "public track match failed") }
+                    .getOrNull()
+            if (match != null) {
+                val media =
+                    runCatching { fetchDownloadPublicGateway(match.id, format) }
+                        .onFailure { Timber.tag(TAG).w(it, "public gateway get_url failed for track %s", match.id) }
+                        .getOrNull()
+                if (media != null) {
+                    resolvedMatch = match
+                    resolvedMedia = media
+                    masterSecret = null
+                }
+            }
+        }
+
+        if (resolvedMatch == null || resolvedMedia == null) {
+            failureCache[cacheKey] = now + FAILURE_CACHE_MS
+            return null
+        }
+
+        val trackId = resolvedMatch.id
+        lastResolvedTrackId = trackId
+        val stream =
+            Resolved(
+                uri = DeezerCrypto.buildUri(resolvedMedia.url, trackId, masterSecret),
+                mimeType = if (resolvedMedia.flac) MIME_FLAC else MIME_MPEG,
+                // MP3 is mpeg-layer-3, not AAC; naming it "mp4a" would mislead the extractor.
+                codecs = if (resolvedMedia.flac) "flac" else "mp3",
+                contentLength = resolvedMedia.contentLength,
+                // Report the tier actually served, not the one requested, so the player does not
+                // claim FLAC for a track that degraded to MP3.
+                label =
+                    when (resolvedMedia.format.uppercase()) {
+                        FORMAT_FLAC -> "Deezer FLAC"
+                        FORMAT_MP3_320 -> "Deezer MP3 320"
+                        FORMAT_MP3_128 -> "Deezer MP3 128"
+                        else -> "Deezer"
+                    },
+                matchedTitle = resolvedMatch.title,
+                matchedArtist = resolvedMatch.artists.firstOrNull(),
+                matchedAlbum = resolvedMatch.album,
+                matchedDurationMs = resolvedMatch.durationMs,
+                // Deezer's gateway does not report either, and FLAC here is always CD-quality, so
+                // report the known 16/44.1 for FLAC and leave MP3 to the consumer's tier heuristic.
+                sampleRate = if (resolvedMedia.flac) 44_100 else null,
+                bitDepth = if (resolvedMedia.flac) 16 else null,
+            )
+        streamCache[cacheKey] = CachedStream(stream, now + STREAM_CACHE_MS)
+        Timber.tag(TAG).i("resolved \"%s\" via Deezer [%s]", query.title, stream.label)
+        return stream
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -461,37 +535,53 @@ object DeezerAudioProvider {
 
     /** Finds the Deezer track id that best matches [query], or null when nothing scores high enough. */
     private fun matchTrack(
-        session: Session,
+        session: Session?,
         query: Query,
     ): TrackMatching.Candidate? {
-        val key = query.cacheKey()
+        val key = (if (session != null) session.arl else "public") + "|" + query.cacheKey()
         val now = System.currentTimeMillis()
         searchCache[key]?.let { (candidate, expiresAt) ->
             if (expiresAt > now) return candidate
             searchCache.remove(key)
         }
 
-        val terms = listOf(query.title) + query.artists.take(1)
-        val payload =
-            JSONObject()
-                .put("query", terms.joinToString(" ").trim())
-                .put("start", 0)
-                .put("nb", SEARCH_LIMIT)
-        val json = gateway(session.arl, session.apiToken, "search.music", payload)
-        val data = json.optJSONObject("results")?.optJSONArray("data") ?: JSONArray()
+        // 1. Direct ISRC lookup (exact official recording)
+        val isrc = query.isrc?.let { moe.rukamori.archivetune.tidal.TidalAudioProvider.normalizeIsrc(it) }
+        if (!isrc.isNullOrBlank()) {
+            val isrcCandidate = executeIsrcLookup(isrc)
+            if (isrcCandidate != null) {
+                searchCache[key] = isrcCandidate to (now + SEARCH_CACHE_MS)
+                return isrcCandidate
+            }
+        }
 
+        // 2. Fallback search (via session gateway if session exists, else public search API)
         val candidates =
-            (0 until data.length()).mapNotNull { i ->
-                val obj = data.optJSONObject(i) ?: return@mapNotNull null
-                val id = obj.optString("SNG_ID").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                TrackMatching.Candidate(
-                    id = id,
-                    title = obj.optString("SNG_TITLE"),
-                    artists = listOfNotNull(obj.optString("ART_NAME").takeIf { it.isNotBlank() }),
-                    album = obj.optString("ALB_TITLE").takeIf { it.isNotBlank() },
-                    // Deezer reports duration in whole seconds.
-                    durationMs = obj.optLong("DURATION", 0L).takeIf { it > 0L }?.times(1000L),
-                )
+            if (session != null) {
+                runCatching {
+                    val terms = listOf(query.title) + query.artists.take(1)
+                    val payload =
+                        JSONObject()
+                            .put("query", terms.joinToString(" ").trim())
+                            .put("start", 0)
+                            .put("nb", SEARCH_LIMIT)
+                    val json = gateway(session.arl, session.apiToken, "search.music", payload)
+                    val data = json.optJSONObject("results")?.optJSONArray("data") ?: JSONArray()
+                    (0 until data.length()).mapNotNull { i ->
+                        val obj = data.optJSONObject(i) ?: return@mapNotNull null
+                        val id = obj.optString("SNG_ID").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                        TrackMatching.Candidate(
+                            id = id,
+                            title = obj.optString("SNG_TITLE"),
+                            artists = listOfNotNull(obj.optString("ART_NAME").takeIf { it.isNotBlank() }),
+                            album = obj.optString("ALB_TITLE").takeIf { it.isNotBlank() },
+                            durationMs = obj.optLong("DURATION", 0L).takeIf { it > 0L }?.times(1000L),
+                            isrc = obj.optString("ISRC").takeIf { it.isNotBlank() },
+                        )
+                    }
+                }.getOrElse { emptyList() }
+            } else {
+                executePublicSearch(query)
             }
 
         val best =
@@ -502,11 +592,133 @@ object DeezerAudioProvider {
                         artists = query.artists,
                         album = query.album,
                         durationMs = query.durationMs,
+                        isrc = query.isrc,
                     ),
                 candidates = candidates,
             )
         searchCache[key] = best to (now + SEARCH_CACHE_MS)
         return best
+    }
+
+    private fun parseTrackObject(
+        jsonString: String,
+        fallbackIsrc: String?,
+    ): TrackMatching.Candidate? {
+        val obj = JSONObject(jsonString)
+        val id = obj.optLong("id", 0L).takeIf { it > 0L }?.toString() ?: return null
+        val title = obj.optString("title").ifBlank { return null }
+        val artistName = obj.optJSONObject("artist")?.optString("name")
+        val albumTitle = obj.optJSONObject("album")?.optString("title")
+        val durationMs = obj.optLong("duration", 0L).takeIf { it > 0L }?.times(1000L)
+        val candidateIsrc = obj.optString("isrc").ifBlank { fallbackIsrc }
+        return TrackMatching.Candidate(
+            id = id,
+            title = title,
+            artists = listOfNotNull(artistName),
+            album = albumTitle,
+            durationMs = durationMs,
+            isrc = candidateIsrc,
+        )
+    }
+
+    private fun parseSearchResponse(jsonString: String): List<TrackMatching.Candidate> {
+        val root = JSONObject(jsonString)
+        val data = root.optJSONArray("data") ?: return emptyList()
+        return (0 until data.length()).mapNotNull { i ->
+            val obj = data.optJSONObject(i) ?: return@mapNotNull null
+            val id = obj.optLong("id", 0L).takeIf { it > 0L }?.toString() ?: return@mapNotNull null
+            val title = obj.optString("title").ifBlank { return@mapNotNull null }
+            val artistName = obj.optJSONObject("artist")?.optString("name")
+            val albumTitle = obj.optJSONObject("album")?.optString("title")
+            val durationMs = obj.optLong("duration", 0L).takeIf { it > 0L }?.times(1000L)
+            val candidateIsrc = obj.optString("isrc").ifBlank { null }
+            TrackMatching.Candidate(
+                id = id,
+                title = title,
+                artists = listOfNotNull(artistName),
+                album = albumTitle,
+                durationMs = durationMs,
+                isrc = candidateIsrc,
+            )
+        }
+    }
+
+    private fun executeIsrcLookup(isrc: String): TrackMatching.Candidate? {
+        val req =
+            Request
+                .Builder()
+                .url("https://api.deezer.com/track/isrc:$isrc")
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+
+        val mode = proxyMode
+        val primaryClient =
+            when (mode) {
+                DeezerProxyMode.DIRECT -> client
+                DeezerProxyMode.AUTO -> client
+                else -> getProxyClient(mode.host)
+            }
+
+        val directCandidate =
+            runCatching {
+                primaryClient.newCall(req).execute().use { res ->
+                    if (!res.isSuccessful) return@use null
+                    parseTrackObject(res.body?.string().orEmpty(), isrc)
+                }
+            }.getOrNull()
+
+        if (directCandidate != null || mode == DeezerProxyMode.DIRECT || mode != DeezerProxyMode.AUTO) {
+            return directCandidate
+        }
+
+        // Auto mode fallback: Try UK proxy
+        return runCatching {
+            getProxyClient(DeezerProxyMode.UK1.host).newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return@use null
+                parseTrackObject(res.body?.string().orEmpty(), isrc)
+            }
+        }.getOrNull()
+    }
+
+    private fun executePublicSearch(query: Query): List<TrackMatching.Candidate> {
+        val terms = listOf(query.title) + query.artists.take(1)
+        val q = terms.joinToString(" ").trim()
+        val req =
+            Request
+                .Builder()
+                .url("https://api.deezer.com/search?q=${java.net.URLEncoder.encode(q, "UTF-8")}&limit=$SEARCH_LIMIT")
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+
+        val mode = proxyMode
+        val primaryClient =
+            when (mode) {
+                DeezerProxyMode.DIRECT -> client
+                DeezerProxyMode.AUTO -> client
+                else -> getProxyClient(mode.host)
+            }
+
+        val primaryResult =
+            runCatching {
+                primaryClient.newCall(req).execute().use { res ->
+                    if (!res.isSuccessful) return@use emptyList()
+                    parseSearchResponse(res.body?.string().orEmpty())
+                }
+            }.getOrElse { emptyList() }
+
+        if (primaryResult.isNotEmpty() || mode == DeezerProxyMode.DIRECT || mode != DeezerProxyMode.AUTO) {
+            return primaryResult
+        }
+
+        // Auto mode fallback: If direct returned empty or failed due to geo-restrictions, query UK proxy!
+        return runCatching {
+            getProxyClient(DeezerProxyMode.UK1.host).newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return@use emptyList()
+                parseSearchResponse(res.body?.string().orEmpty())
+            }
+        }.getOrElse { emptyList() }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -520,6 +732,54 @@ object DeezerAudioProvider {
         val format: String,
         val contentLength: Long?,
     )
+
+    /**
+     * Resolves stream URL through the public zero-login media gateway (from echo-deezer-extension).
+     */
+    private fun fetchDownloadPublicGateway(
+        trackId: String,
+        format: String,
+    ): Media? {
+        val numericId = trackId.toLongOrNull() ?: return null
+        val requested =
+            when (format.uppercase()) {
+                FORMAT_FLAC -> listOf("FLAC", "MP3_320", "MP3_128")
+                FORMAT_MP3_320 -> listOf("MP3_320", "MP3_128")
+                else -> listOf("MP3_128", "MP3_320")
+            }
+        val payload =
+            JSONObject()
+                .put("formats", JSONArray(requested))
+                .put("ids", JSONArray().put(numericId))
+
+        val request =
+            Request
+                .Builder()
+                .url(PUBLIC_MEDIA_GATEWAY)
+                .header("User-Agent", USER_AGENT)
+                .header("Content-Type", "application/json; charset=utf-8")
+                .post(payload.toString().toRequestBody(JSON_MEDIA))
+                .build()
+
+        val json =
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw java.io.IOException("public gateway HTTP ${response.code}")
+                JSONObject(response.body?.string().orEmpty())
+            }
+
+        val first = json.optJSONArray("data")?.optJSONObject(0) ?: return null
+        val media = first.optJSONArray("media")?.optJSONObject(0) ?: return null
+        val sources = media.optJSONArray("sources") ?: return null
+        val url =
+            (sources.optJSONObject(1)?.optString("url") ?: sources.optJSONObject(0)?.optString("url"))
+                ?.takeIf { it.isNotBlank() } ?: return null
+
+        val servedFormat = media.optString("format").ifBlank { format }
+        val flac = servedFormat.equals(FORMAT_FLAC, ignoreCase = true)
+        val filesize = media.optLong("filesize", 0L).takeIf { it > 0L }
+
+        return Media(url = url, flac = flac, format = servedFormat, contentLength = filesize)
+    }
 
     /**
      * Exchanges a track id for a CDN URL via the media endpoint.

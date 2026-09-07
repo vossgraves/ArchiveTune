@@ -77,6 +77,7 @@ internal object TrackMatching {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
+        val isrc: String? = null,
     )
 
     /**
@@ -89,6 +90,7 @@ internal object TrackMatching {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
+        val isrc: String? = null,
     )
 
     /**
@@ -102,8 +104,17 @@ internal object TrackMatching {
     fun best(
         target: Target,
         candidates: List<Candidate>,
-    ): Candidate? =
-        candidates
+    ): Candidate? {
+        val wantedIsrc = target.isrc?.uppercase(Locale.US)?.replace(Regex("[^A-Z0-9]"), "")?.takeIf { it.isNotBlank() }
+        if (wantedIsrc != null) {
+            val exact = candidates.firstOrNull { cand ->
+                val candIsrc = cand.isrc?.uppercase(Locale.US)?.replace(Regex("[^A-Z0-9]"), "")
+                candIsrc == wantedIsrc
+            }
+            if (exact != null) return exact
+        }
+
+        return candidates
             .asSequence()
             .map { candidate ->
                 candidate to
@@ -118,6 +129,7 @@ internal object TrackMatching {
             }.filter { (_, score) -> score >= MIN_MATCH_SCORE }
             .maxByOrNull { (_, score) -> score }
             ?.first
+    }
 
     private fun significantTokens(value: String): Set<String> =
         value
