@@ -110,6 +110,8 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.MediaMetadataListItem
+import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
@@ -718,6 +720,19 @@ fun LyricsMenu(
                 bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
             ),
     ) {
+        // Says which track the lyrics actions are about, the way every other menu does. It is also
+        // what the Apple Music Experience restyles: MenuHeaderCard drops the raised card for a
+        // hairline under the header, and with no header here there was nothing for it to act on.
+        item {
+            MenuHeaderCard {
+                MediaMetadataListItem(
+                    mediaMetadata = mediaMetadataProvider(),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
