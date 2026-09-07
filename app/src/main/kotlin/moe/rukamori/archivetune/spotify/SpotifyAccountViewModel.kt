@@ -32,6 +32,14 @@ class SpotifyAccountViewModel
 
         init {
             restoreSession()
+            // The count follows the repository rather than being assigned at the end of a refresh:
+            // the repository is a @Singleton, so a refresh started from the Library page keeps this
+            // screen's count right too, and the cache restored below shows up without a network call.
+            viewModelScope.launch {
+                repository.playlists.collect { playlists ->
+                    _uiState.update { it.copy(playlistCount = playlists.size) }
+                }
+            }
         }
 
         fun restoreSession() {
@@ -45,6 +53,17 @@ class SpotifyAccountViewModel
                                 accountAvatarUrl = session.accountAvatarUrl,
                                 isLoading = false,
                             )
+                        }
+                        // Reads the playlists already on disk. Without it the page reported "0
+                        // playlists" for a connected account until the user hit reload by hand:
+                        // the auto-refresh that used to populate the count was removed below, and
+                        // nothing took over the job of filling it in from the cache.
+                        if (session.isAuthenticated) {
+                            runCatching { repository.restoreCachedPlaylists() }
+                                .onFailure { error ->
+                                    if (error is CancellationException) throw error
+                                    reportException(error)
+                                }
                         }
                         // Loading-perf fix (ported from 4nx3b batch-8, 2026-08-29): do NOT
                         // auto-reloadPlaylists() here. This VM is instantiated whenever the
@@ -103,11 +122,11 @@ class SpotifyAccountViewModel
             if (_uiState.value.isLoading) return
             viewModelScope.launch(Dispatchers.IO) {
                 _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-                val playlists = repository.refreshPlaylists()
+                repository.refreshPlaylists()
+                // playlistCount is not set here: the collector in init owns it.
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        playlistCount = playlists.size,
                         errorMessage = repository.errorMessage.value,
                     )
                 }
