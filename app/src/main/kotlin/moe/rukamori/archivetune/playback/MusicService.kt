@@ -430,6 +430,8 @@ class MusicService :
     private var sourceSwitchPending = false
     private var sourceSwitchExpectedVolume = 1f
     private var sourceSwitchReassertJob: Job? = null
+    private var pendingSeekVolumeReassert = false
+    private var seekVolumeReassertJob: Job? = null
     private var lastAudioOutputDeviceSignature: String? = null
     private var lastAudioRouteRecoveryRealtimeMs = 0L
 
@@ -7849,6 +7851,15 @@ class MusicService :
                 applyEffectiveVolumeImmediately(sourceSwitchExpectedVolume)
                 ensureAudiblePlaybackVolume("source_switch_ready")
             }
+            // A seek's re-buffer has just completed. The reactive volume pipeline re-fired during
+            // BUFFERING->READY and may have pinned the primary player low; restore it now instead
+            // of waiting up to 15s for the audible-volume watchdog. Guarded + idempotent.
+            if (pendingSeekVolumeReassert) {
+                pendingSeekVolumeReassert = false
+                seekVolumeReassertJob?.cancel()
+                seekVolumeReassertJob = null
+                ensureAudiblePlaybackVolume("seek_ready")
+            }
             updateAudiblePlaybackRecovery()
             scheduleCrossfade()
         }
@@ -8197,10 +8208,33 @@ class MusicService :
             if (!crossfadeHandoffInProgress) {
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             }
+            // A seek forces a re-buffer; the BUFFERING->READY transition re-fires the reactive
+            // volume pipeline (playerVolume x normalize x focus), which can pin the primary
+            // player's volume low AFTER the reset above already ran — the same re-fire the
+            // source-switch path guards against, but seeks had none, so the stream stayed silent
+            // until the 15s audible-volume watchdog. Reassert at the seek's READY (below) and,
+            // for an in-buffer seek that never leaves READY, once shortly after.
+            pendingSeekVolumeReassert = true
+            scheduleSeekVolumeReassert()
         }
         if (!isCrossfading && !crossfadeHandoffInProgress) {
             scheduleCrossfade()
         }
+    }
+
+    /**
+     * Fast-path recovery for a seek that stays within the buffered region: no BUFFERING->READY
+     * fires, so the STATE_READY seek hook never runs. [ensureAudiblePlaybackVolume] only restores
+     * a primary player that is muted but should be audible, and no-ops during a real crossfade, so
+     * this cannot introduce a spurious volume change.
+     */
+    private fun scheduleSeekVolumeReassert() {
+        seekVolumeReassertJob?.cancel()
+        seekVolumeReassertJob =
+            scope.launch {
+                delay(SEEK_VOLUME_REASSERT_MS)
+                ensureAudiblePlaybackVolume("seek_reassert")
+            }
     }
 
     override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
@@ -12053,6 +12087,10 @@ class MusicService :
         // a broken import from the morideobfuscator submodule (where the constant never
         // existed) — moved back here so the reference resolves.
         const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
+        // Fast-path reassert for a seek that stays within the buffered region (no
+        // BUFFERING->READY, so the STATE_READY seek hook never fires). Covers the case the
+        // 15s audible-volume watchdog would otherwise be the only recovery for.
+        const val SEEK_VOLUME_REASSERT_MS = 300L
         const val MIN_AUDIO_FOCUS_VOLUME_FACTOR = 0.2f
         const val MIN_AUDIO_NORMALIZATION_FACTOR = 0.25f
         const val MAX_AUDIO_NORMALIZATION_FACTOR = 1.414f
