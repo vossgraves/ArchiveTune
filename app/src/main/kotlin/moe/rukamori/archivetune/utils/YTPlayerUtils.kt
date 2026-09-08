@@ -225,6 +225,11 @@ object YTPlayerUtils {
      *
      * Deliberately narrower than [isLoginRecoveryError]: a genuine expired-session failure must
      * still reach the user as "sign in again", because no embedded client can fix that.
+     *
+     * Currently unused by [MusicService]'s error handlers — they surface the sign-in prompt when
+     * the client order (which already appends [AGE_GATE_BYPASS_CLIENTS] while the setting is on)
+     * fails. Kept for the planned re-entry retry (retry once with embedded-only clients, then
+     * re-run multi-source resolution excluding YouTube).
      */
     fun isAgeRestrictedPlaybackFallbackAllowed(failure: LoginRequiredForPlaybackException): Boolean {
         if (!ageRestrictedPlaybackAllowed()) return false

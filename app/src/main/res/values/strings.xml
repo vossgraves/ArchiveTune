@@ -1161,13 +1161,13 @@
     <string name="applemusic_quality_hires">Hi-Res Lossless (up to 24/192)</string>
     <string name="applemusic_login">Sign in to Apple Music</string>
     <string name="applemusic_login_subtitle">Sign in with your Apple ID to get your Music User Token.</string>
-    <string name="applemusic_helper">Your Apple Music account — no pool. Works with your ES token.</string>
-    <string name="applemusic_helper_short">ES account • uses your Music User Token</string>
+    <string name="applemusic_helper">Apple Music plays through the community source pool automatically — sign in with your own account for guaranteed access.</string>
+    <string name="applemusic_helper_short">Pool account • or your own Music User Token</string>
     <string name="applemusic_sign_in_web">Sign in with Apple Music (web)</string>
     <string name="applemusic_sign_in_web_desc">Opens Apple\'s sign-in in a private web view</string>
     <string name="applemusic_tokens_title">Tokens</string>
     <string name="applemusic_tokens_ready">Token present — playback can engage</string>
-    <string name="applemusic_tokens_missing">Music User Token needed (Media User Token)</string>
+    <string name="applemusic_tokens_missing">Music User Token needed — the pool has no Apple accounts right now</string>
     <string name="applemusic_media_token">Music User Token (0.Ap…)</string>
     <string name="applemusic_dev_token">Developer token (optional)</string>
     <string name="applemusic_token_invalid">Doesn\'t look like a token (JWT expected)</string>

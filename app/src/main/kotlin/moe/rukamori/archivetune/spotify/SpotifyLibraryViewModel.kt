@@ -84,6 +84,17 @@ class SpotifyLibraryViewModel
             }
         }
 
+        /**
+         * Populate the playlist list the first time the Library's Spotify tab opens with an empty
+         * cache — disk cache first, network only if still empty. See
+         * [SpotifyLibraryRepository.ensurePlaylists].
+         */
+        fun ensurePlaylists() {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.ensurePlaylists()
+            }
+        }
+
         /** Successful empty sections are cached too; only [force] requests a refresh. */
         fun loadLikedSongs(force: Boolean = false) = load(force, _likedSongs) { repository.likedSongs() }
 

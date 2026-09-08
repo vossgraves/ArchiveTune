@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -40,6 +41,14 @@ fun LibrarySpotifyPlaylistsScreen(
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val accountRevision by viewModel.accountRevision.collectAsStateWithLifecycle()
+
+    // The other Spotify sections (songs/artists/albums) fetch on first open; playlists used to
+    // restore from disk only, leaving a cold cache showing the empty state until a manual
+    // pull-to-refresh. ensurePlaylists() fetches once per account when the cache is empty.
+    LaunchedEffect(viewModel, accountRevision) {
+        viewModel.ensurePlaylists()
+    }
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)

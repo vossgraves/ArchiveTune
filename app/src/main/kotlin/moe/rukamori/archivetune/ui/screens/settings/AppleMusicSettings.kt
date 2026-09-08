@@ -84,8 +84,9 @@ private fun looksLikeMediaUserToken(value: String): Boolean =
     looksLikeJwt(value) || value.matches(Regex("^0\\.[A-Za-z0-9+/=]{40,}$"))
 
 /**
- * Apple Music sign-in — login-only by design: no pool, independent of Developer
- * Options. Full-track streaming engages once BOTH tokens are present.
+ * Apple Music sign-in — the community source pool supplies a Media User Token when the user
+ * has none of their own (see App's mediaUserTokenProvider fallback), so playback can engage
+ * with zero setup. Signing in here simply guarantees access with the user's own account.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

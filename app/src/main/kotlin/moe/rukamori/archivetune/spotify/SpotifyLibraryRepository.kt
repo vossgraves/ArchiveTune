@@ -242,6 +242,25 @@ class SpotifyLibraryRepository
                 }
             }
 
+        /**
+         * Guarantee the playlist list is populated: disk cache first, then a network fetch the
+         * first time it is needed on an empty cache.
+         *
+         * The Library's Spotify tab used to show an empty list forever when the cache was cold —
+         * only a pull-to-refresh ever fetched — while the songs/artists/albums sections fetch on
+         * first open. This gives playlists the same "fetch once when empty" behavior without
+         * re-introducing the app-start refresh the batch-8 loading-perf fix removed: a screen
+         * that is never opened still never fetches, and a warm cache is served instantly.
+         */
+        suspend fun ensurePlaylists() {
+            withContext(Dispatchers.IO) {
+                if (_isRefreshing.value) return@withContext
+                restoreCachedPlaylists()
+                if (_playlists.value.isNotEmpty()) return@withContext
+                refreshPlaylists()
+            }
+        }
+
         suspend fun playlist(playlistId: String): SpotifyPlaylist =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()

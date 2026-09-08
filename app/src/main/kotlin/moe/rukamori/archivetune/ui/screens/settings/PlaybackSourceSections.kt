@@ -233,15 +233,32 @@ internal fun PlaybackSourceSections(
 
     var showOrderDialog by rememberSaveable { mutableStateOf(false) }
 
+    // Dragging a source to the top is the strongest possible signal the user wants it — a
+    // disabled top source would be silently skipped by the resolver, which is exactly how
+    // "I put Qobuz first but still got YouTube" happens. Auto-enable the new top source on
+    // confirm so the order dialog and the enable toggles can never disagree again.
+    fun onOrderConfirm(newOrder: List<AudioSourceType>) {
+        newOrder.firstOrNull { it != AudioSourceType.YOUTUBE }?.let { top ->
+            when (top) {
+                AudioSourceType.TIDAL -> if (!tidalEnabled) onTidalEnabledChange(true)
+                AudioSourceType.QOBUZ -> if (!qobuzEnabled) onQobuzEnabledChange(true)
+                AudioSourceType.QOBUZ_BACKUP -> if (!qobuzBackupEnabled) onQobuzBackupEnabledChange(true)
+                AudioSourceType.DEEZER -> if (!deezerEnabled) onDeezerEnabledChange(true)
+                AudioSourceType.APPLE -> if (!appleMusicEnabled) onAppleMusicEnabledChange(true)
+                AudioSourceType.JIOSAAVN -> if (!jioSaavnEnabled) onJioSaavnEnabledChange(true)
+                AudioSourceType.YOUTUBE -> Unit
+            }
+        }
+        onSourceOrderChange(newOrder.joinToString(",") { it.name })
+        showOrderDialog = false
+    }
+
     if (showOrderDialog) {
         SourceOrderDialog(
             initialOrder = sourceOrder,
             isEnabled = ::isEnabled,
             onDismiss = { showOrderDialog = false },
-            onConfirm = { newOrder ->
-                onSourceOrderChange(newOrder.joinToString(",") { it.name })
-                showOrderDialog = false
-            },
+            onConfirm = ::onOrderConfirm,
         )
     }
 
