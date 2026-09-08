@@ -736,6 +736,11 @@ val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
 val ArtworkProviderOrderKey = stringPreferencesKey("artworkProviderOrder")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
 
+// Player HUD: show the resolved codec/bitrate line. Bound by the Developer Options toggle
+// (DebugSettings) and read by the player + queue overlays — a shared constant keeps the three
+// call sites from drifting on the raw string.
+val ShowCodecOnPlayerKey = booleanPreferencesKey("show_codec_on_player")
+
 enum class LibraryViewType {
     LIST,
     GRID,
