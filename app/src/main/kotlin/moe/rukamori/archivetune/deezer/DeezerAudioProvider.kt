@@ -260,6 +260,13 @@ object DeezerAudioProvider {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
+        /**
+         * When non-null, [matchTrack] first resolves the exact recording via Deezer's public
+         * `track/isrc:{isrc}` endpoint and only falls back to the title/artist search if that
+         * finds nothing. An ISRC names one recording, so this avoids the fuzzy search picking a
+         * different take (live/remaster/cover) for a catalogue-imported track.
+         */
+        val isrc: String? = null,
     )
 
     private fun Query.cacheKey(): String =
@@ -471,6 +478,21 @@ object DeezerAudioProvider {
             searchCache.remove(key)
         }
 
+        // Exact-recording fast path: an ISRC identifies one recording, so when the queue item
+        // carried one, ask Deezer for that recording directly instead of guessing from a text
+        // search. A hit is authoritative (no scoring); a miss falls through to the search below,
+        // because Deezer does not carry every label's ISRC.
+        query.isrc?.takeIf { it.isNotBlank() }?.let { isrc ->
+            val exact =
+                runCatching { lookupByIsrc(isrc) }
+                    .onFailure { Timber.tag(TAG).w(it, "isrc lookup failed for %s", isrc) }
+                    .getOrNull()
+            if (exact != null) {
+                searchCache[key] = exact to (now + SEARCH_CACHE_MS)
+                return exact
+            }
+        }
+
         val terms = listOf(query.title) + query.artists.take(1)
         val payload =
             JSONObject()
@@ -507,6 +529,40 @@ object DeezerAudioProvider {
             )
         searchCache[key] = best to (now + SEARCH_CACHE_MS)
         return best
+    }
+
+    /**
+     * Resolves an exact recording by ISRC through Deezer's public API (`GET /track/isrc:{isrc}`),
+     * which needs no session. Returns the matching [TrackMatching.Candidate], or null when Deezer
+     * has no track for the ISRC (the endpoint answers HTTP 200 with an `error` object in that case).
+     * The numeric `id` it returns is the same track id the gateway's SNG_ID uses, so [requestUrl]
+     * can stream it directly.
+     */
+    private fun lookupByIsrc(isrc: String): TrackMatching.Candidate? {
+        val req =
+            Request
+                .Builder()
+                .url("https://api.deezer.com/track/isrc:${java.net.URLEncoder.encode(isrc, "UTF-8")}")
+                .header("Accept", "application/json")
+                .build()
+        client.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) return null
+            val obj = JSONObject(res.body?.string() ?: return null)
+            // Not-found and rate-limit responses come back as { "error": { … } } with HTTP 200.
+            if (obj.has("error")) return null
+            val id = obj.optLong("id", 0L).takeIf { it > 0L }?.toString() ?: return null
+            val title = obj.optString("title").takeIf { it.isNotBlank() } ?: return null
+            val artist = obj.optJSONObject("artist")?.optString("name")?.takeIf { it.isNotBlank() }
+            val album = obj.optJSONObject("album")?.optString("title")?.takeIf { it.isNotBlank() }
+            val durationMs = obj.optLong("duration", 0L).takeIf { it > 0L }?.times(1000L)
+            return TrackMatching.Candidate(
+                id = id,
+                title = title,
+                artists = listOfNotNull(artist),
+                album = album,
+                durationMs = durationMs,
+            )
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

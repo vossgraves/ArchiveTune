@@ -8817,6 +8817,11 @@ class MusicService :
         val album: String?,
         val durationMs: Long?,
         /**
+         * ISRC of the wanted recording, when the queue item carried one (catalogue imports only).
+         * A source that can look up by ISRC uses it for an exact match and skips its text search.
+         */
+        val isrc: String? = null,
+        /**
          * When non-null, the Qobuz resolver skips its title/artist search and
          * downloads this exact trackId. Set when the user picks a specific
          * Qobuz track from the "Play from" source-search popup — the mediaId
@@ -8900,6 +8905,10 @@ class MusicService :
             song?.song?.albumName
                 ?: song?.album?.title
                 ?: queuedMetadata?.album?.title
+        // ISRC comes only from the in-memory queue metadata: the song table has no ISRC column, and
+        // it is only ever set for catalogue-sourced items (Spotify import), which is exactly where
+        // an exact-recording match beats a title/artist search.
+        val isrc = queuedMetadata?.isrc?.takeIf { it.isNotBlank() }
         val durationMs =
             song?.song?.duration
                 ?.takeIf { it > 0 }
@@ -8933,6 +8942,7 @@ class MusicService :
             artists = artists,
             album = album,
             durationMs = durationMs,
+            isrc = isrc,
             directQobuzTrackId = directQobuzTrackId,
             directQobuzBackupVideoId = directQobuzBackupVideoId,
         )
@@ -9979,7 +9989,9 @@ class MusicService :
                             title = query.title,
                             artists = query.artists,
                             album = query.album,
-                            isrc = null,
+                            // Tidal's resolver already scores an exact-ISRC hit above any text match
+                            // (see exactIsrc/exactIsrcOnly); it was only ever being handed null here.
+                            isrc = query.isrc,
                             durationMs = query.durationMs,
                         ),
                     cacheDir = cacheDir,
@@ -10172,6 +10184,7 @@ class MusicService :
                                 artists = query.artists,
                                 album = query.album,
                                 durationMs = query.durationMs,
+                                isrc = query.isrc,
                             ),
                         format = quality.toFormatName(),
                     )?.let { resolved ->

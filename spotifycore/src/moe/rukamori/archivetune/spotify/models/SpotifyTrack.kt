@@ -22,7 +22,29 @@ data class SpotifyTrack(
     @SerialName("preview_url") val previewUrl: String? = null,
     @SerialName("track_number") val trackNumber: Int? = null,
     val uri: String? = null,
+    @SerialName("external_ids") val externalIds: SpotifyExternalIds? = null,
     val popularity: Int? = null,
+) {
+    /**
+     * The recording's ISRC, when Spotify returned one.
+     *
+     * Only full track objects carry `external_ids` — playlist items do, the simplified tracks in an
+     * album listing do not — so this is absent often enough that every consumer must have a
+     * title/artist fallback rather than treating it as required.
+     */
+    val isrc: String? get() = externalIds?.isrc?.takeIf(String::isNotBlank)
+}
+
+/**
+ * Third-party identifiers Spotify carries for a track. ISRC is the one that matters here: it names a
+ * specific *recording*, so a lossless provider can be asked for exactly the take Spotify has instead
+ * of being made to guess from a title and an artist.
+ */
+@Serializable
+data class SpotifyExternalIds(
+    val isrc: String? = null,
+    val ean: String? = null,
+    val upc: String? = null,
 )
 
 /**

@@ -131,6 +131,9 @@ object SpotifyPlaybackResolver {
                             bestMetadata.album
                         },
                     spotifyTrackId = track.id.takeIf(String::isNotBlank),
+                    // Carry Spotify's ISRC onto the queue item so the lossless chain can ask each
+                    // source for this exact recording instead of re-running a fuzzy title search.
+                    isrc = track.isrc,
                 )
 
             mutex.withLock {
