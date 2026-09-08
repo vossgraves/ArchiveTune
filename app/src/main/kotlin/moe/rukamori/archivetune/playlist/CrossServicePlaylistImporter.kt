@@ -14,6 +14,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.pages.SearchResult
 import moe.rukamori.archivetune.innertube.utils.completed
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -191,7 +192,7 @@ object CrossServicePlaylistImporter {
      */
     private fun bestYouTubeMatch(
         track: ForeignTrack,
-        search: YouTube.SearchResult?,
+        search: SearchResult?,
     ): SongItem? {
         val candidates = search?.items.orEmpty().filterIsInstance<SongItem>()
         if (candidates.isEmpty()) return null
