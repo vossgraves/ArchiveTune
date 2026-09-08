@@ -417,7 +417,6 @@ val ProxyPasswordKey = stringPreferencesKey("proxyPassword")
 val ProxyTypeKey = stringPreferencesKey("proxyType")
 val EnableDnsOverHttpsKey = booleanPreferencesKey("enableDnsOverHttps")
 val DnsOverHttpsProviderKey = stringPreferencesKey("dnsOverHttpsProvider")
-val TidalInstanceUrlKey = stringPreferencesKey("tidalInstanceUrl")
 val StreamBypassProxyKey = booleanPreferencesKey("streamBypassProxy")
 val IpRotationEnabledKey = booleanPreferencesKey("ipRotationEnabled")
 val YtmSyncKey = booleanPreferencesKey("ytmSync")
@@ -656,11 +655,6 @@ val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 val SyncPlaybackToYouTubeHistoryKey = booleanPreferencesKey("syncPlaybackToYouTubeHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
 
-// Integration screen: account cards. YouTube is always shown; Last.fm and Discord
-// cards can be pinned to the top of the Integration screen by the user.
-val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
-val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
-
 // Last.fm dashboard: prefer YouTube hq720 thumbnails over the Last.fm image
 // array. When enabled, the dashboard skips bestArtwork(track.image) (which
 // can return non-square / brown-matted images from Last.fm's catalogue) and
@@ -672,7 +666,6 @@ val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnail
 val DiscordTokenKey = stringPreferencesKey("discordToken")
 val DiscordRefreshTokenKey = stringPreferencesKey("discordRefreshToken")
 val DiscordTokenExpiresAtKey = longPreferencesKey("discordTokenExpiresAt")
-val DiscordInfoDismissedKey = booleanPreferencesKey("discordInfoDismissed")
 val DiscordUsernameKey = stringPreferencesKey("discordUsername")
 val DiscordNameKey = stringPreferencesKey("discordName")
 val DiscordAvatarUrlKey = stringPreferencesKey("discordAvatarUrl")
@@ -717,8 +710,6 @@ val EnableTranslatorKey = booleanPreferencesKey("enableTranslator")
 val ChipSortTypeKey = stringPreferencesKey("chipSortType")
 val SongSortTypeKey = stringPreferencesKey("songSortType")
 val SongSortDescendingKey = booleanPreferencesKey("songSortDescending")
-val PlaylistSongSortTypeKey = stringPreferencesKey("playlistSongSortType")
-val PlaylistSongSortDescendingKey = booleanPreferencesKey("playlistSongSortDescending")
 val AutoPlaylistSongSortTypeKey = stringPreferencesKey("autoPlaylistSongSortType")
 val AutoPlaylistSongSortDescendingKey = booleanPreferencesKey("autoPlaylistSongSortDescending")
 val ArtistSortTypeKey = stringPreferencesKey("artistSortType")
@@ -729,21 +720,11 @@ val PlaylistSortTypeKey = stringPreferencesKey("playlistSortType")
 val PlaylistSortDescendingKey = booleanPreferencesKey("playlistSortDescending")
 val ArtistSongSortTypeKey = stringPreferencesKey("artistSongSortType")
 val ArtistSongSortDescendingKey = booleanPreferencesKey("artistSongSortDescending")
-val MixSortTypeKey = stringPreferencesKey("mixSortType")
-val MixSortDescendingKey = booleanPreferencesKey("albumSortDescending")
 
 val SongFilterKey = stringPreferencesKey("songFilter")
 val ArtistFilterKey = stringPreferencesKey("artistFilter")
 val AlbumFilterKey = stringPreferencesKey("albumFilter")
 
-val LastLikeSongSyncKey = longPreferencesKey("last_like_song_sync")
-val LastLibSongSyncKey = longPreferencesKey("last_library_song_sync")
-val LastAlbumSyncKey = longPreferencesKey("last_album_sync")
-val LastArtistSyncKey = longPreferencesKey("last_artist_sync")
-val LastPlaylistSyncKey = longPreferencesKey("last_playlist_sync")
-
-val ArtistViewTypeKey = stringPreferencesKey("artistViewType")
-val AlbumViewTypeKey = stringPreferencesKey("albumViewType")
 val PlaylistViewTypeKey = stringPreferencesKey("playlistViewType")
 
 val PlaylistEditLockKey = booleanPreferencesKey("playlistEditLock")
@@ -751,7 +732,6 @@ val QuickPicksKey = stringPreferencesKey("discover")
 
 val NewsLastReadTimestampKey = longPreferencesKey("news_last_read_timestamp")
 val SpeedDialSongIdsKey = stringPreferencesKey("speedDialSongIds")
-val PreferredLyricsProviderKey = stringPreferencesKey("lyricsProvider")
 val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
 val ArtworkProviderOrderKey = stringPreferencesKey("artworkProviderOrder")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
@@ -1353,7 +1333,6 @@ val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_play
 val HiddenHomeItemsKey = stringSetPreferencesKey("hidden_home_items")
 
 // Tidal music source integration (ported from MetroFuse)
-val TidalCookieKey = stringPreferencesKey("tidalCookie")
 val TidalEnabledKey = booleanPreferencesKey("tidalEnabled")
 val TidalAudioQualityKey = stringPreferencesKey("tidalAudioQuality")
 val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallbackEnabled")
@@ -1452,8 +1431,6 @@ val QobuzBackupEnabledKey = booleanPreferencesKey("qobuzBackupEnabled")
 // CSV of user-provided Qobuz proxy instance base URLs, highest priority first.
 val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
 
-// JSON cache of the last Qobuz instance health scan, mirroring TidalVerifiedInstancesKey.
-val QobuzVerifiedInstancesKey = stringPreferencesKey("qobuzVerifiedInstances")
 
 // ---------------------------------------------------------------------------
 // Experimental: manual source sign-in
@@ -1472,8 +1449,6 @@ val QobuzLastProbeTrackKey = stringPreferencesKey("qobuzLastProbeTrack")
 // need no proxy instance. Tried before proxy URLs during resolution (direct = highest fidelity).
 val QobuzTokensKey = stringPreferencesKey("qobuzTokens")
 
-// JSON health cache for the token list, mirroring QobuzVerifiedInstancesKey.
-val QobuzVerifiedTokensKey = stringPreferencesKey("qobuzVerifiedTokens")
 
 // Qobuz quality maps to the proxy/Qobuz format_id: FLAC=6 (CD 16-bit), HI_RES=7 (≤96kHz),
 // MAX=27 (>96kHz). MP3 (5) is intentionally omitted — this is a lossless source.
@@ -1581,9 +1556,6 @@ val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
  */
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 
-// The primary audio source the user prefers to search/resolve first (AudioSourceType name).
-// Named distinctly from the unrelated SearchSourceKey (LOCAL/ONLINE search scope) above.
-val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 
 // When logged in, try the user's own Tidal account (official API) before the public instances.
 val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
@@ -1649,7 +1621,6 @@ enum class SaavnAudioQuality {
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")
 val PoTokenPlayerKey = stringPreferencesKey("poTokenPlayer")
-val UseVisitorDataKey = booleanPreferencesKey("useVisitorData")
 val PoTokenSourceUrlKey = stringPreferencesKey("poTokenSourceUrl")
 
 val LanguageCodeToName =
@@ -1751,7 +1722,6 @@ val RemindAfterKey = intPreferencesKey("remind_after")
 val EnableUpdateNotificationKey = booleanPreferencesKey("enableUpdateNotification")
 val UpdateChannelKey = stringPreferencesKey("updateChannel")
 val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
-val YtDlpManualUpdateHistoryKey = stringSetPreferencesKey("ytDlpManualUpdateHistory")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
 
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
