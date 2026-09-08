@@ -573,6 +573,10 @@ internal fun PlaybackSourceSections(
                 onClick = { navController.navigate("settings/applemusic") },
             )
         }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.APPLE)
+        }
     }
 
     PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
