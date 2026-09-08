@@ -26,7 +26,13 @@ import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 
 object SpotifyPlaybackResolver {
-    private const val MIN_MATCH_THRESHOLD = 0.35
+    /**
+     * A true Spotify→YouTube match scores ≥ ~0.85 on SpotifyMapper's 0.45/0.35/0.20
+     * title/artist/duration weighting; a same-vibes wrong song lands under ~0.45.
+     * The old 0.35 floor accepted those wrong songs for Spotify-exclusive tracks
+     * (no YouTube release exists), so playback substituted a different track.
+     */
+    private const val MIN_MATCH_THRESHOLD = 0.6
     private const val CACHE_MAX_SIZE = 512
 
     private val mutex = Mutex()

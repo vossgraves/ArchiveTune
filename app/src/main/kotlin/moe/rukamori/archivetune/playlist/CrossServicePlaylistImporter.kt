@@ -18,6 +18,7 @@ import moe.rukamori.archivetune.innertube.utils.completed
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.spotify.Spotify
+import moe.rukamori.archivetune.spotify.SpotifyMapper
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -169,6 +170,52 @@ object CrossServicePlaylistImporter {
     }
 
     /**
+     * Minimum SpotifyMapper score for a YouTube Music hit to be accepted as the
+     * wanted track at import time.
+     *
+     * The importer used to take the first SongItem the search returned, unverified.
+     * For a track that only exists on the source service (Spotify/Deezer/Apple — no
+     * YouTube Music release), that first hit is whatever YouTube's fuzzy search
+     * returns for the title words — a *different song* ("Full Moon" by someone
+     * else for "Under the Full Moon: Psychedelic Reflections"), which then got
+     * stored into the playlist as if it were the track. Scoring fixes the pick;
+     * this threshold rejects the no-true-hit case so the track is skipped instead
+     * of imported wrong. A true match scores ≥ ~0.85 (title 0.45 + artist 0.35 +
+     * duration 0.20 weights); a same-vibes wrong song lands well under 0.4.
+     */
+    private const val IMPORT_MATCH_THRESHOLD = 0.6
+
+    /**
+     * Picks the best-scoring YouTube Music hit for [track], or null when none of
+     * the results actually is the track. See [IMPORT_MATCH_THRESHOLD].
+     */
+    private fun bestYouTubeMatch(
+        track: ForeignTrack,
+        search: YouTube.SearchResult?,
+    ): SongItem? {
+        val candidates = search?.items.orEmpty().filterIsInstance<SongItem>()
+        if (candidates.isEmpty()) return null
+        val precomputed =
+            SpotifyMapper.precompute(
+                title = track.title,
+                artist = track.artist.orEmpty(),
+                durationMs = track.durationMs?.toInt() ?: 0,
+            )
+        return candidates
+            .map { candidate ->
+                candidate to
+                    SpotifyMapper.matchScorePrecomputed(
+                        precomputed = precomputed,
+                        candidateTitle = candidate.title,
+                        candidateArtist = candidate.artists.joinToString(" ") { it.name },
+                        candidateDurationSec = candidate.duration,
+                    )
+            }.filter { (_, score) -> score >= IMPORT_MATCH_THRESHOLD }
+            .maxByOrNull { (_, score) -> score }
+            ?.first
+    }
+
+    /**
      * Resolves a list of [ForeignTrack]s to YouTube Music song ids via
      * [YouTube.search]. Returns the ids (in the same order as the input
      * where possible) — tracks that can't be matched are skipped.
@@ -194,8 +241,7 @@ object CrossServicePlaylistImporter {
                         .joinToString(" ")
                         .ifBlank { return@async null }
                     val search = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-                    val first = search?.items?.firstOrNull { it is SongItem } as? SongItem
-                    first?.id
+                    bestYouTubeMatch(track, search)?.id
                 }
             }.awaitAll()
             resolved.filterNotNull().forEach { results.add(it) }
@@ -239,8 +285,7 @@ object CrossServicePlaylistImporter {
                         .joinToString(" ")
                         .ifBlank { return@async null }
                     val search = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-                    val first = search?.items?.firstOrNull { it is SongItem } as? SongItem
-                    first?.toMediaMetadata()
+                    bestYouTubeMatch(track, search)?.toMediaMetadata()
                 }
             }.awaitAll()
             resolved.filterNotNull().forEach { results.add(it) }
