@@ -17,7 +17,6 @@ import android.app.PendingIntent
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -94,11 +93,8 @@ import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.CommandButton
-import androidx.media3.session.MediaController
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.SessionToken
-import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -107,6 +103,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -1393,9 +1390,6 @@ class MusicService :
         updateNotification()
         player.repeatMode = REPEAT_MODE_OFF
 
-        val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
-        val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
-        controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
         scope.launch(Dispatchers.IO) {
             val prefs = dataStore.data.first()
             val repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
@@ -11784,7 +11778,9 @@ class MusicService :
         unregisterBluetoothReceiver()
         unregisterMuteRecoveryObserver()
         try {
-            scope.launch { stopTogetherInternal() }
+            // NonCancellable: this must survive the scopeJob.cancel() below —
+            // a plain scope.launch is cancelled before its body ever runs.
+            scope.launch(NonCancellable) { stopTogetherInternal() }
         } catch (_: Exception) {
         }
         try {
@@ -11821,6 +11817,14 @@ class MusicService :
             initialBufferRecoveryJob?.cancel()
             player.release()
             castPlaybackRepository.releasePlayer(player)
+        } catch (_: Exception) {
+        }
+        // The sync worker is a child of scopeJob and may be cancelled at the
+        // receive below before it drains the service_destroy request. Stop the
+        // manager directly so the static holder drops its listener (which
+        // captures this@MusicService) even if that race is lost. Idempotent.
+        try {
+            DiscordPresenceManager.stop()
         } catch (_: Exception) {
         }
         scopeJob.cancel()
