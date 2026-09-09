@@ -40,6 +40,7 @@ import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
+import moe.rukamori.archivetune.constants.UpdateChannelNightlyRenameMigratedKey
 import moe.rukamori.archivetune.extensions.toEnum
 import kotlin.properties.ReadOnlyProperty
 
@@ -75,7 +76,26 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun migrate(currentData: Preferences): Preferences =
                     currentData.toMutablePreferences().apply {
-                        this[UpdateChannelKey] = UpdateChannel.CANARY.name
+                        this[UpdateChannelKey] = UpdateChannel.NIGHTLY.name
+                    }
+
+                override suspend fun cleanUp() {}
+            },
+            // One-time: the pre-release channel formerly shown as "Canary" was the dev/nightly
+            // build and stored the value "CANARY". It is now "Nightly", and "Canary" names a new,
+            // separate branch. Rewrite any existing stored "CANARY" to "NIGHTLY" once so nobody is
+            // silently moved onto the new (initially empty) Canary feed, then release the "CANARY"
+            // value for real Canary selections. Guarded so a later, deliberate Canary choice sticks.
+            object : DataMigration<Preferences> {
+                override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+                    currentData[UpdateChannelNightlyRenameMigratedKey] != true
+
+                override suspend fun migrate(currentData: Preferences): Preferences =
+                    currentData.toMutablePreferences().apply {
+                        if (currentData[UpdateChannelKey] == "CANARY") {
+                            this[UpdateChannelKey] = UpdateChannel.NIGHTLY.name
+                        }
+                        this[UpdateChannelNightlyRenameMigratedKey] = true
                     }
 
                 override suspend fun cleanUp() {}

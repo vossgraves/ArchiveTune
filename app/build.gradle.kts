@@ -207,14 +207,21 @@ android {
                     ?: ""
                 ).trim()
         buildConfigField("String", "NIGHTLY_BUILD_HASH", "\"$nightlyBuildHash\"")
-        // True only for builds produced by the canary/nightly workflow (it sets IS_NIGHTLY_BUILD).
-        // Used to default the in-app updater to the CANARY channel and to compare canary builds by
+        // True only for builds produced by the nightly workflow (it sets IS_NIGHTLY_BUILD). Used to
+        // default the in-app updater to the NIGHTLY channel and to compare pre-release builds by
         // their monotonic versionCode rather than the fixed display versionName.
         val isNightlyBuild =
             (System.getenv("IS_NIGHTLY_BUILD") ?: localProperties.getProperty("IS_NIGHTLY_BUILD") ?: "")
                 .trim()
                 .equals("true", ignoreCase = true)
         buildConfigField("boolean", "IS_NIGHTLY", "$isNightlyBuild")
+        // True only for builds produced by the canary workflow (it sets IS_CANARY_BUILD), which
+        // tracks the separate `canary` branch. Defaults the updater to the CANARY channel.
+        val isCanaryBuild =
+            (System.getenv("IS_CANARY_BUILD") ?: localProperties.getProperty("IS_CANARY_BUILD") ?: "")
+                .trim()
+                .equals("true", ignoreCase = true)
+        buildConfigField("boolean", "IS_CANARY", "$isCanaryBuild")
         buildConfigField("String", "DISTRIBUTION", "\"gms\"")
         buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
     }

@@ -51,6 +51,18 @@ class UpdateCheckWorker(
                     }
                 }
 
+                UpdateChannel.NIGHTLY -> {
+                    Updater.getLatestNightlyVersionName().onSuccess { latestVersion ->
+                        if (Updater.isUpdateAvailable(latestVersion, BuildConfig.VERSION_NAME)) {
+                            UpdateNotificationManager.notifyIfNewVersion(
+                                applicationContext,
+                                latestVersion,
+                                updateChannel,
+                            )
+                        }
+                    }
+                }
+
                 UpdateChannel.STABLE -> {
                     Updater.getLatestVersionName().onSuccess { latestVersion ->
                         if (Updater.isUpdateAvailable(latestVersion, BuildConfig.VERSION_NAME)) {
