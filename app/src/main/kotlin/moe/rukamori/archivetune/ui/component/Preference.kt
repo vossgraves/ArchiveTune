@@ -13,6 +13,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.border
 import android.os.Build
@@ -55,6 +56,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -177,6 +179,9 @@ fun PreferenceEntry(
     trailingContent: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     isEnabled: Boolean = true,
+    // Yuma affordance: a trailing chevron for rows that open another screen. Off by default and
+    // ignored when the row already has its own trailingContent, so no existing caller changes.
+    showChevron: Boolean = false,
     shape: Shape? = null,
 ) {
     val inGroup = LocalPreferenceInGroup.current
@@ -196,9 +201,11 @@ fun PreferenceEntry(
     val pressScale =
         if (clickable) {
             val isPressed by interactionSource.collectIsPressedAsState()
+            // Yuma press feedback: a slightly deeper, springier shrink than the old high-stiffness
+            // 0.98 twitch, so a tap reads as a physical press rather than a flicker.
             val scale by animateFloatAsState(
-                targetValue = if (isPressed) 0.98f else 1f,
-                animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                targetValue = if (isPressed) 0.96f else 1f,
+                animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
                 label = "prefScale",
             )
             Modifier.graphicsLayer {
@@ -232,15 +239,23 @@ fun PreferenceEntry(
                     ),
         ) {
             if (icon != null) {
+                // Yuma icon treatment: a filled accent chip with a contrasting glyph, instead of a
+                // bare primary-tinted icon on the card. contentColorFor gives the on-primary colour
+                // the glyph needs to stay legible on the fill; fall back to surface if the theme
+                // leaves it unspecified.
+                val accent = MaterialTheme.colorScheme.primary
+                val onAccent =
+                    contentColorFor(accent).takeIf { it.isSpecified } ?: MaterialTheme.colorScheme.surface
                 Box(
                     modifier =
                         Modifier
                             .align(Alignment.CenterVertically)
                             .size(44.dp)
-                            .clip(preferenceIconShape),
+                            .clip(preferenceIconShape)
+                            .background(accent),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
+                    CompositionLocalProvider(LocalContentColor provides onAccent) {
                         icon()
                     }
                 }
@@ -280,6 +295,17 @@ fun PreferenceEntry(
                 Box(modifier = Modifier.align(Alignment.CenterVertically)) {
                     trailingContent()
                 }
+            } else if (showChevron) {
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_right),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterVertically)
+                            .size(18.dp),
+                )
             }
         }
     }
