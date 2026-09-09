@@ -44,7 +44,7 @@ object UpdateNotificationManager {
     private const val NOTIFICATION_ID = 9999
     private const val WORK_NAME = "update_check_work"
     private const val STABLE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
-    private const val CANARY_CHECK_INTERVAL_MS = 15 * 60 * 1000L
+    private const val NIGHTLY_CHECK_INTERVAL_MS = 15 * 60 * 1000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -126,7 +126,8 @@ object UpdateNotificationManager {
                 val now = System.currentTimeMillis()
                 val checkInterval =
                     when (updateChannel) {
-                        UpdateChannel.CANARY -> CANARY_CHECK_INTERVAL_MS
+                        UpdateChannel.CANARY -> NIGHTLY_CHECK_INTERVAL_MS
+                        UpdateChannel.NIGHTLY -> NIGHTLY_CHECK_INTERVAL_MS
                         UpdateChannel.STABLE -> STABLE_CHECK_INTERVAL_MS
                     }
 
@@ -137,6 +138,7 @@ object UpdateNotificationManager {
                 val versionResult =
                     when (updateChannel) {
                         UpdateChannel.CANARY -> Updater.getLatestCanaryVersionName()
+                        UpdateChannel.NIGHTLY -> Updater.getLatestNightlyVersionName()
                         UpdateChannel.STABLE -> Updater.getLatestVersionName()
                     }
 
@@ -194,6 +196,7 @@ object UpdateNotificationManager {
         val downloadUrl =
             when (updateChannel) {
                 UpdateChannel.CANARY -> Updater.getLatestCanaryDownloadUrl()
+                UpdateChannel.NIGHTLY -> Updater.getLatestNightlyDownloadUrl()
                 UpdateChannel.STABLE -> Updater.getLatestDownloadUrl()
             }
         val downloadIntent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))

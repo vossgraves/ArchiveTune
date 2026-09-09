@@ -9,11 +9,19 @@ package moe.rukamori.archivetune
 
 import moe.rukamori.archivetune.constants.UpdateChannel
 
-internal val isCanaryBuild: Boolean
+internal val isNightlyBuild: Boolean
     get() = BuildConfig.IS_NIGHTLY
 
+internal val isCanaryBuild: Boolean
+    get() = BuildConfig.IS_CANARY
+
 internal val defaultUpdateChannel: UpdateChannel
-    get() = if (isCanaryBuild) UpdateChannel.CANARY else UpdateChannel.STABLE
+    get() =
+        when {
+            isCanaryBuild -> UpdateChannel.CANARY
+            isNightlyBuild -> UpdateChannel.NIGHTLY
+            else -> UpdateChannel.STABLE
+        }
 
 internal val currentBuildHash: String?
     get() = BuildConfig.NIGHTLY_BUILD_HASH.takeIf { it.isNotBlank() }

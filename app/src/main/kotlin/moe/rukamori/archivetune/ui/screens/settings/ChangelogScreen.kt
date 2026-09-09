@@ -113,6 +113,7 @@ fun ChangelogScreen(
         val result =
             when (channel) {
                 UpdateChannel.CANARY -> Updater.getAllCanaryReleases(forceRefresh = forceRefresh)
+                UpdateChannel.NIGHTLY -> Updater.getAllNightlyReleases(forceRefresh = forceRefresh)
                 else -> Updater.getAllReleases(forceRefresh = forceRefresh)
             }
         result
@@ -132,6 +133,7 @@ fun ChangelogScreen(
         val cachedReleases =
             when (channel) {
                 UpdateChannel.CANARY -> Updater.getCachedCanaryReleases()
+                UpdateChannel.NIGHTLY -> Updater.getCachedNightlyReleases()
                 else -> Updater.getCachedReleases()
             }
         if (cachedReleases.isNotEmpty()) {

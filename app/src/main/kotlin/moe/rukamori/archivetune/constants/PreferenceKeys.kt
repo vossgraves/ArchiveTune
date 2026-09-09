@@ -1740,10 +1740,26 @@ val GitHubReleasesJsonKey = stringPreferencesKey("github_releases_json")
 val GitHubReleasesLastCheckedAtKey = longPreferencesKey("github_releases_last_checked_at")
 val GitHubReleasesFingerprintKey = stringPreferencesKey("github_releases_fingerprint")
 
-val CanaryReleasesEtagKey = stringPreferencesKey("daily_nightly_releases_etag")
-val CanaryReleasesJsonKey = stringPreferencesKey("daily_nightly_releases_json")
-val CanaryReleasesLastCheckedAtKey = longPreferencesKey("daily_nightly_releases_last_checked_at")
-val CanaryReleasesFingerprintKey = stringPreferencesKey("daily_nightly_releases_fingerprint")
+val NightlyReleasesEtagKey = stringPreferencesKey("daily_nightly_releases_etag")
+val NightlyReleasesJsonKey = stringPreferencesKey("daily_nightly_releases_json")
+val NightlyReleasesLastCheckedAtKey = longPreferencesKey("daily_nightly_releases_last_checked_at")
+val NightlyReleasesFingerprintKey = stringPreferencesKey("daily_nightly_releases_fingerprint")
+
+// Canary channel: a separate, more-bleeding-edge pre-release feed built from the `canary` branch
+// (the nightly feed above tracks `dev`). Cached independently so the two channels never clobber
+// each other's release list.
+val CanaryReleasesEtagKey = stringPreferencesKey("canary_releases_etag")
+val CanaryReleasesJsonKey = stringPreferencesKey("canary_releases_json")
+val CanaryReleasesLastCheckedAtKey = longPreferencesKey("canary_releases_last_checked_at")
+val CanaryReleasesFingerprintKey = stringPreferencesKey("canary_releases_fingerprint")
+
+// The Canary channel is hidden until the user unlocks it by tapping the About-screen app icon
+// eight times, so a casual user never lands on the least-stable feed by accident.
+val CanaryChannelUnlockedKey = booleanPreferencesKey("canaryChannelUnlocked")
+
+// Guards the one-time rewrite of a stored "CANARY" update-channel value (which used to mean the
+// nightly/dev build) to "NIGHTLY", freeing "CANARY" for the new channel. See DataStore migrations.
+val UpdateChannelNightlyRenameMigratedKey = booleanPreferencesKey("updateChannelNightlyRenameMigrated")
 
 val TogetherPublicServerUrlKey = stringPreferencesKey("together_public_server_url")
 val TogetherPublicSessionTokenKey = stringPreferencesKey("together_public_session_token")
@@ -1752,6 +1768,7 @@ val TogetherPublicIsHostKey = booleanPreferencesKey("together_public_is_host")
 
 enum class UpdateChannel {
     STABLE,
+    NIGHTLY,
     CANARY,
     ;
 
@@ -1761,7 +1778,10 @@ enum class UpdateChannel {
             defaultValue: UpdateChannel,
         ): UpdateChannel =
             when (value) {
-                "NIGHTLY", "DAILY_NIGHTLY" -> CANARY
+                // Legacy alias from before the pre-release channel had a name. The old "CANARY"
+                // value (which meant the dev/nightly build) is rewritten to "NIGHTLY" once by a
+                // one-time DataStore migration, so "CANARY" here is the new, separate channel.
+                "DAILY_NIGHTLY" -> NIGHTLY
                 else -> entries.firstOrNull { it.name == value } ?: defaultValue
             }
     }

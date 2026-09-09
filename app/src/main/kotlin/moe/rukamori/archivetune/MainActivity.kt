@@ -742,7 +742,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
-            val effectiveUpdateChannel = if (isCanaryBuild) UpdateChannel.CANARY else updateChannel
+            val effectiveUpdateChannel =
+                when {
+                    isCanaryBuild -> UpdateChannel.CANARY
+                    isNightlyBuild -> UpdateChannel.NIGHTLY
+                    else -> updateChannel
+                }
 
             LaunchedEffect(Unit) {
                 while (playerConnection == null) {
@@ -759,10 +764,15 @@ class MainActivity : ComponentActivity() {
                     // Lock canary builds to canary updates regardless of the user's
                     // selection — see the comment on effectiveUpdateChannel above.
                     val actualChannel =
-                        if (isCanaryBuild) UpdateChannel.CANARY else userSelectedChannel
+                        when {
+                            isCanaryBuild -> UpdateChannel.CANARY
+                            isNightlyBuild -> UpdateChannel.NIGHTLY
+                            else -> userSelectedChannel
+                        }
                     val versionResult =
                         when (actualChannel) {
                             UpdateChannel.CANARY -> Updater.getLatestCanaryVersionName()
+                            UpdateChannel.NIGHTLY -> Updater.getLatestNightlyVersionName()
                             UpdateChannel.STABLE -> Updater.getLatestVersionName()
                         }
                     versionResult.onSuccess {
@@ -904,6 +914,7 @@ class MainActivity : ComponentActivity() {
                     val releaseNotesResult =
                         when (latestUpdateChannel) {
                             UpdateChannel.CANARY -> Updater.getLatestCanaryReleaseNotes()
+                            UpdateChannel.NIGHTLY -> Updater.getLatestNightlyReleaseNotes()
                             UpdateChannel.STABLE -> Updater.getLatestReleaseNotes()
                         }
                     releaseNotesResult
