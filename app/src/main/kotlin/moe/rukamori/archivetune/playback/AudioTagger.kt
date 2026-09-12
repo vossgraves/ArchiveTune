@@ -22,64 +22,8 @@ import timber.log.Timber
 import java.io.File
 
 /**
- * Writes ID3 / Vorbis-Comment / MP4 / FLAC metadata tags onto a
- * downloaded audio file using the [jaudiotagger](https://github.com/RouHim/jaudiotagger)
- * library.
- *
- * Used by [ExportDownloadedSongsScreen][moe.rukamori.archivetune.ui.screens.settings.ExportDownloadedSongsScreen]
- * when exporting cached songs to a SAF folder — the user picks a
- * destination, the cached spans are assembled into a single temp file,
- * [tag] is called to write title / artist / album / year / track tags
- * plus embedded artwork, and the tagged file is then copied to the SAF
- * document.
- *
- * ## Why jaudiotagger?
- *
- * jaudiotagger supports every audio container ArchiveTune can download
- * (MP3, FLAC, M4A/AAC, OGG/Opus, WAV) under a single uniform API
- * ([FieldKey] enum maps to format-specific tag keys internally). The
- * alternative — writing format-specific taggers by hand — would mean
- * ~5× the code and 5× the bug surface.
- *
- * ## Artwork handling — the Android `javax.imageio` trap
- *
- * jaudiotagger's [Artwork] / [StandardImageHandler][org.jaudiotagger.tag.images.StandardImageHandler]
- * API goes through `javax.imageio.ImageIO` for *some* operations
- * (notably [Artwork.setImageFromData] and [Artwork.setFromFile]),
- * which does not exist on Android. Calling those methods throws
- * `NoClassDefFoundError` at runtime.
- *
- * To write artwork safely on Android, we use **format-specific
- * raw-bytes APIs** that bypass `ImageIO` entirely:
- *
- *  - **FLAC** ([FlacTag]): [FlacTag.createArtworkField] takes raw
- *    `byte[]` + dimensions directly — no `ImageIO` call. We pass
- *    `0` for all dimension fields (most players ignore them or
- *    read them from the image bytes themselves).
- *  - **MP4/M4A** ([Mp4Tag]): [Mp4Tag.createArtworkField] takes raw
- *    `byte[]` only.
- *  - **MP3** ([ID3v24Tag] / [ID3v23Tag] / [ID3v22Tag]):
- *    [org.jaudiotagger.tag.id3.AbstractID3v2Tag.setField] with an
- *    [Artwork] whose `binaryData` is set but `image` is never
- *    loaded. Internally, `createField(Artwork)` reads
- *    [Artwork.getBinaryData] directly — it does NOT call
- *    [Artwork.getImage] or [Artwork.setImageFromData], so no
- *    `ImageIO` call happens.
- *  - **OGG/Opus** ([VorbisCommentTag]):
- *    [VorbisCommentTag.setArtworkField] takes raw `byte[]` +
- *    mime type, base64-encodes the data into a
- *    `METADATA_BLOCK_PICTURE`-style field. No `ImageIO`.
- *
- * If the tag type doesn't match any of the above (e.g. ASF/WMA,
- * which ArchiveTune never downloads), artwork is silently skipped
- * — the text tags are still written.
- *
- * ## Failure isolation
- *
- * Every call is wrapped in [runCatching] — if jaudiotagger throws
- * (e.g. corrupt file, unsupported format, tag-readonly), the export
- * still succeeds with the *untagged* temp file. The audio bytes are
- * never modified by [tag]; jaudiotagger only writes the tag chunk.
+ * Writes ID3 / Vorbis-Comment / MP4 / FLAC metadata tags onto a downloaded audio file using the
+ * [jaudiotagger](https://github.com/RouHim/jaudiotagger) library.
  */
 object AudioTagger {
 
@@ -112,15 +56,8 @@ object AudioTagger {
     )
 
     /**
-     * Reads the existing tag (if any) from [file] and writes the
-     * non-blank fields from [metadata] onto it, then persists the
-     * file in place. Returns `true` on success, `false` on any error
-     * (the file is left untouched on error — jaudiotagger writes to
-     * a temp file and renames, so a partial write cannot corrupt
-     * the source).
-     *
-     * Safe to call from a background thread. Not safe to call from
-     * the main thread — jaudiotagger does disk I/O.
+     * Reads the existing tag (if any) from [file] and writes the non-blank fields from [metadata]
+     * onto it, then persists the file in place.
      */
     fun tag(file: File, metadata: Metadata): Boolean {
         if (!file.exists() || file.length() == 0L) return false
@@ -160,22 +97,8 @@ object AudioTagger {
     }
 
     /**
-     * Writes [bytes] as embedded artwork onto [tag], using the
-     * format-specific raw-bytes API that bypasses `javax.imageio.ImageIO`
-     * (which doesn't exist on Android).
-     *
-     * The format is detected by checking the runtime type of [tag]:
-     *
-     *  - [FlacTag] → [FlacTag.createArtworkField] (raw bytes + dimensions)
-     *  - [Mp4Tag] → [Mp4Tag.createArtworkField] (raw bytes only)
-     *  - [ID3v24Tag] / [ID3v23Tag] / [ID3v22Tag] → `setField(Artwork)`
-     *    with binary data set (the ID3 implementation reads
-     *    `getBinaryData()` directly — no `ImageIO` call)
-     *  - [VorbisCommentTag] → [VorbisCommentTag.setArtworkField]
-     *    (raw bytes + mime type, base64-encoded)
-     *
-     * For any other tag type (e.g. ASF/WMA, which ArchiveTune never
-     * downloads), artwork is silently skipped.
+     * Writes [bytes] as embedded artwork onto [tag], using the format-specific raw-bytes API that
+     * bypasses `javax.imageio.ImageIO` (which doesn't exist on Android).
      */
     private fun writeArtworkSafely(tag: Tag, bytes: ByteArray, mimeType: String?) {
         val resolvedMime = mimeType?.takeIf(String::isNotBlank) ?: guessImageMimeType(bytes)

@@ -31,16 +31,8 @@ import moe.rukamori.archivetune.R
 
 /**
  * A [TopAppBar] variant with a fully transparent container and the title / navigation icon /
- * actions each wrapped in a [FrostedHeaderPill] so the header content stays legible against
- * any scrolling background (album art, gradient, etc.) without needing a solid bar.
- *
- * The pills use the shared [LocalNavigationBarBackdrop] GraphicsLayer for real backdrop blur
- * on Android 12+, and degrade to a semi-transparent `surfaceContainer` on pre-S or when no
- * backdrop is available.
- *
- * Usage: drop-in replacement for a standard `TopAppBar` that has a title, a back arrow,
- * and optional actions. For screens that need a more custom title (e.g. with an avatar or
- * animated content), use [FrostedHeaderPill] directly.
+ * actions each wrapped in a [FrostedHeaderPill] so the header content stays legible against any
+ * scrolling background (album art, gradient, etc.) without needing a solid bar.
  */
 
 /** Primary variant: takes a string resource for the title. */

@@ -70,23 +70,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 
 
-/**
- * Search-result children that are indexed under one page but physically live on another.
- *
- * The settings index grew section by section, so a number of children are still listed under the
- * page that *used* to own them — every Discord activity field under "Integration", every lyrics
- * provider toggle under "Lyrics", every streaming-source switch under "Playback". Navigating to
- * the indexed parent opens a screen that does not contain the row at all, so `?scrollTo=` has
- * nothing to find and the result silently lands at the top of the wrong page.
- *
- * Keyed by `"<indexedParent>/<scrollKey>"` rather than by the scroll key alone: several keys are
- * legitimately indexed twice (`qobuz_enable` under both "Playback" and "Qobuz"), and only the
- * out-of-place copy should be redirected.
- *
- * Fixing the index itself would be the deeper repair, but it would also change the result titles
- * users see; re-pointing the navigation keeps the search results as they are and simply sends
- * them somewhere the setting exists.
- */
+/** Search-result children that are indexed under one page but physically live on another. */
 private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
     buildMap {
         fun own(
@@ -301,18 +285,8 @@ fun SettingsScreen(
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
-    // When searching, flatten all individual SettingsChildren across every
-    // category so each matching setting is shown as a separate row.
-    //
-    // Per product decision: settings that ship with an inline switch control
-    // (boolean toggles like Dynamic theme, Pure black, Low data mode, Crossfade,
-    // Persistent queue, etc.) ARE included in search results — the switch is
-    // rendered inline so the user can toggle directly from the results.
-    // Switchless settings navigate to the parent screen and auto-scroll to
-    // the setting's position when tapped.
-    //
-    // The matching itself lives in [SettingsSearch] — see that file for why
-    // multi-word queries used to return nothing.
+    // When searching, flatten all individual SettingsChildren across every category so each
+    // matching setting is shown as a separate row.
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) {
             emptyList()

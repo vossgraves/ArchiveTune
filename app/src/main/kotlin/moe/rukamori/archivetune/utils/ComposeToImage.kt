@@ -741,31 +741,8 @@ object ComposeToImage {
     }
 
     /**
-     * Renders a "vinyl"-style share image inspired by the MD Vinyl reference
-     * screenshot the user uploaded. Layout (top-to-bottom, left-to-right):
-     *
-     *   - Dark teal/navy background filling the canvas.
-     *   - Centered horizontal Row (vertically centered around the upper 60%
-     *     of the canvas) containing:
-     *       * Square album cover on the LEFT, with a thin white border.
-     *       * Vinyl record (black disc + subtle groove rings + cyan center
-     *         label) peeking out from BEHIND the cover on the RIGHT. The
-     *         cover overlaps the left ~40% of the disc.
-     *       * Song title + artist drawn on the center label (multi-line,
-     *         centered, ellipsized if too long).
-     *   - Song title in large white bold text below the cover/vinyl row.
-     *   - Artist name in smaller white text below the title.
-     *   - "ARCHIVETUNE" wordmark at the very bottom.
-     *
-     * The image is always rendered as a square (canvasSize × canvasSize),
-     * regardless of [width]/[height] — the vinyl aesthetic only works at 1:1.
-     * Callers passing non-square dimensions get a square back, padded to the
-     * larger of width/height, so the share intent always receives a valid
-     * image.
-     *
-     * If the album art can't be loaded, the cover is rendered as a flat dark
-     * grey square with a music-note glyph fallback (so the layout still reads
-     * as "vinyl + cover" rather than collapsing to just a disc).
+     * Renders a "vinyl"-style share image inspired by the MD Vinyl reference screenshot the user
+     * uploaded.
      */
     @RequiresApi(Build.VERSION_CODES.M)
     suspend fun createVinylImage(
@@ -1032,17 +1009,8 @@ object ComposeToImage {
 
 /**
  * Fetches the image at [thumbnailUrl] via Coil and saves it to
- * `Pictures/ArchiveTune/<fileName>.png` via MediaStore (Android 10+) or
- * the app's cache dir + FileProvider (pre-Q). Returns the saved [Uri] on
- * success, or null if the URL was null/blank, the network fetch failed,
- * or the decoded bitmap was null.
- *
- * Used by the "Download cover" overflow-menu action in song menus —
- * gives users a one-tap way to save the album art for any song to their
- * gallery without needing to grant runtime permissions.
- *
- * Must be called on a background dispatcher (it does network I/O + disk
- * writes); callers typically wrap it in `withContext(Dispatchers.IO)`.
+ * `Pictures/ArchiveTune/<fileName>.png` via MediaStore (Android 10+) or the app's cache dir +
+ * FileProvider (pre-Q).
  */
 suspend fun saveCoverArtworkFromUrl(
     context: Context,

@@ -244,27 +244,7 @@ fun PlayerMenu(
             }
         }
 
-    // Fetch artist profile-picture thumbnail URLs for the "View artist"
-    // selection dialog. `MediaMetadata.Artist.thumbnailUrl` is hardcoded to
-    // null in `SongItem.toMediaMetadata()` (innertube's Artist model doesn't
-    // carry a thumbnail), so without this lookup the dialog falls back to a
-    // grey circle with a music-note icon for every artist — even artists the
-    // user has browsed before and whose thumbnail is already cached in the
-    // local DB.
-    //
-    // We look up each artist id in the Room `artists` table first
-    // (`ArtistEntity.thumbnailUrl`, populated by LibraryArtistsViewModel and
-    // the artist-page loader). If the DB doesn't have a thumbnail (or doesn't
-    // have the artist at all), we fall back to a one-shot `YouTube.artist(id)`
-    // fetch which populates `ArtistPage.artist.thumbnail` — we then persist
-    // that thumbnail back to the DB so subsequent opens are instant.
-    //
-    // Mirrors the pattern in SongMenu.kt:203-211 but adds the YouTube
-    // fallback because PlayerMenu is also shown for songs that aren't in the
-    // local library (radio, search, playlist previews).
-    // Stable, sorted key so produceState doesn't re-fire on every recomposition
-    // (a fresh List<> instance with the same contents would otherwise restart the
-    // lookup each frame, racing with the popup's render and never resolving).
+    // Fetch artist profile-picture thumbnail URLs for the "View artist" selection dialog.
     val artistIdsKey =
         remember(splitArtists) {
             splitArtists.mapNotNull { it.originalArtist?.id }.distinct().sorted()
@@ -393,24 +373,9 @@ fun PlayerMenu(
                 playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
             },
             onPlayFromSource = { result ->
-                // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
-                //
-                // AUDIO-ONLY CHANGE: only the AUDIO source changes — the
-                // song's mediaId, title, artist, thumbnail, and queue
-                // position all stay exactly the same. The user perceives
-                // this as "switching to a different audio source for the
-                // same song", NOT as "playing a different song".
-                //
-                // The source override is persisted per-mediaId so the
-                // resolver knows to resolve through the picked source.
-                // For Qobuz, the exact trackId is also persisted so the
-                // resolver downloads the exact Qobuz track (not a title
-                // search that could match a different master).
-                //
-                // No new MediaItem is created, no playQueue is called —
-                // setSongSourceOverride preserves the queue, the position,
-                // and the song's identity. The resolver re-resolves through
-                // the new source on the next prepare().
+                // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer). AUDIO-ONLY
+                // CHANGE: only the AUDIO source changes — the song's mediaId, title, artist,
+                // thumbnail, and queue position all stay exactly the same.
                 val source = result.source
                 val trackId = result.trackId
                 if (source != AudioSourceType.YOUTUBE && trackId.isNotBlank()) {
@@ -1898,15 +1863,8 @@ private fun AudioSourceType.sourceIconRes(): Int =
 
 /**
  * Unified cross-provider search result row. Each provider's backend (YTM / Tidal / JioSaavn /
- * future Qobuz, Deezer) maps its own native search type into this shape so the UI can render
- * every row the same way.
- *
- * - [songItem] is non-null when the result is a YouTube Music song (the only provider whose
- *   playback path is fully wired into `YouTubeQueue.radio`). Tapping the row calls
- *   `onPlaySong(songItem)`.
- * - When [songItem] is null the row is display-only — used for providers whose playback path
- *   for arbitrary trackIds isn't wired up yet (Tidal/JioSaavn). The row is grayed out and not
- *   clickable.
+ * future Qobuz, Deezer) maps its own native search type into this shape so the UI can render every
+ * row the same way.
  */
 private data class SourceSearchResult(
     val source: AudioSourceType,
@@ -1951,21 +1909,7 @@ private fun SongSourceDialog(
             if (availability.manualPremium || availability.pooledPremium > 0) losslessLabel else mp3Label
         }
 
-    // Provider filter → "search backend not yet available" empty state. These are the
-    // providers with a usable list-search API: YTM, Tidal (searchCandidates), Qobuz
-    // (QobuzAudioProvider.searchCandidates), Qobuz Backup (QobuzBackupProvider.searchCandidates),
-    // Deezer (DeezerAudioProvider.searchCandidates) and JioSaavn (SaavnService.searchSongs).
-    //
-    // Qobuz Backup used to be excluded here on the assumption that the kouzu.in mirror could
-    // only be addressed by YouTube video id. It does expose `GET /api/search`, which returns
-    // its own indexed catalogue, so its rows are searchable and pickable like any other
-    // source's — which is what the "search and select tracks from the Qobuz backup source"
-    // request was about.
-    //
-    // Deezer was excluded on the claim that it "has no public list search". `api.deezer.com/search`
-    // is public and unauthenticated; the provider only ever exposed a best-match `lookup` over it,
-    // which is why it looked absent. It now has `searchCandidates` too, so selecting the Deezer chip
-    // no longer shows "no backend" for a source the app can search and play.
+    // Provider filter → "search backend not yet available" empty state.
     val searchableSources =
         setOf(
             AudioSourceType.YOUTUBE,
@@ -2308,19 +2252,7 @@ private fun SongSourceDialog(
     }
 }
 
-/**
- * One search-result row. Layout mirrors a typical song row: 48dp thumbnail (or a music_note
- * placeholder when the provider returned no cover), title + artist + duration in the middle,
- * a small quality badge (AAC 256 kbps / Lossless / Hi-Res) on the right, and a 16dp provider
- * icon furthest right so the user can tell at a glance which source each row came from.
- *
- * ALWAYS tappable: YTM results seed the queue directly via [onPlaySong]; non-YT results
- * (JioSaavn / Tidal / Qobuz / Deezer) go through [onPlayFromSource] which searches YTM for
- * a matching track by title+artist and pins the per-song source override so playback resolves
- * through the picked source on the very first attempt. Previously non-YT rows were grayed
- * out and not clickable — that made the JioSaavn / Tidal "Play from" search popup look
- * broken ("clicking on play from popup in jiosaavn category still doesn't do anything").
- */
+/** One search-result row. */
 @Composable
 private fun SourceSearchResultRow(
     result: SourceSearchResult,

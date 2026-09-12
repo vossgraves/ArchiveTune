@@ -94,20 +94,7 @@ class DownloadUtil
         @DownloadCache val downloadCache: Cache,
         @PlayerCache val playerCache: Cache,
     ) {
-        /**
-         * Private hold on the injected [Context].
-         *
-         * Captured as a property so member functions (e.g. [prewarmSongForDownload])
-         * can reference it without triggering Kotlin 2.4's `context(...)` parser
-         * ambiguity — `context` is a soft keyword for context receivers in 2.4,
-         * and using it as a bare identifier inside a member function makes the
-         * parser expect a parenthesized argument list.
-         *
-         * Existing property initializers (e.g. [connectivityManager]) and the
-         * [youtubeDataSourceFactory] resolver lambda still use the constructor
-         * parameter directly — those scopes parse fine because the lambda
-         * capture disambiguates. Only new member functions need this alias.
-         */
+        /** Private hold on the injected [Context]. */
         private val appContext: Context = context
 
         private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
@@ -126,20 +113,7 @@ class DownloadUtil
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
 
-        /**
-         * Download worker pool.
-         *
-         * The previous value of 32 was far too high — at 32 parallel songs on
-         * a 50 Mbps connection each file only gets ~200 KB/s of effective
-         * bandwidth, *and* the OkHttp Dispatcher thread pool + the disk I/O
-         * on [CacheDataSink] both thrash. Throughput testing on Qobuz/Tidal
-         * FLAC shows that 4–6 parallel downloads saturates a typical home
-         * connection while keeping per-song latency reasonable (a 40 MB FLAC
-         * finishes in ~12 s instead of ~3 min).
-         *
-         * Each download worker is mostly I/O-bound (waiting on socket reads
-         * and disk writes), so a small fixed thread pool is the right shape.
-         */
+        /** Download worker pool. */
         private val downloadExecutor = Executors.newFixedThreadPool(DEFAULT_MAX_PARALLEL_DOWNLOADS)
 
         /**
@@ -247,49 +221,11 @@ class DownloadUtil
 
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
-        /**
-         * PRDownloader-backed HTTP data source factory.
-         *
-         * This replaces the previous `KetchHttpDataSource`, which itself
-         * replaced `ParallelRangeOkHttpDataSource` and
-         * `SegmentedParallelDataSource`. All three predecessors were
-         * slow or corrupted FLAC streams (Ketch's WorkManager job
-         * scheduling added ~200ms overhead per download and its
-         * temp-file lifecycle occasionally left partial files that
-         * corrupted subsequent exports).
-         *
-         * [PRDownloaderDataSource] delegates the HTTP fetch to
-         * [PRDownloader](https://github.com/amitshekhariitbhu/PRDownloader) —
-         * a lightweight (~45 KB) file download library with pause/resume,
-         * retry, and progress callbacks. PRDownloader writes to a temp
-         * file on disk; we then expose those bytes to Media3's
-         * [CacheDataSink] via [FileDataSource] so the bytes flow into
-         * the download cache as fragments.
-         *
-         * PRDownloader is initialized at app start (see
-         * [App.initializeCriticalSync]) with tuned timeouts. The temp
-         * file is deleted synchronously in `close()` to prevent the
-         * stale-partial-file corruption that plagued Ketch.
-         */
+        /** PRDownloader-backed HTTP data source factory. */
         private val okHttpDataSourceFactory =
             PRDownloaderDataSource.Factory(context)
 
-        /**
-         * Read-only view of [playerCache] used as an inner upstream of the download chain.
-         *
-         * The download [CacheDataSource] is bound to [downloadCache]; without this inner layer,
-         * any byte range present in [playerCache] (e.g. a song that was just streamed from Qobuz
-         * or YouTube) but absent from [downloadCache] would fall through to [okHttpDataSourceFactory]
-         * holding the *bare media id* the [DownloadRequest] carried (e.g. "dJth8oW7CAQ"), which
-         * is not a valid URL — producing `HttpDataSourceException: Malformed URL` and failing
-         * the download at 0%.
-         *
-         * Chaining [playerCache] as the next upstream means: downloadCache miss → playerCache hit
-         * → serve bytes (and write them through to downloadCache so subsequent chunks persist).
-         * Only when *both* caches miss do we reach [okHttpDataSourceFactory] (PRDownloader), by which
-         * point the [ResolvingDataSource] resolver below has already swapped the URI for a
-         * real YouTube stream URL.
-         */
+        /** Read-only view of [playerCache] used as an inner upstream of the download chain. */
         private val playerCacheDownloadUpstreamFactory =
             CacheDataSource
                 .Factory()
@@ -406,16 +342,7 @@ class DownloadUtil
         // everything else through the YouTube-resolving factory above.
         private val telegramDataSourceFactory = moe.rukamori.archivetune.telegram.TelegramDataSource.Factory()
 
-        /**
-         * Upstream for `deezer://` downloads.
-         *
-         * Deezer's CDN serves Blowfish-encrypted bytes, so the download cannot go through
-         * [youtubeDataSourceFactory]: that one runs the YouTube resolver over the DataSpec (which
-         * would rewrite our `deezer://` URI) and would store ciphertext even if it didn't. Decryption
-         * sits *below* the cache, exactly as it does for playback in `MusicService`, so what lands in
-         * [downloadCache] is a plain FLAC/MP3 file — which is what lets jaudiotagger embed tags and
-         * the exporter copy it out as playable audio.
-         */
+        /** Upstream for `deezer://` downloads. */
         private val deezerDownloadDataSourceFactory =
             CacheDataSource
                 .Factory()
@@ -463,24 +390,9 @@ class DownloadUtil
                             if (finalException != null || download.state == Download.STATE_FAILED) {
                                 songUrlCache.keys.removeIf { it.startsWith("${download.request.id}:") }
                                 runCatching { downloadCache.removeResource(download.request.id) }
-                                // Also purge any partial bytes that may have been
-                                // written to playerCache during the prewarm
-                                // (prewarmSongForDownload) or a prior playback
-                                // attempt. Without this, the resolver in
-                                // youtubeDataSourceFactory sees the partial
-                                // spans in playerCache, returns the dataSpec
-                                // unchanged, and the player tries to decode a
-                                // truncated MP4 — producing
-                                // "ParserException: Multiple Segment elements
-                                // not supported" (ExoPlayer error 3001) on
-                                // subsequent playback attempts.
-                                //
-                                // Both the bare mediaId key and the
-                                // source-prefixed keys (see
-                                // DownloadSourceConfig.CACHE_KEY_PREFIXES)
-                                // are purged so a failed pre-warm under one
-                                // source doesn't poison the next attempt via
-                                // a different source.
+                                // Also purge any partial bytes that may have been written to
+                                // playerCache during the prewarm (prewarmSongForDownload) or a
+                                // prior playback attempt.
                                 val mediaId = download.request.id
                                 runCatching { playerCache.removeResource(mediaId) }
                                 for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
@@ -540,28 +452,10 @@ class DownloadUtil
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
 
         /**
-         * Pre-warms the cache for [mediaId] by resolving the highest-quality
-         * stream available (Qobuz → Tidal → Deezer → YouTube Music) and
-         * fetching the bytes into [playerCache] under the source-prefixed key
-         * (e.g. "qobuz:$mediaId") BEFORE handing the download off to the
+         * Pre-warms the cache for [mediaId] by resolving the highest-quality stream available
+         * (Qobuz → Tidal → Deezer → YouTube Music) and fetching the bytes into [playerCache] under
+         * the source-prefixed key (e.g. "qobuz:$mediaId") BEFORE handing the download off to the
          * Media3 DownloadManager.
-         *
-         * This implements the "cache-first" download workflow:
-         *   1. User clicks "Download" on a song.
-         *   2. This method resolves the stream URL via Qobuz/Tidal (lossless
-         *      FLAC) when available, falling back to YouTube Music (M4A/AAC
-         *      lossy — see [YTPlayerUtils.playerResponseForDownload] with
-         *      preferM4A=true).
-         *   3. The bytes are streamed into [playerCache] with the source-prefixed
-         *      cache key, so the subsequent DownloadManager.open() call hits
-         *      the cache and serves the bytes locally (no second network fetch).
-         *
-         * Returns the cache key the bytes were stored under (e.g. "qobuz:abc")
-         * so the caller can pass it as the download's customCacheKey if desired.
-         * Returns null when pre-warm fails or is a no-op (bytes already cached).
-         *
-         * Safe to call on the main thread — it dispatches all I/O to the
-         * downloadScope on Dispatchers.IO and awaits completion.
          */
         suspend fun prewarmSongForDownload(mediaId: String): String? {
             // Refresh the community Source Pool accounts (Qobuz/Tidal subscriber
@@ -576,20 +470,8 @@ class DownloadUtil
                 runCatching { PoolAccountManager.refresh(appContext) }
             }
 
-            // Fast path: bytes already cached under any source-prefixed key —
-            // no work to do. The DownloadManager will pick them up via the
-            // resolver in [youtubeDataSourceFactory].
-            //
-            // IMPORTANT: when FormatEntity.contentLength is unknown (0L) we
-            // must NOT treat any non-empty cache as complete. A previous
-            // attempt to play the song might have written only the first
-            // few seconds to playerCache, and returning that key here would
-            // cause the DownloadManager to copy partial bytes to downloadCache
-            // and mark STATE_COMPLETED — the user then sees "downloaded" but
-            // the file won't play back (parser exception).
-            // When expected is unknown, we fall through to the resolver and
-            // fetch a fresh copy, which writes the authoritative contentLength
-            // to FormatEntity for next time.
+            // Fast path: bytes already cached under any source-prefixed key — no work to do. The
+            // DownloadManager will pick them up via the resolver in [youtubeDataSourceFactory].
             for (key in DownloadSourceConfig.CACHE_KEY_PREFIXES.map { "$it$mediaId" } + mediaId) {
                 val spans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (spans.isNotEmpty()) {
@@ -678,16 +560,9 @@ class DownloadUtil
         }
 
         /**
-         * Streams [url] into [playerCache] under [cacheKey] using a single
-         * OkHttp GET, writing bytes through [CacheDataSink] (no intermediate
-         * temp file). Returns true on success, false on any error.
-         *
-         * This is the "cache-first" fast path — instead of going through
-         * [PRDownloaderDataSource] (which writes to a temp file then reads
-         * it back to feed CacheDataSink, doubling disk I/O), we stream
-         * directly from the OkHttp response body to CacheDataSink.
-         * Measured ~1.8× faster than the PRDownloaderDataSource path on
-         * a 100 Mbps connection for a 40 MB FLAC.
+         * Streams [url] into [playerCache] under [cacheKey] using a single OkHttp GET, writing
+         * bytes through [CacheDataSink] (no intermediate temp file). Returns true on success, false
+         * on any error.
          */
         private fun fetchStreamIntoPlayerCache(
             url: String,
@@ -818,16 +693,9 @@ class DownloadUtil
         }
 
         /**
-         * Resolves a single source's direct stream. Returns null when the
-         * source can't resolve the track (so [resolvePreferredDownloadDataSpec]
-         * can fall through to the next source in the chain).
-         *
-         * This routes through [LosslessStreamResolver] which mirrors
-         * MusicService's pool-aware logic — it merges the user's own
-         * Qobuz/Tidal credentials with the community Source Pool accounts
-         * before calling the providers. Without this, downloads of
-         * uncached songs silently fell through to the YouTube Music
-         * fallback (.webm lossy) because the providers had no tokens.
+         * Resolves a single source's direct stream. Returns null when the source can't resolve the
+         * track (so [resolvePreferredDownloadDataSpec] can fall through to the next source in the
+         * chain).
          */
         private fun resolveSourceStream(
             source: DownloadSource,
@@ -1066,33 +934,8 @@ class DownloadUtil
 
                         upsert(updatedSong)
 
-                        // Persist the YouTube channel (videoDetails.author) as an
-                        // ArtistEntity + SongArtistMap so that exported YT
-                        // downloads have an artist tag.
-                        //
-                        // Why this matters: when a song is downloaded directly
-                        // (without first being played from a YouTube Music
-                        // browse endpoint), the only metadata we get is in
-                        // playbackData.videoDetails — title, author, channelId,
-                        // thumbnail. Previously we only persisted the SongEntity
-                        // (title + thumbnail), leaving the song_artist_map empty.
-                        //
-                        // The export pipeline (resolveExportMetadata) reads
-                        // artists from song_artist_map; with no rows there, it
-                        // falls back to YouTube.getMediaInfo(videoId), which
-                        // queries the WEB client — that returns the channel
-                        // avatar (not the song cover) for artwork and a
-                        // sometimes-mangled channel name. Worse, the fallback
-                        // only triggers when hasFullMetadata is false; if the
-                        // DB has title + thumbnail but no artist, the fallback
-                        // path runs but yields "Unknown" artist in many cases.
-                        //
-                        // By inserting an ArtistEntity + SongArtistMap here
-                        // (only when no artist map exists yet — we never
-                        // overwrite a higher-quality artist relation inserted
-                        // by the browse endpoint), the export pipeline's fast
-                        // path resolves correctly: title + artist + thumbnail
-                        // all populated from the DB.
+                        // Persist the YouTube channel (videoDetails.author) as an ArtistEntity +
+                        // SongArtistMap so that exported YT downloads have an artist tag.
                         val videoDetails = playbackData.videoDetails
                         val hasArtistMap = existingSongRow?.artists?.isNotEmpty() == true
                         if (!hasArtistMap && videoDetails != null) {

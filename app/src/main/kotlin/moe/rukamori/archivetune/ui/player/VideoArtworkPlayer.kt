@@ -100,126 +100,33 @@ import timber.log.Timber
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-/**
- * Below this absolute drift, NO correction is applied — the desync is
- * imperceptible to the user.
- *
- * Human perception thresholds for A/V desync (industry research, ITU-R
- * BT.1359-1): ~50ms is imperceptible, ~100ms is noticeable to trained
- * viewers, ~200ms is noticeable to casual viewers, >400ms is annoying.
- * 60ms sits safely in the "imperceptible" band.
- *
- * The previous tolerance was 2000ms — that is WHY the user perceived
- * constant desync: drifts of 300–1500ms (very common with VP9/AV1
- * hardware decoder lag) were silently ignored. Only pause/resume or a
- * quality change (which run the full pause-load-resume protocol) would
- * resync. This tight 60ms floor replaces that ignore-everything policy.
- */
+// A/V sync tuning. The rationale for every threshold below is in docs/video-sync.md.
+
+/** Below this, no correction: ITU-R BT.1359-1 puts it inside the imperceptible band. */
 private const val VideoSyncIgnoreToleranceMs = 60L
 
 /**
- * Drift above this threshold triggers a **soft seek** (a re-anchor) instead
- * of speed-based correction. Below this, drift is corrected gradually by
- * adjusting the video ExoPlayer's playback speed (see
- * [VideoSyncSpeedCorrectionFactorMax]); above it, the video is seeked
- * straight to the audio's current position while the audio keeps playing.
- *
- * The previous 400ms value was a regression: a re-anchor seek re-buffers
- * (a visible 1–2s stall), and a 400ms threshold fired repeatedly during
- * the first seconds of playback — the video's decoder warms up slightly
- * behind the audio, so the poller kept seeking it back, which kept
- * re-buffering it → "lags for the initial seconds after first play".
- *
- * 2000ms keeps the seek-based correction for *genuine* large drift while
- * never firing during normal warm-up. The user's actual "video is laggy"
- * problem is NOT a position error — it's a stale/frozen presentation on
- * the surface (their pause/resume "fix" doesn't seek either). That is
- * handled separately by [VideoArtworkState.kickRenderer] (a video-only
- * pause/resume micro-cycle), which the surface re-attach path and the
- * frozen-renderer detector use. The seek here is the last resort for real
- * desync (e.g. a long decode stall) where a brief re-buffer stall is
- * preferable to staying out of sync.
+ * Drift above this threshold triggers a **soft seek** (a re-anchor) instead of speed-based
+ * correction.
  */
 private const val VideoSoftSeekDriftThresholdMs = 2000L
 
-/**
- * Maximum proportional speed adjustment applied for drift correction.
- *
- * When drift is in the [VideoSyncIgnoreToleranceMs]..
- * [VideoSoftSeekDriftThresholdMs] band, the video ExoPlayer's playback
- * speed is adjusted by up to ±20% to gently catch up / slow down to the
- * audio clock — WITHOUT seeking, WITHOUT re-buffering. This is the same
- * approach MPV and VLC use for their default A/V sync (MPV's
- * `video-sync=audio` mode).
- *
- * The correction is proportional: drift = 0 → factor = 1.0; drift =
- * +1000ms (video ahead) → factor ≈ 0.90; drift = -1000ms (video behind)
- * → factor ≈ 1.10; drift = ±2000ms → factor = 0.80 / 1.20 (capped).
- *
- * The factor is recomputed every poll cycle ([VideoSyncPollIntervalMs]
- * = 250ms), so it continuously narrows as drift approaches zero. Once
- * drift drops below [VideoSyncIgnoreToleranceMs] the factor resets to
- * 1.0 and the video returns to the user's preferred playback speed.
- *
- * The normalization is over [VideoSoftSeekDriftThresholdMs] (2000ms), so
- * a moderate drift converges within a few seconds — gently, with no
- * re-buffer stall. Above 2000ms the drift poller switches to a re-anchor
- * seek (see [VideoSoftSeekDriftThresholdMs]).
- *
- * 20% is noticeable to the user IF sustained, but because it's
- * proportional and only sustained while drift is being corrected (a
- * few seconds at most), it reads as "the video caught up" rather than
- * "the video is playing at the wrong speed".
- */
+/** Maximum proportional speed adjustment applied for drift correction. */
 private const val VideoSyncSpeedCorrectionFactorMax = 0.20f
 
 /**
- * Time during which drift checks are suppressed after a seek (soft seek,
- * manual resync, or the initial-load snap in [onRenderedFirstFrame]).
- *
- * After a seek the video ExoPlayer enters STATE_BUFFERING while it
- * re-decodes from the new position. During this window its
- * `currentPosition` is stale and the audio player keeps advancing, so a
- * drift check would always fire and either re-seek (infinite loop) or
- * apply a huge speed correction that immediately gets undone when the
- * video catches up. Suppressing checks for 2s lets the video re-buffer
- * fully before we trust its position again.
- *
- * 2s is empirically enough for 1080p VP9/AV1 to re-buffer on a typical
- * mobile connection; the prior 20s stuck-buffering timeout
- * ([VideoStuckBufferingTimeoutMs]) still catches genuinely stuck
- * decoders separately.
+ * Time during which drift checks are suppressed after a seek (soft seek, manual resync, or the
+ * initial-load snap in [onRenderedFirstFrame]).
  */
 private const val VideoSeekSettlingTimeMs = 2000L
 
-/**
- * Minimum time between [VideoArtworkState.kickRenderer] micro-cycles.
- *
- * When the video surface is re-attached while the player is already
- * playing (fullscreen toggle, orientation change, window resize), or a
- * frozen renderer is detected by the drift poller, we restart the video
- * renderer with a video-only pause/resume micro-cycle (the same action as
- * the user's manual "pause and resume" fix, but without touching the
- * audio and without re-buffering).
- *
- * That pause/resume can itself produce another `onRenderedFirstFrame`
- * (and a renderer that immediately re-sticks would re-trigger the
- * detector), so the min-interval guard in [VideoArtworkState.kickRenderer]
- * stamps [VideoArtworkState.lastSurfaceReanchorAtMs] and drops any
- * request within 2s of the previous one.
- */
+/** Minimum time between [VideoArtworkState.kickRenderer] micro-cycles. */
 private const val SurfaceReanchorMinIntervalMs = 2000L
 
 /**
- * Number of consecutive drift-poll cycles over which the video position
- * must fail to advance (while the audio position advances) before we
- * conclude the renderer is frozen and fire a
+ * Number of consecutive drift-poll cycles over which the video position must fail to advance (while
+ * the audio position advances) before we conclude the renderer is frozen and fire a
  * [VideoArtworkState.kickRenderer] micro-cycle.
- *
- * With a [VideoSyncPollIntervalMs] of 250ms, this detects a frozen
- * renderer within ~750ms — BEFORE its accumulated drift reaches the
- * [VideoSoftSeekDriftThresholdMs] re-anchor threshold, so the normal
- * path is a no-stall renderer restart instead of a re-buffer seek.
  */
 private const val VideoFrozenRendererCycles = 3
 
@@ -242,18 +149,8 @@ private const val VideoFrozenRendererMaxAdvanceMs = 50L
 private const val VideoInitialSyncToleranceMs = 200L
 
 /**
- * Drift threshold above which we fire a HARD pause-load-resume resync even
- * without an explicit seekbar seek. Above this threshold the soft-seek is
- * unreliable (the re-buffer after a multi-second seek takes too long and
- * the drift keeps growing), so we fall back to the coordinated
- * pause-load-resume protocol: pause both audio + video, seek the video to
- * the audio's position, wait for the first frame, then resume both together.
- *
- * This is guarded by [VideoHardResyncCooldownMs] to prevent the infinite
- * loop that previously plagued the automatic resync path. If two hard
- * resyncs fire within the cooldown window, we assume the decoder is
- * fundamentally stuck and stop trying to resync automatically (the user
- * can still seek manually).
+ * Drift threshold above which we fire a HARD pause-load-resume resync even without an explicit
+ * seekbar seek.
  */
 private const val VideoHardResyncThresholdMs = 5000L
 
@@ -275,31 +172,12 @@ private const val VideoHardResyncCooldownMs = 30_000L
 private const val VideoSyncPollIntervalMs = 250L
 
 /**
- * Maximum time the video ExoPlayer is allowed to stay in STATE_BUFFERING
- * before we force a re-prepare to break out of a stuck state.
- *
- * NOTE: Was 8000ms, which was too aggressive — normal network hiccups can
- * cause 5–10s of buffering, and the re-prepare itself causes a brief pause.
- * This contributed to the "video keeps pausing" bug. 20s is long enough to
- * ride out transient network issues while still catching genuinely stuck
- * states.
+ * Maximum time the video ExoPlayer is allowed to stay in STATE_BUFFERING before we force a
+ * re-prepare to break out of a stuck state.
  */
 private const val VideoStuckBufferingTimeoutMs = 20000L
 
-/**
- * Cap on the resolution we attempt to play, derived from the user's quality choice.
- *
- * This used to be a hard-coded 1080 constant, which meant the original 4K (and higher) formats
- * YouTube publishes were filtered out before they ever reached the picker — they were neither
- * playable nor even listed. Now the ceiling comes from the choice itself:
- *  - Auto keeps the old conservative 1080p limit (4K VP9/AV1 decoding on mid-range chipsets lags
- *    far enough behind the separately-loaded audio to trip the resync watchdog),
- *  - Data saver drops to 480p,
- *  - High quality / an exact Advanced pick go as high as this device's decoders report.
- *
- * See [VideoQualityPreference] for the encoding and [VideoDecoderCapabilities] for the hardware
- * ceiling that bounds every branch.
- */
+/** Cap on the resolution we attempt to play, derived from the user's quality choice. */
 private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
 /**
@@ -312,44 +190,14 @@ private const val VideoReadyHoldTimeoutMs = 10000L
 private const val VideoClientAttemptTimeoutMs = 8000L
 
 /**
- * Delay between the video's first frame rendering and the actual resume
- * of both audio and video playback.
- *
- * When a music video loads (initial load OR quality change OR resync),
- * the main audio player is paused (see [beginAudioHold] /
- * `state.isChangingQuality` / `state.isResyncing`) and the video
- * ExoPlayer is held paused while it buffers. When the video's first
- * frame renders ([Player.Listener.onRenderedFirstFrame]) we DON'T
- * resume immediately — instead we schedule the resume for
- * [VideoLoadResumeDelayMs] ms later (see the `pendingResumeAtMs`
- * LaunchedEffect in [rememberVideoArtworkState]).
- *
- * This deliberate 1-second pause-after-ready window is the user's
- * explicit request: it gives both the audio decoder (which had gone
- * idle while paused) and the video decoder (which just finished
- * buffering) time to fully pre-roll in parallel BEFORE either starts
- * advancing its clock. Both then start together from a known-aligned
- * position, eliminating the "audio starts first, video catches up"
- * desync that occurred when audio resumed immediately on first frame
- * while the video decoder was still spinning up.
- *
- * 1000ms is long enough for both decoders to fully pre-roll on a
- * typical mobile chipset, and short enough that the user perceives it
- * as a brief loading pause rather than a stall.
+ * Delay between the video's first frame rendering and the actual resume of both audio and video
+ * playback.
  */
 private const val VideoLoadResumeDelayMs = 1000L
 
 /**
- * Resolved information about a video stream — the playable URL plus the
- * menu of formats YouTube offered, so the user can pick a different
- * quality after playback has started.
- *
- * @property availableHeights every resolution this device could decode, ascending. Drives the
- *   Advanced list in the quality sheet, so it is bounded only by
- *   [VideoDecoderCapabilities.maxSupportedHeight] and not by the current quality mode.
- * @property selectedHeight the height actually being played, so Auto / Data saver / High quality
- *   can show what they resolved to (e.g. "Auto · 1080p"). Null when YouTube did not label the
- *   chosen format.
+ * Resolved information about a video stream — the playable URL plus the menu of formats YouTube
+ * offered, so the user can pick a different quality after playback has started.
  */
 data class VideoStreamInfo(
     val streamUrl: String,
@@ -358,25 +206,7 @@ data class VideoStreamInfo(
     val selectedHeight: Int? = null,
 )
 
-/**
- * State holder for the video artwork player.
- *
- * Holds the [ExoPlayer] instance and all mutable playback state. Created
- * once per [videoId] via [rememberVideoArtworkState] and **shared between
- * the inline and fullscreen surfaces** — so toggling fullscreen does NOT
- * recreate the ExoPlayer or re-resolve the stream URL. The video continues
- * playing seamlessly as the surface moves between the inline slot and the
- * fullscreen Dialog.
- *
- * The ExoPlayer itself is created ONCE for the whole composition lifetime
- * and reused across video changes (see [rememberVideoArtworkState]) — this
- * is what fixes the "switching videos crashes the app" bug. Recreating the
- * player per video meant releasing the old player while its surface was
- * still attached, which raced with the surface detaching and threw
- * IllegalStateException.
- *
- * @see rememberVideoArtworkState
- */
+/** State holder for the video artwork player. */
 @Stable
 class VideoArtworkState internal constructor(
     val exoPlayer: ExoPlayer,
@@ -401,85 +231,33 @@ class VideoArtworkState internal constructor(
         internal set
 
     /**
-     * Current speed-correction factor applied on top of the user's
-     * preferred playback speed ([VideoPlaybackSpeedKey]) to gently bring
-     * the video back into sync with the main audio clock.
-     *
-     * 1.0 = no correction (in sync or within
-     * [VideoSyncIgnoreToleranceMs]). Between 0.80 and 1.20 = actively
-     * correcting drift: <1.0 means the video is ahead of the audio and
-     * is being slowed down; >1.0 means the video is behind and is being
-     * sped up.
-     *
-     * The effective video speed is `userSpeed * currentSpeedCorrectionFactor`,
-     * computed in the speed-follower LaunchedEffect in
-     * [rememberVideoArtworkState]. The drift poller updates this factor
-     * every [VideoSyncPollIntervalMs]; the speed follower re-applies it
-     * whenever it changes.
-     *
-     * See [VideoSyncSpeedCorrectionFactorMax] for the proportional
-     * control rationale.
+     * Current speed-correction factor applied on top of the user's preferred playback speed
+     * ([VideoPlaybackSpeedKey]) to gently bring the video back into sync with the main audio clock.
      */
     var currentSpeedCorrectionFactor by mutableStateOf(1.0f)
         internal set
 
     /**
-     * Epoch-millis (from [SystemClock.elapsedRealtime]) of the last
-     * seek performed on the video ExoPlayer — soft seek, manual resync,
-     * or the initial-load snap in onRenderedFirstFrame.
-     *
-     * The drift poller consults this to suppress drift checks for
-     * [VideoSeekSettlingTimeMs] after any seek, preventing the re-buffer
-     * loop where the video's stale position during re-buffer immediately
-     * re-triggers another seek.
-     *
-     * Reset to 0 when the video id changes (the new video gets a fresh
-     * settling window from its own initial-load snap).
+     * Epoch-millis (from [SystemClock.elapsedRealtime]) of the last seek performed on the video
+     * ExoPlayer — soft seek, manual resync, or the initial-load snap in onRenderedFirstFrame.
      */
     var lastSeekAtMs: Long by mutableLongStateOf(0L)
         internal set
 
     /**
-     * Epoch-millis (from [SystemClock.elapsedRealtime]) of the last
-     * **renderer restart** — a video-only pause/resume micro-cycle
-     * performed by [kickRenderer], either from
-     * [Player.Listener.onRenderedFirstFrame] when the video surface is
-     * re-attached while already playing (fullscreen toggle / orientation
-     * change) or by the drift poller's frozen-renderer detector.
-     *
-     * [SurfaceReanchorMinIntervalMs] uses this to rate-limit the
-     * micro-cycles: the pause/resume can itself produce another
-     * `onRenderedFirstFrame` (and a renderer that immediately re-sticks
-     * would re-trigger the detector), so without the interval guard the
-     * restart could loop. The drift poller also stamps this when it
-     * performs a large-drift re-anchor seek, so that seek's follow-up
-     * `onRenderedFirstFrame` stands down instead of double-restarting.
-     *
-     * Reset to 0 when the video id changes (the new video's own first-frame
-     * flow handles its initial sync).
+     * Epoch-millis (from [SystemClock.elapsedRealtime]) of the last **renderer restart** — a
+     * video-only pause/resume micro-cycle performed by [kickRenderer], either from
+     * [Player.Listener.onRenderedFirstFrame] when the video surface is re-attached while already
+     * playing (fullscreen toggle / orientation change) or by the drift poller's frozen-renderer
+     * detector.
      */
     var lastSurfaceReanchorAtMs: Long by mutableLongStateOf(0L)
         internal set
 
     /**
-     * Epoch-millis (from [SystemClock.elapsedRealtime]) at which the
-     * pending resume should fire. Set by [Player.Listener.onRenderedFirstFrame]
-     * to `now + [VideoLoadResumeDelayMs]` when the first frame renders.
-     *
-     * A `LaunchedEffect(state.pendingResumeAtMs)` in
-     * [rememberVideoArtworkState] watches this field; when it transitions
-     * to a non-zero value the effect `delay`s until the scheduled time
-     * and then resumes both the main audio player and the video
-     * ExoPlayer together (see [state.pendingResumeMainAudio] and
-     * [state.pendingResumeVideo]).
-     *
-     * Setting this to a new non-zero value automatically cancels any
-     * previously-pending resume (LaunchedEffect re-launches on key
-     * change), so it's safe to overwrite if a new load completes while
-     * an old resume is still pending.
-     *
-     * Reset to 0 when the video id changes (no resume should fire for
-     * the previous video).
+     * Epoch-millis (from [SystemClock.elapsedRealtime]) at which the pending resume should fire.
+     * Set by [Player.Listener.onRenderedFirstFrame] to `now + [VideoLoadResumeDelayMs]` when the
+     * first frame renders.
      */
     var pendingResumeAtMs: Long by mutableLongStateOf(0L)
         internal set
@@ -487,12 +265,6 @@ class VideoArtworkState internal constructor(
     /**
      * Whether the pending resume (see [pendingResumeAtMs]) should call
      * `updatedOnRequestResumeMain()` to resume the main audio player.
-     *
-     * True for the initial-load path (where [beginAudioHold] paused the
-     * main audio), for the quality-change path (where the
-     * `state.isChangingQuality` block paused it), and for the resync
-     * path (where `state.isResyncing` paused it). All three paths set
-     * this to true when scheduling the resume.
      */
     var pendingResumeMainAudio: Boolean by mutableStateOf(false)
         internal set
@@ -531,18 +303,8 @@ class VideoArtworkState internal constructor(
         internal set
 
     /**
-     * Pending resync request set by [requestResync]. Consumed by a
-     * [LaunchedEffect] in [rememberVideoArtworkState] which performs the
-     * actual pause-load-resume protocol.
-     *
-     * This indirection exists because [requestResync] is called from outside
-     * the composable (e.g. from the seekbar's onValueChangeFinished in
-     * BottomSheetPlayer) but the resync needs access to composable-scoped
-     * state (the [exoPlayer], the pause/resume callbacks, etc.).
-     *
-     * The tuple is (position, wasPlaying, isAutomatic). [isAutomatic] marks
-     * resyncs triggered by the drift poller (as opposed to explicit seekbar
-     * seeks) so the cooldown logic can suppress runaway auto-resync loops.
+     * Pending resync request set by [requestResync]. Consumed by a [LaunchedEffect] in
+     * [rememberVideoArtworkState] which performs the actual pause-load-resume protocol.
      */
     internal var pendingResync: Triple<Long, Boolean, Boolean>? by mutableStateOf(null)
 
@@ -562,22 +324,7 @@ class VideoArtworkState internal constructor(
      */
     internal var autoResyncDisabled: Boolean by mutableStateOf(false)
 
-    /**
-     * Request a pause-load-resume resync to [position].
-     *
-     * This is the SEEKBAR resync path: when the user drags the seekbar and
-     * releases, the host calls this method. It:
-     *   1. Pauses the main audio player (if [isPlaying]).
-     *   2. Pauses the video ExoPlayer.
-     *   3. Seeks the video to [position].
-     *   4. Waits for the first frame to render (see [onRenderedFirstFrame]).
-     *   5. Resumes both the audio and video together.
-     *
-     * Explicit (seekbar-triggered) resyncs bypass the cooldown — the user
-     * always wins. Automatic (drift-triggered) resyncs are rate-limited via
-     * [requestAutoResync] to prevent the infinite-loop bug that previously
-     * plagued this path.
-     */
+    /** Request a pause-load-resume resync to [position]. */
     fun requestResync(position: Long, isPlaying: Boolean) {
         if (hasPlaybackFailed) return
         if (isResyncing) return
@@ -585,16 +332,9 @@ class VideoArtworkState internal constructor(
     }
 
     /**
-     * Request an automatic (drift-triggered) hard resync. Subject to a
-     * cooldown: if two auto-resyncs fire within [VideoHardResyncCooldownMs],
-     * [autoResyncDisabled] is latched true and subsequent auto-resync
-     * requests are dropped until the video id changes.
-     *
-     * @return `true` if the resync was accepted (a pending pause-load-resume
-     *   will run), `false` if it was dropped (cooldown / latch / already
-     *   resyncing / failed). The drift poller falls back to a plain re-anchor
-     *   seek when this returns `false` so the video still self-heals without
-     *   ever pausing the audio.
+     * Request an automatic (drift-triggered) hard resync. Subject to a cooldown: if two
+     * auto-resyncs fire within [VideoHardResyncCooldownMs], [autoResyncDisabled] is latched true
+     * and subsequent auto-resync requests are dropped until the video id changes.
      */
     internal fun requestAutoResync(position: Long, isPlaying: Boolean): Boolean {
         if (hasPlaybackFailed) return false
@@ -614,32 +354,8 @@ class VideoArtworkState internal constructor(
     }
 
     /**
-     * Video-only pause/resume micro-cycle — the automated version of the
-     * user's manual "pause and resume" that fixes a laggy video.
-     *
-     * The video can look laggy/frozen while the audio keeps playing even
-     * though its *position* is fine (or frozen) — the surface is holding a
-     * stale frame or the renderer has stopped presenting frames. This is
-     * NOT a position error, so the drift poller's seek-based correction
-     * can't fix it (and a seek makes it worse by adding a re-buffer stall).
-     *
-     * Pausing and resuming the video player forces the renderer to
-     * re-sync its presentation clock to the current position and start
-     * presenting fresh frames — WITHOUT pausing the main audio and
-     * WITHOUT seeking/re-buffering. This is exactly what the manual
-     * pause/resume fix does, minus the audio interruption.
-     *
-     * Called deterministically when the video surface is re-created
-     * (fullscreen toggle / orientation change / window resize, via
-     * [Player.Listener.onRenderedFirstFrame]) and by the drift poller when
-     * it detects a frozen renderer.
-     *
-     * Rate-limited by [SurfaceReanchorMinIntervalMs] so a renderer that
-     * immediately re-sticks can't cause a busy loop.
-     *
-     * @return `true` if the micro-cycle was performed, `false` if it was
-     *   dropped (not playing / not ready / resyncing / failed / within the
-     *   rate-limit window).
+     * Video-only pause/resume micro-cycle — the automated version of the user's manual "pause and
+     * resume" that fixes a laggy video.
      */
     internal fun kickRenderer(now: Long = SystemClock.elapsedRealtime()): Boolean {
         if (hasPlaybackFailed) return false
@@ -660,69 +376,7 @@ class VideoArtworkState internal constructor(
     }
 }
 
-/**
- * Create and remember a [VideoArtworkState] for the given [videoId].
- *
- * This composable owns the ExoPlayer lifecycle: it creates the player,
- * resolves the stream URL, sets up event listeners, runs the periodic
- * position-sync poller, and releases the player when the composable leaves
- * the tree (or when [videoId] changes).
- *
- * NOTE on the crash fix: the ExoPlayer is created ONCE and reused for every
- * [videoId] this composable is shown with. Previously the player was keyed on
- * [videoId], so switching from one music video to another created a brand-new
- * ExoPlayer and released the old one while its surface was still attached —
- * a race that crashed the app with IllegalStateException. Reusing the player
- * means switching videos is just "stop the old media item, load the new one".
- *
- * The returned [VideoArtworkState] is stable across recompositions and
- * across fullscreen toggles — the ExoPlayer is NOT recreated when the
- * parent switches between inline and fullscreen surfaces. Only the
- * [VideoArtworkSurface] (the view layer) moves; the player underneath
- * keeps running.
- *
- * "Start together" audio hold: while a music video is loading, the main
- * audio player is paused (via [onRequestPauseMain]) so that audio does not
- * play alone ahead of the video. Once the video's first frame is ready the
- * audio is resumed (via [onRequestResumeMain]) and both start together.
- * If the video fails or takes longer than [VideoReadyHoldTimeoutMs], the
- * hold is released and playback falls back to audio-only.
- *
- * Seekbar pause-load-resume protocol: triggered by an explicit call to
- * [VideoArtworkState.requestResync] (wired to the seekbar's
- * onValueChangeFinished in BottomSheetPlayer). It pauses the main audio
- * player, seeks the video, waits for the first frame to render, then
- * resumes both together. This is the ONLY path that triggers a
- * pause-load-resume — the automatic drift-based resync was removed because
- * it caused the "video keeps pausing repeatedly" bug.
- *
- * Automatic drift handling: the periodic poller detects drift between the
- * audio and video positions. Small drifts (> [VideoSyncIgnoreToleranceMs],
- * up to [VideoSoftSeekDriftThresholdMs]) are corrected by gently adjusting
- * the video's playback speed. Larger drifts (> [VideoSoftSeekDriftThresholdMs])
- * are corrected with an immediate "re-anchor" — seeking the video to the
- * audio's current position WITHOUT pausing the main audio. The threshold is
- * deliberately high (2000ms) so the re-buffer stall a seek causes only
- * happens for genuine large drift, never during normal warm-up. Corrections
- * only run while the video is in STATE_READY (its position is trustworthy)
- * and are suppressed for [VideoSeekSettlingTimeMs] after any seek, so a
- * re-anchor can never re-trigger itself in a loop.
- *
- * Frozen/laggy renderer handling: a video can LOOK laggy or frozen while
- * the audio plays on even though its position is fine (or frozen) — the
- * surface is holding a stale frame or the renderer stopped presenting
- * frames. That is NOT a position drift, so seeking can't fix it (and a
- * seek makes it worse with a re-buffer stall). The surface re-attach path
- * (fullscreen toggle / orientation change) restarts the renderer with a
- * video-only pause/resume micro-cycle ([VideoArtworkState.kickRenderer]),
- * and the poller's frozen-renderer detector does the same mid-playback —
- * both are the automated version of the user's manual "pause and resume"
- * fix, without pausing the audio and without re-buffering.
- *
- * Stuck-buffering recovery: if the ExoPlayer stays in STATE_BUFFERING for
- * longer than [VideoStuckBufferingTimeoutMs], the poller forces a
- * re-prepare to break out of the stall.
- */
+/** Create and remember a [VideoArtworkState] for the given [videoId]. */
 @Composable
 fun rememberVideoArtworkState(
     videoId: String,
@@ -748,21 +402,8 @@ fun rememberVideoArtworkState(
     val updatedOnRequestResumeMain by rememberUpdatedState(onRequestResumeMain)
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
 
-    // ── OkHttp client with the YouTube stream proxy + request profile headers ──
-    //
-    // MIRRORS MusicService.mediaOkHttpClient — the audio player's client. The previous
-    // implementation was a stripped-down version that was missing:
-    //   - explicit followRedirects / followSslRedirects (OkHttp's default is true, but
-    //     being explicit makes the intent clear and matches the audio client)
-    //   - explicit connectTimeout / readTimeout (OkHttp's default is 10s, which is too
-    //     short for a 1080p video load on a slow connection — the audio client uses 30s)
-    //   - the kouzu.in x-request-source: muzo header branch (not strictly needed for
-    //     video, but matches the audio client so the two stay in sync)
-    //
-    // Video URL resolution now uses the same bounded client order, auth context, client-version
-    // patching, and poToken attachment as audio playback. An individual video client can still
-    // fail independently; its eight-second attempt is marked failed and the next allowed client
-    // is tried without interrupting the main audio player.
+    // ── OkHttp client with the YouTube stream proxy + request profile headers ── MIRRORS
+    // MusicService.mediaOkHttpClient — the audio player's client.
     val okHttpClient =
         remember {
             OkHttpClient
@@ -883,22 +524,8 @@ fun rememberVideoArtworkState(
         if (awaitingVideoReady) return
         awaitingVideoReady = true
         resumeAudioAfterVideoReady = shouldPlay
-        // PAUSE the main audio player for the duration of the video
-        // load + the [VideoLoadResumeDelayMs] settling period after the
-        // first frame renders. Both audio and video resume together
-        // after the 1-second delay — see the `pendingResumeAtMs`
-        // LaunchedEffect below.
-        //
-        // This is the user's explicit request: when a music video
-        // loads, pause BOTH audio and video for ~1 second, then resume
-        // them together. This eliminates the "audio starts first,
-        // video catches up" desync that occurred when the audio played
-        // continuously during load (the previous behavior) AND the
-        // "video starts first, audio catches up" desync that occurred
-        // when only the audio was paused and resumed immediately on
-        // the first frame (the behavior before that). Both decoders
-        // pre-roll in parallel during the pause; when they resume
-        // together their clocks are aligned from the start.
+        // PAUSE the main audio player for the duration of the video load + the
+        // [VideoLoadResumeDelayMs] settling period after the first frame renders.
         if (shouldPlay) updatedOnRequestPauseMain()
         Timber
             .tag(VideoPlaybackLogTag)
@@ -1045,20 +672,9 @@ fun rememberVideoArtworkState(
         }
     }
 
-    // ── Load the resolved URL into the ExoPlayer ──
-    //
-    // Reloads when the stream URL changes (new video / quality swap) and when
-    // the selected caption track changes (so the caption's WebVTT URL can be
-    // embedded as a subtitle configuration on the media item).
-    //
-    // CAPTION-CHANGE PAUSE-LOAD-RESUME: When ONLY the caption track changes
-    // (stream URL stays the same), we still need to rebuild and reload the
-    // media item (ExoPlayer cannot hot-swap subtitle configurations on a
-    // playing item). This reload causes the video to buffer again. To match
-    // the quality-change behavior — and the user's explicit requirement that
-    // "neither audio nor video should resume on its own until both are
-    // loaded" — we set isChangingQuality=true and pause the main audio player
-    // BEFORE reloading. The hold is released in onRenderedFirstFrame.
+    // ── Load the resolved URL into the ExoPlayer ── Reloads when the stream URL changes (new video
+    // / quality swap) and when the selected caption track changes (so the caption's WebVTT URL can
+    // be embedded as a subtitle configuration on the media item).
     LaunchedEffect(state.streamUrl, state.selectedCaptionTrack, exoPlayer) {
         val url = state.streamUrl ?: return@LaunchedEffect
 
@@ -1209,23 +825,13 @@ fun rememberVideoArtworkState(
         }
     }
 
-    // ── Playback speed follower (user preference × drift-correction factor) ──
-    //
-    // The video ExoPlayer's effective speed is the product of:
-    //   - the user's preferred playback speed ([VideoPlaybackSpeedKey]),
-    //     which the audio-side follower in FullscreenVideoOverlay also
-    //     applies to the main MusicService ExoPlayer so both stay at the
-    //     same nominal speed; AND
-    //   - [VideoArtworkState.currentSpeedCorrectionFactor], a proportional
-    //     correction factor (0.80–1.20) updated by the drift poller below
-    //     to gently bring the video into sync with the audio clock WITHOUT
-    //     seeking. This is the MPV / VLC approach to A/V sync.
-    //
-    // When drift is within [VideoSyncIgnoreToleranceMs] the factor is 1.0
-    // and the video plays at exactly the user's preferred speed. When the
-    // drift poller detects desync it nudges the factor up (video behind) or
-    // down (video ahead); this LaunchedEffect re-applies the resulting
-    // effective speed to the ExoPlayer.
+    // ── Playback speed follower (user preference × drift-correction factor) ── The video
+    // ExoPlayer's effective speed is the product of: - the user's preferred playback speed
+    // ([VideoPlaybackSpeedKey]), which the audio-side follower in FullscreenVideoOverlay also
+    // applies to the main MusicService ExoPlayer so both stay at the same nominal speed; AND -
+    // [VideoArtworkState.currentSpeedCorrectionFactor], a proportional correction factor
+    // (0.80–1.20) updated by the drift poller below to gently bring the video into sync with the
+    // audio clock WITHOUT seeking.
     val (videoPlaybackSpeed, _) = rememberPreference(VideoPlaybackSpeedKey, defaultValue = 1.0f)
     LaunchedEffect(videoPlaybackSpeed, exoPlayer, state.currentSpeedCorrectionFactor) {
         val safeSpeed = videoPlaybackSpeed.coerceIn(0.25f, 2f)
@@ -1269,27 +875,8 @@ fun rememberVideoArtworkState(
         state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
     }
 
-    // ── Delayed resume after the video's first frame renders ──
-    //
-    // The user's explicit request: when a music video loads, pause BOTH
-    // audio and video for ~1 second, then resume them together.
-    //
-    // `onRenderedFirstFrame` (above) sets `state.pendingResumeAtMs` to
-    // `now + [VideoLoadResumeDelayMs]` and stores the resume flags in
-    // `state.pendingResumeMainAudio` / `state.pendingResumeVideo`. This
-    // LaunchedEffect watches `pendingResumeAtMs` and fires the resume
-    // when the scheduled time arrives.
-    //
-    // Using a LaunchedEffect (vs. `Handler.postDelayed`) gives us
-    // automatic cancellation: if a NEW resume is scheduled before this
-    // one fires (e.g. the user changes quality while a load is
-    // settling), the LaunchedEffect re-launches on the key change and
-    // the old `delay` is cancelled. If the composable leaves the
-    // tree (user navigates away), the effect is also cancelled — no
-    // stale resume fires.
-    //
-    // We also re-check failure / error conditions after the delay
-    // elapses, in case the video failed during the 1-second window.
+    // ── Delayed resume after the video's first frame renders ── The user's explicit request: when
+    // a music video loads, pause BOTH audio and video for ~1 second, then resume them together.
     LaunchedEffect(state.pendingResumeAtMs) {
         if (state.pendingResumeAtMs == 0L) return@LaunchedEffect
         val resumeMainAudio = state.pendingResumeMainAudio
@@ -1351,61 +938,8 @@ fun rememberVideoArtworkState(
                 }
             }
 
-            // ── Drift detection — four tiers ──
-            //
-            // 0. SETTLING (just seeked): suppress all drift checks for
-            //    [VideoSeekSettlingTimeMs] after any seek (soft seek,
-            //    manual resync, or initial-load snap). During re-buffer
-            //    the video's currentPosition is stale and would
-            //    immediately re-trigger a seek — the infinite-loop bug
-            //    that previously plagued this path.
-            //
-            // 1. IGNORE (|drift| <= [VideoSyncIgnoreToleranceMs]):
-            //    No correction. 60ms is imperceptible (ITU-R BT.1359-1).
-            //    Reset the speed-correction factor to 1.0 so the video
-            //    returns to the user's preferred speed.
-            //
-            // 2. SPEED-CORRECT
-            //    ([VideoSyncIgnoreToleranceMs] < |drift| <=
-            //    [VideoSoftSeekDriftThresholdMs]):
-            //    Proportional speed adjustment — up to ±20% (capped) on
-            //    top of the user's preferred speed. Video behind audio →
-            //    speed up; video ahead → slow down. No seek, no
-            //    re-buffer. Normalized over [VideoSoftSeekDriftThresholdMs]
-            //    (2000ms), so a moderate drift converges within a few
-            //    seconds.
-            //
-            // 3. RE-ANCHOR / SOFT SEEK
-            //    ([VideoSoftSeekDriftThresholdMs] < |drift| <=
-            //    [VideoHardResyncThresholdMs]):
-            //    Seek the video to the audio's current position WITHOUT
-            //    pausing the main audio. Reserved for GENUINE large drift
-            //    (a long decode stall), where the brief re-buffer stall a
-            //    seek causes is preferable to staying out of sync. The
-            //    threshold is deliberately high (2000ms) so it never fires
-            //    during normal decoder warm-up — a low threshold here was
-            //    the regression that made first-play "lag for the initial
-            //    seconds". Stamps [lastSeekAtMs] (SETTLING) and
-            //    [lastSurfaceReanchorAtMs] (so onRenderedFirstFrame's
-            //    kickRenderer call doesn't double-restart).
-            //
-            // 4. HARD RESYNC (|drift| > [VideoHardResyncThresholdMs]):
-            //    Coordinated pause-load-resume via [requestAutoResync].
-            //    Rate-limited by [VideoHardResyncCooldownMs] and latches
-            //    [VideoArtworkState.autoResyncDisabled] if two fire
-            //    within the cooldown. If the request is dropped (cooldown
-            //    exhausted), we STILL fall back to a plain re-anchor seek
-            //    rather than giving up — the video must never be allowed
-            //    to stay desynced with no self-healing path.
-            //
-            // The "video is laggy / frozen, only pause/resume fixes it"
-            // complaint is NOT a position error — it's a stale/frozen
-            // presentation, detected separately below (frozen-renderer
-            // detector) and fixed with a no-stall pause/resume micro-cycle
-            // ([VideoArtworkState.kickRenderer]) rather than a seek.
-            //
-            // For explicit seekbar seeks, the user-initiated
-            // [VideoArtworkState.requestResync] bypasses the cooldown.
+            // Five tiers: settle after a seek, ignore, speed-correct, re-anchor, hard resync.
+            // Thresholds and the reasoning behind each are in docs/video-sync.md.
             if (state.isChangingQuality) continue
             if (state.isResyncing) continue
             if (!state.isVideoReady) continue
@@ -1449,29 +983,9 @@ fun rememberVideoArtworkState(
             val signedDrift = videoPos - mainPos
             val absDrift = kotlin.math.abs(signedDrift)
 
-            // ── Frozen-renderer detection ──
-            //
-            // A video renderer can get STUCK while still reporting
-            // STATE_READY: it stops presenting frames to the surface (the
-            // displayed frame freezes) and its own clock stops advancing.
-            // The audio clock keeps going, so the user sees "the video is
-            // laggy/frozen" and their only fix is to pause and resume.
-            //
-            // This is NOT a position drift (which the tiers above seek- or
-            // speed-correct); it's a presentation stall. We detect it by
-            // comparing the video's position across poll cycles: if the
-            // audio advanced a full poll interval while the video barely
-            // moved at all, sustained over [VideoFrozenRendererCycles]
-            // consecutive cycles (~750ms), the renderer is frozen. The fix
-            // is a video-only pause/resume micro-cycle
-            // ([VideoArtworkState.kickRenderer]) — the same action as the
-            // user's manual pause/resume — which restarts the presentation
-            // clock without a re-buffer stall. The micro-cycle is
-            // rate-limited inside kickRenderer, so a renderer that
-            // immediately re-sticks can't busy-loop.
-            //
-            // After the restart we re-arm the detector (prevVideoPos = -1)
-            // so it can't fire again on the same frozen stretch.
+            // ── Frozen-renderer detection ── A video renderer can get STUCK while still reporting
+            // STATE_READY: it stops presenting frames to the surface (the displayed frame freezes)
+            // and its own clock stops advancing.
             if (exoPlayer.playWhenReady && prevVideoPos >= 0L) {
                 val audioAdvanced = mainPos - prevAudioPos
                 val videoAdvanced = videoPos - prevVideoPos
@@ -1634,57 +1148,17 @@ fun rememberVideoArtworkState(
                     state.wasPlayingBeforeResync = false
                     state.bufferingStartedAtMs = 0L
 
-                    // ── Snap video to the audio's CURRENT position ──
-                    //
-                    // During the initial load the audio was paused (see
-                    // [beginAudioHold]), so its position has been frozen
-                    // while the video buffered. The video was seeked to
-                    // the audio's position when the URL was loaded; both
-                    // should still be at that position. We re-snap to
-                    // the audio's position only if drift exceeds the
-                    // tight initial-sync tolerance, in case the audio
-                    // decoder advanced a few ms during its pre-roll.
-                    //
-                    // We use a tight 200ms tolerance (vs. the 60ms
-                    // ignore tolerance used by the continuous drift
-                    // poller) because the initial sync must be
-                    // near-exact — anything wider lets the video start
-                    // audibly behind the audio.
-                    //
-                    // We skip this snap during a manual (seekbar) resync
-                    // because the seekTo(position) in the pendingResync
-                    // consumer already placed the video exactly where
-                    // the user wants it.
+                    // ── Snap video to the audio's CURRENT position ── During the initial load the
+                    // audio was paused (see [beginAudioHold]), so its position has been frozen
+                    // while the video buffered.
                     val now = SystemClock.elapsedRealtime()
                     if (!wasResync) {
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
                             if (wasAlreadyReady) {
-                                // ── Surface re-attach: restart the renderer ──
-                                //
-                                // The video was already rendering and its
-                                // surface got re-created (fullscreen toggle,
-                                // orientation change, window resize). A fresh
-                                // TextureView can hold a STALE frame while the
-                                // video clock keeps advancing — the video looks
-                                // frozen/laggy while the drift poller sees no
-                                // drift (it compares clocks, not displayed
-                                // frames). This is the "entering/exiting
-                                // fullscreen makes the video laggy, only
-                                // pause/resume fixes it" bug.
-                                //
-                                // We fix it with a video-only pause/resume
-                                // micro-cycle ([state.kickRenderer]) — the SAME
-                                // action as the user's manual pause/resume, but
-                                // without touching the audio and without a
-                                // re-buffer stall. A seekTo here would re-buffer
-                                // the video for 1–2s on every toggle (that was
-                                // the regression: fullscreen ALWAYS lagged).
-                                //
-                                // The pause/resume itself can produce another
-                                // onRenderedFirstFrame; the min-interval guard
-                                // inside kickRenderer (SurfaceReanchorMinIntervalMs)
-                                // breaks that self-triggering loop.
+                                // ── Surface re-attach: restart the renderer ── The video was
+                                // already rendering and its surface got re-created (fullscreen
+                                // toggle, orientation change, window resize).
                                 if (state.kickRenderer(now)) {
                                     Timber
                                         .tag(VideoPlaybackLogTag)
@@ -1704,34 +1178,9 @@ fun rememberVideoArtworkState(
                         }
                     }
 
-                    // ── Schedule the resume after a 1-second settling delay ──
-                    //
-                    // The user's explicit request: when a music video
-                    // loads, pause BOTH audio and video for ~1 second,
-                    // then resume them together. We DON'T resume here
-                    // on the first frame — instead we set
-                    // `state.pendingResumeAtMs` to `now + VideoLoadResumeDelayMs`,
-                    // and a LaunchedEffect in
-                    // `rememberVideoArtworkState` watches that field
-                    // and fires the resume when the time arrives.
-                    //
-                    // The 1-second pause gives both the audio decoder
-                    // (which was idle while paused) and the video
-                    // decoder (which just finished buffering) time to
-                    // fully pre-roll in parallel BEFORE either starts
-                    // advancing its clock. Both then start together
-                    // from a known-aligned position, eliminating the
-                    // "audio starts first, video catches up" desync
-                    // that occurred when audio resumed immediately on
-                    // the first frame.
-                    //
-                    // `shouldPlay` (which tracks the main player's
-                    // state) is false during quality-change and resync
-                    // flows because the main audio was paused; we must
-                    // consult `wasPlayingBeforeQualityChange` /
-                    // `wasPlayingBeforeResyncLocal` /
-                    // `shouldResumeAudioAfterHold` to decide whether
-                    // to resume.
+                    // ── Schedule the resume after a 1-second settling delay ── The user's explicit
+                    // request: when a music video loads, pause BOTH audio and video for ~1 second,
+                    // then resume them together.
                     val effectiveShouldPlay =
                         shouldPlay ||
                             (wasResync && wasPlayingBeforeResyncLocal) ||
@@ -1796,32 +1245,7 @@ fun rememberVideoArtworkState(
                         }
                         Player.STATE_READY -> {
                             state.bufferingStartedAtMs = 0L
-                            // The player has buffered enough to start
-                            // playing. We DON'T resume here — we let
-                            // `onRenderedFirstFrame` schedule the
-                            // delayed resume (see above) so both audio
-                            // and video resume together after the
-                            // [VideoLoadResumeDelayMs] settling period.
-                            //
-                            // `onRenderedFirstFrame` typically fires
-                            // within a few ms of STATE_READY (once the
-                            // surface has drawn the first decoded
-                            // frame). If for some reason it never fires
-                            // (e.g. surface not attached), the
-                            // [VideoStuckBufferingTimeoutMs] safety net
-                            // in the periodic position sync poller
-                            // forces a re-prepare, which will re-enter
-                            // STATE_READY and eventually trigger the
-                            // first-frame callback.
-                            //
-                            // We DO schedule a pending resume here as a
-                            // fallback — if `onRenderedFirstFrame`
-                            // fires later it will overwrite this
-                            // schedule (the LaunchedEffect re-launches
-                            // on the key change, cancelling the old
-                            // delay). If `onRenderedFirstFrame` never
-                            // fires, this schedule still fires the
-                            // resume after 1s.
+                            // The player has buffered enough to start playing.
                             val effectiveShouldPlay =
                                 shouldPlay ||
                                     (state.isResyncing && state.wasPlayingBeforeResync) ||
@@ -1885,21 +1309,8 @@ fun rememberVideoArtworkState(
 }
 
 /**
- * Conditional wrapper around [rememberVideoArtworkState] that returns `null`
- * when [videoId] is blank.
- *
- * This is used by the host (BottomSheetPlayer) to hoist the [VideoArtworkState]
- * above the `when (orientation)` block AND above the BottomSheet content — so
- * the ExoPlayer survives:
- *   - Orientation changes (the `when` block can switch freely without
- *     releasing the ExoPlayer).
- *   - Sheet collapse/expand (the ExoPlayer is not tied to the sheet's content
- *     lifecycle).
- *   - Fullscreen toggle (the fullscreen overlay is a sibling of the BottomSheet,
- *     sharing the same state).
- *
- * When [videoId] is blank (no music video playing), this returns `null` and
- * does NOT create an ExoPlayer — avoiding unnecessary resource usage.
+ * Conditional wrapper around [rememberVideoArtworkState] that returns `null` when [videoId] is
+ * blank.
  */
 @Composable
 fun rememberVideoArtworkStateOrNull(
@@ -1933,31 +1344,7 @@ fun rememberVideoArtworkStateOrNull(
     }
 }
 
-/**
- * Renders the video surface for the given [state].
- *
- * This is a pure view composable — it reads [VideoArtworkState.isVideoReady]
- * for the alpha animation and renders a [ContentFrame] attached to
- * [VideoArtworkState.exoPlayer]. It does NOT create or manage the ExoPlayer;
- * that's the responsibility of [rememberVideoArtworkState].
- *
- * Because the ExoPlayer is external, this composable can be freely mounted
- * in different parents (inline slot, fullscreen overlay) without causing
- * the video to reload. The ExoPlayer's surface is detached from the old
- * view and attached to the new one — a fast operation that does NOT
- * interrupt playback.
- *
- * When a caption track is selected, the currently active cue text is
- * rendered as a subtitle overlay along the bottom edge.
- *
- * When [ambientMode] is true and [thumbnailUrl] is non-blank, a slowly
- * drifting blurred copy of the song thumbnail is rendered BEHIND the video
- * surface so the letterboxed black area around a FIT video glows with the
- * artwork's dominant colors — mimicking YouTube's "ambient mode" effect.
- *
- * @param ambientMode When true, render the blurred-thumbnail backdrop behind the video.
- * @param thumbnailUrl URL of the song thumbnail to use for ambient mode. Required if ambientMode = true.
- */
+/** Renders the video surface for the given [state]. */
 @Composable
 fun VideoArtworkSurface(
     state: VideoArtworkState,
@@ -2032,20 +1419,7 @@ fun VideoArtworkSurface(
     }
 }
 
-/**
- * Soft drifting blurred artwork backdrop for ambient mode.
- *
- * On Android S+ we use a graphicsLayer translation to drift a pre-blurred
- * bitmap (the bitmap is blurred once via [ImageBlurUtils] using a CPU
- * stack-blur, then animated on the GPU). On pre-S we render the same bitmap
- * but without the drift animation (animating a CPU-blurred bitmap every
- * frame causes visible tearing on older devices).
- *
- * The bitmap is loaded via Coil with hardware-acceleration DISABLED so we
- * can copy it to an ARGB_8888 bitmap and run the CPU stack-blur. We use a
- * dedicated cache key prefix ("ambient:") so the ambient-mode bitmap isn't
- * shared with the regular thumbnail cache (different size + blur).
- */
+/** Soft drifting blurred artwork backdrop for ambient mode. */
 @Composable
 private fun VideoAmbientBackdrop(
     thumbnailUrl: String,
@@ -2138,37 +1512,7 @@ private fun VideoAmbientBackdrop(
     }
 }
 
-/**
- * Pick the best video format from a [PlayerResponse], honoring a preferred
- * height.
- *
- * # Audio + video loaded SEPARATELY
- *
- * The video ExoPlayer loads a **video-only** adaptive format from
- * `streamingData.adaptiveFormats`. The MAIN MusicService ExoPlayer is the
- * sole source of audio — it plays the YouTube Music audio stream
- * independently. The video ExoPlayer's audio track is disabled (see
- * [rememberVideoArtworkState] —
- * `setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)`), so even if a
- * candidate happens to be muxed its audio is demuxed but not rendered.
- *
- * This split-stream approach was the user's explicit request — they tried
- * a muxed (single-stream) preference and reverted because (a) YouTube
- * caps muxed formats at 720p and (b) the muxed audio wasn't reliably
- * silenced in an earlier attempt. Loading audio + video separately keeps
- * the audio path identical to non-music-video playback (no muting hooks,
- * no risk of dual audio) and lets the user pick any adaptive video
- * resolution the device can decode — up to and including the original 4K
- * (or higher) format, when the user asks for it via High quality or an
- * exact Advanced pick.
- *
- * The picker scans BOTH `formats` and `adaptiveFormats` (YouTube
- * occasionally lists a video-only entry in `formats` on some clients),
- * filters to those at or below the ceiling [preferredHeight] implies (see
- * [maxVideoHeightFor]), and picks the highest remaining resolution
- * (falling back to the smallest available when the ceiling is below
- * everything YouTube offered).
- */
+/** Pick the best video format from a [PlayerResponse], honoring a preferred height. */
 private fun pickVideoFormat(
     playerResponse: PlayerResponse,
     preferredHeight: Int?,

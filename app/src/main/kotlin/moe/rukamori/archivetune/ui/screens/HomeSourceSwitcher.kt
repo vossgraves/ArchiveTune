@@ -52,14 +52,6 @@ private val ToggleIconSize = 20.dp
 /**
  * The Home tab's source toggle, sized for the top app bar and meant to sit immediately left of the
  * account avatar.
- *
- * It shows the logo of the page it will take you TO, not the one you are on. The icon is a
- * destination the way a "switch account" chip is: labelling it with the current source would make
- * a button that looks like a status readout, and the user already knows which page they are
- * looking at.
- *
- * Renders nothing without a Spotify session — [rememberHomeSourceAvailable] — so signed-out users
- * get the plain avatar rather than a control with one destination.
  */
 @Composable
 fun HomeSourceToggleButton(modifier: Modifier = Modifier) {

@@ -13,21 +13,7 @@ import java.util.concurrent.TimeUnit
 /**
  * DNS resolver that falls back to DNS-over-HTTPS (Cloudflare / Google) when the system resolver
  * can't resolve a host. This is what lets TIDAL work on networks/ISPs that DNS-block `tidal.com` /
- * `auth.tidal.com` (e.g. regions where TIDAL isn't officially available): the system lookup fails
- * with EAI_NODATA, so we resolve the host over HTTPS instead, which the ISP can't block at the DNS
- * layer.
- *
- * Robustness details (why this differs from a naive DoH resolver):
- *  - The DoH client is **bootstrapped with hardcoded IPs** for the DoH provider hostnames
- *    (cloudflare-dns.com, dns.google). A naive resolver still needs the *system* DNS to resolve the
- *    DoH provider's own hostname first — so on a network where system DNS is fully broken (not just
- *    tidal-blocked), even the fallback fails with "Unable to resolve host". Pinning the provider IPs
- *    removes that dependency entirely; TLS still uses the hostname for SNI + certificate validation,
- *    so it stays secure. (Note: querying the JSON DoH API by raw IP literal, e.g.
- *    `https://1.1.1.1/dns-query`, does not reliably return JSON, which is why we pin the hostname
- *    instead of using IP-literal URLs.)
- *  - Successful resolutions are **cached** (with a TTL) so repeated lookups during playback don't
- *    hammer the DoH endpoints and survive brief connectivity blips.
+ * `auth.tidal.com` (e.g.
  */
 internal object TidalDns : Dns {
     // DoH providers that support the JSON API (application/dns-json). Both are reached via the

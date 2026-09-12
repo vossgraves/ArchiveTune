@@ -117,19 +117,9 @@ data class Subtitle(
 )
 
 /**
- * Musixmatch's macro.subtitles endpoint occasionally returns an empty JSON array `[]`
- * (instead of an object) for a sub-call's `body` when that sub-call has no data — e.g.
+ * Musixmatch's macro.subtitles endpoint occasionally returns an empty JSON array `[]` (instead of
+ * an object) for a sub-call's `body` when that sub-call has no data — e.g.
  * `track.lyrics.get.message.body` becomes `[]` when no plain-lyrics result exists.
- *
- * Without sanitization, kotlinx.serialization fails the whole macro parse with
- * `Expected start of the object '{', but had '[' instead at path:
- * $.message.body.macro_calls.track.lyrics.get.message.body`, which then drops the
- * subtitle + richsync results that *were* returned in the same response.
- *
- * The fix: parse the raw JSON tree, walk every object's `body` field and coerce
- * non-object values (arrays, primitives) to null, then structural-decode the
- * sanitized tree into [MacroSubtitlesResponse]. Object bodies are passed through
- * untouched, and the rest of the tree is preserved as-is.
  */
 internal fun decodeMacroSubtitlesResponse(
     json: Json,

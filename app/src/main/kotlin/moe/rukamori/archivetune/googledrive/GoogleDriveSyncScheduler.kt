@@ -24,14 +24,6 @@ import javax.inject.Singleton
 /**
  * Schedules the [GoogleDriveSyncWorker] using WorkManager, mirroring the pattern of
  * [moe.rukamori.archivetune.backup.ScheduledBackupScheduler].
- *
- * The worker runs as a one-shot with an initial delay computed from the settings frequency.
- * After each successful run, the worker calls [appendNext] to enqueue the next occurrence
- * (except for CUSTOM, which is a one-shot — no auto-reschedule).
- *
- * All scheduling uses `ExistingWorkPolicy.REPLACE` for [replace] so a settings change cancels
- * any pending run and re-arms with the new delay. `APPEND_OR_REPLACE` for [appendNext] ensures
- * a queued next-run isn't clobbered by a manual "sync now" trigger.
  */
 @Singleton
 class GoogleDriveSyncScheduler

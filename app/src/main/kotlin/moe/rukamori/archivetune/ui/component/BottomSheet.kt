@@ -120,32 +120,8 @@ fun BottomSheet(
                     ),
                 ).background(
                     if (opaqueBackground) {
-                        // Render the outer background fully opaque ONLY when
-                        // the sheet is actually sliding up or expanded
-                        // (progress > 0). When the sheet is fully collapsed
-                        // (progress = 0), the background is transparent so it
-                        // does NOT cover the system navigation bar area
-                        // (gesture hint / 3-button nav) at the bottom of the
-                        // screen.
-                        //
-                        // Previously, this branch returned `backgroundColor`
-                        // unconditionally, which meant the opaque background
-                        // was always rendered — even when the sheet was
-                        // collapsed at the peek height. Because the queue
-                        // sheet's `collapsedBound` is
-                        // `dynamicQueuePeekHeight + systemBarsBottom`, the
-                        // visible portion of the collapsed sheet INCLUDES the
-                        // navigation bar inset, and the opaque background
-                        // covered it, hiding the gesture hint / 3-button nav.
-                        //
-                        // By gating on `progress > 0`, the background is:
-                        //   - transparent when collapsed (progress = 0): the
-                        //     navigation bar shows through normally.
-                        //   - opaque as soon as the user starts dragging
-                        //     (progress > 0): the player's zoomed artwork
-                        //     backdrop is hidden during the slide-up, which
-                        //     was the original bug `opaqueBackground = true`
-                        //     was introduced to fix.
+                        // Render the outer background fully opaque ONLY when the sheet is actually
+                        // sliding up or expanded (progress > 0).
                         if (state.progress > 0f) {
                             backgroundColor
                         } else {
@@ -367,15 +343,6 @@ class BottomSheetState(
     /**
      * One instance per sheet, deliberately — this used to be a `get()` that minted a fresh
      * connection on every read.
-     *
-     * `isTopReached` is per-GESTURE state: it latches when the inner scrollable can give no more,
-     * and it is what lets the rest of that same drag pull the sheet down. Call sites write
-     * `Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)`, which re-reads the
-     * property on every recomposition — so a new object arrived mid-drag, `nestedScroll` swapped
-     * it in, and the latch reset to false. The drag then finished scrolling nothing and the sheet
-     * never collapsed. Only the SimpMusic style showed it, because it is the only player style
-     * with a full-page `verticalScroll` inside the sheet; everywhere else the drag reaches the
-     * sheet's own draggable without passing through here.
      */
     val preUpPostDownNestedScrollConnection: NestedScrollConnection by lazy {
         object : NestedScrollConnection {

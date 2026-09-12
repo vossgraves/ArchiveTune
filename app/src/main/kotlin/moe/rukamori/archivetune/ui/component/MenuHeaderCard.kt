@@ -21,11 +21,6 @@ import androidx.compose.ui.unit.dp
 /**
  * The block at the top of a bottom-sheet menu that says what the menu is about — the track, the
  * playlist, the album.
- *
- * Six menus had written the same `Surface(RoundedCornerShape(28.dp), surfaceContainerLow)` by hand,
- * which is six places to change whenever the menus are restyled and six chances to miss one. It is
- * one composable now, which is also what makes the Apple Music header below cost a branch instead
- * of six edits.
  */
 @Composable
 fun MenuHeaderCard(

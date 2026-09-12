@@ -99,33 +99,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 private val QueuePillHeight = 48.dp
 private val QueuePillCornerRadius = 16.dp
 
-/**
- * In-place queue sheet for the Apple Music player. Ported from ViviMusic's
- * QueueV2 with the following adaptations:
- *
- * - Uses ArchiveTune's [LocalPlayerConnection] / [LocalMenuState] /
- *   [LocalBottomSheetPageState] instead of ViviMusic's locals.
- * - Renders on a transparent background — the Apple Music player's blurred
- *   artwork + scrim shows through, matching ViviMusic's "queue-on-blur"
- *   look exactly.
- * - Uses [PlayerMenu] (with `isQueueTrigger = true`) instead of ViviMusic's
- *   dedicated QueueMenu — ArchiveTune consolidates both menus.
- * - Uses ArchiveTune's [MediaMetadataListItem]; wraps it in a clipped Box
- *   so the active / idle pill-style background matches ViviMusic.
- * - Defaults the edit-lock to TRUE (ArchiveTune's default), unlike
- *   ViviMusic which defaults to false. Users who want swipe-to-remove can
- *   unlock explicitly via the lock toggle in the header.
- *
- * @param navController The app's NavController, forwarded to PlayerMenu for
- *   "go to album / artist" actions.
- * @param playerBottomSheetState The outer player BottomSheetState, forwarded
- *   to PlayerMenu so it can collapse the player before navigating.
- * @param modifier The modifier applied to the root Column.
- * @param onClose Optional close affordance. When non-null, a close (X) icon renders left of the
- *   edit-lock in the header row — for hosts that present the sheet as an overlay WITHOUT their own
- *   header or back path (the TikTok feed). Null (the Apple Music player, the original host) renders
- *   the header exactly as before: title + lock only.
- */
+/** In-place queue sheet for the Apple Music player. */
 @Composable
 fun AppleMusicQueueSheet(
     navController: NavController,
@@ -257,19 +231,8 @@ fun AppleMusicQueueSheet(
             dragInfo = AMQueueDragInfo(draggedItemUid, destinationUid)
         }
 
-    // Combined sync + commit effect. Re-fires on every queueWindows /
-    // currentWindowIndex update AND when dragging starts/stops. Mirrors
-    // Queue.kt's three-tier logic:
-    //   1. If a drag just ended (dragInfo != null, not currently dragging):
-    //      resolve UIDs against the full queueWindows and commit via
-    //      moveMediaItem / setShuffleOrder. Mark justCommittedDragUid so the
-    //      next iteration skips the reset (lets the timeline update propagate).
-    //   2. If we just committed a drag (justCommittedDragUid != null): clear
-    //      the flag and return WITHOUT resetting mutableQueueWindows. The
-    //      next queueWindows update (from onTimelineChanged) will do the
-    //      reset using the post-move order.
-    //   3. Otherwise: re-populate mutableQueueWindows from
-    //      queueWindows.drop(currentWindowIndex).
+    // Combined sync + commit effect. Re-fires on every queueWindows / currentWindowIndex update AND
+    // when dragging starts/stops. Mirrors Queue.kt's three-tier logic: 1.
     LaunchedEffect(queueWindows, currentWindowIndex, reorderableState.isAnyItemDragging) {
         if (reorderableState.isAnyItemDragging) return@LaunchedEffect
 

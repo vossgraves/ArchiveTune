@@ -19,31 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Port of Flow's [io.github.aedev.flow.player.surface.SurfaceManager].
- *
- * Manages the binding between an ExoPlayer and a video surface (SurfaceView's
- * SurfaceHolder or a TextureView's surface). The KEY insight from Flow's
- * implementation is the use of [PlaceholderSurface] to keep the video codec
- * alive when the real surface is detached — instead of calling
- * `player.clearVideoSurface()` (which kills the codec and forces a ~1–2s
- * re-decode on re-attach), we set a PlaceholderSurface so the codec keeps its
- * decoder alive. The next surface-attach then swaps the output in place via
- * ExoPlayer's `setVideoSurface(surface)` path, which on API 34+ is a
- * zero-cost operation and on older devices re-creates the codec only when
- * the new surface is actually valid.
- *
- * This fixes the "fullscreen toggle / orientation change makes the video
- * laggy / pause-resume fixes it" bug at the source — the codec never has to
- * be torn down and re-decoded, so the video doesn't fall behind the audio
- * clock during the surface swap.
- *
- * Thread-safety: this class is single-threaded by design (Compose's main
- * thread is the only caller). It does NOT synchronize internally; callers
- * must invoke [attachVideoSurface] / [detachVideoSurface] from the same
- * thread that owns the ExoPlayer (typically the main thread, which is
- * ExoPlayer's application-thread default).
- */
+/** Port of Flow's [io.github.aedev.flow.player.surface.SurfaceManager]. */
 @UnstableApi
 internal class VideoSurfaceManager {
     companion object {
@@ -78,20 +54,8 @@ internal class VideoSurfaceManager {
     fun getSurfaceHolder(): SurfaceHolder? = surfaceHolder
 
     /**
-     * Attach a video surface to the player. Uses Flow's `getSurface()`
-     * approach like NewPipe for better compatibility across surface types.
-     *
-     * @param holder The SurfaceHolder from a SurfaceView (null for TextureView).
-     * @param player The ExoPlayer instance.
-     * @param forceAttach When true, always calls `setVideoSurface` even if the
-     *   surface appears unchanged. MUST be true for
-     *   [SurfaceHolder.Callback.surfaceCreated] / [surfaceChanged] calls,
-     *   because Android may reuse the same SurfaceHolder/Surface Java object
-     *   while replacing the underlying native buffer queue — the dedup check
-     *   cannot detect this and would incorrectly skip the call, leaving the
-     *   codec bound to an obsolete surface. Set to false only for the fallback
-     *   in AndroidView.update, where the purpose is purely to handle a missed
-     *   initial callback.
+     * Attach a video surface to the player. Uses Flow's `getSurface()` approach like NewPipe for
+     * better compatibility across surface types.
      */
     fun attachVideoSurface(
         holder: SurfaceHolder?,
@@ -145,18 +109,7 @@ internal class VideoSurfaceManager {
         }
     }
 
-    /**
-     * Detach the video surface from the player. Instead of clearing the
-     * surface (which would tear down the video codec), attach a
-     * [PlaceholderSurface] so the codec keeps its decoder alive — the next
-     * [attachVideoSurface] call can then swap the output surface in place via
-     * `setVideoSurface`, which on API 34+ is a zero-cost operation.
-     *
-     * This is the single biggest fix from Flow's implementation: it
-     * eliminates the codec-recreation stall that happened on every surface
-     * detach/attach cycle (fullscreen toggle, orientation change, lifecycle
-     * resume after background).
-     */
+    /** Detach the video surface from the player. */
     fun detachVideoSurface(
         holder: SurfaceHolder?,
         player: ExoPlayer?,

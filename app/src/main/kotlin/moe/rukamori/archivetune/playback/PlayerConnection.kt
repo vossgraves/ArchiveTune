@@ -101,15 +101,7 @@ class PlayerConnection(
             player.playWhenReady && player.playbackState != STATE_ENDED,
         )
 
-    /**
-     * Media3's own definition: ready, wanted, and not suppressed. Unlike [isPlaying] this is false
-     * while buffering and while playback is suppressed (audio focus lost), so it is the only safe
-     * signal for anything that advances a clock in step with the audio — a lyric highlight driven
-     * by [isPlaying] keeps sweeping through a stall with nothing coming out of the speaker.
-     *
-     * [isPlaying] stays as it is: play/pause affordances should flip the moment they are tapped
-     * rather than waiting out the buffer.
-     */
+    /** Media3's own definition: ready, wanted, and not suppressed. */
     val isAudioAdvancing = MutableStateFlow(player.isPlaying)
     val mediaMetadata = service.currentMediaMetadata
     val currentSong =

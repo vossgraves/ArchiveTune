@@ -179,21 +179,8 @@ fun ThinSlider(
 }
 
 /**
- * A single soft highlight travelling the length of the bar, over and over,
- * while two tracks are being mixed.
- *
- * Drawn as a moving gradient rather than an opacity pulse because a pulse reads
- * as "loading" — the thing every shimmer in every app means — and this is the
- * opposite claim: not that the app is waiting, but that it is doing something.
- * Motion along the bar also points the same way the music is going.
- *
- * Sweeps the **whole** bar rather than the played portion, which the first
- * version did and which made it invisible twice over. A transition happens in
- * the opening seconds of the incoming track, so the played portion is then a
- * few percent of the width — a highlight travelling across that is a flicker at
- * the far left. And the played portion is already white at 0.92 alpha, so white
- * at 0.55 over it resolves to 0.96: the same hue, four percent brighter. The
- * unplayed track sits at 0.26, and that is where a white band actually reads.
+ * A single soft highlight travelling the length of the bar, over and over, while two tracks are
+ * being mixed.
  */
 @Composable
 private fun MixSheen(height: Dp) {

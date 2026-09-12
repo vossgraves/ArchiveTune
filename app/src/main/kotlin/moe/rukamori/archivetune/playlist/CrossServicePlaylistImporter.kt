@@ -29,28 +29,9 @@ import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
 /**
- * Resolves a playlist URL from a foreign music service (Apple Music,
- * Amazon Music, Tidal, Deezer) into a list of `(title, artist)` pairs,
- * which are then matched against YouTube Music via [YouTube.search] to
- * produce local YouTube Music song ids.
- *
- * YouTube Music URLs are handled natively by [YouTube.playlist].
- *
- * ## Supported URL formats
- *
- *  - **YouTube Music**: `https://music.youtube.com/playlist?list=...`
- *  - **YouTube**     : `https://www.youtube.com/playlist?list=...`
- *  - **Apple Music** : `https://music.apple.com/{cc}/playlist/{slug}/pl.{id}`
- *  - **Amazon Music**: `https://music.amazon.com/{cc}/playlists/{id}`
- *  - **Tidal**       : `https://tidal.com/browse/playlist/{id}`
- *  - **Deezer**      : `https://www.deezer.com/{cc}/playlist/{id}`
- *
- * ## Rate limiting
- *
- * Each foreign track triggers one YouTube Music search. To stay friendly
- * to the InnerTube API we cap concurrency at [MAX_PARALLEL_SEARCHES] and
- * stagger the searches. Failures on individual tracks are non-fatal —
- * the importer just skips them and reports the count.
+ * Resolves a playlist URL from a foreign music service (Apple Music, Amazon Music, Tidal, Deezer)
+ * into a list of `(title, artist)` pairs, which are then matched against YouTube Music via
+ * [YouTube.search] to produce local YouTube Music song ids.
  */
 object CrossServicePlaylistImporter {
 
@@ -83,14 +64,10 @@ object CrossServicePlaylistImporter {
     }
 
     /**
-     * Credentials for the services whose playlist APIs are not publicly
-     * readable. Tidal and Qobuz both reject anonymous playlist reads, so the
-     * caller supplies whatever the user already has configured (own account
-     * or a community Source Pool account) — see
+     * Credentials for the services whose playlist APIs are not publicly readable. Tidal and Qobuz
+     * both reject anonymous playlist reads, so the caller supplies whatever the user already has
+     * configured (own account or a community Source Pool account) — see
      * `CrossServiceImportCredentials.load`.
-     *
-     * Both fields are optional: an import from a service with no credentials
-     * fails with a friendly "sign in first" message rather than a 401.
      */
     data class Credentials(
         val tidalAccessToken: String? = null,
@@ -171,18 +148,8 @@ object CrossServicePlaylistImporter {
     }
 
     /**
-     * Minimum SpotifyMapper score for a YouTube Music hit to be accepted as the
-     * wanted track at import time.
-     *
-     * The importer used to take the first SongItem the search returned, unverified.
-     * For a track that only exists on the source service (Spotify/Deezer/Apple — no
-     * YouTube Music release), that first hit is whatever YouTube's fuzzy search
-     * returns for the title words — a *different song* ("Full Moon" by someone
-     * else for "Under the Full Moon: Psychedelic Reflections"), which then got
-     * stored into the playlist as if it were the track. Scoring fixes the pick;
-     * this threshold rejects the no-true-hit case so the track is skipped instead
-     * of imported wrong. A true match scores ≥ ~0.85 (title 0.45 + artist 0.35 +
-     * duration 0.20 weights); a same-vibes wrong song lands well under 0.4.
+     * Minimum SpotifyMapper score for a YouTube Music hit to be accepted as the wanted track at
+     * import time.
      */
     private const val IMPORT_MATCH_THRESHOLD = 0.6
 
@@ -253,20 +220,8 @@ object CrossServicePlaylistImporter {
     }
 
     /**
-     * Same as [resolveToYouTubeMusic] but returns the fully-resolved
-     * [MediaMetadata] for each matched track (instead of just the song id).
-     *
-     * Callers that need to insert the resolved songs into the local `song`
-     * table — e.g. before linking them to a playlist via
-     * `addSongToPlaylist` — should prefer this overload so they have the
-     * title / artists / thumbnailUrl / album fields required to populate
-     * the `song` row. Otherwise the `playlist_song_map.songId` FOREIGN KEY
-     * → `song.id` constraint will reject the insert.
-     *
-     * Tracks that can't be matched on YouTube Music are skipped.
-     *
-     * @param onProgress optional callback invoked with (resolved, total)
-     *        after each track resolves. Lets the UI show a live counter.
+     * Same as [resolveToYouTubeMusic] but returns the fully-resolved [MediaMetadata] for each
+     * matched track (instead of just the song id).
      */
     suspend fun resolveToYouTubeMusicMetadata(
         tracks: List<ForeignTrack>,
@@ -297,14 +252,8 @@ object CrossServicePlaylistImporter {
     }
 
     /**
-     * Fetches a YouTube Music playlist (following continuation pages)
-     * and returns the fully-resolved [MediaMetadata] for every song.
-     *
-     * Use this instead of `YouTubePlaylistImportFetcher.fetch(...)` when
-     * the caller needs to insert the song rows into the local `song`
-     * table before linking them to a playlist — otherwise the
-     * `playlist_song_map.songId` FOREIGN KEY → `song.id` constraint
-     * will reject the insert.
+     * Fetches a YouTube Music playlist (following continuation pages) and returns the
+     * fully-resolved [MediaMetadata] for every song.
      */
     suspend fun fetchYouTubePlaylistSongs(playlistId: String): List<MediaMetadata> =
         withContext(Dispatchers.IO) {
@@ -312,19 +261,8 @@ object CrossServicePlaylistImporter {
             page.songs.map { it.toMediaMetadata() }
         }
 
-    // ─── Spotify ──────────────────────────────────────────────────────────
-    // URL pattern: https://open.spotify.com/playlist/{base62-id}
-    //
-    // Two paths, in order of preference:
-    //
-    //  1. **Authenticated GQL** — when the user has linked their Spotify
-    //     account (`Spotify.accessToken` set by `SpotifyLibraryRepository`),
-    //     we page through `Spotify.playlistTracks` and get the *whole*
-    //     playlist plus private/collaborative ones.
-    //  2. **Anonymous embed** — otherwise we read the public embed page's
-    //     `__NEXT_DATA__` blob, which carries up to 100 tracks with no
-    //     credentials at all. Good enough for public playlists and keeps the
-    //     feature usable for users who never sign in.
+    // ─── Spotify ────────────────────────────────────────────────────────── URL pattern:
+    // https://open.spotify.com/playlist/{base62-id} Two paths, in order of preference: 1.
     private suspend fun fetchSpotifyPlaylist(url: String): ResolvedImport {
         val id = extractSpotifyPlaylistId(url)
             ?: error("Couldn't extract Spotify playlist id from URL")

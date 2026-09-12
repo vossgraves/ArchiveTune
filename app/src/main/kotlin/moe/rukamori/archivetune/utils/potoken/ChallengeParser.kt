@@ -20,22 +20,8 @@ import okio.ByteString.Companion.toByteString
 private val json = Json { ignoreUnknownKeys = true }
 
 /**
- * Parses the raw response from YouTube's `api/jnn/v1/Create` endpoint into a JSON object
- * that can be embedded directly into a JavaScript snippet for `runBotGuard()`.
- *
- * The response is a JSON array.  The first element may be:
- * - a nested JSON array (unscrambled challenge), or
- * - a base64-encoded string (scrambled challenge) that must be descrambled first.
- *
- * The resulting challenge array contains (by index):
- *   [0]  messageId
- *   [1]  interpreterJavascript array (or null)
- *   [2]  interpreterTrustedResourceUrl array (or null)
- *   [3]  interpreterHash
- *   [4]  program (base64)
- *   [5]  globalName
- *   [6]  (unknown)
- *   [7]  clientExperimentsStateBlob
+ * Parses the raw response from YouTube's `api/jnn/v1/Create` endpoint into a JSON object that can
+ * be embedded directly into a JavaScript snippet for `runBotGuard()`.
  */
 fun parseCreateChallenge(rawResponse: String): String {
     val outer = json.parseToJsonElement(rawResponse).jsonArray

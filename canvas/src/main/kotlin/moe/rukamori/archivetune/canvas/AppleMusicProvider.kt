@@ -318,14 +318,8 @@ object AppleMusicProvider {
         }
 
     /**
-     * Extracts every JWT-shaped string from [text] and returns the best AMP web
-     * player token: an unexpired one issued by `AMPWebPlay`, else any unexpired
-     * one, else null.
-     *
-     * The bundle embeds several JWTs (the AMP web player token plus MusicKit
-     * developer tokens for other Apple properties). Taking the regex's first
-     * match — what the old code did — could pick one the AMP catalog API
-     * rejects, so match on the `iss` claim instead of on document order.
+     * Extracts every JWT-shaped string from [text] and returns the best AMP web player token: an
+     * unexpired one issued by `AMPWebPlay`, else any unexpired one, else null.
      */
     private fun pickAmpToken(text: String): String? {
         val nowSec = System.currentTimeMillis() / 1000L

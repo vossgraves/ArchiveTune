@@ -182,20 +182,9 @@ private val AppleMusicBottomIconSize = 26.dp
 private val AppleMusicBottomButtonSize = 48.dp
 private val AppleMusicMiniArtworkSize = 56.dp
 
-// ─── Lyrics backdrop "moving blur" wander ────────────────────────────
-// The drift itself lives in [BlurWanderDrift], shared with MovingBlurBackground
-// in LyricsScreen.kt so both lyrics surfaces move identically. Offsets are in dp
-// and are applied as graphicsLayer translations (see driftGraphicsLayer below);
-// the walk also rotates, which is what lets a colour reach the far side of the
-// screen at all.
-//
-// The rotation is why the backdrop node is NOT sized to the player: Modifier.blur
-// clips the layer it creates to that node's bounds, and a rotated rectangle only
-// reliably covers its own inscribed circle — the radius of its *short* side. A
-// screen-shaped node therefore leaves the screen's corners exposed however far it
-// is scaled up. [blurBackdropFootprint] sizes the node so it cannot; see its docs
-// for the derivation, and note that it takes BOTH ends of the zoom below, because
-// the resting scale is the tighter of the two.
+// ─── Lyrics backdrop "moving blur" wander ──────────────────────────── The drift itself lives in
+// [BlurWanderDrift], shared with MovingBlurBackground in LyricsScreen.kt so both lyrics surfaces
+// move identically.
 private const val AmLyricsBlurDriftScale = 2.4f
 
 // Scale of the blurred backdrop in the COVER/QUEUE states. The LYRICS state
@@ -223,25 +212,9 @@ private const val AppleMusicLyricsContentDeferMs = 160L
 private val AmCanvasSeamFadeDp = 88.dp
 
 /**
- * A [Shape] that interpolates the corner radius based on the element's size.
- * At [smallSize], the corner radius is [smallRadius]; at [largeSize], it's
- * [largeRadius]. In between, it smoothly interpolates. This ensures
- * consistent visual corner curvature during SharedTransition morphs where
- * the element's size changes dramatically (e.g., from a large cover artwork
- * to a small mini thumbnail).
- *
- * Without this, a fixed-Dp [RoundedCornerShape] (e.g., 16dp) looks "sharp"
- * on a large element (16dp on 320dp = barely visible) but "very curved" on
- * a small element (16dp on 56dp = 28% radius). This adaptive shape
- * eliminates that discrepancy by scaling the radius with the element's
- * size, so the corners look the SAME proportionally throughout the morph —
- * no "sharp at start, curved at end" effect.
- *
- * The interpolation is clamped: below [smallSize] the radius stays at
- * [smallRadius], and above [largeSize] it stays at [largeRadius]. This
- * ensures the overlay's clip matches the source (COVER) and target (LYRICS)
- * clips at the endpoints, with NO visible snap when the overlay is applied
- * or removed.
+ * A [Shape] that interpolates the corner radius based on the element's size. At [smallSize], the
+ * corner radius is [smallRadius]; at [largeSize], it's [largeRadius]. In between, it smoothly
+ * interpolates.
  */
 private class AdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -401,21 +374,9 @@ fun AppleMusicPlayerContent(
     // hide: the bar carries the scrubber, the quality badge and the lyrics provider, and a control
     // you have to poke the screen to find is worse than one that is simply there.
 
-    // Deferred canvas-visible state: when lyrics opens, the canvas
-    // TextureView teardown (visible = false) + ExoPlayer pause are delayed so
-    // they don't compete with the COVER→LYRICS sharedBounds morph for the main
-    // thread on the same frame. Without this deferral, the TextureView
-    // teardown + static image composition + lyrics composable initialization
-    // AND the morph animation all fire simultaneously, causing a visible
-    // stutter in the thumbnail transition (issue 3).
-    //
-    // The delay is [AmLyricsBackdropMorphMs] — the length of the backdrop
-    // cross-dissolve — so the canvas surface is only removed once the still
-    // blurred artwork underneath has faded up to full opacity. Shorter delays
-    // (this used to be 250ms while the still artwork appeared at 350ms) left a
-    // window where the canvas was already gone and the still artwork had not
-    // arrived, which is what made the backdrop visibly jump. When lyrics
-    // closes, the canvas restores immediately so there's no visible gap.
+    // Deferred canvas-visible state: when lyrics opens, the canvas TextureView teardown (visible =
+    // false) + ExoPlayer pause are delayed so they don't compete with the COVER→LYRICS sharedBounds
+    // morph for the main thread on the same frame.
     var canvasVisibleForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
@@ -463,63 +424,15 @@ fun AppleMusicPlayerContent(
     // where they are, rather than being threaded out of a dozen components.
     val pokePlayerControlsVisibility = remember { {} }
 
-    // === Deferred position reads for the lyrics overlay ===
-    // `sliderPosition` is non-null ONLY while the user is actively scrubbing
-    // the seekbar. When null, LyricsEnhanced/LyricsV2 fall back to reading
-    // `player.currentPosition` directly inside their own 60Hz `withFrameNanos`
-    // interpolation loop — which is what gives the karaoke syllable fill its
-    // smooth, continuous sweep.
-    //
-    // CRITICAL: we must NOT pass `position` (the 100ms-polled value from
-    // Player.kt) as a fallback. If we do, the provider always returns non-null,
-    // which makes LyricsEnhanced think the slider is ALWAYS active. It then
-    // skips its 60Hz interpolation loop and just snaps `playbackPositionMs`
-    // to the polled `position` every 100ms — making the karaoke fill visibly
-    // step instead of smoothly progressing. This was the root cause of the
-    // "lyrics smooth for first few seconds, then janky after ~20s" report:
-    // the snapping is barely visible on the first line (short duration) but
-    // becomes very noticeable once a long sustained line is active.
-    //
-    // The standalone LyricsScreen.kt does exactly the same thing — it passes
-    // `{ sliderPosition }` (nullable), NOT `{ sliderPosition ?: position }`.
-    //
-    // We wrap `sliderPosition` in `rememberUpdatedState` so the stable
-    // `remember`'d lambda always sees the latest value without the overlay's
-    // content lambda needing to recompose on every scrub tick.
+    // === Deferred position reads for the lyrics overlay === `sliderPosition` is non-null ONLY
+    // while the user is actively scrubbing the seekbar.
     val sliderPositionState = rememberUpdatedState(sliderPosition)
     val lyricsPosProvider = remember {
         { sliderPositionState.value }
     }
 
-    // === Moving blur wander for the backdrop when lyrics is open ===
-    // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
-    // wanders behind the lyrics. See [BlurWanderDrift] for the path itself —
-    // random waypoints joined by eased legs, so the colours always finish the
-    // leg they are on, settle, and then set off again somewhere new, instead of
-    // suddenly doubling back the way a closed periodic path does.
-    //
-    // The offsets are bounded by BlurWanderDrift.WanderRadiusDp (150dp), which
-    // is what [AmLyricsBlurDriftScale] is sized against: at 2.4x the artwork
-    // overhangs 0.7*W per edge (252dp on a 360dp screen), covering the 150dp of
-    // drift plus the 64dp blur with margin to spare. A smaller scale would let
-    // the trailing edge pull inside the parent at maximum drift, and the blur
-    // would sample transparent pixels — the flickering dark band at the screen
-    // edges that an earlier 1.4x scale produced.
-    //
-    // CRITICAL PERF: the offsets stay wrapped in FloatState and are read ONLY
-    // inside Modifier.graphicsLayer { } lambdas (draw-phase deferred reads).
-    // Reading them during composition — e.g.
-    // `val driftX = if (lyricsOpen) wander.xDp.floatValue else 0f` — would
-    // invalidate the ENTIRE AppleMusicPlayerContent composable every frame
-    // (SharedTransitionLayout, AnimatedContent, ControlsColumn, and the inline
-    // LyricsEnhanced all recompose at ~60fps), stealing the frame budget from
-    // the karaoke syllable sweep. This was the root cause of the Apple-Music-
-    // style-only lyrics jank.
-    //
-    // Gated on lyricsBackdropActive: the walk is driven by a frame loop, and
-    // leaving it running while the player sits on the cover (which is what
-    // rememberInfiniteTransition did) keeps the choreographer — and with it the
-    // whole Compose frame pipeline — awake for a value nothing is reading.
+    // === Moving blur wander for the backdrop when lyrics is open === Mirrors the
+    // MovingBlurBackground from LyricsScreen: the blurred artwork wanders behind the lyrics.
     val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive)
     // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
     // doesn't change per-frame so this is a one-time composition-phase read.
@@ -527,25 +440,9 @@ fun AppleMusicPlayerContent(
     val driftDpToPx = with(density) { 1.dp.toPx() }
     val lyricsSwipeDismissThresholdPx = with(density) { 96.dp.toPx() }
 
-    // === COVER ↔ LYRICS backdrop hand-off ===
-    // The backdrop used to be built from two different nodes: 72dp blur at 1.2x
-    // for COVER/QUEUE, and a separate "64dp blur at 2.4x with drift" node that
-    // replaced it the instant `lyricsContentReady` flipped, 350ms after the
-    // morph began. Swapping nodes is what made the background change abruptly:
-    //
-    //  • the effective on-screen blur more than doubled in one frame (64dp
-    //    applied inside a 2.4x zoom reads as ~154dp, against 72dp at 1.2x),
-    //  • the artwork jumped from 1.2x to 2.4x — a 2x zoom with no in-between,
-    //  • and the drift snapped straight to wherever the always-running wander
-    //    had got to, i.e. up to 150dp of instant translation,
-    //  • while on canvas songs the video surface had already been pulled 100ms
-    //    earlier, so the un-drifted fallback flashed in between.
-    //
-    // Now there is ONE backdrop node whose graphicsLayer interpolates between
-    // the two looks off this progress value: scale 1.2 → 2.4, drift amplitude
-    // 0 → 1, and (for canvas songs) the video's opacity 1 → 0 underneath it.
-    // Both endpoints look exactly as they did before; only the trip between
-    // them changed, from one frame to [AmLyricsBackdropMorphMs].
+    // === COVER ↔ LYRICS backdrop hand-off === The backdrop used to be built from two different
+    // nodes: 72dp blur at 1.2x for COVER/QUEUE, and a separate "64dp blur at 2.4x with drift" node
+    // that replaced it the instant `lyricsContentReady` flipped, 350ms after the morph began.
     val lyricsBackdropProgress =
         animateFloatAsState(
             targetValue = if (lyricsOpen) 1f else 0f,
@@ -796,47 +693,18 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            // Backdrop rendering — one blurred-artwork node for every state,
-            // plus (on canvas songs) the live canvas video composited over it.
-            //
-            // • COVER / QUEUE state — the artwork sits at [AmCoverBlurScale]
-            //   with no drift. On canvas songs the canvas video covers it
-            //   completely, so what the user sees is the blurred canvas; the
-            //   artwork underneath is the fallback for while the canvas video
-            //   is still buffering.
-            //
-            // • LYRICS state — the same artwork node zooms to
-            //   [AmLyricsBlurDriftScale] and starts drifting, and the canvas
-            //   fades out over it before its TextureView is torn down (the
-            //   ExoPlayer instance is retained either way, so closing lyrics
-            //   resumes the canvas instantly instead of reloading it).
-            //
-            // Everything animates off `lyricsBackdropProgress`, and every read
-            // of it happens inside a graphicsLayer lambda — i.e. in the draw
-            // phase — so the zoom/drift/fade costs a redraw of an
-            // already-rasterized blur layer per frame and NOT a recomposition.
+            // Backdrop rendering — one blurred-artwork node for every state, plus (on canvas songs)
+            // the live canvas video composited over it. • COVER / QUEUE state — the artwork sits at
+            // [AmCoverBlurScale] with no drift.
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
                 // Deferred state reads: draw phase only. See the comment on
                 // lyricsBackdropProgress for why this is a continuous ramp
                 // rather than the `if (lyricsOpen && lyricsContentReady)` step
                 // it replaced.
                 val progress = lyricsBackdropProgress.value
-                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) together with
-                // the [backdropFootprint] the node is sized to leaves the rotated
-                // layer covering every screen corner plus the ±120dp drift — see
-                // blurBackdropFootprint for the budget. Scale on its own cannot do
-                // it: the blur clips the layer to the node's bounds, so a rotated
-                // screen-shaped rectangle exposes the corners at any scale, which
-                // is what used to read as dark wedges sweeping round the corners.
-                //
-                // Drift and rotation both scale with the same progress, so
-                // neither can outrun the zoom that has to cover them: at p = 0
-                // there is no translation and no rotation at all, and both reach
-                // full amplitude only once the zoom does. The footprint is sized
-                // for both ends of that ramp, because the resting scale
-                // ([AmCoverBlurScale]) is the tighter of the two — rotation can be
-                // at any angle for any p > 0, since BlurWanderDrift.rotationDeg
-                // accumulates.
+                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) together with the
+                // [backdropFootprint] the node is sized to leaves the rotated layer covering every
+                // screen corner plus the ±120dp drift — see blurBackdropFootprint for the budget.
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
@@ -868,20 +736,9 @@ fun AppleMusicPlayerContent(
                 compositingStrategy = CompositingStrategy.Offscreen
             }
 
-            // ── Canvas → still-art seam ──
-            // The blurred canvas layer used to run the full height of the player, so a
-            // BetterLyrics/Spotify canvas kept playing — blurred — behind the bottom controls.
-            // Apple Music ends the animated artwork at the artwork stage and carries the same
-            // colours on underneath the controls as a still gradient.
-            //
-            // This dissolves the canvas over the last [AmCanvasSeamFadeDp] of the artwork stage
-            // using the same DstIn trick AppleMusicSharpArtwork's fadeBottom uses. Below the seam
-            // what shows is the blurred album art already rendered underneath the canvas — same
-            // scrim on top, colours continuing across the join with nothing to give the seam
-            // away, and nothing moving behind the controls.
-            //
-            // Portrait only: in landscape the controls sit beside the artwork, not below it, so
-            // there is no seam to hide.
+            // ── Canvas → still-art seam ── The blurred canvas layer used to run the full height of
+            // the player, so a BetterLyrics/Spotify canvas kept playing — blurred — behind the
+            // bottom controls.
             val canvasSeamFade: Modifier =
                 if (landscape) {
                     Modifier
@@ -971,25 +828,9 @@ fun AppleMusicPlayerContent(
             }
 
             if (useCanvasBackdrop) {
-                // Canvas backdrop — the ExoPlayer is ALWAYS retained (never
-                // disposed across lyrics open/close) so the canvas resumes
-                // instantly when lyrics closes — no multi-second reload delay.
-                //
-                // PERFORMANCE (lyrics lag fix): the TextureView is HIDDEN
-                // (`visible = canvasVisibleForLyrics`) once lyrics is open. A
-                // paused TextureView with Modifier.blur still costs a full
-                // per-frame GPU composite + blur pass because the RenderEffect
-                // is re-applied every frame even when the surface content
-                // hasn't changed. This steals the frame budget from the karaoke
-                // syllable sweep, causing the "lyrics lag after ~20s" symptom.
-                // Hiding the TextureView entirely frees that budget; the
-                // blurred artwork behind it has already faded up by then.
-                //
-                // The alpha ramp (draw phase) is what makes that hand-off
-                // invisible: the canvas dissolves into the artwork over
-                // [AmLyricsBackdropMorphMs] while the artwork zooms, instead of
-                // the surface being yanked out from under a hard-swapped
-                // overlay.
+                // Canvas backdrop — the ExoPlayer is ALWAYS retained (never disposed across lyrics
+                // open/close) so the canvas resumes instantly when lyrics closes — no multi-second
+                // reload delay.
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
@@ -1088,31 +929,9 @@ fun AppleMusicPlayerContent(
                 }
             }
         } else {
-            // Portrait layout with ViviMusic-style in-place queue morph.
-            //
-            // The artwork + title row live inside a SharedTransitionLayout so they
-            // can morph (large → mini) when the user toggles the queue. The playback
-            // controls (seekbar + transport + volume + bottom row) live outside the
-            // SharedTransitionLayout so they stay anchored at the bottom — matching
-            // ViviMusic's Player_v2 layout exactly.
-            //
-            // The lyrics composable is rendered as a SEPARATE overlay ON TOP of the
-            // SharedTransitionLayout (inside the same weighted Box), but OUTSIDE
-            // the SharedTransitionLayout itself. This is critical for two reasons:
-            //
-            // 1. PERFORMANCE: rendering LyricsEnhanced inside the SharedTransitionLayout
-            //    caused the karaoke syllable fill animation to stutter because the
-            //    shared transition machinery's per-frame tracking stole frame budget.
-            //    The overlay approach gives the lyrics animations the full frame
-            //    budget, matching the standalone LyricsScreen's performance.
-            //
-            // 2. TOUCH ROUTING: the lyrics overlay is bounded to the weighted Box
-            //    (the morph area), so it CANNOT extend over the controls below.
-            //    Previously the overlay used fillMaxSize on the outer Box, covering
-            //    the controls and making them uninteractable when lyrics was open.
-            //    Now the overlay is a sibling of SharedTransitionLayout inside the
-            //    weighted Box, and the controls live in a separate AnimatedVisibility
-            //    below the Box — touches on the controls go directly to the controls.
+            // Portrait layout with ViviMusic-style in-place queue morph. The artwork + title row
+            // live inside a SharedTransitionLayout so they can morph (large → mini) when the user
+            // toggles the queue.
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -1132,27 +951,7 @@ fun AppleMusicPlayerContent(
                     AnimatedContent(
                         targetState = morphState,
                         transitionSpec = {
-                            // Symmetric crossfade with shared-element morph. Both the
-                            // COVER (source) and QUEUE/LYRICS (target) fade over 600ms so
-                            // their opacities are always complementary — at any point in
-                            // the transition, the dark COVER masks the pink blurred
-                            // backdrop of the entering LYRICS/QUEUE state.
-                            //
-                            // PREVIOUS APPROACH: fadeOut was 200ms (fast) so the COVER
-                            // disappeared while the LYRICS state was still at ~33% opacity.
-                            // The sudden removal of the dark COVER revealed the LYRICS
-                            // state's pink blurred backdrop at low opacity, perceived as a
-                            // "pink flash at the end of the transition". Matching the
-                            // fadeOut duration to the fadeIn (both 600ms) eliminates this
-                            // flash because the COVER stays visible long enough to mask
-                            // the pink backdrop until both states are at ~50% opacity.
-                            //
-                            // The "thumbnail stays square" concern from the previous
-                            // fast-fadeOut approach is no longer relevant because the
-                            // AdaptiveCornerShape OverlayClip on the sharedBounds modifier
-                            // keeps the artwork's corners rounded throughout the morph —
-                            // the COVER's content never appears "square" even while it's
-                            // fading out.
+                            // Symmetric crossfade with shared-element morph.
                             fadeIn(tween(600, easing = FastOutSlowInEasing)) togetherWith
                                 fadeOut(tween(600, easing = FastOutSlowInEasing))
                         },
@@ -1193,19 +992,9 @@ fun AppleMusicPlayerContent(
                                                 sharedContentState =
                                                     rememberSharedContentState(key = "amCoverArt"),
                                                 animatedVisibilityScope = this@AnimatedContent,
-                                                // CRITICAL: explicitly set the overlay
-                                                // clip to a RoundedCornerShape matching
-                                                // the COVER artwork's own clip. The
-                                                // default is RectangleShape, which
-                                                // causes the shared element to flash
-                                                // sharp corners for the entire duration
-                                                // of the spring bounds animation (1-2s)
-                                                // when morphing from the mini header
-                                                // (8dp rounded) to the large cover
-                                                // (preference-based radius). This was
-                                                // the root cause of the "sharp squared
-                                                // for a few seconds then becomes
-                                                // rounded" bug.
+                                                // CRITICAL: explicitly set the overlay clip to a
+                                                // RoundedCornerShape matching the COVER artwork's
+                                                // own clip.
                                                 clipInOverlayDuringTransition =
                                                     OverlayClip(
                                                         AdaptiveCornerShape(
@@ -1215,33 +1004,8 @@ fun AppleMusicPlayerContent(
                                                             largeSize = 400.dp,
                                                         ),
                                                     ),
-                                                // Snappy non-bouncy spring — restores
-                                                // the original morph feel that the
-                                                // 600ms tween replaced. StiffnessMediumLow
-                                                // is the SharedTransition framework
-                                                // default stiffness, so the duration
-                                                // matches the original out-of-the-box
-                                                // morph; DampingRatioNoBouncy eliminates
-                                                // the default LowBouncy overshoot that
-                                                // was causing per-frame OverlayClip
-                                                // re-renders (visible as a millisecond
-                                                // stutter during the bounds animation).
-                                                //
-                                                // PINK-FLASH SAFETY: the pink flash
-                                                // root cause was the ASYMMETRIC fade
-                                                // (fadeOut 200ms vs fadeIn 600ms) — the
-                                                // COVER disappeared at 200ms while the
-                                                // LYRICS state (with its pink backdrop)
-                                                // was still at ~33% opacity. That is
-                                                // fixed by the symmetric 600ms fades
-                                                // above (fadeIn + fadeOut both 600ms),
-                                                // which keep the dark COVER visible
-                                                // throughout the entire crossfade to
-                                                // mask the pink backdrop. The
-                                                // boundsTransform duration does NOT
-                                                // affect the pink flash — only the
-                                                // fade symmetry does — so reverting it
-                                                // to the fast spring is safe.
+                                                // Snappy non-bouncy spring — restores the original
+                                                // morph feel that the 600ms tween replaced.
                                                 boundsTransform =
                                                     BoundsTransform { _, _ ->
                                                         spring(
@@ -1253,24 +1017,9 @@ fun AppleMusicPlayerContent(
                                 )
                             }
                         } else {
-                            // QUEUE / LYRICS state: mini header + content below.
-                            //
-                            // The Spotify Canvas continues playing behind the
-                            // queue/lyrics content so it doesn't "stop" when the
-                            // user opens the queue. The canvas is rendered without
-                            // blur (the haze overlay from the queue list provides the
-                            // frosted-glass effect), and the lyrics composable has
-                            // its own scrim for readability.
-                            //
-                            // Apply the stable top inset (notch / status bar / display-cutout
-                            // top) so the mini header + content sit below the physical notch
-                            // even when the status bar is hidden app-wide for immersive mode.
-                            // The COVER state deliberately runs full-bleed (artwork under the
-                            // status bar), but the QUEUE/LYRICS state shows interactive UI
-                            // (title, pills, list/lyrics) that must not collide with the notch.
-                            // LocalStableSystemBarsTopPadding is computed in MainActivity and
-                            // floors against displayCutout so it stays non-zero when the status
-                            // bar is hidden — mirroring the pattern used by every other screen.
+                            // QUEUE / LYRICS state: mini header + content below. The Spotify Canvas
+                            // continues playing behind the queue/lyrics content so it doesn't
+                            // "stop" when the user opens the queue.
                             Box(
                                 modifier =
                                     Modifier
@@ -1330,103 +1079,29 @@ fun AppleMusicPlayerContent(
                                                     ),
                                         )
                                     }
-                                    // NOTE: The LyricsEnhanced/LyricsV2 composable is
-                                    // intentionally NOT rendered here inside the
-                                    // SharedTransitionLayout/AnimatedContent. Rendering it
-                                    // here caused the karaoke syllable fill animation to
-                                    // stutter because the SharedTransitionLayout's per-frame
-                                    // shared-element tracking stole frame budget from the
-                                    // lyrics animation. Instead, the lyrics composable is
-                                    // rendered as a separate overlay BELOW the
-                                    // SharedTransitionLayout — completely outside the shared
-                                    // transition machinery. This gives the lyrics animations
-                                    // the full frame budget, matching the standalone
-                                    // LyricsScreen's performance.
+                                    // NOTE: The LyricsEnhanced/LyricsV2 composable is intentionally
+                                    // NOT rendered here inside the
+                                    // SharedTransitionLayout/AnimatedContent.
                                 }
                             }
                         }
                     }
                 }
 
-                // === Foreground sharp canvas ===
-                //
-                // NOTE: The foreground canvas (sharp, inside AppleMusicSharpArtwork)
-                // is NOT hoisted here. Hoisting it outside the AnimatedContent would
-                // keep the ExoPlayer alive across morph transitions (avoiding reload
-                // delay), BUT an always-composed TextureView with alpha=0 still
-                // participates in Compose's hit-testing and would intercept touches
-                // on the mini header (QUEUE/LYRICS state) and the queue sheet —
-                // breaking the thumbnail-click-to-restore-cover and queue scrolling.
-                //
-                // Compose does NOT propagate unconsumed pointer events to siblings,
-                // so the only way to keep the mini header clickable is to ensure the
-                // canvas is NOT the topmost composable at the mini header's touch
-                // point. The canvas therefore stays inside AppleMusicSharpArtwork
-                // (in the AnimatedContent's COVER branch), which means it IS
-                // disposed/recreated on morph transitions. The reload delay is
-                // accepted as a trade-off for correct touch routing.
-                //
-                // The BACKDROP canvas (blurred, rendered above in the if (!videoShowing)
-                // block) IS always alive — it lives outside the AnimatedContent, so
-                // it doesn't interfere with the morph state changes or touch routing.
-                // That fixes the "behind of bottom controls are black" issue.
+                // === Foreground sharp canvas === NOTE: The foreground canvas (sharp, inside
+                // AppleMusicSharpArtwork) is NOT hoisted here.
 
-                // Lyrics overlay — INSIDE the weighted Box, ON TOP of the
-                // SharedTransitionLayout but BOUNDED to the lyrics area (below
-                // the mini header). This means the overlay CANNOT extend over
-                // the mini header (so the mini header's artwork + favourite +
-                // overflow chips remain tappable) NOR over the controls below
-                // (which live in a separate AnimatedVisibility outside this Box).
-                //
-                // PREVIOUS APPROACH & BUG: the overlay used fillMaxSize with a
-                // clickable top Box (height = mini header height) that called
-                // restoreCover(). That top Box intercepted ALL taps on the mini
-                // header area — including taps on the favourite (star) and
-                // overflow (more) chips — so tapping those chips dismissed the
-                // lyrics instead of performing the chip's action.
-                //
-                // FIX: the overlay's Column is now sized to (maxHeight -
-                // miniHeaderHeight) and offset down by miniHeaderHeight. This
-                // leaves the mini header area (top of the weighted Box) EXPOSED
-                // — taps on the mini header fall through to the
-                // SharedTransitionLayout below, where the AppleMusicMiniHeader's
-                // artwork (restoreCover) and favourite/overflow chips receive
-                // the taps normally.
-                //
-                // NOTE: we use the standalone AnimatedVisibility (androidx.compose.
-                // animation.AnimatedVisibility) — NOT the ColumnScope extension —
-                // because this is inside a BoxWithConstraints, not a Column.
+                // Lyrics overlay — INSIDE the weighted Box, ON TOP of the SharedTransitionLayout
+                // but BOUNDED to the lyrics area (below the mini header).
                 androidx.compose.animation.AnimatedVisibility(
                     visible = lyricsOpen,
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
                 ) {
                     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                    // Lyrics area — poke controls on touch, lyrics scroll.
-                    // The Column is sized to fill the area BELOW the mini header
-                    // (maxHeight - miniHeaderHeight) and offset down by
-                    // miniHeaderHeight so it doesn't cover the mini header.
-                    //
-                    // HORIZONTAL INSETS: deliberately NOT applying
-                    // `windowInsetsPadding(systemBars.only(Horizontal))` here.
-                    // The mini header above (AppleMusicMiniHeader's Row, line ~1798)
-                    // has NO horizontal systemBars padding — its parent Box only
-                    // applies `windowInsetsPadding(WindowInsets(top = ...))` for the
-                    // notch/status bar TOP inset. So the album art's LEFT edge sits
-                    // at exactly AppleMusicContentPadding (28dp) from the screen edge.
-                    //
-                    // If we added systemBars horizontal padding to this lyrics overlay
-                    // Box, the lyrics' left edge would be pushed further right than
-                    // the album art (by systemBars.left), breaking alignment. Skipping
-                    // the horizontal inset keeps the lyrics overlay's bounds identical
-                    // to the mini header's bounds — both at 0..screenWidth with no
-                    // system-bar horizontal inset — so the inner 28dp-based padding
-                    // calculations align perfectly.
-                    //
-                    // (Vertical inset is also intentionally skipped: the overlay is
-                    // explicitly positioned via .offset(y = miniHeaderHeight) below
-                    // the mini header, and the bottom inset is handled by the parent
-                    // weighted Box / navigationBarsPadding on the controls below.)
+                    // Lyrics area — poke controls on touch, lyrics scroll. The Column is sized to
+                    // fill the area BELOW the mini header (maxHeight - miniHeaderHeight) and offset
+                    // down by miniHeaderHeight so it doesn't cover the mini header.
                     Box(
                         modifier =
                             Modifier
@@ -1455,52 +1130,10 @@ fun AppleMusicPlayerContent(
                                     }
                                 },
                     ) {
-                        // HORIZONTAL PADDING — compensate for the mocharealm
-                        // KaraokeLineText library's INTERNAL 16dp horizontal padding
-                        // (see lyrics-ui-android sources: KaraokeLineText.kt line ~514
-                        // applies `padding(vertical = 8.dp, horizontal = 16.dp)` to its
-                        // Column for non-accompaniment lines).
-                        //
-                        // The album art's left edge sits at AppleMusicContentPadding
-                        // (28dp) from the screen edge (via AppleMusicMiniHeader's Row
-                        // padding). For the lyrics TEXT left edge to align EXACTLY with
-                        // the album art's left edge, we need:
-                        //
-                        //   our_padding + library_padding(16dp) = AppleMusicContentPadding(28dp)
-                        //   our_padding = 12dp
-                        //
-                        // Previous fix (commit 7e8503806) used AppleMusicContentPadding
-                        // (28dp) directly, which left the lyrics text at 28 + 16 = 44dp
-                        // from the screen edge — 16dp to the RIGHT of the album art.
-                        // The user reported this as "still shifted towards right a bit
-                        // and not aligned".
-                        //
-                        // Using AppleMusicContentPadding - 16.dp (= 12dp) as our padding
-                        // makes the lyrics text left edge land at 12 + 16 = 28dp from
-                        // the screen edge, EXACTLY aligned with the album art.
-                        //
-                        // LIBRARY WRAP BEHAVIOUR: the mocharealm library DOES wrap long
-                        // lines — `calculateBalancedLines` (LyricsLayoutCalculator.kt
-                        // line ~273) uses Knuth's optimal line-breaking algorithm with
-                        // the availableWidthPx from BoxWithConstraints inside
-                        // KaraokeLineText. Long word-synced lines that exceed the
-                        // available width are automatically broken into multiple visual
-                        // rows. By reducing our padding from 28dp to 12dp, we give the
-                        // library MORE width to work with (screen_width - 24dp instead
-                        // of screen_width - 56dp), so wrap triggers later for
-                        // medium-length lines (fewer awkward wraps) but still triggers
-                        // for genuinely long lines (matching the user's request:
-                        // "whenever a song with enhanced style word synced lyrics have
-                        // long enough lines that cross the display area, shift the
-                        // words into another line").
-                        //
-                        // NO clipToBounds(): mirrors the standalone LyricsScreen's
-                        // AppleMusicLyricsPane (LyricsScreen.kt:1208-1217), which uses
-                        // fillMaxSize() + padding(horizontal = ...) with NO clip. Any
-                        // residual draw-phase overflow (e.g., the swell animation
-                        // scaling a syllable by ~10% beyond its layout width) is
-                        // allowed to extend into the empty padded area and only gets
-                        // clipped by the physical screen edge if truly necessary.
+                        // HORIZONTAL PADDING — compensate for the mocharealm KaraokeLineText
+                        // library's INTERNAL 16dp horizontal padding (see lyrics-ui-android
+                        // sources: KaraokeLineText.kt line ~514 applies `padding(vertical = 8.dp,
+                        // horizontal = 16.dp)` to its Column for non-accompaniment lines).
                         val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
                         when (lyricsMode) {
                             LyricsMode.V2 -> LyricsV2(
@@ -1686,26 +1319,9 @@ private fun AppleMusicSharpArtwork(
                         .background(Color.Black),
             )
         } else if (immersiveExtendedCard) {
-            // "Immersive extended" — render the still cover as a square using the
-            // SAME sizing formula and thresholds as the Material Extended (V9)
-            // player (see V9PortraitContent in PlayerComponents.kt), centered
-            // inside the artwork stage. V9 computes its cap against the FULL
-            // player height, but inside AppleMusicSharpArtwork maxHeight is only
-            // the stage height (55% of the player height in portrait, full
-            // height in landscape) — so we re-derive the full height first and
-            // run ALL the compact-height thresholds against that full height.
-            // Without this, a typical 800dp-tall player would see its 440dp
-            // stage trip the "veryCompact" branch and shrink the artwork from
-            // 0.40 * H to 0.32 * H, making it noticeably smaller than V9.
-            //
-            // CRITICAL (nav-bar fix): when fullPlayerHeight is provided (portrait
-            // Apple Music layout), we use it DIRECTLY instead of dividing
-            // maxHeight by 0.55f. The 0.55f heuristic was only correct when the
-            // morph area was exactly 55% of the player — but with a weight(1f)
-            // morph area, the actual ratio changes when the system nav bar
-            // appears (the controls eat the nav-bar inset, shrinking the morph
-            // area). Using the real full height keeps the artwork at a constant
-            // size whether the nav bar is visible or hidden.
+            // "Immersive extended" — render the still cover as a square using the SAME sizing
+            // formula and thresholds as the Material Extended (V9) player (see V9PortraitContent in
+            // PlayerComponents.kt), centered inside the artwork stage.
             BoxWithConstraints(modifier = Modifier.matchParentSize()) {
                 val horizontalPadding = if (maxWidth < 380.dp) 16.dp else 20.dp
                 val effectiveFullHeight = fullPlayerHeight ?: if (landscape) maxHeight else maxHeight / 0.55f
@@ -1724,18 +1340,11 @@ private fun AppleMusicSharpArtwork(
                         compactHeight -> 216.dp
                         else -> 236.dp
                     }
-                // Two-sided cap: the full-player-height cap keeps the artwork
-                // a constant size regardless of nav-bar visibility (so it
-                // doesn't visibly "shrink" when the nav bar appears), while
-                // the morph-area cap (maxHeight * 0.82f) guarantees the
-                // artwork ALWAYS fits inside the morph area — even when the
-                // nav bar eats into the bottom and shrinks the weight(1f)
-                // area. Without the morph-area cap, the centered artwork
-                // overflows upward into the notch/cutout on devices that have
-                // one. The multipliers are kept at the original 0.40/0.35/0.32
-                // (NOT reduced) — the user explicitly said "no need to make
-                // anything smaller"; the notch collision is fixed by the
-                // morph-area cap alone, not by shrinking the artwork.
+                // Two-sided cap: the full-player-height cap keeps the artwork a constant size
+                // regardless of nav-bar visibility (so it doesn't visibly "shrink" when the nav bar
+                // appears), while the morph-area cap (maxHeight * 0.82f) guarantees the artwork
+                // ALWAYS fits inside the morph area — even when the nav bar eats into the bottom
+                // and shrinks the weight(1f) area.
                 val artworkHeightLimitFromFull =
                     effectiveFullHeight *
                         when {
@@ -1777,19 +1386,8 @@ private fun AppleMusicSharpArtwork(
                                 .graphicsLayer {
                                     scaleX = artworkPauseScale
                                     scaleY = artworkPauseScale
-                                    // Apply shadow elevation + clip in a single
-                                    // graphicsLayer instead of separate .shadow()
-                                    // + .clip() modifiers. During SharedTransition
-                                    // the overlay renders the shared element in its
-                                    // own layer; separate .shadow() creates an
-                                    // additional shadow layer that can flash as a
-                                    // dark rectangle during the 200ms crossfade
-                                    // (issue: "flash animation for a split second
-                                    // during thumbnail transition"). Combining
-                                    // shadowElevation + clip + shape into one
-                                    // graphicsLayer ensures the shadow is clipped
-                                    // to the rounded shape and rendered as part of
-                                    // the same layer the overlay manages.
+                                    // Apply shadow elevation + clip in a single graphicsLayer
+                                    // instead of separate .shadow() + .clip() modifiers.
                                     shadowElevation = 8f
                                     clip = true
                                     shape = RoundedCornerShape(artworkCornerRadiusDp)
@@ -1873,18 +1471,9 @@ private fun AppleMusicControlsColumn(
     }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
 
-    // The controls cluster (title → bottom action row) is bottom-anchored by
-    // the caller. Gaps between rows are controlled by explicit Spacers below
-    // (not by verticalArrangement) so they stay predictable and compact.
-    // Previously Arrangement.SpaceEvenly stretched the rows across the entire
-    // slot — and Arrangement.spacedBy() stacked on top of the explicit Spacers
-    // doubling the gaps. Arrangement.Bottom lets the Spacers be the single
-    // source of truth for spacing.
-    //
-    // Gap values are calibrated to match the Apple Music reference layout:
-    // ~20-22dp between rows on standard screens for comfortable breathing
-    // room without being loose, compressed on shorter devices to prevent
-    // overflow.
+    // The controls cluster (title → bottom action row) is bottom-anchored by the caller. Gaps
+    // between rows are controlled by explicit Spacers below (not by verticalArrangement) so they
+    // stay predictable and compact.
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val compactHeight = screenHeight < 720.dp
     val veryCompactHeight = screenHeight < 620.dp
@@ -2279,25 +1868,8 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                 .padding(horizontal = AppleMusicContentPadding, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Mini artwork — shared element with the large COVER artwork.
-        // Tapping it restores the COVER state (morphs back to the main player).
-        //
-        // OVERLAY CLIP: uses an AdaptiveCornerShape that interpolates the
-        // corner radius based on the element's current size. At the mini
-        // header size (56dp) the radius is 8dp (matching this Box's own
-        // 8dp clip); at the large cover size (~400dp) the radius is
-        // artworkCornerRadiusDp (typically 16dp, matching the COVER's clip).
-        // In between, it smoothly interpolates. This eliminates the
-        // "sharp at start, curved at end" bug caused by a fixed-Dp
-        // RoundedCornerShape looking disproportionate on different element
-        // sizes (16dp on 320dp looks sharp, 16dp on 56dp looks very curved).
-        // The mini header's own 8dp clip (below) only takes effect once the
-        // transition completes and the overlay is removed — so the mini
-        // header's final visual is unchanged.
-        //
-        // boundsTransform: 600ms tween matching the crossfade duration,
-        // identical to the COVER state's. See the COVER state's sharedBounds
-        // modifier for the full rationale.
+        // Mini artwork — shared element with the large COVER artwork. Tapping it restores the COVER
+        // state (morphs back to the main player).
         Box(
             modifier =
                 Modifier
@@ -2497,15 +2069,8 @@ private fun AppleMusicSeekBar(
  *  state, causing the fill to lag behind the finger. */
 
 /**
- * Quality chip rendered between the elapsed and -remaining timestamps on the
- * Apple Music player's seek-bar row. Mirrors the Immersive V8 player's
- * `V8QualityChip` (PlayerComponents.kt:2762) — same pill shape, same waveform
- * icon (`R.drawable.player_graphic_eq`), same `codecLabel()` text — but uses
- * `Color.White` as the foreground because the Apple Music player renders on
- * top of artwork-on-black, not a themed surface.
- *
- * Tapping the chip opens the song-detail bottom sheet (`ShowMediaInfo`),
- * matching how Apple Music's stock UI exposes the song info page.
+ * Quality chip rendered between the elapsed and -remaining timestamps on the Apple Music player's
+ * seek-bar row.
  */
 @Composable
 private fun AppleMusicQualityChip(

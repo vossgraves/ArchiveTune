@@ -7,38 +7,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-/**
- * Matching engine behind the settings search bar.
- *
- * ## Why this exists
- *
- * The previous matcher required **every** query word to hit some field of a
- * candidate. Any word the index didn't know about killed the whole query, so
- * single words worked while two or more words returned nothing at all:
- * `dark` found "Dark theme", but `dark mode` found nothing, because no field
- * anywhere contained "mode". Same for `lyrics font`, `night mode`, and so on.
- * That is the bug this file fixes.
- *
- * ## How matching works
- *
- * Every candidate (a [SettingsChild], or a [SettingsItem] with no matching
- * children) is flattened into a [Haystack] of normalised text at three
- * confidence levels — title, "strong" (title + keywords + scroll key), and
- * everything including the parent category's text.
- *
- * Each query term is scored against the haystack independently
- * ([termStrength]). Then:
- *
- *  - **strict** — every term matched something. These are the real answers.
- *  - **relaxed** — at least half the terms matched. Used *only* when nothing
- *    matched strictly, so `dark mode` still surfaces "Dark theme" instead of an
- *    empty list.
- *
- * A term also matches through a small [SYNONYMS] table (`mode`→`theme`,
- * `vibration`→`haptic`, …), through a separator-insensitive "squashed" form so
- * `lastfm` finds "Last.fm" and `potoken` finds "PO Token", and through a
- * one-edit fuzzy comparison so ordinary typos and plurals still land.
- */
+/** Matching engine behind the settings search bar. */
 internal object SettingsSearch {
     private val SEPARATOR_REGEX = Regex("[^a-z0-9]+")
 
@@ -97,20 +66,7 @@ internal object SettingsSearch {
         val item: SearchResultItem,
     )
 
-    /**
-     * Normalised text for one candidate.
-     *
-     * Only the candidate's **own** text ([titleTokens] / [strongTokens]) can
-     * qualify it as a match. The parent category's text lives in [contextText]
-     * and contributes ranking bonuses only — otherwise a query like `equalizer`,
-     * which appears solely in the Playback category's keyword list, would match
-     * all ~20 Playback children equally and return them in arbitrary order
-     * instead of just pointing at the Playback category.
-     *
-     * [squashed] is every own-token concatenated with no separators, which is
-     * what lets `lastfm` match "Last.fm", `potoken` match "PO Token" and `hires`
-     * match "hi-res" without needing an alias for each.
-     */
+    /** Normalised text for one candidate. */
     private class Haystack(
         val titleTokens: List<String>,
         val titleText: String,

@@ -207,49 +207,14 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             val totalSpanBytes = spans.sumOf { it.length }
                             if (totalSpanBytes <= 0L) { failed++; continue@loop }
                             val detectedExt = detectAudioExtensionFromSpans(spans)
-                            // Skip legacy WebM/Opus caches entirely.
-                            //
-                            // These formats come from old YouTube Music downloads (pre-PR #67,
-                            // when the format picker preferred Opus-in-WebM over AAC-in-M4A).
-                            // The audio bytes inside are Opus, NOT MPEG-1 Layer III — so even
-                            // if we rename the file to .mp3 and prepend an ID3v2 tag, every
-                            // reasonable MP3 decoder will fail to find a valid MPEG frame sync
-                            // after the tag and report the file as corrupt / unplayable.
-                            //
-                            // Previous attempts (PR #68) tried to "rescue" these files by
-                            // prepending an ID3v2.4 tag and renaming to .mp3, but that just
-                            // produced files with metadata the user couldn't see because the
-                            // audio was unplayable. Skipping them is the correct behavior:
-                            //   - The user gets a clear toast telling them to re-download.
-                            //   - PR #67's format picker ensures new downloads are .m4a, so
-                            //     re-download produces a taggable, exportable file.
-                            //
-                            // We do NOT delete the legacy cache here — the user may still
-                            // want to play it inside the app (ExoPlayer handles WebM/Opus
-                            // natively). Only the export path is blocked.
+                            // Skip legacy WebM/Opus caches entirely. These formats come from old
+                            // YouTube Music downloads (pre-PR #67, when the format picker preferred
+                            // Opus-in-WebM over AAC-in-M4A).
                             if (detectedExt == "webm" || detectedExt == "opus") {
                                 skippedIncompatible++
                                 continue@loop
                             }
                             // Determine the user-visible extension.
-                            //
-                            // YouTube-sourced downloads (no source prefix on the cache key) are
-                            // **always** exported as `.mp3` per the user's explicit request:
-                            // "if a song downloads in .webm format rename it to .MP3 while i export it."
-                            //
-                            // After the WebM/Opus skip above, the only YouTube-sourced caches
-                            // that reach this point are .m4a (AAC/MP4) — the format picker has
-                            // produced .m4a for new downloads since PR #67. The .m4a bytes are
-                            // a valid MP4 container; most modern Android players (MediaExtractor,
-                            // ExoPlayer, VLC, foobar2000) detect the actual codec from the
-                            // magic bytes ("ftyp" box at offset 4) and play the file correctly
-                            // regardless of the .mp3 extension. jaudiotagger writes MP4 tags
-                            // (not ID3v2) onto the file, which Android's MediaMetadataRetriever
-                            // reads back correctly.
-                            //
-                            // Lossless sources (Qobuz/Tidal/Deezer) keep their native extension
-                            // (.flac) — the user's complaint is specifically about YouTube Music
-                            // exports, not lossless.
                             val isYouTubeSource = resolved.sourceKey == null
                             val exportExt =
                                 if (isYouTubeSource) "mp3" else detectedExt
@@ -279,35 +244,10 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     failed++
                                     continue@loop
                                 }
-                                // Stage 2: write metadata tags (title, artist, album, year,
-                                // track, artwork) using jaudiotagger's standard tag() path.
-                                //
-                                // We deliberately do NOT fall back to a manual ID3v2-prepend
-                                // when tag() fails. Previous code (PR #68) prepended an ID3v2.4
-                                // header onto non-MP3 bytes (e.g. .m4a files that jaudiotagger
-                                // couldn't read), which produced files where:
-                                //   - Players saw "ID3" magic → parsed the tag (good)
-                                //   - After the tag, players found MP4/WebM bytes instead of
-                                //     MPEG audio frames → reported the file as corrupt
-                                //
-                                // If jaudiotagger can't read/write the file, the file is
-                                // exported UNTAGGED but playable, which is strictly better than
-                                // tagged-but-unplayable. Failures here are rare because the
-                                // WebM/Opus case is already skipped above.
-                                //
-                                // Metadata source priority:
-                                //   1. Database SongEntity (populated when the user clicked
-                                //      Download — title/artists/album come from YouTube Music's
-                                //      browse response OR from persistPlaybackMetadata which
-                                //      inserts an ArtistEntity + SongArtistMap from
-                                //      videoDetails.author for direct YT downloads).
-                                //   2. YouTube.getMediaInfo(videoId) fallback — when the
-                                //      database has no artist/album. Fetches title + author +
-                                //      thumbnail from the watch endpoint.
-                                //   3. Song thumbnail URL constructed from the videoId
-                                //      (https://i.ytimg.com/vi/<id>/hqdefault.jpg) — always
-                                //      available for YouTube songs even if the DB row has no
-                                //      thumbnailUrl and getMediaInfo() failed.
+                                // Stage 2: write metadata tags (title, artist, album, year, track,
+                                // artwork) using jaudiotagger's standard tag() path. We
+                                // deliberately do NOT fall back to a manual ID3v2-prepend when
+                                // tag() fails.
                                 val resolvedMetadata = resolveExportMetadata(database, row, isYouTubeSource)
                                 moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, resolvedMetadata)
                                 // Stage 3: copy the tagged temp file to the user-selected SAF
@@ -813,18 +753,9 @@ private fun resolveSpans(
     resolveSpansWithSource(cache, songId)?.spans
 
 /**
- * Same as [resolveSpans] but also returns the matched cache key so the caller
- * can determine whether the cached bytes came from a lossless source
- * ("qobuz:$songId" / "tidal:$songId" / "deezer:$songId") or from YouTube
- * Music (bare media id, no prefix).
- *
- * The caller uses [sourceKey] to decide the user-visible export extension:
- * YouTube-sourced AAC caches are renamed to .mp3 (per the user's explicit
- * request), while lossless sources keep their native .flac extension.
- *
- * [sourceKey] is null when the bytes were cached under the bare media id
- * (i.e. YouTube Music is the source). It is non-null for source-prefixed
- * keys (Qobuz/Tidal/Deezer).
+ * Same as [resolveSpans] but also returns the matched cache key so the caller can determine whether
+ * the cached bytes came from a lossless source ("qobuz:$songId" / "tidal:$songId" /
+ * "deezer:$songId") or from YouTube Music (bare media id, no prefix).
  */
 private data class ResolvedSpansWithSource(
     val spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
@@ -846,21 +777,8 @@ private fun resolveSpansWithSource(
 }
 
 /**
- * Fetches the raw bytes of an album-art image from [url] so they can be
- * embedded into the exported audio file via [AudioTagger].
- *
- * Uses a basic [HttpURLConnection][java.net.HttpURLConnection] with a
- * 10-second connect + 15-second read timeout — fast enough to not stall
- * the export pipeline on a slow thumbnail CDN, generous enough to fetch
- * a typical 500×500 JPEG (~50 KB) on a flaky mobile connection.
- *
- * Returns `null` on any error (HTTP non-2xx, IO failure, timeout). The
- * caller treats null artwork as non-fatal — the audio file is still
- * exported, just without embedded artwork.
- *
- * The URL is typically the song's `thumbnailUrl` from the database,
- * which points at iTunes/Qobuz/Tidal/Deezer/YouTube CDN. All of these
- * serve CORS-friendly JPEG/PNG over HTTPS.
+ * Fetches the raw bytes of an album-art image from [url] so they can be embedded into the exported
+ * audio file via [AudioTagger].
  */
 private fun fetchArtworkBytes(url: String): ByteArray? = runCatching {
     val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
@@ -884,53 +802,7 @@ private fun fetchArtworkBytes(url: String): ByteArray? = runCatching {
     }
 }.getOrNull()
 
-/**
- * Resolves the metadata to embed into an exported audio file.
- *
- * Source priority:
- *   1. **Database SongEntity** — populated when the user clicked Download.
- *      Carries title, artists (from song_artist_map), album (from
- *      song_album_map), year, thumbnailUrl.
- *   2. **YouTube.getMediaInfo(videoId) fallback** — when the database row
- *      is incomplete (e.g. the song was downloaded via a playlist and the
- *      artist relation wasn't persisted, or the song row only has the title
- *      because the browse endpoint didn't return album metadata). Fetches
- *      title + author from the YouTube watch endpoint.
- *   3. **Row fallback** — uses the [DownloadedSongRow.title] and
- *      [DownloadedSongRow.thumbnailUrl] that were already loaded for the
- *      list display. These come from the same DB row but are always
- *      non-null, so we have a final safety net.
- *   4. **YouTube thumbnail URL constructed from videoId** — when the song
- *      is YouTube-sourced ([isYouTubeSource] = true) and none of the above
- *      yielded a thumbnail URL, we construct the canonical
- *      `https://i.ytimg.com/vi/<videoId>/hqdefault.jpg` URL. This always
- *      exists for public YouTube videos and ensures artwork is embedded
- *      even when the DB row has no thumbnailUrl and getMediaInfo() failed.
- *
- * Artwork bytes are fetched from the resolved thumbnail URL via
- * [fetchArtworkBytes]. Failure is non-fatal — the audio file is still
- * exported with text tags but no embedded artwork.
- *
- * **IMPORTANT**: [MediaInfo.authorThumbnail] is the *channel avatar*, not
- * the song's album cover. We deliberately do NOT use it as an artwork
- * fallback — that would embed the artist's profile picture as the song's
- * cover art, which is wrong. For YouTube songs, the videoId-constructed
- * URL is always the correct song thumbnail.
- *
- * This function NEVER returns null fields when a fallback exists —
- * the user's complaint was "all exported songs show unknown artist,
- * unknown album, no song artwork", and this resolver exists specifically
- * to fill those gaps before handing the metadata to [AudioTagger.tag].
- *
- * Runs on the calling thread (already on Dispatchers.IO inside the export
- * pipeline). Network calls (YouTube.getMediaInfo + fetchArtworkBytes) have
- * their own timeouts.
- *
- * @param isYouTubeSource true when the cache key is the bare media id
- *   (no `qobuz:`/`tidal:`/`deezer:` prefix) — i.e. the song was downloaded
- *   from YouTube Music. Used to construct the canonical YT thumbnail URL
- *   when no other thumbnail source is available.
- */
+/** Resolves the metadata to embed into an exported audio file. */
 private suspend fun resolveExportMetadata(
     database: moe.rukamori.archivetune.db.MusicDatabase,
     row: DownloadedSongRow,

@@ -20,24 +20,7 @@ import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.PreferredArtworkProvider
 import timber.log.Timber
 
-/**
- * The single authoritative artwork-resolution pipeline.
- *
- * Deterministic provider priority (never "last request wins"):
- *   1. [ArtworkProvider.LOCAL_EMBEDDED] for local files / local content URIs.
- *   2. [ArtworkProvider.ORIGINAL_METADATA] when the metadata already carries an artwork URL.
- *   3. [ArtworkProvider.TIDAL] as a fallback only when: the user enabled Tidal artwork,
- *      Tidal is available, no original artwork exists, and the match confidence clears
- *      [MIN_TIDAL_CONFIDENCE].
- *   4. Otherwise [ArtworkProvider.ORIGINAL_METADATA] with a null URL (UI keeps its placeholder).
- *
- * Guarantees:
- *  - Single-flight: concurrent resolves for the same [ArtworkCacheKey] share one fetch.
- *  - A provider disabled mid-flight cannot publish its late result.
- *  - [beginTrack]/[isCurrent] let callers reject results for tracks that are no longer current.
- *  - Successes are cached by artwork identity; failures only briefly (never permanently).
- *  - [CancellationException] is always rethrown.
- */
+/** The single authoritative artwork-resolution pipeline. */
 class ArtworkResolver(
     private val tidalFetcher: TidalArtworkFetcher,
     private val settings: StateFlow<ArtworkSettings>,

@@ -151,18 +151,8 @@ import kotlin.math.abs
 data class LyricWord(val startMs: Long, val endMs: Long, val text: String)
 
 /**
- * One synced line. [timeMs] is when it starts; a blank [text] is an
- * instrumental stretch — LRC files mark those with a bare timestamp.
- *
- * [words] is populated only by the providers that carry word-level timing.
- * A line without them highlights whole.
- *
- * [background] is the answering vocal — the "(ooh)" or the echoed half-phrase
- * a second voice sings over the lead. It is a line in its own right, with its
- * own stamp and its own words, because that is what it is: it starts partway
- * through the line it answers and routinely runs past the *next* line's stamp.
- * Kept apart it draws underneath the lead on its own clock. Never nested: a
- * background line's own [background] is always null.
+ * One synced line. [timeMs] is when it starts; a blank [text] is an instrumental stretch — LRC
+ * files mark those with a bare timestamp.
  */
 data class LyricLine(
     val timeMs: Long,
@@ -203,13 +193,8 @@ data class LyricLine(
         }
 
     /**
-     * How far through the line the singing has got, 0..1, as a fractional
-     * index into [text]. The sweep reveals up to this character.
-     *
-     * Within a word it interpolates across that word's own span, so a held
-     * note draws slowly and a rattled-off one snaps. Whitespace between two
-     * words is credited to the gap between them: it fills as the singer moves
-     * on rather than jumping ahead of the next word's first letter.
+     * How far through the line the singing has got, 0..1, as a fractional index into [text]. The
+     * sweep reveals up to this character.
      */
     fun revealedChars(positionMs: Long): Float {
         if (words.isEmpty()) return if (positionMs >= timeMs) text.length.toFloat() else 0f
@@ -240,20 +225,7 @@ data class LyricLine(
         return text.length.toFloat()
     }
 
-    /**
-     * How much bloom the word being sung has earned, 0..1.
-     *
-     * Two things decide it. How long the word is held sets the ceiling — a
-     * note carried for a second swells, a word rattled off in a tenth of one
-     * barely registers, which is the difference between a glow that belongs to
-     * the singing and a lamp dragged along under the text. Then an envelope
-     * across the word's own span rises as it lands and eases off as it goes,
-     * so each word blooms and lets go rather than the light being on
-     * throughout and stepping between brightnesses at every boundary.
-     *
-     * Zero between words and after the last one, which is what keeps the
-     * pauses dark and costs nothing to draw.
-     */
+    /** How much bloom the word being sung has earned, 0..1. */
     fun glowIntensity(positionMs: Long): Float {
         val word = words.firstOrNull { positionMs < it.endMs } ?: return 0f
         if (positionMs < word.startMs) return 0f
@@ -297,14 +269,9 @@ private const val STRIP_LINES = 2
 // ── Mapper from ArchiveTune's parsed lyrics ───────────────────────────────────
 
 /**
- * Converts ArchiveTune's [LyricsEntry] list (times in ms, word timings in
- * seconds) into BitChord's [LyricLine] list (everything in ms), splitting the
- * background-vocal words out into their own answering line the way BitChord's
- * TTML parser does.
- *
- * Provider translations and romanisations are carried through unchanged —
- * the panel applies the romanisation preference check at draw time and the
- * translation is always shown when present.
+ * Converts ArchiveTune's [LyricsEntry] list (times in ms, word timings in seconds) into BitChord's
+ * [LyricLine] list (everything in ms), splitting the background-vocal words out into their own
+ * answering line the way BitChord's TTML parser does.
  */
 internal fun List<LyricsEntry>.toBitChordLyrics(): List<LyricLine> =
     map { entry ->
@@ -346,34 +313,15 @@ internal fun List<LyricsEntry>.toBitChordLyrics(): List<LyricLine> =
 // ── Full-format parsing (ArchiveTune addition) ────────────────────────────────
 
 /**
- * The parsed lyrics for one track: BitChord's [LyricLine]s plus whether the
- * source carried any timing at all.
- *
- * BitChord itself only ever consumed word-synced TTML, so its panel assumed
- * every line knows when it starts. ArchiveTune's lyrics store can hold line-synced
- * LRC, QRC, TTML (word- or line-synced) *or* plain untimestamped text — e.g. a
- * plain-text result picked from the lyrics search sheet. [isSynced] is false for
- * that last case, and the panel then drops the sweep / highlight / follow and
- * simply shows the words.
+ * The parsed lyrics for one track: BitChord's [LyricLine]s plus whether the source carried any
+ * timing at all.
  */
 internal class BitChordParsedLyrics(
     val lines: List<LyricLine>,
     val isSynced: Boolean,
 )
 
-/**
- * Parses whatever lyrics string the lyrics table holds into [BitChordParsedLyrics].
- *
- * Same routing as the other lyrics surfaces in the app (`Lyrics.kt` /
- * `LyricsEnhanced.kt`): LRC/QRC through [parseLyrics], TTML through [parseTtml],
- * and anything else falls back to a plain-text reading. This is what makes
- * lyrics picked from a different provider in the search sheet actually appear —
- * previously only LRC-shaped text parsed and everything else drew as
- * "No lyrics for this track" while the credit row still named the provider.
- *
- * Returns null for a blank / not-found marker, exactly like the old inline
- * `raw == LyricsEntityNotFound` check did.
- */
+/** Parses whatever lyrics string the lyrics table holds into [BitChordParsedLyrics]. */
 internal fun parseBitChordLyrics(raw: String, durationSeconds: Int?): BitChordParsedLyrics? {
     val normalized = normalizeLyricsText(raw)
     if (normalized.isEmpty() || normalized == LyricsEntity.LYRICS_NOT_FOUND) return null
@@ -403,19 +351,7 @@ private val WHITESPACE = Regex("\\s+")
 
 // ── The lyric clock (verbatim from BitChord's NowPlayingScreen.kt) ────────────
 
-/**
- * The song position, ticking every frame.
- *
- * The player reports where it is about twice a second, which is fine for a
- * scrubber and far too coarse for a highlight that has to keep up with a
- * singer. This carries that report forward on the frame clock between
- * reports, and resets to the real value whenever a fresh one lands — so it
- * never drifts, it just fills in.
- *
- * Returned as state rather than a plain value on purpose: read inside a draw
- * lambda, only the draw phase re-runs each frame. Read in composition, the
- * whole line would recompose sixty times a second.
- */
+/** The song position, ticking every frame. */
 @Composable
 internal fun rememberLyricClock(positionMs: Long, isPlaying: Boolean): MutableLongState {
     val clock = remember { mutableLongStateOf(positionMs) }
@@ -450,23 +386,8 @@ internal fun rememberLyricClock(positionMs: Long, isPlaying: Boolean): MutableLo
 // ── SweptLyricLine (verbatim) ─────────────────────────────────────────────────
 
 /**
- * A lyric line with the sung part of it lit, the rest dimmed, and the boundary
- * travelling across the words in time with the vocal.
- *
- * Two copies of the same text stacked: a dim one and a bright one clipped to
- * whatever has been sung. Same string, same style, same constraints, so the
- * two lay out identically and the bright copy lands exactly on top of the dim
- * one. The alternative — colouring an AnnotatedString word by word — can only
- * change a whole word at a time, which turns the sweep into a flicker.
- *
- * The clip is recomputed in the draw phase, so a frame costs one clip and one
- * redraw of already-measured text.
- *
- * [glowAlpha] adds Apple's bloom: a third copy, blurred, behind the other two
- * and clipped to the same boundary. Blurring *after* the clip rather than
- * before is what makes the halo bleed a little way past the sweep's leading
- * edge, which is the part that reads as light coming off the word being sung
- * rather than a drop shadow sitting under the line.
+ * A lyric line with the sung part of it lit, the rest dimmed, and the boundary travelling across
+ * the words in time with the vocal.
  */
 @Composable
 internal fun SweptLyricLine(
@@ -566,17 +487,8 @@ internal fun SweptLyricLine(
 }
 
 /**
- * Draws this text clipped to a band trailing the sweep's leading edge — the
- * word being sung, roughly, rather than the whole of what has been.
- *
- * The band widens with [intensity] as well as brightening, so a held note
- * spreads its light over the words either side of it while patter keeps its
- * halo tight to the one syllable. Alpha alone made every word glow the same
- * shape, only more or less of it.
- *
- * Only ever one band: the edge is on exactly one visual line, and a wrapped
- * line's previous row has already been left behind by the time the band would
- * have reached back into it.
+ * Draws this text clipped to a band trailing the sweep's leading edge — the word being sung,
+ * roughly, rather than the whole of what has been.
  */
 private fun ContentDrawScope.glowAt(
     layout: TextLayoutResult,
@@ -639,15 +551,7 @@ private fun horizontalAt(
     return here + (next - here) * (chars - index)
 }
 
-/**
- * Draws this text clipped to its first [revealedChars] characters.
- *
- * Wrapped lines are handled a visual line at a time: the ones already passed
- * are drawn whole, the one holding the boundary is cut at it, and the rest are
- * left to the dim copy. Within a word the cut sits between two character
- * positions, so the edge advances smoothly rather than jumping a letter at a
- * time.
- */
+/** Draws this text clipped to its first [revealedChars] characters. */
 private fun ContentDrawScope.sweepTo(layout: TextLayoutResult, revealedChars: Float) {
     if (revealedChars <= 0f) return
     if (revealedChars >= layout.layoutInput.text.length) {
@@ -676,23 +580,7 @@ private fun ContentDrawScope.sweepTo(layout: TextLayoutResult, revealedChars: Fl
     }
 }
 
-/**
- * The single lyric line above the scrubber.
- *
- * A line dims away just before its time is up and the next one arrives at full
- * strength — no fade in, so the change reads as a cut rather than a dissolve.
- * The fade is a fraction of the line's own length, so rapid-fire lines snap and
- * long held ones ebb out.
- *
- * [synced] false (plain untimestamped lyrics) pins the strip to the first line
- * at a steady brightness — there is no "current" line to track, but the strip
- * is still the tap-target that opens the full panel.
- *
- * Position is interpolated between the player's twice-a-second reports,
- * otherwise the fade would step. The alpha is applied in a graphicsLayer so
- * only the draw phase runs each frame; the text itself recomposes just once
- * per line.
- */
+/** The single lyric line above the scrubber. */
 @Composable
 internal fun CurrentLyricLine(
     lines: List<LyricLine>,
@@ -799,16 +687,8 @@ internal fun CurrentLyricLine(
 }
 
 /**
- * Stands in for [CurrentLyricLine] once a lookup has come back empty — shown
- * for a few seconds so it registers, then left to fade rather than snapping
- * out or lingering for the rest of the track.
- *
- * [onClick] (ArchiveTune addition, user request 2026-09-02) keeps the strip a
- * way into the lyrics page even when this track has no lyrics: without it
- * there was no route in, and the only way to reach the lyrics options (search /
- * refetch) was to first get lyrics from somewhere else. The strip stays tappable
- * after the text itself has faded, matching the hit area the loaded strip
- * offers.
+ * Stands in for [CurrentLyricLine] once a lookup has come back empty — shown for a few seconds so
+ * it registers, then left to fade rather than snapping out or lingering for the rest of the track.
  */
 @Composable
 internal fun LyricsUnavailableLine(
@@ -857,15 +737,7 @@ internal fun LyricsUnavailableLine(
     }
 }
 
-/**
- * Stands in for [CurrentLyricLine] while a lookup is still in flight.
- *
- * [onClick] (ArchiveTune addition, user request 2026-09-02): "if I click on the
- * loading text above the slider I should be able to enter lyrics screen because
- * right now if there's no lyrics I can't enter the lyrics page". The whole row
- * is the target — the text is small and mid-load the exact words are arbitrary,
- * so the hit area can't ride on reading it.
- */
+/** Stands in for [CurrentLyricLine] while a lookup is still in flight. */
 @Composable
 internal fun LyricsLoadingLine(
     trackKey: Any,
@@ -905,13 +777,9 @@ internal fun LyricsLoadingLine(
 // ── List plumbing (verbatim) ──────────────────────────────────────────────────
 
 /**
- * Swallows whatever scroll the queue list itself didn't use. The player sits
- * in a bottom sheet, and the sheet's own nested-scroll handler reads that
- * leftover as "drag me down" — so scrolling the list would slide the player
- * away. Consuming it here keeps the gesture inside the list.
- *
- * A downward *fling* has to be caught in the pre-phase, before the sheet sees
- * it, but only at the top of the list — otherwise the queue could never fling.
+ * Swallows whatever scroll the queue list itself didn't use. The player sits in a bottom sheet, and
+ * the sheet's own nested-scroll handler reads that leftover as "drag me down" — so scrolling the
+ * list would slide the player away. Consuming it here keeps the gesture inside the list.
  */
 internal fun keepScrollInList(listState: LazyListState) = object : NestedScrollConnection {
     override fun onPostScroll(
@@ -927,13 +795,8 @@ internal fun keepScrollInList(listState: LazyListState) = object : NestedScrollC
 }
 
 /**
- * Measure a child wider than its slot by [gutter] on each side and place it back
- * over that margin, still reporting the original width to the parent.
- *
- * The lists are the only things in the player you can scroll, and the side
- * padding left a strip of bare sheet down each edge. A finger that drifted into
- * one scrolled nothing. Matching content padding puts every row back exactly
- * where it was drawn, so this is invisible.
+ * Measure a child wider than its slot by [gutter] on each side and place it back over that margin,
+ * still reporting the original width to the parent.
  */
 internal fun Modifier.bleedHorizontally(gutter: Dp): Modifier = layout { measurable, constraints ->
     val extra = gutter.roundToPx() * 2

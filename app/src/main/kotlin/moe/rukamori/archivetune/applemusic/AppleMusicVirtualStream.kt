@@ -12,28 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 
-/**
- * Builds a playable progressive MP4 out of Apple Music's web-playback HLS asset.
- *
- * Apple's asset URL serves an HLS playlist whose segments are byteranges of a single
- * CENC-encrypted fragmented MP4 (verified: `ftyp + moov + [moof + mdat]*`, sample-level
- * AES-CTR, `#EXT-X-KEY` carrying the KID inline as a `data:` URI). ExoPlayer's progressive
- * pipeline can play such a file — but only if the extractor can (a) build a SeekMap and
- * (b) see DRM init data:
- *
- *  - **Seeking**: the file has no `sidx`. We synthesize one from the playlist's `#EXTINF`
- *    durations plus the parsed fragment boundaries (`moof`/`mdat` pairs) and insert it right
- *    after the `moov` — a top-level insertion, so no other box sizes need fixing.
- *  - **DRM init**: the file has no `pssh` box; we synthesize a Widevine PSSH from the tenc
- *    KID (the playlist's inline key id) and insert it as the first child of the `moov`,
- *    bumping the `moov` size accordingly. The decryption key itself is fetched at the codec
- *    level by [androidx.media3.exoplayer.drm.DefaultDrmSessionManager] via Apple's
- *    `acquireWebPlaybackLicense` endpoint (Widevine L3) — see MusicService.
- *
- * The resulting bytes are written to a cache file by the resolver and played as an ordinary
- * progressive `file://` stream. Samples are decrypted inside MediaCodec via MediaCrypto —
- * no decrypted audio ever touches the filesystem or the DataSource layer.
- */
+/** Builds a playable progressive MP4 out of Apple Music's web-playback HLS asset. */
 object AppleMusicVirtualStream {
     const val TAG = "AppleMusicStream"
     private const val USER_AGENT =

@@ -16,21 +16,7 @@ import timber.log.Timber
 import kotlin.math.abs
 import kotlin.math.max
 
-/**
- * Player color extraction system for generating gradients from album artwork.
- *
- * Design rules (see PlayerColorExtractorTest for the enforced contracts):
- *  - Greyscale detection uses population-weighted statistics. A dark blue cover is still
- *    blue; low brightness is never, on its own, evidence of greyscale.
- *  - Swatch ranking combines population, saturation, usable brightness and a penalty for
- *    near-black / near-white extremes, so a large neutral background cannot suppress a
- *    smaller colourful focal region.
- *  - No invented hues: additional gradient stops are derived from real artwork colours by
- *    brightness/alpha adjustment or by blending two extracted colours. The source hue is
- *    always preserved.
- *  - Genuinely neutral colours stay neutral; brightness may be constrained for readability,
- *    but neutrality is never "fixed" with a minimum saturation.
- */
+/** Player color extraction system for generating gradients from album artwork. */
 object PlayerColorExtractor {
     // Greyscale classification thresholds (tunable constants, see tests).
     const val GREYSCALE_WEIGHTED_SATURATION_THRESHOLD = 0.10f

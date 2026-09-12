@@ -239,16 +239,7 @@ private val MinGap = 30.dp
  */
 private const val ARTWORK_WIDTH_FRACTION = 0.84f
 
-/**
- * The band reserved for the current lyric line, between the artwork and the title row.
- *
- * Two lines of `labelMedium` plus the padding around them. It used to be nothing — the line lived
- * inside the lower gap so the controls could not move when a line arrived — but that capped it at
- * one line, and a long line then marqueed sideways across the player instead of wrapping. Spotify
- * wraps to a second line, so the band is real height now and the artwork gives it up, which is also
- * what Spotify does. Reserved only when the track HAS synced lyrics, so a track without them keeps
- * the larger sleeve; the size therefore changes per track, never per line.
- */
+/** The band reserved for the current lyric line, between the artwork and the title row. */
 private val LyricBandHeight = 48.dp
 
 /**
@@ -1121,14 +1112,8 @@ private fun SimpMusicActionIcon(
 }
 
 /**
- * The lyrics card: a header row (label, share, "Show"), the lyrics, and a footer crediting the
- * sync type and provider. The first version had the label and nothing else — the share button, the
- * "Show" affordance and the "Line Synced / Lyrics provided by …" footer were all missing, which is
- * most of what tells you where the lyrics came from.
- *
- * Which renderer sits inside is the SimpMusic-lyrics setting. Either way it is scaled DOWN for the
- * card: both renderers size themselves for a full screen, and at that size four words fill the
- * 300dp box.
+ * The lyrics card: a header row (label, share, "Show"), the lyrics, and a footer crediting the sync
+ * type and provider.
  */
 @Composable
 private fun SimpMusicLyricsCard(

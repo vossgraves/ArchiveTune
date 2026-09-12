@@ -21,27 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 
 /**
- * A frosted-glass-looking pill that wraps header content (title text, icon buttons) so the
- * header can be transparent while the content inside it stays legible against any background.
- *
- * The pill renders as a semi-transparent `surfaceContainer` surface. Earlier iterations tried to
- * composite a real backdrop blur over [LocalNavigationBarBackdrop], but the pill lives
- * INSIDE the NavHost content that is recorded into that same backdrop layer every frame
- * (`drawWithContent` in `MainActivity`), so drawing `backdrop.layer` from inside the pill is
- * re-entrant and crashes the app — both the S+ `drawLayer` path and the pre-S bitmap capture
- * read a layer that is currently being recorded. Degrading to a plain surface is the same
- * fallback those paths already used when no backdrop was available, and matches how the pill
- * behaves in rail layouts where the backdrop is null.
- *
- * The alpha is tuned low enough that the scrolling content shows through (so the header reads
- * as "transparent" rather than a solid bar) while still keeping the title/icons legible against
- * busy backgrounds like album art.
- *
- * Usage: wrap the title / actions of a `TopAppBar` (or any header) in this pill. The
- * outer `TopAppBar` should have `containerColor = Color.Transparent`.
- *
- * @param modifier Modifier for the pill's outer layout.
- * @param content The header content (text, icons) to display inside the pill.
+ * A frosted-glass-looking pill that wraps header content (title text, icon buttons) so the header
+ * can be transparent while the content inside it stays legible against any background.
  */
 @Composable
 fun FrostedHeaderPill(

@@ -19,18 +19,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 
-/**
- * Centralized *behavior* for the title/artist block shared by every player design style.
- *
- * This intentionally contains **no UI** — each player style keeps rendering its own `Text`s,
- * layout, typography and decorations. Only the tap/long-press behavior lives here, so:
- *  - the historical inconsistency (title used `snapTo`, artist used `collapseSoft`) has a single
- *    source of truth and is fixed in one place, and
- *  - the behavior can no longer drift between styles.
- *
- * Adding a new player style does **not** require touching this file: just call
- * [rememberPlayerTitleActions] and wire the callbacks into whatever UI the style draws.
- */
+/** Centralized *behavior* for the title/artist block shared by every player design style. */
 @Immutable
 class PlayerTitleActions(
     /** Navigate to the current song's album (no-op if the song has no album). */

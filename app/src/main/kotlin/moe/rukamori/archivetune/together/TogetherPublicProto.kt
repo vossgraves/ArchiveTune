@@ -318,15 +318,7 @@ internal data class TogetherWireServerCapabilities(
     @ProtoNumber(3) val serverVersion: String = "",
 )
 
-/**
- * Encodes and decodes the binary frames the Metrolist servers speak.
- *
- * Ported from SimpMusic / Metrolist (GPL-3.0). `encodeDefaults = false` is not a
- * preference — it is what proto3 means: a field holding its default value is absent
- * from the wire, which is what protoc and Go's proto.Marshal both emit. With `true`,
- * encoding a payload carrying a null message field (`trackInfo` on every play, pause
- * and seek) throws instead of sending.
- */
+/** Encodes and decodes the binary frames the Metrolist servers speak. */
 @OptIn(ExperimentalSerializationApi::class)
 internal class TogetherPublicProtoCodec(
     private val compressionEnabled: Boolean = true,

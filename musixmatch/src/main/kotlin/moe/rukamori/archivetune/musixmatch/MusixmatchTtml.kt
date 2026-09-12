@@ -12,20 +12,9 @@ import moe.rukamori.archivetune.musixmatch.models.RichSyncWord
 import java.util.Locale
 
 /**
- * Converts Musixmatch richsync lines into a TTML document that ArchiveTune's
- * existing TTMLParser understands. Each line becomes a `<p begin end>` and each
- * word inside becomes a `<span begin end>`.
- *
- * All times are stored as Double seconds, then formatted as `<n.nnn>s` using
- * Locale.US to avoid locale-dependent decimal separators. The regression from
- * Spicetify PR #2254 (negative word duration when next-word offset was kept in
- * seconds while current was in ms) is avoided by computing word end as
- * `lineStart + nextWord.offset` (both in seconds) and falling back to `lineEnd`
- * for the last word.
- *
- * Spacing tokens (words whose text is just whitespace) are preserved as
- * `<span>` so the round-trip through TTMLParser stays lossless — the parser
- * already trims empty words when building the word list.
+ * Converts Musixmatch richsync lines into a TTML document that ArchiveTune's existing TTMLParser
+ * understands. Each line becomes a `<p begin end>` and each word inside becomes a `<span begin
+ * end>`.
  */
 internal object MusixmatchTtml {
     private const val XML_HEADER = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"

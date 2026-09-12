@@ -19,21 +19,8 @@ class AiRateLimitException(
 
 /**
  * Local token-budget protector for AI calls. Every feature that talks to an AI provider goes
- * through [withLimit], which enforces a per-feature minimum spacing between requests and a
- * sliding one-hour request cap. Short spacing deficits are absorbed by delaying the call
- * (smoothing chunked lyric batches); anything longer fails fast with [AiRateLimitException]
- * so the UI can tell the user instead of silently burning tokens.
- *
- * BUGFIX: previously, [reserveOrWait] added the timestamp to the history deque BEFORE the
- * actual API call ran. If the call failed (network error, 5xx, rate-limit from the server,
- * CancellationException), the slot was wasted and still counted against the hourly budget.
- * After ~40 failed+successful calls in an hour, all subsequent translations were silently
- * refused — manifesting as "auto-translate works for a few songs then stops working until
- * the user toggles it off/on + clicks Check API" (which doesn't actually reset the in-memory
- * rate limiter; the user was just waiting for the hourly window to slide). The fix: only
- * record the timestamp AFTER the call succeeds. Failed calls don't count. Cancellation still
- * doesn't count (the user skipped the song). This matches the documented intent ("per-feature
- * minimum spacing between requests" — a failed request isn't a real request).
+ * through [withLimit], which enforces a per-feature minimum spacing between requests and a sliding
+ * one-hour request cap.
  */
 object AiRateLimiter {
     private const val HourMs = 60L * 60_000L

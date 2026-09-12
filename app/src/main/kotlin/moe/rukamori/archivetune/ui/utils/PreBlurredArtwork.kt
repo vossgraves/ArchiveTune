@@ -31,27 +31,6 @@ import moe.rukamori.archivetune.utils.ImageBlurUtils
 /**
  * Compose helper that resolves an image URL into a pre-blurred [Bitmap] for use on Android versions
  * below S (API 31) where Compose's `Modifier.blur` is silently a no-op.
- *
- * On Android 12+ this returns `null` because the platform `RenderEffect`-backed `Modifier.blur`
- * is hardware-accelerated and produces a better-quality result than a CPU stack-blur ever will —
- * callers should fall back to `Modifier.blur(radiusDp)` in that case.
- *
- * On Android < 12 the source bitmap is fetched via the shared Coil [ImageLoader] (so it benefits
- * from the disk + memory cache), copied to `ARGB_8888` if necessary, and then run through
- * [ImageBlurUtils.blur] with the equivalent pixel radius. The result is cached per (url, radius)
- * in Compose state — recomposition does not re-blur unless the inputs change.
- *
- * The blur is dispatched on [Dispatchers.IO] so the UI thread never blocks. While the blur is
- * in-flight the returned state is `null`, which callers can use to render a solid-color placeholder
- * (typically the artwork tint) so the layout doesn't pop.
- *
- * @param imageUrl The source URL (or null — returns null immediately).
- * @param radiusDp The intended blur radius in dp. Converted to a pixel radius at the device's
- *   density. Cap at 48px internally because stack-blur cost grows quadratically and beyond ~48px
- *   the downscale-then-blur path in [ImageBlurUtils.blur] already produces a good result.
- * @param maxDimensionPx Maximum dimension of the source bitmap to load — large artwork (e.g.
- *   2000x2000) is wasteful for a blurred background. Defaults to 720 because anything bigger
- *   is indistinguishable from 720 once blurred.
  */
 @Composable
 fun rememberPreBlurredBitmap(

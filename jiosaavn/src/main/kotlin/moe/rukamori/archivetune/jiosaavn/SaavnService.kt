@@ -1,12 +1,4 @@
-/**
- * JioSaavn audio streaming service.
- *
- * Ported from vivi-music (https://github.com/vivizzz007/vivi-music) under GPL-3.0.
- * Fetches search results and stream details directly from JioSaavn's public API endpoints,
- * and decrypts CDN media links locally on the device using DES-ECB.
- *
- * Attribution: JioSaavn streaming (via vivimusic)
- */
+/** JioSaavn audio streaming service. */
 
 package moe.rukamori.archivetune.jiosaavn
 

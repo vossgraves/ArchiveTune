@@ -9,20 +9,7 @@ package moe.rukamori.archivetune.ai
 
 import kotlinx.coroutines.CancellationException
 
-/**
- * Batches a track's lyric lines into AI romanisation requests.
- *
- * Structured like [AiLyricsTranslator] — same budget-based chunking, same binary-split retry, same
- * process-wide LRU — but returns the per-line results instead of rebuilding a lyrics container.
- * That difference is the whole point: AI *translation* is persisted into `LyricsEntity.lyrics` as a
- * second line under each timestamp, whereas romanisation is a render-time annotation that sits above
- * the line (`LyricsEntry.romanizedTextFlow` / `KaraokeSyllable.phonetic`) exactly like the built-in
- * Kuromoji/ICU romanisers' output. Persisting it would mean inventing a second `Source` value that
- * cannot coexist with `AI_TRANSLATION` in the single `source` column.
- *
- * A `null` at some index means "no romanisation for this line" — either the model returned it
- * unchanged (already Latin script) or that batch failed after retries.
- */
+/** Batches a track's lyric lines into AI romanisation requests. */
 class AiLyricsRomanizer {
     /**
      * Romanises [lines] and returns a list of the same size, aligned by index.

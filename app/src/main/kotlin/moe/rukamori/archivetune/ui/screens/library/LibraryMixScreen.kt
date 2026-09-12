@@ -114,17 +114,8 @@ import moe.rukamori.archivetune.viewmodels.MostPlayedAlbumUiModel
 import moe.rukamori.archivetune.viewmodels.MostPlayedAlbumUiState
 
 /**
- * Builds a sized, cache-enabled [ImageRequest] for a thumbnail that will be
- * displayed at [widthDp] × [heightDp]. Without an explicit `.size()` Coil
- * downloads the original full-resolution image (often 1280×720+ for YT
- * thumbnails, 640×640 for Spotify playlist covers) and downsamples on the
- * fly — slow on cold start, especially when the Library tab fires 10+
- * parallel requests at once.
- *
- * Passing an explicit size lets the CDN serve the smallest bucket it has
- * (YT `mqdefault` is 320×180, Spotify `image` URLs honour `=w300-h300`),
- * which combined with the tuned OkHttp pool in [moe.rukamori.archivetune.App.newImageLoader]
- * makes thumbnails load near-instantly after the first cache miss.
+ * Builds a sized, cache-enabled [ImageRequest] for a thumbnail that will be displayed at [widthDp]
+ * × [heightDp].
  */
 @Composable
 private fun rememberSizedImageRequest(

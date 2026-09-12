@@ -19,16 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.scale
 
-/**
- * A clickable that shrinks slightly while held, with no ripple.
- *
- * Equivalent to YumaPlayer's `Modifier.yumaClickable` (MuwMx/YumaPlayer, GPL-3.0), reimplemented
- * rather than imported: theirs is one function in a 191-line theme file that also pulls in a
- * `SettingsAnimations` object and a `LocalDisableAnimations` composition local. That is a lot of
- * fork-specific infrastructure to adopt for a press animation, and the naming would not belong in
- * this app. The spring is Compose's default rather than their tuned one, so the feel is close but
- * not identical.
- */
+/** A clickable that shrinks slightly while held, with no ripple. */
 fun Modifier.pressScaleClickable(
     enabled: Boolean = true,
     pressedScale: Float = 0.97f,

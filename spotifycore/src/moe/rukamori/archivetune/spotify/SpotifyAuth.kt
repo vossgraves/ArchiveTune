@@ -22,15 +22,9 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.math.floor
 
 /**
- * Handles Spotify authentication using the web player's internal token endpoint.
- * Uses sp_dc cookies (extracted from WebView login) to obtain access tokens
- * without requiring a Spotify Developer Client ID.
- *
- * Token acquisition requires a TOTP (Time-based One-Time Password) generated
- * from a shared secret that Spotify rotates periodically. The secret and its
- * version are fetched from a community-maintained GitHub Gist.
- *
- * Reference: https://github.com/sonic-liberation/spotube-plugin-spotify
+ * Handles Spotify authentication using the web player's internal token endpoint. Uses sp_dc cookies
+ * (extracted from WebView login) to obtain access tokens without requiring a Spotify Developer
+ * Client ID.
  */
 object SpotifyAuth {
     private const val TOKEN_URL = "https://open.spotify.com/api/token"

@@ -62,18 +62,8 @@ object AiTextService {
     }
 
     /**
-     * OkHttp's connection pool can enter a bad state after sustained use (stale sockets,
-     * SSL session cache misses, half-closed connections from a server-side idle timeout).
-     * The singleton [client] below is reused for every call, so once the pool goes bad,
-     * EVERY subsequent request fails with a network exception — manifesting as
-     * "auto-translate works for a few songs then stops working until the user toggles
-     * it off/on + clicks Check API".
-     *
-     * The fix: hold the client in an AtomicReference and recreate it on demand when a
-     * connection-level failure is detected. The recreate path closes the old client's
-     * connection pool (evicting all stale sockets) and creates a fresh one. This is
-     * cheaper than creating a new client per call (which would defeat HTTP keep-alive),
-     * but resilient to the stale-pool failure mode.
+     * OkHttp's connection pool can enter a bad state after sustained use (stale sockets, SSL
+     * session cache misses, half-closed connections from a server-side idle timeout).
      */
     private val clientHolder = AtomicReference<HttpClient>(createClient())
 
@@ -230,17 +220,7 @@ object AiTextService {
         return List(array.length()) { index -> array.optString(index) }
     }
 
-    /**
-     * Transliterates [lines] into the Latin alphabet, one output string per input string.
-     *
-     * Deliberately not [translateLines] with a "romanise" target language: the two need opposite
-     * instructions. A translator is told to convey meaning, which is precisely what must not happen
-     * here — "君の名は" has to come back as "kimi no na wa", not "your name". The prompt repeats that
-     * several ways because every model tested drifted into translating at least once when it didn't.
-     *
-     * Lines already written in Latin script come back unchanged; the caller relies on that to decide
-     * which lines have a romanisation worth showing.
-     */
+    /** Transliterates [lines] into the Latin alphabet, one output string per input string. */
     suspend fun romanizeLines(
         config: AiServiceConfig,
         lines: List<String>,

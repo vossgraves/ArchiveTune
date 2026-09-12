@@ -45,14 +45,9 @@ import androidx.glance.text.TextStyle
 import moe.rukamori.archivetune.R
 
 /**
- * Now Playing Card widget — a landscape 4×2 card with a full-height artwork column,
- * bold track metadata, and an expressive pill control group where the primary play/pause
- * action stretches to fill available width inside a unified secondaryContainer pill shell.
- *
- * Hierarchy:
- *   PRIMARY  → play/pause (width-dominant pill, shape morphs on state change)
- *   SECONDARY → prev / next (transparent icon buttons inside the pill)
- *   PASSIVE  → title, artist, progress
+ * Now Playing Card widget — a landscape 4×2 card with a full-height artwork column, bold track
+ * metadata, and an expressive pill control group where the primary play/pause action stretches to
+ * fill available width inside a unified secondaryContainer pill shell.
  */
 class NowPlayingCardWidget : GlanceAppWidget() {
     override val stateDefinition = PreferencesGlanceStateDefinition

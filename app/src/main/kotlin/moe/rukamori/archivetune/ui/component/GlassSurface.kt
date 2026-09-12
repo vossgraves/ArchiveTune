@@ -66,15 +66,6 @@ fun glassAwareLargeTopAppBarColors(): TopAppBarColors =
  * Container colour for a card that sits over the glass backdrop: a translucent tint when Liquid
  * Glass is on, and the ordinary Material 3 [MaterialTheme.colorScheme.surfaceContainerHigh]
  * otherwise.
- *
- * The two alphas differ because the backdrop does: over a dark backdrop a card has to *add* light
- * to read as raised, over a light one it has to stay mostly opaque or the text underneath shows
- * through. Same values the fork settled on.
- *
- * Which of the two applies is read off the surface's own luminance rather than
- * `isSystemInDarkTheme()`: the app's dark mode is a preference with an AUTO/ON/OFF setting plus a
- * pure-black variant, so forcing dark on a light system would otherwise paint the light tint over
- * a dark card and wash the text out.
  */
 @Composable
 fun glassAwareCardColor(): Color =

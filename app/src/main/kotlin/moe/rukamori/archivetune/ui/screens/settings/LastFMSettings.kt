@@ -760,20 +760,9 @@ private fun LastFmTimingSetting.titleResId(): Int =
     }
 
 /**
- * (Task 4) Custom-endpoint sign-in dialog. Lets the user enter their own
- * API endpoint URL (e.g. `https://my-scrobbler.example.com/2.0/`), API key,
- * and shared secret for self-hosted GNU FM / ListenBrainz-compatible
- * scrobblers that aren't Libre.fm. After saving, the view model's
- * [saveCustomEndpoint] persists the values into DataStore (under the
- * `LastFMCustomEndpointKey` + `CustomScrobbleApiKeyOverrideKey` +
- * `CustomScrobbleSecretOverrideKey` keys), pins `LastFMProviderKey` to
- * `CUSTOM`, and the runtime LastFM singleton is reconfigured with the
- * new endpoint.
- *
- * Empty API key / secret are allowed — for endpoints that don't validate
- * credentials (e.g. local ListenBrainz test deployments), the runtime
- * falls back to [LastFM.FALLBACK_COMPAT_API_KEY] /
- * [LastFM.FALLBACK_COMPAT_SECRET] so signing still works.
+ * (Task 4) Custom-endpoint sign-in dialog. Lets the user enter their own API endpoint URL (e.g.
+ * `https://my-scrobbler.example.com/2.0/`), API key, and shared secret for self-hosted GNU FM /
+ * ListenBrainz-compatible scrobblers that aren't Libre.fm.
  */
 @Composable
 private fun LastFmCustomEndpointDialog(

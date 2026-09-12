@@ -639,19 +639,10 @@ fun LocalPlaylistScreen(
                                 ).joinToString(MediaDetailMetadataSeparator)
                             val isBookmarked = playlist.playlist.bookmarkedAt != null
 
-                            // SimpMusic-style liquid glass backdrop source: the
-                            // LazyColumn itself carries the layerBackdrop modifier
-                            // (see the LazyColumn definition above), so the entire
-                            // scrolling content is recorded into the backdrop. The
-                            // floating Liquid Glass back button (top-start) and
-                            // search+more pill (top-end) are siblings of the
-                            // LazyColumn (children of the ExpressivePullToRefreshBox),
-                            // so they sample the backdrop without being recorded into
-                            // it. They are PERSISTENT — they stay at the top of the
-                            // screen no matter how far the user scrolls.
-                            //
-                            // The hero item itself just renders the MediaDetailHero;
-                            // no inner Box / layerBackdrop wrapper is needed here.
+                            // SimpMusic-style liquid glass backdrop source: the LazyColumn itself
+                            // carries the layerBackdrop modifier (see the LazyColumn definition
+                            // above), so the entire scrolling content is recorded into the
+                            // backdrop.
                             MediaDetailHero(
                                 title = playlist.playlist.name,
                                 thumbnailUrl =
@@ -1070,21 +1061,8 @@ fun LocalPlaylistScreen(
             headerItems = headerItems,
         )
 
-        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
-        // (children of the ExpressivePullToRefreshBox), positioned at top-start
-        // and top-end. They sample the artworkBackdrop (which captures the
-        // entire scrolling content via Modifier.layerBackdrop on the LazyColumn)
-        // to render the frosted-glass effect. PERSISTENT — stay at the top no
-        // matter how far the user scrolls.
-        //
-        // Shown only when:
-        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
-        //  - Not in selection mode
-        //  - Not searching
-        //  - Playlist is loaded
-        // Capture playlist in a local val so the compiler can smart-cast it
-        // to non-null inside the block (playlist is a delegate, so the
-        // compiler can't smart-cast the property directly).
+        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn (children of the
+        // ExpressivePullToRefreshBox), positioned at top-start and top-end.
         val currentPlaylist = playlist
         if (layerBackdropActive && !selection && !isSearching && currentPlaylist != null) {
             LiquidGlassIconButton(

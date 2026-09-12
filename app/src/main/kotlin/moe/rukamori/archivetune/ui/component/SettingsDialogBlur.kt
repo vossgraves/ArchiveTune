@@ -16,31 +16,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
- * Tracks whether any settings dialog is currently showing, so the parent
- * SettingsScreen (and other opt-in screens) can apply a backdrop blur
- * behind the dialog for the Material 3 Expressive "frosted glass" look.
- *
- * Consumers should read this via [LocalSettingsDialogShowing] inside a
- * dialog's `onShow`/`onDismiss` hooks and write `true`/`false`
- * respectively.
- *
- * Default value is a no-op holder — writes to it have no effect because
- * nothing reads the default for display purposes. The real holder is
- * provided at the SettingsScreen root by wrapping content in
- * [provideSettingsDialogBlurHost].
+ * Tracks whether any settings dialog is currently showing, so the parent SettingsScreen (and other
+ * opt-in screens) can apply a backdrop blur behind the dialog for the Material 3 Expressive
+ * "frosted glass" look.
  */
 val LocalSettingsDialogShowing: ProvidableCompositionLocal<MutableState<Boolean>> =
     compositionLocalOf { mutableStateOf(false) }
 
 /**
- * Convenience helper that creates a fresh [MutableState] for tracking
- * dialog visibility. The SettingsScreen (or any other screen that opts
- * into backdrop-blur) should call this once and provide the returned
- * state to its subtree via [LocalSettingsDialogShowing].
- *
- * Inside the subtree, dialog composables call
- * `LocalSettingsDialogShowing.current.value = true/false` to signal
- * show/dismiss.
+ * Convenience helper that creates a fresh [MutableState] for tracking dialog visibility. The
+ * SettingsScreen (or any other screen that opts into backdrop-blur) should call this once and
+ * provide the returned state to its subtree via [LocalSettingsDialogShowing].
  */
 @Composable
 fun rememberSettingsDialogHostState(): MutableState<Boolean> = remember { mutableStateOf(false) }

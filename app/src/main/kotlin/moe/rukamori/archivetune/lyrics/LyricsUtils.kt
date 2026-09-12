@@ -22,15 +22,7 @@ data class LyricsRomanizationPreferences(
     val romanizeChinese: Boolean,
     val romanizeHindi: Boolean,
     val romanizeOther: Boolean,
-    /**
-     * True when an AI provider is supplying romanisation instead (see [AiLyricsRomanization]).
-     *
-     * This is the single gate that turns the built-in engines off, and it lives here rather than at
-     * each call site because every one of them — the three renderers' romanisation effects, the
-     * `showPhonetic` render flags, `providedRomanizedTextForEntry`, `shouldRomanizeLyricsLine` — is
-     * already written in terms of [isEnabled]. Running both engines would mix Hepburn from Kuromoji
-     * with whatever scheme the model chose inside a single song.
-     */
+    /** True when an AI provider is supplying romanisation instead (see [AiLyricsRomanization]). */
     val aiHandled: Boolean = false,
 ) {
     val isEnabled: Boolean
@@ -408,30 +400,8 @@ object LyricsUtils {
     }
 
     /**
-     * Returns true when [lyrics] contains at least one actual translation entry
-     * produced by [moe.rukamori.archivetune.ai.AiLyricsTranslator].
-     *
-     * The translator marks the lyrics' source as `AI_TRANSLATION` regardless of
-     * whether the AI returned anything useful — if every line came back identical
-     * to the source (a common failure mode for CJK lyrics that were previously
-     * mangled by the span-joining bug in `AiLyricsDocument.readTtmlLineText`),
-     * the rebuild produces no `<translation>` element / no duplicate-timestamp
-     * LRC lines, but the row is still stored with `source = AI_TRANSLATION`.
-     *
-     * Without this check, the auto-translate LaunchedEffect in LyricsScreen.kt
-     * and AppleMusicPlayer.kt would skip those songs forever (the
-     * `source == AI_TRANSLATION` guard returns early), so the user would never
-     * get a translation even after the underlying bug is fixed. By allowing a
-     * retry when `hasTranslation()` is false, previously no-op'd translations
-     * get a chance to re-run with the corrected parser.
-     *
-     * Detection rules:
-     *  - TTML: look for `<translation ... data-archivetune="translation"` (the
-     *    marker `TtmlLyricsDocument.rebuild` writes).
-     *  - LRC / QRC / plain: look for any timestamp prefix that appears more
-     *    than once — translators append translated lines under the same prefix
-     *    as the original, so a duplicate prefix means at least one translation
-     *    was added.
+     * Returns true when [lyrics] contains at least one actual translation entry produced by
+     * [moe.rukamori.archivetune.ai.AiLyricsTranslator].
      */
     fun hasTranslation(lyrics: String): Boolean {
         if (lyrics.isBlank()) return false
@@ -452,16 +422,6 @@ object LyricsUtils {
      * True when [dominantCode] — a value from [detectDominantLanguageCode] — names a language the
      * user put in an exclusion set ("Don't auto translate these languages" / "Don't romanise these
      * languages").
-     *
-     * Shared by the translation and romanisation gates so the two can never disagree about what an
-     * exclusion means, and so the code-space mismatch below is fixed once rather than twice.
-     *
-     * The mismatch: [detectDominantLanguageCode] reports a *script*, while the picker lists
-     * *languages* out of `assets/translator_languages.json`, and the two do not line up one-to-one.
-     * Han is the case that actually bites — the detector can only ever say `"CHINESE"`, but the
-     * picker offers `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and no plain `CHINESE`, so
-     * ticking either of them did nothing whatsoever. [EXCLUSION_ALIASES] accepts any picker code in
-     * the family instead.
      */
     fun matchesExcludedLanguage(
         dominantCode: String,
@@ -482,15 +442,7 @@ object LyricsUtils {
     private val EXCLUSION_ALIASES: Map<String, List<String>> =
         mapOf("CHINESE" to listOf("CHINESE_SIMPLIFIED", "CHINESE_TRADITIONAL"))
 
-    /**
-     * True when [lyrics] should be sent for automatic AI translation into [targetLanguage].
-     *
-     * [excludedLanguageCodes] has no default, deliberately. It used to default to `emptySet()`, and
-     * both live callers — the standalone lyrics screen and the Apple Music player's inline lyrics —
-     * simply left the argument off, so "Don't auto translate these languages" was written by the
-     * settings dialog and then never actually consulted: picking Hindi changed nothing. Making the
-     * parameter required turns that omission into a compile error rather than a silent no-op.
-     */
+    /** True when [lyrics] should be sent for automatic AI translation into [targetLanguage]. */
     fun shouldAutoTranslate(
         lyrics: String,
         targetLanguage: String,
@@ -525,20 +477,10 @@ object LyricsUtils {
     }
 
     /**
-     * Returns the uppercase language code (e.g. "JAPANESE", "KOREAN", "CHINESE", "HINDI",
-     * "ARABIC", "RUSSIAN", "THAI", "HEBREW", "GREEK", "ARMENIAN", "GEORGIAN") that best
-     * describes the dominant non-Latin script in [lyrics], or `null` if the lyrics are
-     * predominantly Latin (so no exclusion can match).
-     *
-     * These name *scripts*, not languages, and they very nearly — but not quite — line up with
-     * `TranslatorLang.code` in `assets/translator_languages.json`. "CHINESE" is the exception: the
-     * asset has `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and nothing plain. Compare through
-     * [matchesExcludedLanguage] rather than against an exclusion set directly, or Han lyrics will
-     * silently never match.
-     *
-     * The mapping is also deliberately coarse — every Devanagari script reports "HINDI", every
-     * Cyrillic one "RUSSIAN", every Arabic one "ARABIC" — so excluding Hindi also excludes Marathi
-     * and Nepali, and ticking "Marathi", "Ukrainian" or "Urdu" can never match anything.
+     * Returns the uppercase language code (e.g. "JAPANESE", "KOREAN", "CHINESE", "HINDI", "ARABIC",
+     * "RUSSIAN", "THAI", "HEBREW", "GREEK", "ARMENIAN", "GEORGIAN") that best describes the
+     * dominant non-Latin script in [lyrics], or `null` if the lyrics are predominantly Latin (so no
+     * exclusion can match).
      */
     fun detectDominantLanguageCode(lyrics: String): String? {
         if (lyrics.isBlank()) return null
@@ -1055,27 +997,7 @@ object LyricsUtils {
 
     /**
      * Returns true when [entry] has real, per-word timing information that should drive
-     * word-by-word (karaoke) animation. Returns false when the [LyricsEntry.words] list
-     * is missing, empty, or contains only fake/synthetic timing patterns — namely:
-     *
-     *   - All word start times identical (line start sprayed onto every word).
-     *   - All word end times identical (line end sprayed onto every word).
-     *   - All word durations <= 0 (zero-duration spans).
-     *   - Word start times that perfectly match an even linear distribution across the
-     *     line (the classic "provider computed timing by dividing line duration by N"
-     *     pattern) AND word durations are also near-identical (low stddev relative to
-     *     mean). Real human singing has timing variation; mathematically-perfect even
-     *     distribution with identical word durations is the signature of a fake.
-     *
-     * This catches the case where providers like Better Lyrics / YouLyPlus / similar
-     * emit TTML with a `<span>` per word but the spans inherit the line's begin/end with
-     * no actual per-word offsets — which previously made Lyrics.kt animate each word
-     * in lockstep even though the lyric wasn't truly word-synced.
-     *
-     * Single-word lines (e.g. "Yeah", "Oh", "Hey") are accepted as long as the one
-     * span has a real, positive duration. The multi-word heuristics below are
-     * degenerate for N=1, so we short-circuit before reaching them. This matches the
-     * original app's behaviour where short interjections still animate per-letter.
+     * word-by-word (karaoke) animation.
      */
     fun hasTrueWordSync(entry: LyricsEntry): Boolean {
         val raw = entry.words ?: return false
@@ -1140,14 +1062,9 @@ object LyricsUtils {
     }
 
     /**
-     * Converts any Hiragana characters in [text] to their Katakana equivalents.
-     * Hiragana and Katakana share the same Unicode ordering — every Hiragana codepoint
-     * has a Katakana counterpart at offset 0x60 (e.g. あ U+3042 → ア U+30A2). This lets
-     * the existing Katakana-only [KANA_ROMAJI_MAP] handle both scripts after a single
-     * cheap pre-pass.
-     *
-     * Characters outside the Hiragana block (Katakana, Kanji, Latin, punctuation, etc.)
-     * are passed through unchanged.
+     * Converts any Hiragana characters in [text] to their Katakana equivalents. Hiragana and
+     * Katakana share the same Unicode ordering — every Hiragana codepoint has a Katakana
+     * counterpart at offset 0x60 (e.g. あ U+3042 → ア U+30A2).
      */
     private fun hiraganaToKatakana(text: String): String {
         if (text.isEmpty()) return text
@@ -1167,21 +1084,6 @@ object LyricsUtils {
     /**
      * Romanizes Japanese text using Kuromoji Tokenizer and the optimized katakanaToRomaji function.
      * Runs on Dispatchers.Default for CPU-intensive work.
-     *
-     * Pipeline:
-     *   1. Tokenize the input with Kuromoji (kanji + kana boundaries, readings).
-     *   2. For each token, pick the reading if Kuromoji provides one (usually Katakana);
-     *      otherwise fall back to the surface form (which may contain Hiragana).
-     *   3. Convert any Hiragana in the reading to Katakana via [hiraganaToKatakana] —
-     *      this is the critical fix. Previously, Hiragana characters in the surface form
-     *      passed through [katakanaToRomaji] unchanged because [KANA_ROMAJI_MAP] only
-     *      contains Katakana keys, so lyrics like "くさはねぇ" stayed as "くさはねぇ"
-     *      instead of becoming "kusahane-".
-     *   4. Run [katakanaToRomaji] on the normalized Katakana string. Sokuon (ッ) and
-     *      chōonpu (ー) are handled inside that function.
-     *   5. Pass the next token's Katakana-normalized reading as `nextKatakana` so
-     *      sokuon at a token boundary can still geminate the next token's initial
-     *      consonant.
      */
     suspend fun romanizeJapanese(text: String): String =
         withContext(Dispatchers.Default) {
@@ -1215,34 +1117,7 @@ object LyricsUtils {
             romanizedTokens.joinToString(" ")
         }
 
-    /**
-     * Converts a Katakana string to Romaji using the pre-defined [KANA_ROMAJI_MAP].
-     *
-     * Handles three classes of characters specially beyond the map lookup:
-     *
-     *   1. Yōon (拗音) — 2-character sequences like "キャ" (kya). These are matched
-     *      BEFORE single-character lookups so the small y-vowel (ャ/ュ/ョ) combines
-     *      with the preceding consonant instead of being treated as a standalone
-     *      (and unmapped) character.
-     *
-     *   2. Sokuon (ッ) — gemination marker. Doubles the consonant of the NEXT
-     *      character. The next character is looked up WITHIN the current string
-     *      first (`katakana[i + 1]`); only if sokuon appears at the end of the
-     *      string do we fall back to the first character of [nextKatakana] (the
-     *      next token's reading). This fixes the previous bug where sokuon
-     *      mid-token (e.g. "がっこう" → "gakkou") was silently dropped because
-     *      the code only inspected the next TOKEN, not the next CHARACTER.
-     *
-     *   3. Chōonpu (ー) — long vowel mark. Extends the previous vowel instead of
-     *      being dropped (the old map entry `"ー" to ""` lost the long-vowel
-     *      information, turning "カー" (kaa) into "ka").
-     *
-     * @param katakana The Katakana string to convert. Hiragana should be
-     *     pre-converted with [hiraganaToKatakana]; any remaining non-Katakana
-     *     characters are passed through as-is.
-     * @param nextKatakana Optional: the next token's Katakana reading, used only
-     *     for sokuon-at-end-of-token gemination. Most tokens don't need this.
-     */
+    /** Converts a Katakana string to Romaji using the pre-defined [KANA_ROMAJI_MAP]. */
     fun katakanaToRomaji(
         katakana: String?,
         nextKatakana: String? = null,
@@ -1378,24 +1253,9 @@ object LyricsUtils {
             romajaBuilder.toString()
         }
 
-    // region Hindi (Devanagari) romanization
-    //
-    // A hand-written Devanagari→Latin mapper that produces intuitive, pronounceable
-    // romanization for Hindi lyrics (e.g. "नमस्ते" → "namaste", "आदित्य" → "aaditya",
-    // "क्षमा" → "kshama"). This replaces the previous ICU "Any-Latin; Latin-ASCII" path
-    // which produced ISO-15919 with diacritics (e.g. "namastē") and then stripped them
-    // (e.g. "namaste" — but lost length distinctions and palatal/retroflex contrasts).
-    //
-    // The mapper handles:
-    //   - Independent vowels (अ, आ, इ, …) and their vowel signs (matras: ा, ि, ी, …)
-    //   - Consonants with inherent "a" (क → "ka"), suppressed by virama (क् → "k")
-    //   - Conjunct consonants (क + ् + ष → "ksh")
-    //   - Anusvara (ं) → "n" before vowels/semivowels, "m" before labials, otherwise "n"
-    //   - Visarga (ः) → "h"
-    //   - Candrabindu (ँ) → "n" (nasalization marker, simplified)
-    //   - Common special conjuncts: ज्ञ → "gyan", त्र → "tra", श्र → "shra", क्ष → "ksha"
-    //   - Devanagari numerals (०-९) → 0-9
-    //   - Danda (।) → "."
+    // region Hindi (Devanagari) romanization A hand-written Devanagari→Latin mapper that produces
+    // intuitive, pronounceable romanization for Hindi lyrics (e.g. "नमस्ते" → "namaste", "आदित्य" →
+    // "aaditya", "क्षमा" → "kshama").
     private val DEVANAGARI_INDEPENDENT_VOWELS =
         mapOf(
             'अ' to "a", 'आ' to "aa", 'इ' to "i", 'ई' to "ii", 'उ' to "u", 'ऊ' to "uu",
@@ -1579,14 +1439,8 @@ object LyricsUtils {
         }
 
     /**
-     * Checks if the given text contains any Chinese characters (common Hanzi).
-     * This function is generally efficient due to '.any' and early exit.
-     * To improve accuracy in distinguishing between Chinese and Japanese (which shares Kanji),
-     * this function now checks if the text *predominantly* consists of CJK Unified Ideographs
-     * and *lacks* significant amounts of Hiragana or Katakana.
-     *
-     * A simple threshold is used here. More sophisticated methods (e.g., frequency analysis,
-     * dictionaries, or machine learning models) would be needed for higher accuracy.
+     * Checks if the given text contains any Chinese characters (common Hanzi). This function is
+     * generally efficient due to '.any' and early exit.
      */
     fun isChinese(text: String): Boolean {
         if (text.isEmpty()) return false
@@ -1751,31 +1605,7 @@ object LyricsUtils {
         return normalizeRomanizedText(word, romanized)
     }
 
-    /**
-     * Romanizes a list of words from a single line using ONE tokenization pass for Japanese.
-     *
-     * This is the critical performance fix for Japanese word-synced (TTML) lyrics.
-     * Previously, [romanizeLyricsWordWithLineContext] was called once per word, and each
-     * call ran Kuromoji's full Viterbi morphological analysis (trie traversal + lattice
-     * search over the entire IPADIC dictionary) on a single isolated word. For a typical
-     * 40-line song with 6 words per line, that's **240 tokenize calls** — each with
-     * non-trivial per-call overhead (dictionary loading is cached, but the Viterbi search
-     * is O(text × trie depth) per call).
-     *
-     * This function tokenizes the FULL LINE once (40 calls instead of 240 — a **6x
-     * reduction** in tokenize calls), then maps each token back to the original word
-     * boundaries by character position. Words that span multiple tokens get their
-     * romaji concatenated.
-     *
-     * Tokenizing the full line also gives **better romanization quality**: Kuromoji's
-     * morphological analyzer sees full context, so compounds like "日本語" tokenize as
-     * one token in context but may split into "日本" + "語" when isolated. The per-line
-     * path produces more accurate readings.
-     *
-     * For non-Japanese text, falls back to [romanizeLyricsWordWithLineContext] per word
-     * (character-by-character romanization for Korean/Hindi/Chinese is already cheap —
-     * no tokenizer involved).
-     */
+    /** Romanizes a list of words from a single line using ONE tokenization pass for Japanese. */
     suspend fun romanizeWordsForLine(
         words: List<String>,
         lineText: String,
@@ -1792,17 +1622,7 @@ object LyricsUtils {
         }
     }
 
-    /**
-     * Japanese-specific per-line tokenization. See [romanizeWordsForLine] for the
-     * rationale.
-     *
-     * Token-to-word mapping uses character positions: Kuromoji's [Token.getPosition]
-     * returns the character offset of each token in the input line. We find each word's
-     * start offset in the line (via [String.indexOf] with a running scan cursor to handle
-     * repeated words), then collect all tokens whose `[start, end)` range overlaps with
-     * the word's `[wordStart, wordEnd)` range. The romaji of overlapping tokens is
-     * concatenated to form the word's phonetic.
-     */
+    /** Japanese-specific per-line tokenization. See [romanizeWordsForLine] for the rationale. */
     private suspend fun romanizeJapaneseWordsForLine(
         words: List<String>,
         lineText: String,

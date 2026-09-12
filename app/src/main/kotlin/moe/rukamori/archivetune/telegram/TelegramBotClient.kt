@@ -134,16 +134,6 @@ object TelegramBotClient {
      * Fetches the bot's advertised command list (the commands the bot registered via @BotFather,
      * scoped to this specific chat). Returns an empty list if the bot hasn't registered any
      * commands or if the request fails.
-     *
-     * Some music bots require slash commands (e.g. `/search <query>`, `/download <link>`) to
-     * search and download songs — pasting a bare URL doesn't work. The chat UI uses this list to
-     * populate a "/"-button command picker so the user can discover and insert those commands
-     * without having to memorize them.
-     *
-     * TDLib API: `GetCommands(BotCommandScope scope, String languageCode)` → `BotCommands`
-     * (which wraps `Array<BotCommand>` where each `BotCommand` has `command: String` and
-     * `description: String`). `BotCommandScopeChat(chatId)` scopes the query to the current bot
-     * chat; an empty languageCode returns commands for all languages.
      */
     suspend fun fetchBotCommands(chatId: Long): List<TelegramBotCommand> = runCatching {
         val result = TelegramClient.send(
@@ -160,26 +150,7 @@ object TelegramBotClient {
     // Reply collection
     // ------------------------------------------------------------------
 
-    /**
-     * Collects audio-carrying messages that arrive on [chatId] within [BOT_REPLY_TIMEOUT]. Stops
-     * early once [expectedCount] audio messages have been collected, OR — when expectedCount is 0
-     * — once no new audio has arrived for [POST_REPLY_GRACE_MS] after the most-recent track (so
-     * single-track bots don't make the user wait the full 60s, while multi-track bots that burst-
-     * send a handful of files within a few seconds still capture all of them).
-     *
-     * - [afterMessageId] excludes messages with id <= this value (so we don't re-process messages
-     *   that existed before the user pressed Send).
-     * - Non-audio messages (text/typing/photo) are ignored — bots often send a "Searching…" text
-     *   first, then the audio.
-     *
-     * Implementation: subscribes to the SharedFlow once and pipes emissions into an unlimited
-     * Channel. A first-channel-read is gated by [BOT_REPLY_TIMEOUT]; subsequent reads are gated
-     * by [POST_REPLY_GRACE_MS], which extends on each new arrival so a fast burst is fully
-     * captured. The collector job is always cancelled in a finally block before returning.
-     *
-     * NOTE: this method IGNORES inline-keyboard prompts. Use [collectBotReplies] for the full
-     * flow that also surfaces quality-picker prompts.
-     */
+    /** Collects audio-carrying messages that arrive on [chatId] within [BOT_REPLY_TIMEOUT]. */
     suspend fun collectAudioReplies(
         chatId: Long,
         afterMessageId: Long,
@@ -221,21 +192,8 @@ object TelegramBotClient {
     }
 
     /**
-     * Full bot-reply collector — surfaces BOTH audio tracks AND inline-keyboard prompts (so the
-     * UI can react when the bot asks the user to pick a quality / format).
-     *
-     * Stops when:
-     *  - No reply of any kind arrives within [BOT_REPLY_TIMEOUT] → returns emptyList()
-     *  - At least one reply arrived, then no new reply for [POST_REPLY_GRACE_MS] → returns all
-     *    collected replies in arrival order
-     *
-     * Each [BotReply.Track] wraps a [TelegramTrack]; each [BotReply.Prompt] wraps a
-     * [TelegramBotPrompt] (with the inline keyboard buttons). The caller typically:
-     *   1. Calls [collectBotReplies] after sending the song link.
-     *   2. Renders each prompt's buttons.
-     *   3. When the user taps a button, calls [clickInlineButton] and then calls
-     *      [collectBotReplies] again with `afterMessageId = prompt.messageId` to collect the
-     *      audio that the bot sends in response to the button click.
+     * Full bot-reply collector — surfaces BOTH audio tracks AND inline-keyboard prompts (so the UI
+     * can react when the bot asks the user to pick a quality / format).
      */
     suspend fun collectBotReplies(
         chatId: Long,
@@ -279,12 +237,6 @@ object TelegramBotClient {
      * [BotReply.Prompt] (any message with an inline keyboard, e.g. "Choose quality: ALAC / AAC").
      * Returns null for messages that are neither (e.g. "Searching…" text replies, typing
      * indicators, photos).
-     *
-     * Inline-keyboard prompts are detected via [TdApi.Message.replyMarkup] being a
-     * [TdApi.ReplyMarkupInlineKeyboard] with at least one row. Each button is mapped to a
-     * [TelegramBotPromptButton] carrying either a callback payload (the common case — tapping it
-     * triggers a [TdApi.GetCallbackQueryAnswer]) or a URL (e.g. "HQ Artwork" buttons that open
-     * an external link).
      */
     private fun messageToBotReply(message: TdApi.Message): BotReply? {
         // Audio/document message → track.
@@ -323,18 +275,9 @@ object TelegramBotClient {
     }
 
     /**
-     * Simulates tapping an inline-keyboard button. Sends [TdApi.GetCallbackQueryAnswer] to the
-     * bot, which causes it to process the chosen option and (typically) replies with the audio file
-     * the user actually wanted. The caller should then call [collectBotReplies] with
-     * `afterMessageId = promptMessageId` to collect the resulting audio.
-     *
-     * TDLib's GetCallbackQueryAnswer takes a [TdApi.CallbackQueryPayload] (an abstract class) —
-     * for the standard inline-keyboard callback (the kind music bots use), the concrete subclass
-     * is [TdApi.CallbackQueryPayloadData] which wraps the raw [ByteArray] payload that came from
-     * [TdApi.InlineKeyboardButtonTypeCallback.data].
-     *
-     * Returns the [TdApi.CallbackQueryAnswer] the bot returned (may carry a toast text, an alert,
-     * or a URL — typically empty for music bots). Returns null if the request failed.
+     * Simulates tapping an inline-keyboard button. Sends [TdApi.GetCallbackQueryAnswer] to the bot,
+     * which causes it to process the chosen option and (typically) replies with the audio file the
+     * user actually wanted.
      */
     suspend fun clickInlineButton(
         chatId: Long,
@@ -360,11 +303,6 @@ object TelegramBotClient {
      * Forwards [messageIds] (originally received in [fromChatId]) to [toChatId]. Returns the list
      * of newly created forwarded messages. Used to push a bot's audio reply into the user's own
      * Telegram channel so the user's library stays in sync.
-     *
-     * Implementation note: TdApi.ForwardMessages in TDLib 1.8.30+ has the signature
-     *   ForwardMessages(chatId, MessageTopic topicId, fromChatId, messageIds, options, sendCopy, removeCaption)
-     * topicId=null targets the default topic (regular non-threaded chat).
-     * sendCopy=false keeps the original sender attribution (matches Telegram's "Forward" UI).
      */
     suspend fun forwardMessages(
         toChatId: Long,

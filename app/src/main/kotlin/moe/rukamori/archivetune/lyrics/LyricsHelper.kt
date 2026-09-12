@@ -141,18 +141,9 @@ class LyricsHelper
                 return LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
             }
 
-            // When "Prioritize Word Synced Lyrics" is ON (and the caller isn't asking
-            // for the preferred provider only), first try to obtain word-synced lyrics
-            // from the three word-sync-capable providers (BetterLyrics, YouLyPlus,
-            // Unison). These are queried DIRECTLY — bypassing both the per-provider
-            // enable toggles AND the user's provider-priority order — because when
-            // this feature is on the user has explicitly said they want word-synced
-            // lyrics from these three sources first, full stop.
-            //
-            // If any of the three returns lyrics that are actually word-synced
-            // (QRC/YRC/TTML with word-level timings), we use that immediately.
-            // Otherwise we fall through to the normal priority ranking across all
-            // enabled providers (the regular flow below).
+            // When "Prioritize Word Synced Lyrics" is ON (and the caller isn't asking for the
+            // preferred provider only), first try to obtain word-synced lyrics from the three
+            // word-sync-capable providers (BetterLyrics, YouLyPlus, Unison).
             if (prioritizeWordSynced) {
                 GlobalLog.append(
                     Log.DEBUG,
@@ -191,24 +182,9 @@ class LyricsHelper
         }
 
         /**
-         * Queries the three word-sync-capable providers (BetterLyrics, YouLyPlus,
-         * Unison) IN PARALLEL and returns the first one whose response is actually
-         * word-synced (QRC/YRC/TTML with word-level timings). Returns null if none
-         * of them return word-synced lyrics, so the caller can fall back to the
-         * normal priority flow.
-         *
-         * IMPORTANT: This is invoked when the "Prioritize Word Synced Lyrics" toggle
-         * is ON. The three providers are queried DIRECTLY — their per-provider enable
-         * toggles in the Lyrics Providers settings screen are deliberately bypassed,
-         * because the toggle being ON is an explicit override that says "I want
-         * word-synced lyrics from these three sources regardless of any other
-         * provider config". Likewise the user's provider-priority order is ignored
-         * here — among these three, the first one (in the fixed order below) that
-         * returns word-synced lyrics wins.
-         *
-         * Only results that pass [LyricsUtils.hasWordSyncedLyrics] are eligible —
-         * a provider returning plain LRC or plain text is ignored, even if it was
-         * the only one to respond.
+         * Queries the three word-sync-capable providers (BetterLyrics, YouLyPlus, Unison) IN
+         * PARALLEL and returns the first one whose response is actually word-synced (QRC/YRC/TTML
+         * with word-level timings).
          */
         private suspend fun tryFetchWordSyncedFromPriorityProviders(
             mediaMetadata: MediaMetadata,
@@ -333,23 +309,8 @@ class LyricsHelper
         }
 
         /**
-         * Resolves lyrics from all providers in parallel and returns the best result by
-         * (sync tier: word > line > plain) then by provider priority (lower index wins).
-         *
-         * This is the original priority-respecting implementation. The previous
-         * "streaming first-result-wins" approach (commit 9975a15ac) was faster but
-         * silently broke priority — a fast low-priority provider's line-synced lyrics
-         * would preempt a slightly slower top-priority provider's word-synced lyrics
-         * during the grace window, because the grace period wasn't long enough to cover
-         * the typical 10–15s Musixmatch latency.
-         *
-         * Speed: each provider call is wrapped in [withTimeoutOrNull] so a single hung
-         * provider can't pin the panel for its full 15–20s timeout. Providers that
-         * exceed [PROVIDER_TIMEOUT_MS] are simply dropped from the ranking — they
-         * contribute nothing to the result. The hard ceiling on panel load latency is
-         * therefore min(provider timeout, slowest responsive provider's response time),
-         * which in practice is the provider timeout (~8s) since at least one provider
-         * usually responds within a few seconds.
+         * Resolves lyrics from all providers in parallel and returns the best result by (sync tier:
+         * word > line > plain) then by provider priority (lower index wins).
          */
         private suspend fun fetchPriorityLyricsResult(
             providers: List<LyricsProvider>,

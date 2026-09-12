@@ -37,16 +37,7 @@ import moe.rukamori.archivetune.spotify.SpotifySearchItem
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyPlayableRow
 
-/**
- * The Library's Songs, Artists and Albums sections on the Spotify source.
- *
- * Each is deliberately a plain list rather than a Spotify-flavoured copy of the local section's
- * sorting, filtering, multi-select and grid toggle: none of those mean anything against a remote
- * library the app cannot reorder or tag, and the local screens' machinery is what makes them long.
- *
- * Rows reuse [SpotifySearchItemRow], the same renderer Spotify search results use, so a Spotify
- * track looks the same wherever it turns up.
- */
+/** The Library's Songs, Artists and Albums sections on the Spotify source. */
 @Composable
 fun LibrarySpotifySongsScreen(viewModel: SpotifyLibraryViewModel = hiltViewModel()) {
     val state by viewModel.likedSongs.collectAsStateWithLifecycle()

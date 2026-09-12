@@ -197,22 +197,9 @@ object TelegramChannelSync {
     }
 
     /**
-     * Fetches one page with retry. TDLib can transiently fail on the first
-     * SearchChatMessages call for a private channel (chat history not yet
-     * loaded), but succeed on a subsequent call a few hundred ms later.
-     * Returns null only if ALL retries fail.
-     *
-     * CRITICAL: when [isFirstPage] is true, an EMPTY result (zero tracks AND
-     * zero nextFromMessageId) is ALSO treated as a transient failure and
-     * retried. TDLib frequently returns an empty first page for private
-     * channels whose history hasn't been fully indexed yet — this is NOT an
-     * error condition (no exception thrown), so the previous logic accepted
-     * the empty page as "channel has no audio" and stopped paging. That was
-     * the root cause of "private channel shows empty until I tap Refresh":
-     * the manual Refresh worked because by then TDLib had finished indexing.
-     *
-     * For non-first pages, an empty result with zero nextFromMessageId is the
-     * legitimate "no more messages" signal and is returned as-is.
+     * Fetches one page with retry. TDLib can transiently fail on the first SearchChatMessages call
+     * for a private channel (chat history not yet loaded), but succeed on a subsequent call a few
+     * hundred ms later. Returns null only if ALL retries fail.
      */
     private suspend fun fetchPageWithRetry(
         chatId: Long,

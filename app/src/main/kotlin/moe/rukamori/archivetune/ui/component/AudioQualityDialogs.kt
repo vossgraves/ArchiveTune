@@ -187,17 +187,7 @@ private val ExportFormat.titleRes: Int
             ExportFormat.MP3 -> R.string.export_format_mp3
         }
 
-/**
- * Works out which containers can honestly be produced for a track.
- *
- * The app has no audio transcoder — `jaudiotagger` writes tags, not audio — so the cached bytes can
- * only ever be copied out in the container they already use. That makes the source format the only
- * real choice, which is why just one enabled row comes back.
- *
- * When the source is lossy, FLAC is still listed but disabled: users go looking for it, and saying
- * why it is impossible is more useful than omitting it and looking like a missing feature. Producing
- * one would mean writing a `.flac` that is still lossy inside.
- */
+/** Works out which containers can honestly be produced for a track. */
 fun exportFormatOptionsFor(sourceExtension: String?): List<ExportFormatOption> {
     // Fall back to M4A to match detectCachedExtension, which assumes it when sniffing fails.
     val source = ExportFormat.forExtension(sourceExtension) ?: ExportFormat.M4A

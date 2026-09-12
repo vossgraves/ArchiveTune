@@ -24,16 +24,6 @@ import java.util.concurrent.TimeUnit
  * Resolves playable Deezer streams for a track, mirroring the shape of
  * [moe.rukamori.archivetune.qobuz.QobuzAudioProvider] so the two are interchangeable at the call
  * site.
- *
- * Deezer differs from Tidal/Qobuz in two ways that shape this file:
- *  - There is no community restream tier. Every resolve runs against Deezer's own gateway using a
- *    pooled `arl` cookie, so accounts are the only backend and [PoolAccountManager] is the only
- *    source of them.
- *  - The CDN never returns plain audio. Resolved URLs are wrapped in a `deezer://` URI so
- *    [DeezerDecryptingDataSource] can undo the Blowfish chunk encryption in flight; handing the raw
- *    CDN URL to Media3 would play noise.
- *
- * All calls run blocking network I/O and must not be made from the main thread.
  */
 object DeezerAudioProvider {
     /**
@@ -217,12 +207,6 @@ object DeezerAudioProvider {
     /**
      * A resolved Deezer stream, in this provider's own shape rather than the playback layer's
      * `DirectStream`.
-     *
-     * Keeping the provider free of playback types lets it be built and tested before Deezer is wired
-     * into the source-resolution chain; the playback layer adapts this into a `DirectStream`. The
-     * `matched*` fields are the catalog metadata of the hit that was chosen, and the playback layer
-     * needs them to re-check the pick against its own `TitleMatch` gate — a stream with no matched
-     * title is rejected there, so these are not optional extras.
      */
     data class Resolved(
         val uri: String,
@@ -290,12 +274,6 @@ object DeezerAudioProvider {
      * Resolves a playable stream for [query] at [format] (`FLAC`, `MP3_320` or `MP3_128` — see
      * `DeezerAudioQuality.toFormatName()`), degrading to the next tier down when the account's plan
      * does not cover the requested one.
-     *
-     * Takes the format as a plain string rather than the preference enum so this stays independent of
-     * the settings layer, matching how `QobuzAudioProvider` takes a bare `formatId`.
-     *
-     * Returns null when no pooled account can serve the track. The returned [Resolved] carries a
-     * `deezer://` URI rather than the CDN URL, because the bytes still need decrypting.
      */
     fun resolve(
         query: Query,
@@ -718,15 +696,7 @@ object DeezerAudioProvider {
             }.getOrNull()
         }
 
-    /**
-     * Free-text catalogue search, returning up to [limit] hits in Deezer's own relevance order.
-     *
-     * Separate from [lookup] because the two answer different questions: [lookup] is "which single
-     * track is this song?" and applies a match-score threshold, while this is "what does the user's
-     * typing find?" and must not filter anything out. Also unauthenticated, so the player's "Play
-     * from" picker can list Deezer rows before any ARL exists — the picker only needs title/artist to
-     * pin the per-song source override, not a playable URL.
-     */
+    /** Free-text catalogue search, returning up to [limit] hits in Deezer's own relevance order. */
     suspend fun searchCandidates(
         term: String,
         limit: Int = SEARCH_LIMIT,

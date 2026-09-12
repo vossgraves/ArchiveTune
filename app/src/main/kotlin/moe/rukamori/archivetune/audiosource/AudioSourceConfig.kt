@@ -100,13 +100,6 @@ object TitleMatch {
      * Returns the title-match ratio in 0.0..1.0 between [wanted] and [candidate] after
      * normalization, using Jaro-Winkler similarity. Two blank titles are treated as a non-match
      * (0.0) so missing metadata never passes the gate.
-     *
-     * When [wanted] contains a separator-delimited alternative title (e.g. a romanization or
-     * translation paired with the original — "忘れてください - Forget it", "Song / Remix"),
-     * each segment is tried independently and the best-scoring segment wins. This prevents a
-     * candidate that legitimately matches only one of the two halves (e.g. just "Forget it"
-     * on Qobuz) from being rejected because the full wanted string is much longer than the
-     * candidate.
      */
     fun ratio(
         wanted: String?,
@@ -343,18 +336,7 @@ object AudioSourceConfig {
     /**
      * Resolves the effective ordered list of ALL sources from the stored CSV, preserving the user's
      * chosen order (including where they placed YouTube) and slotting in any sources missing from
-     * the stored order (e.g. after an app update introduces a new one) *above* YouTube. YouTube is
-     * guaranteed to be present, but its position is user-controlled: placing it earlier means the
-     * app prefers YouTube's own stream over the lossless override sources listed after it.
-     *
-     * The "above YouTube" part matters more than it looks. This used to append the missing sources,
-     * which put every newly added source *after* YouTube for anyone who had ever touched the order
-     * picker on an older build. [moe.rukamori.archivetune.playback.MusicService] cuts the chain at
-     * YouTube (`takeWhile { it != YOUTUBE }`), so an appended source was silently dropped from
-     * playback entirely — Deezer, Qobuz backup and JioSaavn were all unreachable for those users,
-     * and in the order dialog they showed up below YouTube where the list looks like it ends. Since
-     * every override source sits above YouTube in [DEFAULT_ORDER], inserting there is both correct
-     * and the one placement that cannot perturb the choices the user did make.
+     * the stored order (e.g. after an app update introduces a new one) *above* YouTube.
      */
     fun parseOrder(rawOrder: String?): List<AudioSourceType> {
         val stored =
@@ -456,13 +438,8 @@ object SongSourceOverride {
 }
 
 /**
- * Codec for per-song Qobuz trackId overrides. Same CSV shape as
- * [SongSourceOverride] but maps `songId → qobuzTrackId` instead of source.
- *
- * Set when the user picks a specific Qobuz track from the "Play from"
- * source-search popup. Read by `MusicService.buildSourceQuery` and passed
- * as `directQobuzTrackId` so `QobuzAudioProvider.resolve` skips the
- * title/artist search and downloads the exact track.
+ * Codec for per-song Qobuz trackId overrides. Same CSV shape as [SongSourceOverride] but maps
+ * `songId → qobuzTrackId` instead of source.
  */
 object SongSourceQobuzTrackId {
     fun parse(raw: String?): Map<String, String> {
@@ -498,19 +475,7 @@ object SongSourceQobuzTrackId {
     }
 }
 
-/**
- * Codec for per-song Qobuz-backup video-id overrides.
- *
- * The backup mirror addresses tracks by YouTube video id, so this maps
- * `songId → mirrorVideoId`. Set when the user picks a specific row in the
- * "Play from" search popup; read by `MusicService.buildSourceQuery` and passed to
- * `resolveQobuzBackupStream` so it fetches that exact mirror entry rather than the
- * playing song's own id.
- *
- * The wire format is identical to [SongSourceQobuzTrackId] (`id=value` pairs
- * joined by `;`), so the parsing/serialisation is shared rather than duplicated —
- * only the DataStore key differs.
- */
+/** Codec for per-song Qobuz-backup video-id overrides. */
 object SongSourceQobuzBackupVideoId {
     fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
 

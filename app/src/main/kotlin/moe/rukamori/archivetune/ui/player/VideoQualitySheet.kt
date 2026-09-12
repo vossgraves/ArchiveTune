@@ -58,15 +58,7 @@ import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.constants.VideoAspectRatio
 import moe.rukamori.archivetune.R
 
-/**
- * Row/title spacing for the sheets in this file.
- *
- * In landscape — which is the orientation the fullscreen video overlay locks to — the whole screen
- * is only ~360dp tall, so a sheet laid out with the portrait metrics (24/12dp padding plus a
- * description line under every row) is taller than the space it has and ends up scrolling the
- * three quality modes. [compact] trades the descriptions and half the padding for fitting, which
- * is the right call there: the row titles already name the modes.
- */
+/** Row/title spacing for the sheets in this file. */
 private data class SheetMetrics(
     val horizontalPadding: Dp,
     val rowVerticalPadding: Dp,
@@ -124,24 +116,6 @@ private fun rememberSheetMetrics(): SheetMetrics {
 
 /**
  * Video-quality picker, presented as a bottom sheet that slides up from the bottom of the screen.
- *
- * Replaces the [androidx.compose.material3.DropdownMenu] the quality button used to anchor. The
- * dropdown had two problems in the fullscreen overlay: it opened as a small popup pinned under the
- * button in the top-right corner (awkward to reach one-handed in landscape) and it listed every
- * raw resolution with no notion of intent, so "just give me the best" and "don't eat my data" both
- * required knowing which number to pick.
- *
- * The sheet has two pages:
- *  - the **main page** offers the three intents — Auto, Data saver, High quality — plus a row that
- *    opens Advanced,
- *  - the **Advanced page** lists every resolution this device can decode, so an exact pick
- *    (144p … 4320p) is still one tap away.
- *
- * @param preferredHeight current choice, encoded per [VideoQualityPreference].
- * @param availableHeights resolutions YouTube offered for this video that the device can decode,
- *   ascending. Drives the Advanced page.
- * @param selectedHeight the resolution actually playing, shown as a subtitle so the modes report
- *   what they resolved to.
  */
 @Composable
 internal fun VideoQualitySheet(
@@ -454,12 +428,6 @@ private fun SheetTitle(
 /**
  * One selectable row, drawn as a rounded pill: title, optional subtitle, and a trailing checkmark
  * (or [trailingIcon]) when this row is the active choice.
- *
- * The pill matches `PreferenceSelectionOption` in `ui/component/Preference.kt`, which is what every
- * other option list in a bottom sheet uses — filled `surfaceContainerHigh` normally, filled
- * `primary` when selected, `shapes.extraLarge` corners. Before this the rows were flat, full-bleed
- * and separated only by a divider, which made these two sheets the odd ones out next to the video
- * overflow sheet raised from the same button.
  */
 @Composable
 private fun QualityRow(

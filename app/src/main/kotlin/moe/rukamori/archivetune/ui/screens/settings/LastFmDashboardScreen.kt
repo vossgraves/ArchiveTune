@@ -151,38 +151,7 @@ import javax.inject.Inject
  */
 private val DashboardAccentColor = Color(0xFFBE123C)
 
-/**
- * Centralised color tokens for the Last.fm dashboard.
- *
- * Tokens are now DERIVED from [MaterialTheme.colorScheme] so the dashboard
- * participates in the user's global dynamic / app-color theme — in BOTH
- * light AND dark modes. Previously these were hardcoded literals, which:
- *   1. Caused "two shades of dark" in dark mode (5 different dark grays
- *      for the same surface depending on elevation).
- *   2. Made the dashboard's accent (warm brown #9D6B63 in dark, dusty red
- *      #BE123C in light) NOT reflect the user's chosen app color or the
- *      Material You dynamic palette — only light mode happened to look
- *      passable because the warm cream/pink palette is closer to a
- *      Material 3 light scheme.
- *
- * The new implementation maps each token to a `MaterialTheme.colorScheme.*`
- * surface/elevation/variant slot, so:
- *   - `pageBackground` = `colorScheme.background` (same shade as the rest
- *     of the app — no "second shade of dark").
- *   - `cardBackground` / `topAppBarContainer` / `dropdownBackground` =
- *     `colorScheme.surfaceContainer` (single elevated shade, no mismatch
- *     between TopAppBar and HeroCard).
- *   - `pillBackground` / `rankingBadge` / `playCountPill` /
- *     `artworkPlaceholder` / `filterPill` = `colorScheme.surfaceContainerHigh`
- *     (consistent elevated pills).
- *   - `accent` = `colorScheme.primary` (follows the user's app color or
- *     Material You dynamic palette).
- *   - Text colors = `onSurface` / `onSurfaceVariant`.
- *
- * The data class is preserved (as `DashboardThemeSnapshot`) for binary
- * compatibility with all the `theme.*` read sites in the file — the
- * signature is unchanged.
- */
+/** Centralised color tokens for the Last.fm dashboard. */
 private data class DashboardTheme(
     val pageBackground: Color,
     val cardBackground: Color,
@@ -241,15 +210,7 @@ private fun isDashboardDarkTheme(): Boolean {
     return if (darkMode == DarkMode.AUTO) isSystemInDarkTheme() else darkMode == DarkMode.ON
 }
 
-/**
- * Builds a [DashboardTheme] from the current [MaterialTheme.colorScheme].
- *
- * In dark mode, the surface stack is unified (background → surfaceContainer →
- * surfaceContainerHigh), so the dashboard no longer shows multiple distinct
- * dark shades. The accent / pill colors are derived from `primary` /
- * `primaryContainer` / `secondaryContainer`, so the dashboard participates
- * in Material You dynamic theming just like every other screen in the app.
- */
+/** Builds a [DashboardTheme] from the current [MaterialTheme.colorScheme]. */
 @Composable
 private fun dashboardTheme(): DashboardTheme {
     val cs = MaterialTheme.colorScheme
@@ -330,26 +291,16 @@ private fun dashboardTheme(): DashboardTheme {
 private enum class LastFmFilter { RECENT, TOP_TRACKS, TOP_ARTISTS, TOP_ALBUMS }
 
 /**
- * Process-wide cache of YouTube search results keyed by "<title>::<artist>".
- * Last.fm tracks don't carry YouTube video IDs, so every playback action on a
- * Last.fm track needs to round-trip through a YouTube song search first. We
- * cache the (nullable) result per (title, artist) tuple so that re-opening the
- * overflow sheet on the same track doesn't re-search, and so that switching
- * between actions (Start Mix → Play next → Add to queue) on the same track
- * reuses the same resolved SongItem. Cache is process-scoped: cleared on app
- * restart, but never grows unboundedly (the keyspace is bounded by the user's
- * listening history, which is itself bounded by the dashboard's track list).
+ * Process-wide cache of YouTube search results keyed by "<title>::<artist>". Last.fm tracks don't
+ * carry YouTube video IDs, so every playback action on a Last.fm track needs to round-trip through
+ * a YouTube song search first.
  */
 private val ytSearchCache = ConcurrentHashMap<String, SongItem?>()
 
 /**
- * Searches YouTube Music for a Last.fm track by "<title> <artist>" query and
- * returns the first SongItem result, or null if no match. Results are cached
- * in [ytSearchCache] to avoid re-searching for the same track.
- *
- * Mirrors the onPlayFromSource pattern in PlayerMenu.kt: non-YT track
- * metadata has no YouTube-side video id, so to play / queue / mix a Last.fm
- * track we need to resolve it through YouTube Music search first.
+ * Searches YouTube Music for a Last.fm track by "<title> <artist>" query and returns the first
+ * SongItem result, or null if no match. Results are cached in [ytSearchCache] to avoid re-searching
+ * for the same track.
  */
 private suspend fun searchYtForLastFmTrack(title: String, artist: String?): SongItem? {
     if (title.isBlank()) return null
@@ -384,16 +335,7 @@ private fun findFirstSongItem(result: SearchResult): SongItem? {
     return null
 }
 
-/**
- * Lightweight track reference carried across the bottom-sheet boundary. Both
- * [RecentTrack] and [TopTrack] collapse to the same shape once they reach the
- * overflow sheet — the only fields the sheet cares about are title, artist,
- * the Last.fm web URL (for "Open in Last.fm"), the Last.fm image array (for
- * the album thumbnail), an optional play count (for top tracks / deduped
- * recents), and the now-playing flag (for recents). Wrapping both model types
- * in a single data class keeps the sheet's API stable regardless of which
- * list the user opened it from.
- */
+/** Lightweight track reference carried across the bottom-sheet boundary. */
 private data class LastFmTrackRef(
     val title: String,
     val artist: String?,
@@ -425,31 +367,15 @@ private fun TopTrack.toRef(): LastFmTrackRef = LastFmTrackRef(
 
 // ── Recent-track dedup ──────────────────────────────────────────────────────
 
-/**
- * Paired (track, count) for the merged recent-tracks list. The dashboard
- * groups consecutive scrobbles of the same (name, artist.text) tuple into a
- * single row with a "×N" play-count badge — Last.fm's recents feed echoes
- * every play 1:1, so without this merge a song stuck on repeat shows up three
- * times in a row, which is noisy and useless. The first occurrence of each
- * consecutive group is kept as the representative track (so the now-playing
- * flag, date, and artwork all read off the most recent scrobble in the run).
- */
+/** Paired (track, count) for the merged recent-tracks list. */
 private data class RecentTrackWithCount(
     val track: RecentTrack,
     val playCount: Int,
 )
 
 /**
- * Group consecutive recent-tracks by `(name, artist.text)` and emit a single
- * [RecentTrackWithCount] per group, with [RecentTrackWithCount.playCount]
- * equal to the number of consecutive scrobbles. Non-consecutive repeats are
- * kept as separate groups (a song played at 9am and again at 11am, with a
- * different song at 10am, surfaces as two rows).
- *
- * Extends the previous `dedupeNowPlayingEchoes` behaviour: when a now-playing
- * scrobble is present, its stale historical copies are still dropped (the
- * now-playing copy is a transient state — its date is "now", so it can't be
- * meaningfully merged with historical scrobbles that share its title/artist).
+ * Group consecutive recent-tracks by `(name, artist.text)` and emit a single [RecentTrackWithCount]
+ * per group, with [RecentTrackWithCount.playCount] equal to the number of consecutive scrobbles.
  */
 private fun List<RecentTrack>.mergeDuplicatesWithCount(): List<RecentTrackWithCount> {
     if (isEmpty()) return emptyList()
@@ -542,23 +468,16 @@ fun LastFmDashboardScreen(
             isRefreshing = true
             try {
                 current.serviceConfig.apply(sessionKey = current.sessionKey)
-                // Eight parallel Last.fm calls — mirrors LastWave-native's
-                // _fetchHomeData() Promise.allSettled batch:
-                //   • user.getInfo                → header + hero scrobbles count
-                //   • user.getRecentTracks(200)  → RECENT filter view
-                //   • user.getTopTracks(20)      → TOP_TRACKS filter view
-                //   • user.getTopArtists(20)    → TOP_ARTISTS filter view
-                //   • user.getTopAlbums(20)     → TOP_ALBUMS filter view
-                //   • user.getTopTracks(1)      → hero stat pill (attr.total)
-                //   • user.getTopArtists(1)    → hero stat pill (attr.total)
-                //   • user.getTopAlbums(1)     → hero stat pill (attr.total)
-                //
-                // The three limit=1 stats calls only need to read `@attr.total`
-                // (the lifetime unique-item count) — fetching a single item is
-                // enough to get the count, and is much lighter than pulling the
-                // whole first page just to count it. List calls use limit=20 so
-                // the dashboard's filter views render instantly without a second
-                // round-trip on filter switch.
+                // Eight parallel Last.fm calls — mirrors LastWave-native's _fetchHomeData()
+                // Promise.allSettled batch: • user.getInfo → header + hero scrobbles count •
+                // user.getRecentTracks(200) → RECENT filter view • user.getTopTracks(20) →
+                // TOP_TRACKS filter view • user.getTopArtists(20) → TOP_ARTISTS filter view •
+                // user.getTopAlbums(20) → TOP_ALBUMS filter view • user.getTopTracks(1) → hero stat
+                // pill (attr.total) • user.getTopArtists(1) → hero stat pill (attr.total) •
+                // user.getTopAlbums(1) → hero stat pill (attr.total) The three limit=1 stats calls
+                // only need to read `@attr.total` (the lifetime unique-item count) — fetching a
+                // single item is enough to get the count, and is much lighter than pulling the
+                // whole first page just to count it.
                 withContext(Dispatchers.IO) {
                     val infoDeferred = async { LastFM.getUserInfo(username) }
                     // Last.fm permits up to 200 recent tracks per request. Keep every
@@ -617,18 +536,11 @@ fun LastFmDashboardScreen(
         if (isLoggedIn) refresh()
     }
 
-    // ── Notch / status-bar handling ─────────────────────────────────────
-    //
-    // The Scaffold's `contentWindowInsets` is set to `WindowInsets.safeDrawing`
-    // so that the body content's `innerPadding` always accounts for the
-    // display cutout / status bar — even when the user has toggled "hide
-    // status bar" on (in which case `WindowInsets.statusBars` reports 0 but
+    // ── Notch / status-bar handling ───────────────────────────────────── The Scaffold's
+    // `contentWindowInsets` is set to `WindowInsets.safeDrawing` so that the body content's
+    // `innerPadding` always accounts for the display cutout / status bar — even when the user has
+    // toggled "hide status bar" on (in which case `WindowInsets.statusBars` reports 0 but
     // `safeDrawing.displayCutout` still tracks the physical notch).
-    //
-    // The TopAppBar's Row ALSO applies `windowInsetsPadding(safeDrawing)`
-    // so the header's icon buttons are pushed below the notch, and
-    // `consumeWindowInsets` is chained so the body doesn't double-count
-    // (standard Material3 TopAppBar pattern).
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = theme.pageBackground,
@@ -1037,21 +949,7 @@ fun LastFmDashboardScreen(
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
-/**
- * Top app bar for the dashboard.
- *
- * The actions are a back arrow, title/search field, then search and profile
- * on the right. Refresh is intentionally omitted because opening the page
- * already loads the dashboard and the list must retain its visible scrobbles.
- *
- * Title text reads `R.string.stats` (Task 2) — the rest of the app
- * (profile popup on the home page) keeps using `R.string.lastfm_dashboard`
- * for the navigation entry, but the visible title on the dashboard page
- * itself is just "Stats" so it lines up with the Library tab's stats label.
- *
- * Scrobble-search (Task 6c): tapping the search icon swaps the title
- * text for an [OutlinedTextField] that drives the LazyColumn's filter.
- */
+/** Top app bar for the dashboard. */
 @Composable
 private fun LastFmDashboardHeader(
     searchVisible: Boolean,
@@ -1279,16 +1177,7 @@ private fun HeaderPillRow(
 
 // ── Hero stats card ──────────────────────────────────────────────────────────
 
-/**
- * Large rounded stats card replacing the previous flat UserCard. Ported
- * from LastWave-native's StatsCard composable (HomeScreen.kt lines 524-599):
- *   - surfaceContainerHigh-equivalent outer card (theme.cardBackground)
- *   - accent/primaryContainer-equivalent inner hero area (theme.statsHeroInner)
- *     with the formatted scrobbles count
- *   - a 46dp hero-arrow Surface with a forward-arrow IconButton on the right
- *     of the hero that opens the user's Last.fm profile in their browser
- *   - three StatPills below for Tracks / Artists / Albums
- */
+/** Large rounded stats card replacing the previous flat UserCard. */
 @Composable
 private fun HeroStatsCard(
     userInfo: Result<UserInfo>?,
@@ -1608,21 +1497,10 @@ private fun FilterOption(
 // ── Track / artist / album rows ───────────────────────────────────────────────
 
 /**
- * Track row ported from LastWave-native's TrackRow (HomeScreen.kt lines
- * 820-934). Differences:
- *   - Album artwork comes from [bestArtwork] / [resolveCatalogueCover]
- *     instead of LastWave-native's ArtworkImage (the catalog/cover
- *     resolution pipeline is what the existing ArchiveTune dashboard
- *     already had).
- *   - The now-playing pulse pill is the existing 1.0→1.06 / 1200ms /
- *     LinearEasing / Reverse animation, copied verbatim.
- *   - The play-count badge is a pill (e.g. "2×", "3×") — formatted
- *     inline as "${count}×" rather than via the existing plurals
- *     string, to match LastWave-native's visual.
- *   - Tapping the three-dot solar_more_circle_linear button opens the
- *     [TrackOverflowSheet] by setting the [LastFmDashboardScreen]'s
- *     overflowTrack state — the sheet itself is rendered at the screen
- *     level so it can outlive the specific row that triggered it.
+ * Track row ported from LastWave-native's TrackRow (HomeScreen.kt lines 820-934). Differences: -
+ * Album artwork comes from [bestArtwork] / [resolveCatalogueCover] instead of LastWave-native's
+ * ArtworkImage (the catalog/cover resolution pipeline is what the existing ArchiveTune dashboard
+ * already had).
  */
 @Composable
 private fun DashboardTrackRow(
@@ -1816,18 +1694,9 @@ private fun DashboardTrackRow(
 }
 
 /**
- * Simplified row for the Top Artists filter — name + playcount badge,
- * no track-specific actions (no overflow menu, since the bottom sheet's
- * actions are all track-focused: Start Mix / Play / Add to queue all
- * need a YouTube song id that an artist row can't supply).
- *
- * Issue-3 fix: the row now displays the artist's actual image using
- * `LastFmArtworkNormalizer.bestImageUrl(artist.image)` + `AsyncImage`. When
- * the Last.fm image array is empty (the placeholder hash gets rejected by
- * the normalizer for less-known artists), the [LastFmDashboardScreen] screens
- * resolve a YouTube artist-channel thumbnail via [resolveArtistImage] and
- * pass it in as `artworkUrl`. The fallback to `solar_user_circle_linear`
- * only renders when both sources fail.
+ * Simplified row for the Top Artists filter — name + playcount badge, no track-specific actions (no
+ * overflow menu, since the bottom sheet's actions are all track-focused: Start Mix / Play / Add to
+ * queue all need a YouTube song id that an artist row can't supply).
  */
 @Composable
 private fun DashboardArtistRow(
@@ -2034,27 +1903,9 @@ private fun DashboardAlbumRow(
 // ── Track overflow bottom sheet ───────────────────────────────────────────────
 
 /**
- * ModalBottomSheet shown when the user taps the three-dot overflow button on
- * a [DashboardTrackRow]. Renders, top to bottom:
- *   1. "Start Mix with this Song" banner (solar_forward_linear icon,
- *      primaryContainer bg) → searches YouTube for a matching song and seeds
- *      a radio queue
- *   2. "Genre: Unknown" → taps open mood_and_genres (we have no genre
- *      detection for Last.fm tracks, so always shows "Unknown")
- *   3. "Play in ArchiveTune" → searches YouTube, plays via YouTube radio
- *   4. "Play next" → searches YouTube, playerConnection.playNext
- *   5. "Add to queue" → searches YouTube, playerConnection.addToQueue
- *   6. "Add to playlist" → shows AddToPlaylistDialog with onGetSong doing
- *      the YouTube search and returning the song's video id
- *   7. "Open in Last.fm" → opens track.url in the browser
- *   8. "Copy Song" → copies "Artist - Title" to the clipboard
- *
- * For items 1, 3, 4, 5, 6 a YouTube search is needed to convert the Last.fm
- * track (title + artist, no YT video id) to a SongItem. Search results are
- * cached in [ytSearchCache] to avoid re-searching across actions on the same
- * track. While a search is in flight, the tapped action's leading icon is
- * swapped for a small CircularProgressIndicator and other actions are
- * disabled.
+ * ModalBottomSheet shown when the user taps the three-dot overflow button on a [DashboardTrackRow].
+ * Renders, top to bottom: 1. "Start Mix with this Song" banner (solar_forward_linear icon,
+ * primaryContainer bg) → searches YouTube for a matching song and seeds a radio queue 2.
  */
 @Composable
 private fun TrackOverflowSheet(

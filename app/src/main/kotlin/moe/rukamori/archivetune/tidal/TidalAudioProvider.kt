@@ -220,15 +220,7 @@ object TidalAudioProvider {
     /**
      * Deep health probe for a single instance. Unlike [checkInstance] (reachability only), this
      * resolves an actual [probeTrackId] manifest and inspects whether the instance serves a FULL
-     * track or only a PREVIEW (unsubscribed backing account). When [probeTrackId] is blank it
-     * degrades to a reachability check (HEALTHY/UNREACHABLE). Runs blocking network I/O, so callers
-     * must invoke it off the main thread.
-     *
-     * Both API dialects are probed, newest first — `/trackManifests/` (HiFi-RestAPI 3.x /
-     * Monochrome) and then `/track/` (HiFi-RestAPI 2.x), mirroring the fallback in
-     * [requestDirectFlacFromEndpoint]. Probing only the newer path classified every 2.x instance as
-     * UNREACHABLE even when it streamed fine, which is what left the instance list permanently at
-     * "0 healthy".
+     * track or only a PREVIEW (unsubscribed backing account).
      */
     fun verifyInstance(
         baseUrl: String,
@@ -1392,16 +1384,6 @@ object TidalAudioProvider {
 
     /**
      * Requests a direct stream from one instance, transparently retrying on the older API dialect.
-     *
-     * Public HiFi/QQDL instances come in two flavours:
-     *  - **HiFi-RestAPI 3.x / Monochrome** expose `/trackManifests/`, which returns a manifest
-     *    *document URL* under `data.data.attributes.uri`.
-     *  - **HiFi-RestAPI 2.x** only expose `/track/?id=&quality=`, which returns the base64 manifest
-     *    inline under `data.manifest`.
-     *
-     * The 2.x instances answer `/trackManifests/` with HTTP 404. Before this fallback existed, every
-     * such instance was written off as broken for lossless playback even though `/track/` would have
-     * served the exact same FLAC — which is why perfectly working mirrors reported as unusable.
      */
     private fun requestDirectFlacFromEndpoint(
         endpoint: TidalDownloadEndpoint,
@@ -1765,13 +1747,7 @@ object TidalAudioProvider {
 
     /**
      * Resolves a directly-playable [DirectStream] from an official-API `playbackinfopostpaywall`
-     * manifest, reusing the same BTS/DASH handling as the public-instance path. This is what makes
-     * the signed-in account path work for lossless/HiRes: Tidal returns a segmented DASH manifest
-     * there (not a BTS direct URL), so playback can use the progressive FLAC data source while
-     * downloads still stitch the segments into a temp file in [cacheDir].
-     *
-     * Returns null if the manifest can't be turned into a playable stream, so the caller can fall
-     * back to the public instances and then YouTube.
+     * manifest, reusing the same BTS/DASH handling as the public-instance path.
      */
     fun resolveAccountManifest(
         manifestB64: String,

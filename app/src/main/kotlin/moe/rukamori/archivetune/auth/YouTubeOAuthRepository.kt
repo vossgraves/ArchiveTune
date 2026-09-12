@@ -28,27 +28,6 @@ import java.util.concurrent.TimeUnit
 /**
  * YouTube sign-in over the OAuth2 **device-code** flow, as an alternative to the WebView cookie
  * path in [YouTubeLoginRepository].
- *
- * Why this exists alongside the WebView: the WebView flow captures a cookie plus visitorData,
- * dataSyncId and a PoToken by scraping the page, which breaks whenever the sign-in page changes.
- * The device flow is a documented OAuth grant — the user types a short code on google.com/device —
- * and yields a refreshable Bearer token instead.
- *
- * **Scope of the token, which is narrower than it looks.** These credentials are the YouTube VR
- * (Oculus) client's, so the token authenticates as client id 28. A Bearer from this flow and a
- * WEB_REMIX cookie do NOT return the same thing from the same InnerTube endpoint: the VR client
- * gets VR-shaped player responses, and browse/search come back reduced or differently shaped. So
- * this token is only ever used for `/player` on ANDROID_VR — `supportsOAuth2Authentication` is set
- * on that one client and nothing else — while browse, search and metadata keep using WEB_REMIX.
- * Wiring the Bearer into everything is the obvious next step and is the wrong one.
- *
- * This flow needs no microG — it is plain HTTPS against Google's OAuth endpoints, and works on a
- * device with no Google software at all. A sign-in through microG's account authenticator was tried
- * alongside it and removed: on any device that also has real Play Services, Play Services owns the
- * `com.google` account type and refuses to mint a first-party-scope token for an app that is not a
- * registered OAuth client, and the microG forks that coexist with it would not serve an unpatched
- * caller either. It never worked on a real device, so it is gone rather than left as a route that
- * fails differently on every phone.
  */
 object YouTubeOAuthRepository {
     private const val TAG = "YouTubeOAuth"

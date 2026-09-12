@@ -57,18 +57,7 @@ private data class NetworkBannerVisuals(
     val contentColor: Color,
 )
 
-/**
- * Compact pill-shaped popup that surfaces network state changes.
- *
- * Replaces the previous full-width red "No internet connection" banner.
- * Auto-dismisses after a few seconds (controlled by the use case). Includes
- * an inline dismiss button so the user can dismiss the popup manually.
- *
- * States:
- *  - Offline: amber pill labelled "Offline mode" with cloud-off icon
- *  - BackOnline: green pill labelled "Back online" with cloud-done icon
- *  - Hidden: not rendered
- */
+/** Compact pill-shaped popup that surfaces network state changes. */
 @Composable
 fun NetworkStatusBanner(
     state: NetworkBannerUiState,

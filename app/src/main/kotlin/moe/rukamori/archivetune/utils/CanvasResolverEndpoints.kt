@@ -7,23 +7,7 @@
 
 package moe.rukamori.archivetune.utils
 
-/**
- * Parses the user's list of extra Spotify Canvas resolver endpoints.
- *
- * ## Why this is user-configurable
- *
- * Spotify's own Canvas endpoint (`spclient.wg.spotify.com/canvaz-cache`) is the only
- * authoritative source, and it needs a Spotify session. Every community alternative on
- * GitHub is a *self-hosted* wrapper around that same endpoint — they all require the
- * operator's own `sp_dc` cookie, so there is no stable public instance to hardcode: the
- * ones that exist come and go, and the app cannot ship a working default for a user with
- * no Spotify login. Shipping a list the user controls means a resolver that appears (or a
- * private one they run themselves) works immediately, with no app update.
- *
- * Entries are stored one per line. Anything that isn't an `http(s)` URL is dropped rather
- * than being passed to the network layer, and duplicates are collapsed so a pasted list
- * with repeats doesn't multiply the request count per song.
- */
+/** Parses the user's list of extra Spotify Canvas resolver endpoints. */
 object CanvasResolverEndpoints {
     private const val MAX_ENDPOINTS = 8
 

@@ -11,19 +11,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 
-/**
- * Per-style fade thresholds for title/artist marquee.
- *
- * Each player style has a different available width, so the char count at which
- * the edge fade should appear is different. The fade itself is still gated by
- * `hasVisualOverflow` (pixel overflow), but the length check prevents the fade
- * from flashing on short texts that happen to measure 1px over due to font
- * rounding. Separate values for title and artist because artist lines are
- * typically shorter and use a smaller font.
- *
- * MiniPlayer is a separate surface with its own constraints, so it has its
- * own thresholds independent of the full player.
- */
+/** Per-style fade thresholds for title/artist marquee. */
 data class FadeThresholds(
     val titleMinChars: Int,
     val artistMinChars: Int,

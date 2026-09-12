@@ -25,76 +25,9 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Drift for the heavily blurred artwork behind lyrics — shared by the
- * Apple-Music-style player's inline lyrics backdrop and the standalone lyrics
- * screen's [moe.rukamori.archivetune.ui.player.LyricsScreen] backdrop, so both
- * surfaces move identically.
- *
- * ### Why a random walk and not a formula
- *
- * The first version was a pair of `RepeatMode.Reverse` tweens: the artwork swept
- * to one extreme and turned around at full speed, which read as the colours
- * whipping back. Replacing it with a Lissajous path (two sines per axis off one
- * ever-advancing phase) removed the hard turnaround but not the underlying
- * problem — a closed periodic path still spends half its cycle travelling back
- * the way it came, so the colours were still seen "suddenly travelling in the
- * opposite direction", just more smoothly.
- *
- * This drives the drift as a walk between random waypoints instead:
- *
- *  * each leg carries the artwork from where it currently rests to a new
- *    waypoint drawn at random inside a disc of [WanderRadiusDp],
- *  * each leg also turns the artwork by a random angle — see [rotationDeg],
- *  * the interpolation is a raised cosine, so speed starts and ends at zero —
- *    the artwork *finishes its path*, settles, and only then sets off again,
- *    which means no reversal ever happens while it is moving,
- *  * the next waypoint is at least [MinTurnRadians] away in angle from the leg
- *    that just finished, so the colours visibly "come again and spread" in a
- *    genuinely different direction rather than retracing the previous path,
- *  * legs are timed off their own length at a constant [WanderSpeedDpPerSecond],
- *    so a long leg doesn't race and a short one doesn't crawl.
- *
- * The walk starts at the centre, so the first frame after the backdrop appears
- * has zero offset and the drift grows out of nothing.
- *
- * ### Why translation alone was not enough
- *
- * Translating the backdrop moves every colour by the *same* vector, so their
- * arrangement is rigid: whatever sits in the top third of the artwork stays in
- * the top third of the screen, free to shuffle by at most [WanderRadiusDp] —
- * under a fifth of a phone's height. That is why some colours "only spread at
- * the top and never reach the bottom" however long you watch. No amount of
- * panning can carry them there; it was never a matter of tuning the path.
- *
- * [rotationDeg] is what breaks the rigidity. Turning the artwork about its centre
- * sweeps a colour from one edge to the opposite one over half a turn, so the
- * whole surface genuinely gets visited — and it costs one more property on a
- * layer that is already composited offscreen for the blur, so no extra pass and
- * no second image. Rotation walks per leg like the offsets do, rather than
- * spinning at a constant rate, which keeps the same "settle, then set off again"
- * character and stops it reading as a turntable.
- *
- * ### Bounds
- *
- * [WanderRadiusDp] is the largest offset this can ever produce, and callers rely
- * on that: the blurred artwork is drawn scaled up so that it still covers the
- * screen at maximum offset.
- *
- * Rotation changes that sum, because a rotated rectangle only reliably covers its
- * own inscribed circle — so the budget must be measured to the container's
- * furthest *corner* rather than its nearest edge. Scaling up is not enough on its
- * own: `Modifier.blur`'s default `BlurredEdgeTreatment.Rectangle` clips the layer
- * it creates to the composable's bounds, so what actually rotates is a rectangle
- * of exactly those bounds — its inscribed circle has the radius of the *short*
- * side, which on a phone is far too small however much the layer is scaled. See
- * [blurBackdropFootprint], which is what callers use to size the layer.
- *
- * ### Threading / recomposition
- *
- * [xDp], [yDp] and [rotationDeg] are [FloatState]s meant to be read **only**
- * from draw-phase lambdas (`Modifier.graphicsLayer { }`). Reading them during
- * composition would invalidate the whole player subtree on every animation
- * frame, which is what the lyrics views' frame budget cannot afford.
+ * Drift for the heavily blurred artwork behind lyrics — shared by the Apple-Music-style player's
+ * inline lyrics backdrop and the standalone lyrics screen's
+ * [moe.rukamori.archivetune.ui.player.LyricsScreen] backdrop, so both surfaces move identically.
  */
 internal class BlurWanderDrift(
     private val random: Random = Random.Default,
@@ -223,50 +156,6 @@ internal class BlurWanderDrift(
 /**
  * Footprint the heavily blurred backdrop layer has to occupy so that [BlurWanderDrift]'s rotation
  * can never swing one of the layer's own corners into view.
- *
- * ### Why the layer cannot simply be the container
- *
- * The backdrop is built as `Modifier.graphicsLayer { scale / translate / rotate }.blur(radius)`:
- * the blur is applied to the still, centred artwork and the drift transform is applied to the
- * blurred result. `Modifier.blur`'s default `BlurredEdgeTreatment.Rectangle` sets `clip = true` on
- * the layer it creates, so the blurred result is an opaque rectangle of **exactly the composable's
- * bounds** — not the `max(W, H)` square that `ContentScale.Crop` painted into it, which is clipped
- * away before the transform ever runs.
- *
- * A rectangle rotated by an arbitrary angle only reliably covers its own inscribed circle, whose
- * radius comes from the rectangle's *short* side. With the layer sized to the container, that is
- * `scale * min(W, H) / 2` — 432dp on a 360x800 phone at 2.4x — while the point that has to stay
- * covered is the container's furthest corner plus the drift, `hypot(W, H) / 2 + WanderRadiusDp` =
- * 559dp. The 127dp shortfall is not theoretical: it is a near-black wedge sweeping through a corner
- * of the lyrics backdrop in time with the rotation, and it is there even at zero drift (432 against
- * 439 for the bare corner).
- *
- * ### What this returns
- *
- * A footprint whose *shorter* side is long enough that the inscribed circle reaches that corner.
- * Only the short side grows: `max(width, height)` comes out unchanged in every real window shape,
- * and because `ContentScale.Crop` of a square artwork renders it at side `max(w, h)`, that means
- * the artwork is still rasterised at exactly the same scale and the backdrop looks identical. The
- * extra area exists purely for the rotation to swing into.
- *
- * ### Cost
- *
- * A bigger layer is a bigger offscreen buffer — 1.3x the container's area for the lyrics screen,
- * up to ~2x for the Apple-Music player, whose resting scale is the tighter constraint. Sized
- * against correctness that is the right way round: the exposed corner is on screen for a large
- * share of all rotation angles, on every device, whereas this is one background layer that only
- * exists while the player is.
- *
- * If it ever needs to come down, the lever is resolution rather than footprint: halving the
- * footprint while doubling the caller's scales and halving its blur radius is pixel-identical (the
- * on-screen blur is `radius * scale`, the visible window is `containerSide / scale` of an artwork
- * drawn at `max(footprint)`, and the coverage product `scale * footprint` is unchanged) at a
- * quarter of the pixels.
- *
- * @param restScale the scale the layer sits at while it carries no drift and no rotation (equal to
- *   [driftScale] for surfaces that never ramp).
- * @param driftScale the scale the layer reaches once it carries the full drift and rotation.
- * @param maxDriftDp the largest translation the walk can produce, i.e. [BlurWanderDrift.WanderRadiusDp].
  */
 internal fun blurBackdropFootprint(
     width: Dp,
@@ -299,18 +188,7 @@ internal fun blurBackdropFootprint(
  */
 private const val BlurBackdropCoverSafety = 1.02f
 
-/**
- * Remembers a [BlurWanderDrift] and advances it from the frame clock while
- * [active].
- *
- * The loop is gated because it is the only thing keeping the frame clock busy:
- * an `InfiniteTransition` (what this replaced) keeps asking for a frame every
- * ~16ms for as long as it is composed, even when nothing reads its value — so
- * the player kept the whole Compose frame pipeline awake while sitting on the
- * cover with no drift on screen. When [active] goes false the walk freezes where
- * it is and resumes from there, so closing and reopening lyrics doesn't restart
- * the path.
- */
+/** Remembers a [BlurWanderDrift] and advances it from the frame clock while [active]. */
 @Composable
 internal fun rememberBlurWanderDrift(active: Boolean): BlurWanderDrift {
     val drift = remember { BlurWanderDrift() }

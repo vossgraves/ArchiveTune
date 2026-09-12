@@ -199,15 +199,9 @@ private const val V2_FIRST_FOCUS_TIMEOUT_MS = 400L
 private val HEAD_LYRICS_ENTRY = LyricsEntry(time = 0L, text = "")
 
 /**
- * Per-Composable cache for [LyricsUtils.hasTrueWordSync] results. The check allocates
- * several Lists (filter, map, distinct) per call and is pure — same entry → same result
- * for the lifetime of the lyrics. Without this cache it was being recomputed for every
- * visible word-synced line on every 16 ms position tick.
- *
- * Keyed by entry identity (LyricsEntry is a stable data class instance held in the
- * parsed lyrics list). Cleared implicitly when the lyrics list changes because the
- * entries themselves are GC'd, and the cache is held in `remember` so it dies with the
- * LyricsV2 composable.
+ * Per-Composable cache for [LyricsUtils.hasTrueWordSync] results. The check allocates several Lists
+ * (filter, map, distinct) per call and is pure — same entry → same result for the lifetime of the
+ * lyrics.
  */
 private class WordSyncCache {
     private val cache = HashMap<LyricsEntry, Boolean>()
@@ -511,20 +505,8 @@ fun LyricsV2(
             val sliderPos = latestSliderPositionProvider.value()
             val pos = sliderPos ?: player.currentPosition
 
-            // REPEAT_MODE_ONE remains in STATE_READY, so lifecycle/state based
-            // restart detection never fires. Re-key the word subtree on the
-            // actual backward clock discontinuity to give every Animatable a
-            // fresh zero value for the next play-through.
-            //
-            // The discontinuity is measured against the PLAYER's clock, not the
-            // value returned by `sliderPositionProvider`. The previous version
-            // additionally required `sliderPos == null`, which silently disabled
-            // repeat detection in the Apple Music player: that player always
-            // installs a slider provider, so the branch never ran. The scroll
-            // still snapped back to the first line (currentLineIndex recomputes
-            // from the position) but every word kept its completed sweep, so the
-            // lyrics sat frozen until the overlay was closed and reopened —
-            // exactly the "resets but never animates" symptom.
+            // REPEAT_MODE_ONE remains in STATE_READY, so lifecycle/state based restart detection
+            // never fires.
             val rawPlayerPositionMs = player.currentPosition.coerceAtLeast(0L)
             if (lastRawPositionMs - rawPlayerPositionMs > V2_POSITION_RESET_BACKWARD_THRESHOLD_MS) {
                 playbackResetTick++
@@ -556,26 +538,9 @@ fun LyricsV2(
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
 
-    // ── First-frame placement ──
-    // A fresh LazyListState starts at line 0 and the auto-scroll effect below
-    // animates it to the active line, so opening the view showed the first verse
-    // for a moment and then scrolled itself to wherever the song actually is.
-    // That is the "lyrics reposition themselves every time I open lyrics"
-    // report; it is most obvious in the Apple Music player, which composes this
-    // view from scratch on every open.
-    //
-    // Hold the list transparent until the active line is placed — the first
-    // placement is an instant scroll, since there is nothing on screen to
-    // animate — then fade in.
-    //
-    // The key must NOT include the line count. `entriesWithWords` is derived from an off-thread
-    // parse, so it is always empty on the first composition and always grows one or two frames
-    // later; keying on its size re-ran this `remember` after the view was already visible and
-    // handed back a fresh `mutableStateOf(true)`, snapping the alpha from 1 back to 0 with a
-    // zero-duration tween. The lyrics blinked out and faded back in on every open — worst in the
-    // Apple Music player, which composes this view from scratch each time. `isSynced` is derived
-    // synchronously from the raw lyrics text, so arming on it is already correct on frame 1, and
-    // `playbackResetTick` still re-arms for a new track / repeat.
+    // ── First-frame placement ── A fresh LazyListState starts at line 0 and the auto-scroll effect
+    // below animates it to the active line, so opening the view showed the first verse for a moment
+    // and then scrolled itself to wherever the song actually is.
     var awaitingFirstFocus by
         remember(playbackResetTick) {
             mutableStateOf(isSynced)
@@ -1546,18 +1511,10 @@ private fun AnimatedWordV2(
     val isWordComplete = currentPositionMs >= wordEndMs
     val isWordActive = currentPositionMs in wordStartMs until wordEndMs
 
-    // ── Sweep progress: Animatable-driven for robustness ──
-    // Previously, progress was computed directly from currentPositionMs:
-    //   progress = (currentPositionMs - wordStartMs) / wordDuration
-    // This broke for very short words (< ~50ms): the 16ms position poll
-    // could skip the entire isWordActive window, causing the word to jump
-    // from 0% to 100% with no letter-by-letter sweep. The user reported
-    // "sometimes words don't animate letter by letter" — this is the cause.
-    //
-    // Fix: drive the sweep with an Animatable that starts when the word
-    // becomes active and runs for max(wordDuration, MIN_SWEEP_MS). This
-    // guarantees a visible sweep even for 1-frame words, and decouples
-    // the animation smoothness from the position-poll cadence.
+    // ── Sweep progress: Animatable-driven for robustness ── Previously, progress was computed
+    // directly from currentPositionMs: progress = (currentPositionMs - wordStartMs) / wordDuration
+    // This broke for very short words (< ~50ms): the 16ms position poll could skip the entire
+    // isWordActive window, causing the word to jump from 0% to 100% with no letter-by-letter sweep.
     val sweepAnimatable = remember(word) { androidx.compose.animation.core.Animatable(0f) }
     androidx.compose.runtime.LaunchedEffect(isWordActive, isWordComplete, wordStartMs, wordEndMs) {
         when {

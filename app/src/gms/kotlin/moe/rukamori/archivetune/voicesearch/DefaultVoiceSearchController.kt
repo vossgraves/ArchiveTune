@@ -19,19 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * GMS-flavor voice search implementation.
- *
- * Uses the platform `android.speech.SpeechRecognizer` API directly. On Android
- * 12+ this API uses the on-device Google Speech Recognition service (shipped via
- * Google Play Services as part of the system), so the user does NOT need to
- * install the standalone Google app. On older Android versions the recognizer
- * falls back to whatever speech service the system provides.
- *
- * This implementation is in the `gms` source set because the `gms` flavor
- * already depends on Google Play Services (for Cast). The `foss` flavor uses
- * a no-op impl so FOSS builds don't pull in any GMS dependency.
- */
+/** GMS-flavor voice search implementation. */
 class DefaultVoiceSearchController : VoiceSearchController {
     private val _state = MutableStateFlow<VoiceSearchState>(VoiceSearchState.Idle)
     override val state: StateFlow<VoiceSearchState> = _state.asStateFlow()

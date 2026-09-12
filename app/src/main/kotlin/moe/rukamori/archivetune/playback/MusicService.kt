@@ -408,6 +408,11 @@ class MusicService :
     lateinit var sponsorBlockPlaybackController: SponsorBlockPlaybackController
 
     private lateinit var audioManager: AudioManager
+
+    /** Owned here because [HapticsPcmProcessor] taps the sink of every player this service builds. */
+    var musicHapticsEngine: SpatialFlowHapticEngine? = null
+        private set
+
     private var audioFocusRequest: AudioFocusRequest? = null
     private var lastAudioFocusState = AudioManager.AUDIOFOCUS_NONE
     private var wasPlayingBeforeAudioFocusLoss = false
@@ -597,22 +602,6 @@ class MusicService :
     private var initialBufferRecoveryAttemptedMediaId: String? = null
 
     // Codec-state recovery counter, SEPARATE from PlaybackStreamRecoveryTracker.
-    //
-    // Background: when an ALAC (.m4a) stream is backgrounded + paused for a few minutes,
-    // Android may reclaim the hardware codec out from under ExoPlayer (low-memory kill).
-    // ExoPlayer then surfaces a MediaCodecDecoderException wrapping either:
-    //   - IllegalStateException("queueInputBuffer() is valid only at Executing states;
-    //     currently at Released state")  — when the renderer tries to queue into a
-    //     codec that's already been released, OR
-    //   - CodecException("Error 0x80000000")  — the generic undefined MediaCodec error,
-    //     which the same reclamation can produce on MediaTek's c2.mtk.alac.decoder.
-    //
-    // Re-prepare() recovers by instantiating a fresh codec, BUT the failure can recur:
-    //   (a) at the very start of a song (codec init races / transient resource pressure), and
-    //   (b) again on the next background+pause cycle.
-    // PlaybackStreamRecoveryTracker allows only ONE retry per media item, which is too
-    // tight for a recurring codec-state fault. We keep a small per-media budget here
-    // (default 4 attempts) so transient codec reclamation doesn't kill the whole queue.
     @Volatile
     private var codecRecoveryMediaId: String? = null
     @Volatile
@@ -1222,6 +1211,9 @@ class MusicService :
         super.onCreate()
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
+
+        // Reacts to its own SharedPreferences, so nothing further has to be wired here.
+        musicHapticsEngine = SpatialFlowHapticEngine(this)
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -3297,15 +3289,7 @@ class MusicService :
             targetPlayer.bufferedPosition >= duration - CROSSFADE_END_GUARD_MS
     }
 
-    /**
-     * Fully tears down any in-flight crossfade before a user-initiated skip (next/previous).
-     *
-     * Without this, skipping during an active crossfade or handoff leaves the service in a broken
-     * state: [isCrossfading] stays true (so [onMediaItemTransition] stops rescheduling crossfades),
-     * the primary player stays muted (volume 0), [PrimaryPlayer.pauseAtEndOfMediaItems] stays true,
-     * and the orphaned secondary [ExoPlayer] keeps playing — causing double audio, silent playback,
-     * and a leaked player that can crash the next crossfade. Must be called on the main thread.
-     */
+    /** Fully tears down any in-flight crossfade before a user-initiated skip (next/previous). */
     fun prepareForManualSkip() {
         if (!::player.isInitialized) return
         if (!isCrossfading && !crossfadeHandoffInProgress && secondaryCrossfadePlayer == null) return
@@ -7679,13 +7663,9 @@ class MusicService :
                 ?.shouldBypassPlayerCache() == true
 
     /**
-     * In-memory cache of resolved [DirectStream]s (Qobuz / Tidal) keyed by media id.
-     * Populated by [prefetchNextMediaItemStream] so the next song's lossless
-     * stream URL is already known when the user skips to it — turning a
-     * ~1-3 second Qobuz/Tidal resolution into a cache hit.
-     *
-     * Entries expire after [DIRECT_STREAM_CACHE_TTL_MS] (5 minutes) so stale
-     * stream URLs (which can be revoked by the source) aren't used.
+     * In-memory cache of resolved [DirectStream]s (Qobuz / Tidal) keyed by media id. Populated by
+     * [prefetchNextMediaItemStream] so the next song's lossless stream URL is already known when
+     * the user skips to it — turning a ~1-3 second Qobuz/Tidal resolution into a cache hit.
      */
     private val directStreamCache = ConcurrentHashMap<String, CachedDirectStream>()
     private var nextMediaItemPrefetchJob: kotlinx.coroutines.Job? = null
@@ -7704,14 +7684,10 @@ class MusicService :
     )
 
     /**
-     * Prefetches the stream URL for the next-up media item in the queue so
-     * that when the user skips to it (or auto-advance fires), the URL is
-     * already in [playbackUrlCache] (YouTube) or [directStreamCache]
-     * (Qobuz / Tidal) and playback starts within ~100ms instead of the
-     * usual 1-3 second resolution delay.
-     *
-     * Idempotent: re-invoking cancels the previous prefetch. Failures are
-     * silently swallowed — prefetch is an optimization, not a requirement.
+     * Prefetches the stream URL for the next-up media item in the queue so that when the user skips
+     * to it (or auto-advance fires), the URL is already in [playbackUrlCache] (YouTube) or
+     * [directStreamCache] (Qobuz / Tidal) and playback starts within ~100ms instead of the usual
+     * 1-3 second resolution delay.
      */
     private fun prefetchNextMediaItemStream() {
         if (player.mediaItemCount == 0 || player.currentTimeline.isEmpty) return
@@ -8527,27 +8503,6 @@ class MusicService :
         }
 
         // MediaCodec decoder-state recovery.
-        //
-        // When streaming lossless ALAC (.m4a) from Telegram on devices with a flaky hardware
-        // ALAC decoder (notably MediaTek's c2.mtk.alac.decoder), the OS may release the codec
-        // out from under ExoPlayer while the app is backgrounded + paused for a few minutes
-        // (low-memory reclamation). The renderer's next queueInputBuffer() call then throws
-        // one of:
-        //   IllegalStateException("queueInputBuffer() is valid only at Executing states;
-        //   currently at Released state")    — renderer races against an already-released codec
-        //   CodecException("Error 0x80000000") — generic undefined MediaCodec error from the
-        //   same root cause on MediaTek's c2.mtk.alac.decoder
-        // Both surface as a MediaCodecDecoderException, with errorCode == ERROR_CODE_DECODING_FAILED
-        // (4003). The codec itself is recoverable — the player just needs to be re-prepared so a
-        // fresh codec instance is instantiated. Re-prepare resumes from the current position; no
-        // queue reshuffle needed.
-        //
-        // IMPORTANT: the failure can recur — once at song start (codec init race / transient
-        // resource pressure) and again on the next background+pause cycle. The single-shot
-        // playbackStreamRecoveryTracker is too tight for this; we keep a SEPARATE per-media
-        // budget (codecRecoveryMaxAttempts = 4) so transient codec reclamation doesn't kill
-        // the queue. The counter resets when playback reaches READY/playing (see onEvents),
-        // so each successful recovery earns a fresh budget for the next cycle.
         if (isMediaCodecStateError(error)) {
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
             val mediaItemIndex = player.currentMediaItemIndex
@@ -8973,16 +8928,7 @@ class MusicService :
     // mediaId -> set of sources known to have this track (passed the metadata match gate during a recent
     // resolution). Used by the player's Source chooser to only offer sources that actually have the
     // song. Process-lived only; YouTube is always available as the fallback and is added implicitly.
-    /**
-     * mediaId -> MediaMetadata for every item currently in the queue.
-     *
-     * The multi-source resolver runs on a loader thread, so it cannot touch [player] to read the
-     * MediaItem tags itself. This cache is filled on the application thread from
-     * [onTimelineChanged] / [onMediaItemTransition] so [buildSourceQuery] can still recover
-     * title/artist/album for tracks that are being resolved *before* they become the current item
-     * and that are not in the local database yet (radio/autoplay continuations). Without it those
-     * tracks were skipped with "missing metadata" and fell straight through to YouTube.
-     */
+    /** mediaId -> MediaMetadata for every item currently in the queue. */
     private val queuedMetadataByMediaId = ConcurrentHashMap<String, MediaMetadata>()
 
     private fun cacheQueuedMetadata() {
@@ -9060,23 +9006,8 @@ class MusicService :
     }
 
     /**
-     * Triggers a fresh resolution of every enabled non-YouTube source for [mediaId], bypassing
-     * the in-memory DirectStream cache.
-     *
-     * Why this exists: [resolveMultiSourceDataSpec] records each source that passes the metadata
-     * match gate into [resolvedSourcesByMediaId]. If a source failed transiently on the first
-     * resolution attempt (network blip, Qobuz/Tidal API timeout, pool-account rate-limit), it
-     * never gets recorded for the lifetime of the process — even though a retry would succeed.
-     * The user sees YouTube (and JioSaavn) as the only available sources until they force-stop
-     * and reopen the app, which clears the in-memory cache and triggers a fresh resolution.
-     *
-     * This function replicates the "force-stop and reopen" effect on demand: it evicts the cached
-     * DirectStream for [mediaId] and re-runs the lossless resolution chain in the background. The
-     * UI picks up the new sources via [_resolvedSourcesRevision] (a StateFlow the Source dialog
-     * collects to trigger recomposition).
-     *
-     * Safe to call repeatedly — concurrent invocations are coalesced by the [scope] coroutine
-     * and the cache eviction is idempotent.
+     * Triggers a fresh resolution of every enabled non-YouTube source for [mediaId], bypassing the
+     * in-memory DirectStream cache.
      */
     fun refreshSourcesForSong(mediaId: String) {
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
@@ -9112,37 +9043,6 @@ class MusicService :
      * Applies a per-song "play from" override and, if [mediaId] is the current item, re-resolves it
      * immediately so the change takes effect without the user having to skip the track. Passing a
      * null [source] clears the override for that song.
-
-     *
-     * Bugs addressed here:
-     *
-     * 1. **"Sometimes changing source only restarts the song but doesn't change the source."**
-     *    `directStreamCache[mediaId]` and the bare-keyed `contentLengthCache[mediaId]` were not
-     *    evicted, so the resolver's fast path could short-circuit to the previous source's
-     *    resolved URL (when the override happened to be re-applied to the same id) or to a stale
-     *    content-length that made the byte-cache short-circuit in [resolveCachedDataSpec] think
-     *    the request was fully cached. Both are now evicted explicitly so the slow path always
-     *    re-resolves through the new override.
-     *
-     * 2. **"Qobuz → YouTube plays from YouTube but muted."** `player.prepare()` on the same
-     *    MediaItem is effectively a no-op — the switch only "worked" because the seek-triggered
-     *    re-open re-resolved the data source, and the re-create is nondeterministic (stale data
-     *    sources, retried expired URLs, and the reactive volume pipeline interleaving with the
-     *    transition can pin the primary player's volume low). The deterministic fix:
-     *    - evict all per-source caches (URLs, content length, player/download cache resources),
-     *    - cancel any pending crossfade and reset its volume,
-     *    - re-claim audio focus BEFORE capturing the expected volume (so the baseline uses the
-     *      post-focus-restore `audioFocusVolumeFactor` instead of a stale ducked one),
-     *    - re-create the media item from scratch (`clearMediaItems()` + `setMediaItem()` + fresh
-     *      `prepare()`) — the exact same path as "skip to previous song and back", which the user
-     *      confirms always fixes the mute,
-     *    - apply the captured (pre-switch) effective volume immediately, and re-apply that same
-     *      captured baseline on a delayed reassert AND on STATE_READY (whichever fires last —
-     *      the READY hook cancels the delayed job), instead of recomputing from live flows that
-     *      can be stale/ducked mid-transition,
-     *    - re-arm the audible-playback watchdog on STATE_READY (it self-cancels while the player
-     *      is IDLE mid-switch and was never re-armed before — a dead watchdog let any later
-     *      volume dip stick forever).
      */
     fun setSongSourceOverride(
         mediaId: String,
@@ -9151,21 +9051,7 @@ class MusicService :
         setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
     }
 
-    /**
-     * Sets a per-song source override AND persists the chosen Qobuz trackId.
-     * Used when the user picks a specific Qobuz track from the "Play from"
-     * source-search popup — the exact Qobuz trackId is preserved across the
-     * re-resolution so the resolver downloads the exact track (not a
-     * bestMatch-by-title search that could pick a different master / deluxe
-     * edition).
-     *
-     * The mediaId is NOT changed — the song's existing mediaId (typically the
-     * YouTube video id) is preserved, so the song is NOT registered as a
-     * duplicate in the playback history / "recently listened" section. The
-     * queue is also preserved (this calls the same internal implementation
-     * as `setSongSourceOverride`, which uses `player.setMediaItems(allItems,
-     * currentIndex, capturedPositionMs)` to keep the queue intact).
-     */
+    /** Sets a per-song source override AND persists the chosen Qobuz trackId. */
     fun setSongSourceOverrideWithQobuzTrackId(
         mediaId: String,
         source: AudioSourceType?,
@@ -9175,14 +9061,9 @@ class MusicService :
     }
 
     /**
-     * Sets a per-song source override AND persists the chosen Qobuz-**backup** mirror
-     * video id — the counterpart of [setSongSourceOverrideWithQobuzTrackId] for the
-     * kouzu.in mirror, which is keyed by YouTube video id rather than a catalogue
-     * track id.
-     *
-     * As with the Qobuz variant, the song's own mediaId is left alone: the queue, its
-     * position, the artwork and the listening history are all preserved, and only the
-     * bytes being decoded change.
+     * Sets a per-song source override AND persists the chosen Qobuz-**backup** mirror video id —
+     * the counterpart of [setSongSourceOverrideWithQobuzTrackId] for the kouzu.in mirror, which is
+     * keyed by YouTube video id rather than a catalogue track id.
      */
     fun setSongSourceOverrideWithQobuzBackupVideoId(
         mediaId: String,
@@ -9284,22 +9165,9 @@ class MusicService :
             // reflects the restored 1.0 factor.
             ensureAudioFocusForActivePlayback()
 
-            // Deterministic re-create: replace ONLY the current media item with a fresh one
-            // (so the new source's MediaSource is built from scratch) while preserving the
-            // rest of the queue. The previous implementation called clearMediaItems() +
-            // setMediaItem(item, 0), which discarded the entire queue — when the current
-            // song ended the player had no next item to auto-advance to, so playback stopped
-            // until the user manually pressed Play. We now capture the full media-items list
-            // and current index BEFORE the teardown, swap the current item for the freshly
-            // resolved one, and call setMediaItems(items, currentIndex, startPositionMs) so
-            // the queue is intact and ExoPlayer's auto-advance works as expected.
-            //
-            // POSITION PRESERVATION: the previous call passed 0L as startPositionMs, which
-            // restarted the song from the beginning on every source switch. The user's
-            // expectation is that the original song stays where it was — only the audio
-            // source changes. We now capture player.currentPosition BEFORE setMediaItems
-            // (it would be 0 / unset after the call) and pass it as startPositionMs so
-            // ExoPlayer resumes the new source's stream at the same playback position.
+            // Deterministic re-create: replace ONLY the current media item with a fresh one (so the
+            // new source's MediaSource is built from scratch) while preserving the rest of the
+            // queue.
             val currentIndex = player.currentMediaItemIndex
             val capturedPositionMs = player.currentPosition.coerceAtLeast(0L)
             val allItems = ArrayList(player.mediaItems)
@@ -9452,18 +9320,9 @@ class MusicService :
             // Expired entry — evict.
             directStreamCache.remove(mediaId, cached)
         }
-        // A per-song "play from" override (set via the player's Source chooser, or auto-pinned
-        // by a previous successful lossless resolution — see the Source WIN block below) takes
-        // precedence over the global order. YOUTUBE means "always use YouTube for this song"
-        // (skip lossless entirely); a lossless override forces just that source (still subject
-        // to the metadata match gate).
-        //
-        // DISABLED-SOURCE FALLTHROUGH: if the pinned source has since been disabled by the
-        // user (e.g. they turned off the Qobuz toggle in Settings), we do NOT try only that
-        // source — that would always fail and force a YouTube fallback even when other
-        // lossless sources are still enabled. Instead we fall through to the full enabled
-        // chain so a different lossless source can still win. The stale pin remains in
-        // storage and will become effective again if the user re-enables the source.
+        // A per-song "play from" override (set via the player's Source chooser, or auto-pinned by a
+        // previous successful lossless resolution — see the Source WIN block below) takes
+        // precedence over the global order.
         val override =
             when {
                 isDirectQobuzTrack -> AudioSourceType.QOBUZ
@@ -10104,23 +9963,6 @@ class MusicService :
     /**
      * Resolves a **Qobuz backup** stream — the community-hosted `mlc-ytify.kouzu.in` mirror, which
      * serves a FLAC per YouTube video id.
-     *
-     * The two-step resolve (envelope → mirror probe) lives in
-     * [QobuzBackupProvider.resolveStream], shared with the download path
-     * (`LosslessStreamResolver.resolveQobuzBackup`). It used to be duplicated here, which is how
-     * the two drifted: the playback copy was fixed to prefer the `lossless` mirror over the lossy
-     * `url` one while the download path had no Qobuz-backup support at all.
-     *
-     * [mediaOkHttpClient] is passed in so the probe goes out through the same proxy-aware client
-     * that will fetch the bytes, and so the interceptor adds `x-request-source: muzo` — without
-     * that header kouzu.in rate-limits aggressively.
-     *
-     * Returns null when the id is not a YouTube video id, the mirror has nothing for it, or no
-     * candidate mirror serves audio.
-     *
-     * Marked [DirectStream.trustedDirectId] because the mirror is keyed by the very id we asked
-     * for: the YouTube media id IS the authoritative identity here, so the title/artist gate that
-     * guards catalogue-search sources has nothing to check.
      */
     private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
         // An explicit pick from the "Play from" popup addresses a specific mirror entry, which is
@@ -10363,16 +10205,7 @@ class MusicService :
     /**
      * Writes a [FormatEntity] describing a resolved external ([DirectStream]) source so the
      * media-info "Details" tab can render technical stats instead of spinning forever. Only the
-     * YouTube resolver used to persist a format, leaving Tidal streams with no row. We derive what
-     * we can from the stream: MIME/codec directly, and a best-effort sample rate / bit depth from
-     * the quality tier embedded in [DirectStream.label] (e.g. "HI_RES", "LOSSLESS").
-     *
-     * If [DirectStream.contentLength] is null (common for Tidal/Qobuz stream URLs that don't
-     * expose a Content-Length header upfront), we fire a HEAD request in the background to
-     * fetch the real byte size. Without this the nerd-stats card shows "Unknown content
-     * length" for FLAC tracks even when the stream itself is fully playable. The HEAD request
-     * is best-effort and never blocks playback — the row is upserted immediately with a 0
-     * placeholder, then updated once the HEAD round-trip completes.
+     * YouTube resolver used to persist a format, leaving Tidal streams with no row.
      */
     private fun persistDirectStreamFormat(
         mediaId: String,
@@ -10493,17 +10326,8 @@ class MusicService :
     }
 
     /**
-     * The stream's true average bitrate in bits/sec, derived from its byte length and
-     * playing time, or null when either is unknown.
-     *
-     * This is what makes the Details card show something specific to the track that is
-     * actually playing. The alternative — sample rate x bit depth x channels — is the
-     * *uncompressed* PCM ceiling, and it is identical for every file that shares a tier:
-     * the Qobuz backup mirror serves almost its whole catalogue as 24-bit/44.1 kHz FLAC,
-     * so every lossless track reported exactly the same "2116 kbps" no matter how
-     * compressible it was. A measured rate distinguishes them (a sparse ballad
-     * compresses to well under half of a dense mix) and is the honest figure for a
-     * variable-bitrate codec.
+     * The stream's true average bitrate in bits/sec, derived from its byte length and playing time,
+     * or null when either is unknown.
      */
     private fun measuredBitrate(
         contentLength: Long?,
@@ -11084,13 +10908,10 @@ class MusicService :
     }
 
     /**
-     * Speaks Apple's license-exchange protocol (verified against gamdl): the Widevine
-     * challenge travels BASE64 inside a JSON envelope —
-     * `{"challenge", "key-system", "uri", "adamId", "isLibrary", "user-initiated"}` —
-     * and the response is JSON whose `license` field carries the base64 license bytes.
-     * A plain HttpMediaDrmCallback posts the raw challenge and chokes on the JSON response,
-     * which is why Apple playback was silent. Provisioning (L3 device registration) still
-     * goes to Google's default endpoint.
+     * Speaks Apple's license-exchange protocol (verified against gamdl): the Widevine challenge
+     * travels BASE64 inside a JSON envelope — `{"challenge", "key-system", "uri", "adamId",
+     * "isLibrary", "user-initiated"}` — and the response is JSON whose `license` field carries the
+     * base64 license bytes.
      */
     private inner class AppleLicenseCallback(
         private val track: AppleTrackDrmInfo,
@@ -11377,6 +11198,10 @@ class MusicService :
                             150.toShort(),
                         ),
                         SonicAudioProcessor(),
+                        // Analyses the decoded PCM for the haptics engine and passes it through
+                        // untouched. A fresh instance per sink — an AudioProcessor may belong to
+                        // only one chain.
+                        HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
                     ),
                 ).build()
         }
@@ -11814,6 +11639,8 @@ class MusicService :
     override fun onDestroy() {
         equalizerPlaybackController.detach(this)
         sponsorBlockPlaybackController.detach()
+        musicHapticsEngine?.release()
+        musicHapticsEngine = null
         discordServiceStopping = true
         requestDiscordSync(
             reason = "service_destroy",
@@ -12166,20 +11993,7 @@ class MusicService :
         const val CROSSFADE_MAX_BUFFER_BEFORE_START_MS = 12_500L
         const val PRIMARY_MIN_BUFFER_MS = 20_000
         const val PRIMARY_MAX_BUFFER_MS = 60_000
-        // Reduced from 750ms / 2_500ms → 150ms / 750ms for faster song-start
-        // latency. Combined with stream URL prefetching (see
-        // prefetchNextMediaItemStream) this cuts perceived "tap to play" time
-        // from ~1.5-3s down to ~150-400ms when the stream URL is cached.
-        // 150ms is just above the ExoPlayer default of 250ms but small enough
-        // that FLAC / YouTube streams start audibly within ~1 RTT of the
-        // first TCP packet arriving. The after-rebuffer floor was lowered
-        // from 1_000ms → 750ms for the same reason — the user is already
-        // waiting on a rebuffer, so making them wait a full extra second on
-        // top of the network RTT is excessive. `setPrioritizeTimeOverSizeThresholds(true)`
-        // on the LoadControl means ExoPlayer will start playback as soon as
-        // the time threshold is met, even if the size-based threshold hasn't
-        // been reached — important for FLAC where the bitrate is 4-6× higher
-        // than AAC, so the same byte count represents far less playback time.
+        // Reduced from 750ms / 2_500ms → 150ms / 750ms for faster song-start latency.
         const val PRIMARY_BUFFER_FOR_PLAYBACK_MS = 150
         const val PRIMARY_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 750
         const val CROSSFADE_MIN_BUFFER_MS = 15_000
@@ -12194,18 +12008,7 @@ class MusicService :
         const val CROSSFADE_FRAME_MS = 32L
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
-        /**
-         * How often the stuck-mute watchdog re-checks the player volume during active playback.
-         *
-         * This is only a backstop: ensureAudiblePlaybackVolume already runs from onEvents and from
-         * both source-switch paths, so any state change that could mute the player is covered
-         * event-driven. The watchdog exists for a mute that arrives with no player event at all.
-         *
-         * It was 2s, which is 30 CPU wakeups a minute for a check that almost always does nothing,
-         * and background audio is exactly where that stops the SoC reaching deep idle between
-         * buffer fills. At 15s the worst-case recovery for an already-rare bug goes from 2s to 15s
-         * and the wakeups drop by 7.5x.
-         */
+        /** How often the stuck-mute watchdog re-checks the player volume during active playback. */
         const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 15_000L
 
         /**

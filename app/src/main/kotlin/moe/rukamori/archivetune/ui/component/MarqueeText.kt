@@ -34,21 +34,8 @@ import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.ui.utils.fadingEdge
 
 /**
- * One line of text that scrolls sideways when it does not fit, with a soft fade at both edges
- * while it is scrolling.
- *
- * Two details make this work, and both were re-derived separately in three places before this
- * existed:
- *
- * The fade sits on the BOX — the line's viewport — never on the Text. The Text scrolls inside the
- * Box, so a mask on the Text would travel with the glyphs and leave the visible edge hard-clipped:
- * the boxy cut. On the Box, the DstIn gradient masks at fixed edges and the text moves underneath.
- *
- * The fade is applied only while the line actually overflows, and overflow is decided by comparing
- * the laid-out text width against the viewport width — NOT by `hasVisualOverflow`, which never
- * fires here because `basicMarquee` measures its child with unbounded width. `basicMarquee` also
- * scrolls if and only if the text is wider than the viewport, so the same comparison is exactly
- * "fade while scrolling".
+ * One line of text that scrolls sideways when it does not fit, with a soft fade at both edges while
+ * it is scrolling.
  */
 @Composable
 fun MarqueeText(

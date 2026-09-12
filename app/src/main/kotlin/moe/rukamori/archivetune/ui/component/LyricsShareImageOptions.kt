@@ -45,13 +45,9 @@ data class LyricsShareImageOptions(
     val dimAmount: Float = 1f,
     val showArtwork: Boolean = true,
     /**
-     * When true, the share image is rendered in the "vinyl" layout — the album
-     * cover sits on the left, a vinyl record (with the song title and artist on
-     * its center label) peeks out from behind it on the right, and the lyrics
-     * text is omitted entirely. Matches the "MD Vinyl" reference screenshot the
-     * user uploaded. The other options (blurRadius, dimAmount, aspectRatio,
-     * showArtwork) are ignored when this is true — vinyl mode has its own fixed
-     * layout.
+     * When true, the share image is rendered in the "vinyl" layout — the album cover sits on the
+     * left, a vinyl record (with the song title and artist on its center label) peeks out from
+     * behind it on the right, and the lyrics text is omitted entirely.
      */
     val vinylMode: Boolean = false,
 ) {

@@ -921,26 +921,8 @@ fun BitChordPlayerContent(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    // Swallow vertical drags before the sheet can read them as
-                    // "dismiss me". Children that scroll consume first, so the
-                    // lists are unaffected. This sits outside the side padding
-                    // on purpose: inside it, the two gutters were left as bare
-                    // sheet, and a swipe that strayed into one closed the whole
-                    // player instead of scrolling the lyrics or the queue.
-                    //
-                    // With one hole in it, and where that hole is depends on
-                    // which screen of the player is up:
-                    //
-                    //  * The main player — the artwork-and-credits block. Down is
-                    //    left unconsumed for the sheet to dismiss with, so the
-                    //    player closes from the picture as well as from the
-                    //    handle; up is taken here and drags the queue in.
-                    //  * The queue or the lyrics — the header those panels sit
-                    //    below, and nothing else. Down closes the player, up does
-                    //    nothing: there is no sleeve left to pull away from.
-                    //
-                    // The header is worked out from the state rather than read
-                    // off the sleeve, which is the whole point of doing it here.
+                    // Swallow vertical drags before the sheet can read them as "dismiss me".
+                    // Children that scroll consume first, so the lists are unaffected.
                     .onGloballyPositioned { dismissBandSpace.value = it }
                     .pointerInput(Unit) {
                         awaitEachGesture {
@@ -1279,17 +1261,6 @@ fun BitChordPlayerContent(
                 if (lyricsOpen) {
                     // The app's own lyrics view, in whichever style the Lyrics settings select —
                     // the same component every other player style opens.
-                    //
-                    // BitChord shipped its own panel, which swept the highlight through a line by
-                    // fractional CHARACTER index: within a word it interpolated linearly across
-                    // that word's span, so the light crept through the middle of letters instead of
-                    // landing on words. It also ignored the lyrics-style preference outright, so
-                    // choosing Enhanced or Spotify changed every surface in the app except this
-                    // one. Routing to the shared renderer fixes both, and drops ~450 lines of a
-                    // second implementation of scrolling, follow, tap-to-seek and romanisation.
-                    //
-                    // The one-line strip on the collapsed player keeps BitChord's sweep: it shows a
-                    // single line with no list around it, which is what that treatment was for.
                     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
                     val panelModifier = Modifier
                         .fillMaxSize()
@@ -1487,19 +1458,9 @@ fun BitChordPlayerContent(
 
             if (lyricsOpen) {
                 Spacer(Modifier.height(16.dp))
-                // The credit, and beside it the way out. Tapping the sleeve
-                // above also closes the panel, but that is an invisible target
-                // you have to be told about; the button says so.
-                //
-                // The ellipsis button beside the close button is the way into
-                // the lyrics options bottom sheet — the same slide-up LyricsMenu
-                // (edit / refetch / translate / AI romanise / search / sync
-                // offset) the standalone lyrics page opens for the other player
-                // styles, so the Bitchord style's lyrics page has it too (user
-                // request 2026-09-01). The menu writes straight into the lyrics
-                // table and the sync-offset state, both of which this panel
-                // already follows, so refetching or editing updates the panel
-                // live.
+                // The credit, and beside it the way out. Tapping the sleeve above also closes the
+                // panel, but that is an invisible target you have to be told about; the button says
+                // so.
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1745,14 +1706,9 @@ internal fun playerFillsWindow(windowWidth: Dp): Boolean =
 // ── Glyphs & helpers (verbatim from BitChord's NowPlayingScreen.kt) ───────────
 
 /**
- * The upward half of the sleeve's vertical gesture: dragged up, the artwork
- * block pulls the queue in behind it, following the finger the whole way and
- * settling to whichever end it was nearer on release.
- *
- * Downward is deliberately not ours. The sheet the player sits in is what closes
- * when the sleeve is dragged that way, and it can only read a drag it was
- * allowed to see — so a downward crossing of the touch slop is left entirely
- * alone and this returns having consumed nothing at all.
+ * The upward half of the sleeve's vertical gesture: dragged up, the artwork block pulls the queue
+ * in behind it, following the finger the whole way and settling to whichever end it was nearer on
+ * release.
  */
 private suspend fun AwaitPointerEventScope.dragQueueIn(
     down: PointerInputChange,
@@ -1947,13 +1903,8 @@ private fun formatTime(ms: Long): String {
 // ── OverlayBack (verbatim) ────────────────────────────────────────────────────
 
 /**
- * A back callback that outranks whatever else the window has registered —
- * here, the sheet the player is drawn in. See the call site in
- * [BitChordPlayerContent] for why it takes that.
- *
- * Everything that names an `android.window` type lives in this object so those
- * classes, which don't exist below API 33, are only ever *loaded* on a device
- * that has them.
+ * A back callback that outranks whatever else the window has registered — here, the sheet the
+ * player is drawn in. See the call site in [BitChordPlayerContent] for why it takes that.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private object OverlayBack {

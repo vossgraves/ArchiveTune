@@ -10,36 +10,8 @@ package moe.rukamori.archivetune.canvas
 import java.io.ByteArrayOutputStream
 
 /**
- * Minimal, dependency-free protobuf codec for Spotify's Canvas endpoint
- * (`POST https://spclient.wg.spotify.com/canvaz-cache/v0/canvases`).
- *
- * Spotify serves Canvas metadata as protobuf, not JSON, so this module needs to
- * speak just enough of the wire format to build the request and pull the video
- * URL back out. Only two messages are involved and each needs a single field,
- * so hand-rolling the two varint/length-delimited paths is far cheaper than
- * adding a protobuf runtime + codegen to a pure-JVM module:
- *
- * ```proto
- * message EntityCanvazRequest {
- *   repeated Entity entities = 1;
- *   message Entity { string entity_uri = 1; }
- * }
- *
- * message EntityCanvazResponse {
- *   repeated Canvaz canvases = 1;
- *   message Canvaz {
- *     string id         = 1;
- *     string url        = 2;   // the looping canvas video (mp4)
- *     string file_id    = 3;
- *     Type   type       = 4;
- *     string entity_uri = 5;   // spotify:track:<id> this canvas belongs to
- *   }
- *   string ttl_in_seconds = 2;
- * }
- * ```
- *
- * Unknown fields are skipped rather than rejected, so Spotify adding fields to
- * either message is a no-op here.
+ * Minimal, dependency-free protobuf codec for Spotify's Canvas endpoint (`POST
+ * https://spclient.wg.spotify.com/canvaz-cache/v0/canvases`).
  */
 internal object SpotifyCanvazProtocol {
     private const val WIRE_VARINT = 0

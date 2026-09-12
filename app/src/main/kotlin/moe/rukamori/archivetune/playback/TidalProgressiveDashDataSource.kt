@@ -19,15 +19,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.IOException
 
-/**
- * Presents TIDAL's fragmented FLAC DASH stream as a progressive FLAC stream.
- *
- * Media3 chooses a media-source type before a ResolvingDataSource can rewrite the URI. A DASH URI
- * returned from the resolver would therefore be treated as progressive audio and fail to parse. The
- * resolver stores the MPD and returns a private `tidal-dash://` URI instead; this source emits a
- * normal FLAC header and pulls one fMP4 media segment at a time. It preserves progressive playback
- * without downloading the entire lossless track before the first sample is available.
- */
+/** Presents TIDAL's fragmented FLAC DASH stream as a progressive FLAC stream. */
 internal class TidalProgressiveDashDataSource(
     private val httpClient: OkHttpClient,
 ) : BaseDataSource(true) {

@@ -157,19 +157,8 @@ class AlbumViewModel
         }
 
         /**
-         * Fetches the album's looping animated canvas (Apple Music animated
-         * cover art) and exposes it via [canvasArtwork]. Best-effort: any
-         * failure (network, no canvas for this album, user has the feature
-         * disabled, low-data mode) leaves the value at null, which causes
-         * the album hero to render only the static thumbnail — no canvas
-         * overlay.
-         *
-         * We try `AppleMusicProvider.getByAlbumId` first (direct id lookup,
-         * fast for Apple Music ids), then fall back to
-         * `getByAlbumArtist` (title + artist name lookup) for YouTube
-         * `MPRE…` ids that aren't Apple Music ids. The fetch runs on
-         * Dispatchers.IO via `viewModelScope.launch` so it doesn't block
-         * the UI thread.
+         * Fetches the album's looping animated canvas (Apple Music animated cover art) and exposes
+         * it via [canvasArtwork].
          */
         private fun fetchAlbumCanvas(context: Context) {
             viewModelScope.launch {
@@ -197,22 +186,8 @@ class AlbumViewModel
         }
 
         /**
-         * Walks the Apple Music motion-artwork lookups from most to least specific and
-         * returns the first hit, or null when the album simply has no motion artwork.
-         *
-         * The ladder exists because the id we hold is almost never an Apple Music id — a
-         * YouTube album is an `MPREb…` browse id, so [AppleMusicProvider.getByAlbumId]
-         * only succeeds for the rare album that came from an Apple-shaped id, and
-         * everything else has to be matched by name. Each extra rung recovers a class of
-         * album the previous one misses:
-         *
-         *  - **exact title + artist** — the normal path.
-         *  - **title stripped of edition suffixes** — Apple's catalogue carries "1989"
-         *    where YouTube has "1989 (Taylor's Version) [Deluxe]", and an exact-name
-         *    search for the decorated form finds nothing.
-         *  - **a track from the album** — singles and EPs are frequently catalogued under
-         *    the track's own name, and a song lookup also picks up motion artwork attached
-         *    to the song rather than the album.
+         * Walks the Apple Music motion-artwork lookups from most to least specific and returns the
+         * first hit, or null when the album simply has no motion artwork.
          */
         private suspend fun resolveAlbumCanvas(
             albumId: String,

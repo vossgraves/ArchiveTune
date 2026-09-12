@@ -254,15 +254,7 @@ internal fun TogetherTrack.toPublicTrackInfo(): TogetherPublicTrackInfo =
         thumbnail = thumbnailUrl,
     )
 
-/**
- * Rebuilds the queue the app expects.
- *
- * The Metrolist server keeps the room's queue as UPCOMING tracks only (the current track
- * is stripped by sanitizeUpcomingQueue before a RoomState is ever sent), so a queue that
- * does not contain the current track is not a queue that lost its head — it is the
- * server's normal shape, and the head must be prepended back before the app's index
- * arithmetic can point at the right row.
- */
+/** Rebuilds the queue the app expects. */
 private fun reconstructQueue(
     queue: List<TogetherPublicTrackInfo>,
     currentTrack: TogetherPublicTrackInfo?,

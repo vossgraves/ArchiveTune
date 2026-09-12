@@ -16,13 +16,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Conformance tests for the Metrolist protobuf codec, ported from SimpMusic's
- * MessageCodecTest (itself ported from Metrolist, GPL-3.0).
- *
- * These are not unit tests: they exist to catch the day this codec stops producing the
- * bytes the Metrolist servers and clients expect. `envelopeFieldNumbersMatchTheProtoSchema`
- * is the load-bearing one — it pins the assumption the whole port rests on, that
- * kotlinx-serialization-protobuf and protoc agree on the wire.
+ * Conformance tests for the Metrolist protobuf codec, ported from SimpMusic's MessageCodecTest
+ * (itself ported from Metrolist, GPL-3.0).
  */
 @OptIn(ExperimentalSerializationApi::class)
 class TogetherPublicCodecTest {
@@ -177,13 +172,9 @@ class TogetherPublicCodecTest {
     }
 
     /**
-     * The handshake is the one exchange whose type strings are NOT in `listentogether.proto`
-     * — the schema defines the two messages but never names the envelope type that carries
-     * them. These literals therefore come from the server: metroserver
-     * `internal/server/protocol.go`. Getting either wrong fails in the worst possible way:
-     * the socket opens, the frame is sent, the server answers `unknown_message_type` — so
-     * the connection looks alive while the handshake never completes and no room is ever
-     * joined. Pinning the literals is what turns that into a test failure instead.
+     * The handshake is the one exchange whose type strings are NOT in `listentogether.proto` — the
+     * schema defines the two messages but never names the envelope type that carries them. These
+     * literals therefore come from the server: metroserver `internal/server/protocol.go`.
      */
     @Test
     fun capabilityHandshakeUsesTheServersOwnTypeNames() {

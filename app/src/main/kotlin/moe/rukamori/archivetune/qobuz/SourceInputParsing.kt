@@ -39,16 +39,7 @@ object SourceInputParsing {
 
     /**
      * Parses one or more Qobuz token blocks from pasted text. A block is delimited by a line
-     * carrying a token, and can be preceded by a label line (e.g. "Qobuz - JP"). Recognizes the
-     * common share format:
-     *
-     *   Qobuz - JP
-     *   Token ➠  BpfgA3...
-     *   User ID ➠ 13193690
-     *   Subscription ➠ Qobuz Studio
-     *   ⚠️ ... app_id: 312369995 & app_secret: e79f8b9be485692b0e5f9dd895826368
-     *
-     * A token is only emitted once it has a token string, app_id and app_secret.
+     * carrying a token, and can be preceded by a label line (e.g. "Qobuz - JP").
      */
     fun parseQobuzTokens(input: String): List<QobuzToken> {
         if (input.isBlank()) return emptyList()

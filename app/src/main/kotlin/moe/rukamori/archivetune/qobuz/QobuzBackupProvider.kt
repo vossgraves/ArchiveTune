@@ -18,27 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * Catalogue lookups for the **Qobuz backup** source (the community-hosted
- * `mlc-ytify.kouzu.in` mirror, which serves a FLAC per YouTube video id).
- *
- * Covers everything that talks to the mirror:
- *
- *  - [resolveStream] turns a YouTube video id into a playable stream. Both the playback path
- *    (`MusicService.resolveQobuzBackupStream`) and the download path
- *    (`LosslessStreamResolver.resolveQobuzBackup`) call it, so a fix to mirror selection or
- *    format detection reaches both. Callers pass their own [OkHttpClient] when they need one —
- *    playback streams the resolved bytes through the service's proxy-aware client.
- *  - [searchCandidates] backs the player's "Play from" search popup. The popup
- *    used to hard-exclude this source with a "search backend not yet available"
- *    empty state, on the assumption that the mirror could only be addressed by
- *    video id. It does in fact expose `GET /api/search?q=&limit=`, which returns
- *    the mirror's own indexed catalogue (~64k tracks), so results can be listed
- *    and picked like any other source.
- *
- * The `x-request-source: muzo` header is required on every kouzu.in request —
- * without it the server rate-limits aggressively. `MusicService.mediaOkHttpClient`
- * injects it for playback traffic via an interceptor; this object uses its own
- * client, so it sets the header explicitly.
+ * Catalogue lookups for the **Qobuz backup** source (the community-hosted `mlc-ytify.kouzu.in`
+ * mirror, which serves a FLAC per YouTube video id).
  */
 object QobuzBackupProvider {
     private const val BASE_URL = "https://mlc-ytify.kouzu.in"
@@ -61,15 +42,7 @@ object QobuzBackupProvider {
             .callTimeout(20, TimeUnit.SECONDS)
             .build()
 
-    /**
-     * One track from the backup mirror's index.
-     *
-     * [videoId] is a YouTube video id and doubles as the mirror's primary key:
-     * the stream URLs are `…/lossless/<videoId>` and `…/song/<videoId>`, and it
-     * is what `resolveQobuzBackupStream` needs. It is deliberately NOT assumed to
-     * equal the currently playing song's media id — picking a row in the popup
-     * pins this id for the current song (see `SongSourceQobuzBackupVideoId`).
-     */
+    /** One track from the backup mirror's index. */
     data class Candidate(
         val videoId: String,
         val title: String,
@@ -137,20 +110,7 @@ object QobuzBackupProvider {
         return candidates
     }
 
-    /**
-     * Query forms to try, in order, until one returns rows.
-     *
-     * The mirror's search is a single `name LIKE %q% OR artists LIKE %q%` — it never tokenizes and
-     * never matches across the two fields. So "Die With A Smile Lady Gaga" returns nothing even
-     * though both "die with a smile" and "lady gaga" return that exact track, which means *every*
-     * query naming both a track and its artist came back empty. That is what "nothing shows when I
-     * search Qobuz backup" was: the query reached the mirror intact and no single field contained
-     * all of it.
-     *
-     * Words are dropped a pair at a time — tail first ("Title Artist" is the common shape), then
-     * head ("Artist - Title") — so both orderings get tried before the query is whittled far down.
-     * Capped at [MAX_QUERY_VARIANTS] so one search can never fan out into a dozen round trips.
-     */
+    /** Query forms to try, in order, until one returns rows. */
     private fun queryVariants(query: String): List<String> {
         val words = query.split(WHITESPACE_REGEX).filter { it.isNotBlank() }
         if (words.size < 2) return listOf(query)
@@ -169,10 +129,6 @@ object QobuzBackupProvider {
      * Sorts [rows] by how much of the *original* query each one covers, so dropping words to get a
      * hit does not also cost the ranking: "espresso sabrina carpenter" falls back to "espresso",
      * and the row whose artist is Sabrina Carpenter still comes first.
-     *
-     * Ties break on the shorter title, which puts the plain track above the remixes, mashups and
-     * "(On Vacation Version)" entries that share its name. [List.sortedWith] is stable, so rows
-     * that tie on both keep the mirror's own order.
      */
     private fun rankByQueryCoverage(
         rows: List<Candidate>,
@@ -265,17 +221,7 @@ object QobuzBackupProvider {
         return out
     }
 
-    /**
-     * A mirror that answered a probe with real audio bytes.
-     *
-     * [contentLength] is the *full* resource size taken from the `Content-Range` total
-     * (`bytes 0-41/40802970`), not the 42 bytes the probe asked for — ExoPlayer and the downloader
-     * both want the whole-resource length.
-     *
-     * [sampleRate], [bitDepth] and [durationMs] come from the FLAC STREAMINFO block that the probe
-     * already downloads, so they describe the actual file rather than a tier guess. All three are
-     * null for the lossy mirror.
-     */
+    /** A mirror that answered a probe with real audio bytes. */
     data class ResolvedStream(
         val uri: String,
         val mimeType: String,
@@ -292,24 +238,7 @@ object QobuzBackupProvider {
             get() = if (isLossless) "Qobuz backup (lossless)" else "Qobuz backup (kouzu.in)"
     }
 
-    /**
-     * Resolves a playable stream for [videoId] (a YouTube video id — the mirror's primary key).
-     *
-     * Two steps, because the mirror is a resolver in front of a CDN:
-     *  1. `GET /api/stream?id=<videoId>` returns a small JSON envelope naming the mirrors for the
-     *     track. GET, not HEAD — the endpoint answers HEAD with `405 Method Not Allowed`.
-     *  2. Each candidate mirror is probed with a ranged GET and the first that serves real audio
-     *     wins. Also a GET: the CDN rejects HEAD the same way. The probe reads
-     *     [FlacStreamInfo.REQUIRED_BYTES] bytes, which is both cheap and exactly enough to read the
-     *     FLAC header, so the container is determined from the bytes rather than from a
-     *     `Content-Type` the CDN often gets wrong.
-     *
-     * Returns null when the id is not a video id, the mirror has nothing indexed for it, or no
-     * candidate serves audio. Blocking — call from `Dispatchers.IO`.
-     *
-     * @param client the HTTP client to use. Defaults to this object's own; pass a proxy-aware one
-     *   to route the probe the same way the resolved bytes will be fetched.
-     */
+    /** Resolves a playable stream for [videoId] (a YouTube video id — the mirror's primary key). */
     fun resolveStream(
         videoId: String,
         client: OkHttpClient = this.client,
@@ -342,16 +271,7 @@ object QobuzBackupProvider {
         return resolved
     }
 
-    /**
-     * Reads the resolver envelope and returns its mirror URLs, best first.
-     *
-     * The envelope carries more than one mirror for the same track:
-     *   `"lossless"` → `…/lossless/<id>`, the real FLAC
-     *   `"url"`      → `…/song/<id>`, a lossy AAC-in-MP4 transcode
-     * Reading only `url` is why "Qobuz backup" used to never actually play lossless. The FLAC
-     * mirrors are listed first and the lossy one is kept as a fallback for entries that have no
-     * FLAC yet.
-     */
+    /** Reads the resolver envelope and returns its mirror URLs, best first. */
     private fun fetchMirrorCandidates(
         videoId: String,
         client: OkHttpClient,

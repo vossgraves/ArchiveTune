@@ -28,14 +28,9 @@ data class FormatEntity(
 fun FormatEntity.containerLabel(): String = mimeType.substringAfter("/").substringBefore(";").uppercase()
 
 /**
- * Returns the appropriate file extension for this format's audio codec.
- * Used when exporting cached songs so lossless FLAC files get a .flac
- * extension instead of the generic .mp3 that was previously hardcoded.
- *
- * Note: ALAC (Apple Lossless) is carried in an MP4/M4A container, NOT a FLAC container.
- * Mapping ALAC → "flac" here would produce .flac files that contain MP4 bytes — some
- * players would refuse them outright. ALAC must map to "m4a" (the MP4 audio container
- * extension) so the exported file matches its actual byte layout.
+ * Returns the appropriate file extension for this format's audio codec. Used when exporting cached
+ * songs so lossless FLAC files get a .flac extension instead of the generic .mp3 that was
+ * previously hardcoded.
  */
 fun FormatEntity.fileExtension(): String {
     val rawCodec = codecs.ifBlank { mimeType.substringAfter("/") }.lowercase()

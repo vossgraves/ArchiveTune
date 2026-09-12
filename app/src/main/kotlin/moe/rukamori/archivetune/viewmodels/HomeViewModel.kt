@@ -141,24 +141,8 @@ private data class HomeContent(
     val selectedChip: HomePage.Chip?,
 ) {
     /**
-     * `true` when there is at least one section [HomeContent] the composable
-     * will actually render on screen.
-     *
-     * IMPORTANT: this must stay in sync with the `if (...) item { ... }`
-     * guards in [HomeScreen.HomeContent]. The home composable renders:
-     *   - heroPicks (always, when non-empty)
-     *   - category chips (full mode only)
-     *   - remote/local quick picks (full mode only)
-     *   - recentlyPlayed (size > 1)
-     *   - speedDialItems (full mode only)
-     *   - keepListening
-     *   - accountPlaylists (full mode only)
-     *   - forgottenFavorites (full mode only)
-     *   - similarRecommendations (full mode only)
-     *   - ALL homePage.sections (full mode) or only "Live performance" (minimal mode)
-     *
-     * If you add a new section to the composable, mirror its visibility guard
-     * here. If you remove one, drop it from here too.
+     * `true` when there is at least one section [HomeContent] the composable will actually render
+     * on screen.
      */
     val hasContent: Boolean
         get() =
@@ -528,14 +512,10 @@ class HomeViewModel
         }
 
         /**
-         * Re-shuffles the hero picks from the current quickPicks pool. Called on every
-         * quickPicks update and on every manual refresh so the "Jump back in" hero at
-         * the top of the home page surfaces fresh listening-preference-based songs
-         * each visit, instead of always showing the last-played three.
-         *
-         * If quickPicks is empty, falls back to recentlyPlayed so the hero still shows
-         * something on a fresh install where the user has listening history but no
-         * quickPicks computation yet.
+         * Re-shuffles the hero picks from the current quickPicks pool. Called on every quickPicks
+         * update and on every manual refresh so the "Jump back in" hero at the top of the home page
+         * surfaces fresh listening-preference-based songs each visit, instead of always showing the
+         * last-played three.
          */
         private fun refreshHeroPicks(pool: List<Song>) {
             val source = if (pool.isNotEmpty()) pool else recentlyPlayed.value.orEmpty()
@@ -1117,19 +1097,7 @@ class HomeViewModel
             }
 
             // Re-fetch the home feed whenever the YT Music region (or content country/language)
-            // changes. This is what makes the "YouTube Music region" setting in Internet
-            // Settings actually take effect on the home screen: when the user picks a country,
-            // InternetSettings writes YouTubeMusicRegionKey to the DataStore AND mutates
-            // YouTube.locale.gl in-memory — we observe the preference here and trigger a
-            // fresh YouTube.home() call. Without this, the user would have to manually
-            // pull-to-refresh after changing the region.
-            //
-            // We observe ContentCountryKey and ContentLanguageKey too, since those also
-            // mutate YouTube.locale (via App.kt's initializeDeferredAsync) and therefore
-            // affect what the home feed returns.
-            //
-            // drop(1) so we don't re-fetch on initial subscription (the load() above
-            // already covers the cold-start case).
+            // changes.
             viewModelScope.launch(Dispatchers.IO) {
                 context.dataStore.data
                     .map { Triple(it[YouTubeMusicRegionKey], it[ContentCountryKey], it[ContentLanguageKey]) }

@@ -56,13 +56,9 @@ import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.spotify.models.SpotifyUser
 
 /**
- * Spotify API client that uses the internal GraphQL API (api-partner.spotify.com)
- * for most operations, falling back to the public REST API (api.spotify.com/v1/)
- * only for endpoints without a GraphQL equivalent (top tracks/artists,
- * recommendations, related artists).
- *
- * GraphQL persisted-query hashes sourced from:
- * https://github.com/sonic-liberation/hetu_spotify_gql_client
+ * Spotify API client that uses the internal GraphQL API (api-partner.spotify.com) for most
+ * operations, falling back to the public REST API (api.spotify.com/v1/) only for endpoints without
+ * a GraphQL equivalent (top tracks/artists, recommendations, related artists).
  */
 object Spotify {
     @Volatile
@@ -372,20 +368,7 @@ object Spotify {
     private fun parseGqlImages(sources: JsonArray?): List<SpotifyImage> =
         sources?.mapNotNull { parseGqlImage(it.jsonObject) } ?: emptyList()
 
-    /**
-     * The URL of the largest image in a GraphQL `sources` array.
-     *
-     * The home feed used to take `sources.firstOrNull()`, which is why its playlist, album and
-     * artist tiles were soft while the same artwork looked sharp everywhere else in the app: every
-     * other call site keeps the whole array via [parseGqlImages] and its consumers pick the widest,
-     * but these three threw the array away and kept whichever entry Spotify happened to put first —
-     * in these payloads the small one.
-     *
-     * Chosen by declared width rather than by position, so it does not depend on an ordering
-     * Spotify never promised. If nothing in the array declares a width there is nothing to compare,
-     * and it falls back to the first entry — the previous behaviour, for the case where the old
-     * behaviour was the only information available.
-     */
+    /** The URL of the largest image in a GraphQL `sources` array. */
     private fun largestGqlSourceUrl(sources: JsonArray?): String? {
         val entries = sources?.mapNotNull { it.jsonObject.takeIf { obj -> obj.str("url") != null } }
         if (entries.isNullOrEmpty()) return null
@@ -403,14 +386,8 @@ object Spotify {
     }
 
     /**
-     * Parses the common track data structure shared across multiple GQL
-     * operations (fetchPlaylist, fetchLibraryTracks, queryArtistOverview, etc.).
-     *
-     * @param albumOverride When non-null, used instead of the `albumOfTrack`
-     *   field (needed for album-track responses where no albumOfTrack is present).
-     * @param uriOverride When non-null, used as the track URI instead of
-     *   reading it from [trackData]. Needed when the URI lives on a wrapper
-     *   object (e.g. `track._uri`) rather than inside `track.data`.
+     * Parses the common track data structure shared across multiple GQL operations (fetchPlaylist,
+     * fetchLibraryTracks, queryArtistOverview, etc.).
      */
     private fun parseGqlTrack(
         trackData: JsonObject,
@@ -564,13 +541,10 @@ object Spotify {
     // ── Library hierarchy (GQL: libraryV3, folders preserved) ───────────
 
     /**
-     * Returns one level of the user's library tree. When [folderUri] is null the
-     * response is the library root: top-level playlists plus folder containers.
-     * When [folderUri] is set, Spotify treats that folder as the root and returns
-     * its direct children (which may include sub-folders).
-     *
-     * Use this for UIs that want to mirror the user's folder organization. For a
-     * flat list of every playlist regardless of nesting, use [myPlaylists].
+     * Returns one level of the user's library tree. When [folderUri] is null the response is the
+     * library root: top-level playlists plus folder containers. When [folderUri] is set, Spotify
+     * treats that folder as the root and returns its direct children (which may include
+     * sub-folders).
      */
     suspend fun myLibraryNode(
         folderUri: String? = null,

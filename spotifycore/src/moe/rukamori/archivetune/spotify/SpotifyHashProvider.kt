@@ -9,16 +9,7 @@ package moe.rukamori.archivetune.spotify
 
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Thread-safe provider for Spotify GQL persisted-query hashes.
- *
- * Initialized with hardcoded defaults that ship with each release.
- * The app module can update hashes at runtime from a remote JSON
- * registry via [updateHashes], enabling automatic recovery when
- * Spotify rotates hashes between app releases.
- *
- * Resolution order: remote/cached → hardcoded (always available).
- */
+/** Thread-safe provider for Spotify GQL persisted-query hashes. */
 object SpotifyHashProvider {
     enum class HashSource { HARDCODED, CACHED, REMOTE }
 

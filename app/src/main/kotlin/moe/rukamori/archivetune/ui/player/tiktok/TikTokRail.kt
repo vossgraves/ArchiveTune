@@ -272,19 +272,11 @@ internal fun TikTokRail(
             }
         }
 
-        // ── More ──
-        // While the inline lyrics pane owns the page, this opens the LYRICS
-        // overflow menu — the same anchored, frosted-blur popup the Apple
-        // Music style shows from its own lyrics view, opening from the
-        // top-right below the top navigation (user reports 2026-09-02: "the
-        // exact same popup for lyrics overflow menu from Apple music style;
-        // also it opens on the downside. Fix it") — instead of the song menu.
-        // The pane's provider, offset and song are hoisted to the player
-        // level, which also renders the popup. Hides with the other song
-        // actions while the pane is open ("overflow icon ... should hide");
-        // the lyrics overflow stays reachable through the pane's own row of
-        // actions below the lyrics (the Apple Music pane's built-in
-        // overflow), and the song menu the moment the pane closes.
+        // ── More ── While the inline lyrics pane owns the page, this opens the LYRICS overflow
+        // menu — the same anchored, frosted-blur popup the Apple Music style shows from its own
+        // lyrics view, opening from the top-right below the top navigation (user reports
+        // 2026-09-02: "the exact same popup for lyrics overflow menu from Apple music style; also
+        // it opens on the downside.
         AnimatedVisibility(
             visible = !lyricsActive,
             enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
@@ -438,14 +430,8 @@ private fun TikTokArtistAvatar(
 }
 
 /**
- * The page's one like action — shared by the rail's heart (a plain toggle)
- * and the artwork's double-tap (like-only: a double-tap never unlikes, the
- * reference's rule). It acts on THIS page's song, not on whatever happens to
- * be playing: when the row exists the toggle is the same per-song one the
- * song menu uses (Room update + sync); a song that isn't in the library yet
- * falls back to the service's current-song toggle (which also handles
- * inserting it) when this page is the playing one, and to register-then-like
- * otherwise.
+ * The page's one like action — shared by the rail's heart (a plain toggle) and the artwork's
+ * double-tap (like-only: a double-tap never unlikes, the reference's rule).
  */
 @Composable
 internal fun rememberTikTokLikeAction(
@@ -491,16 +477,9 @@ internal fun rememberTikTokLikeAction(
 }
 
 /**
- * The rail's heart, with the reference's like pop: the glyph springs in
- * from a small scale whenever the song flips to liked — whether that came
- * from this button or a double-tap on the media, since both land in the
- * same Room row this reads — and settles with a small shrink when unliked.
- *
- * Below the glyph rides the song's like count (user request 2026-09-03:
- * TikTok-style engagement label under the icon), compactly formatted via
- * [formatCompactCount] — at most 3 digits plus a K/M/B suffix (600K,
- * 21M, 2B). While the count is loading (or unavailable — local songs / RYD
- * misses) no label is shown; it fades and slides in once it arrives.
+ * The rail's heart, with the reference's like pop: the glyph springs in from a small scale whenever
+ * the song flips to liked — whether that came from this button or a double-tap on the media, since
+ * both land in the same Room row this reads — and settles with a small shrink when unliked.
  */
 @Composable
 private fun TikTokLikeRailButton(
@@ -614,14 +593,8 @@ private fun TikTokRailButton(
 }
 
 /**
- * One rail glyph with its own drop shadow: a blurred black copy of the icon
- * offset a hair down, behind the crisp one. The shadow follows the glyph's
- * shape — the reference's rail reads over any media because its icons carry
- * a real glyph shadow, not a circle behind them — so the white line icons
- * stay legible over light artwork too. (Modifier.blur is a no-op below
- * API 31, where the offset copy reads as a hard shadow instead — still
- * legible.) Together with the page's right-edge wash this is the rail's
- * whole visibility story on bright covers.
+ * One rail glyph with its own drop shadow: a blurred black copy of the icon offset a hair down,
+ * behind the crisp one.
  */
 @Composable
 private fun TikTokRailGlyph(

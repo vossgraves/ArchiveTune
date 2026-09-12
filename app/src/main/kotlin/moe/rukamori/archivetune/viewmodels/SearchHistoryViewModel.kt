@@ -18,15 +18,7 @@ import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.SearchHistory
 import javax.inject.Inject
 
-/**
- * Exposes the persistent `search_history` table to the redesigned Search screen.
- *
- * The previous Search screen only showed the history inside the OnlineSearch
- * suggestions dropdown. The redesign surfaces recent searches directly inside
- * the Explore tab as a swipe-to-delete list with a Clear button — this VM
- * powers that surface without touching [OnlineSearchSuggestionViewModel] so
- * the existing search-as-you-type flow stays intact.
- */
+/** Exposes the persistent `search_history` table to the redesigned Search screen. */
 @HiltViewModel
 class SearchHistoryViewModel
     @Inject

@@ -85,16 +85,7 @@ class HistoryViewModel
             }
         }
 
-        /**
-         * Fetches remote history without transitioning the UI to a Loading state.
-         *
-         * - [RemoteHistoryUiState.Error]   → delegates to [fetchRemoteHistory] (user sees spinner)
-         * - [RemoteHistoryUiState.Loading] → fetches silently; transitions to Error on failure
-         * - [RemoteHistoryUiState.Empty]   → fetches silently; transitions to Error on failure
-         * - [RemoteHistoryUiState.Success] → fetches silently; keeps cached data + logs warning on failure
-         *
-         * Call from a coroutine context (e.g. LaunchedEffect or viewModelScope.launch).
-         */
+        /** Fetches remote history without transitioning the UI to a Loading state. */
         suspend fun fetchRemoteHistorySilent() {
             val snapshot = _remoteHistoryState.value
 

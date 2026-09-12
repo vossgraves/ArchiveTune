@@ -51,13 +51,9 @@ object CanvasArtworkPlaybackCache {
     private const val DOWNLOAD_RETRY_DELAY_MS = 750L
     private const val CACHE_SIZE_BYTES_PER_MEGABYTE = 1024L * 1024L
     /**
-     * Re-validate cached canvas videos with [File.isValidCanvasVideo] at most
-     * once per day. The probe is expensive (~50-200ms per file via
-     * MediaExtractor) and was the dominant contributor to canvas startup
-     * latency on cache hits. Since [cacheCanvasVideo] already validates the
-     * file at download time, the only way a cached file becomes invalid is
-     * if the user or OS truncates it — rare enough that a daily re-check is
-     * plenty.
+     * Re-validate cached canvas videos with [File.isValidCanvasVideo] at most once per day. The
+     * probe is expensive (~50-200ms per file via MediaExtractor) and was the dominant contributor
+     * to canvas startup latency on cache hits.
      */
     private const val STALE_AFTER_MS = 24L * 60L * 60L * 1000L
 
@@ -164,25 +160,8 @@ object CanvasArtworkPlaybackCache {
     }
 
     /**
-     * Fast-path variant of [get] that skips the expensive [File.isValidCanvasVideo]
-     * MediaExtractor probe. Use this for hot paths like the player's "refetch
-     * canvas" menu visibility check and the canvas LaunchedEffect — those run
-     * on every media-item transition and the ~50-200ms MediaExtractor probe
-     * per file (regular + vertical) was the dominant contributor to canvas
-     * startup latency.
-     *
-     * The probe was originally there to catch partially-downloaded or corrupt
-     * canvas files, but we already validate the file right after download in
-     * [cacheCanvasVideo] (which throws and discards if validation fails). The
-     * only way a file can become invalid post-download is if the user or OS
-     * truncates it — a rare enough event that we can defer the probe to the
-     * actual ExoPlayer.open() call (which will throw on a corrupt file and
-     * trigger the existing fallback chain).
-     *
-     * Falls back to [get] (with the full probe) if the cached entry's
-     * [CanvasCacheEntry.lastValidatedAtMs] is older than [STALE_AFTER_MS] —
-     * this re-validates entries that haven't been touched in a while without
-     * taxing the hot path.
+     * Fast-path variant of [get] that skips the expensive [File.isValidCanvasVideo] MediaExtractor
+     * probe.
      */
     @Synchronized
     fun getCachedOnlyFast(mediaId: String): CanvasArtwork? {

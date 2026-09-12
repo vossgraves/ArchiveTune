@@ -31,15 +31,7 @@ import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Fetches skip segments from a SponsorBlock instance.
- *
- * Lookups go out by SHA-256 prefix rather than by video id: the server is asked for every video
- * whose id hashes to the same first four hex characters and the answer is filtered here, so it
- * never learns which of them is being played. This is the mode the official clients use, and it is
- * the only mode implemented here -- a plain `videoID=` lookup would hand a third party a complete
- * listening history.
- */
+/** Fetches skip segments from a SponsorBlock instance. */
 @Singleton
 class SponsorBlockRepository
     @Inject
