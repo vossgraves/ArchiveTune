@@ -387,6 +387,7 @@ fun LyricsScreen(
             mediaMetadata = mediaMetadata,
             lyrics = text,
             targetLanguage = translatorTargetLang,
+            automatic = true,
         )
     }
 

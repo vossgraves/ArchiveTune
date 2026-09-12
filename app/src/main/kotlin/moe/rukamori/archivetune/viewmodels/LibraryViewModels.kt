@@ -37,13 +37,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AiApiKeyKey
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
-import moe.rukamori.archivetune.constants.AiCustomEndpointKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.HideAiMixKey
-import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AlbumFilter
 import moe.rukamori.archivetune.constants.AlbumFilterKey
 import moe.rukamori.archivetune.constants.AlbumSortDescendingKey
@@ -77,6 +74,7 @@ import moe.rukamori.archivetune.extensions.filterExplicitAlbums
 import moe.rukamori.archivetune.extensions.filterVideo
 import moe.rukamori.archivetune.extensions.reversed
 import moe.rukamori.archivetune.extensions.toEnum
+import moe.rukamori.archivetune.ai.toAiServiceConfig
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.library.LibraryTopMix
 import moe.rukamori.archivetune.library.ObserveLibraryTopMixesUseCase
@@ -520,12 +518,10 @@ class LibraryMixViewModel
         private val isTopMixAiAvailable =
             context.dataStore.data
                 .map { prefs ->
-                    val provider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
-                    provider != AiProvider.NONE &&
-                        // The user hid AI Mix — also stop auto-generating mixes in the background.
+                    val config = prefs.toAiServiceConfig()
+                    config.provider in setOf(AiProvider.CHATGPT, AiProvider.GEMINI, AiProvider.OPENROUTER, AiProvider.CUSTOM) &&
                         !(prefs[HideAiMixKey] ?: false) &&
-                        prefs[AiApiKeyKey].orEmpty().isNotBlank() &&
-                        (provider != AiProvider.CUSTOM || prefs[AiCustomEndpointKey].orEmpty().isNotBlank()) &&
+                        config.canCallApi &&
                         prefs[AiApiValidationStatusKey].toEnum(AiApiValidationStatus.UNKNOWN) != AiApiValidationStatus.FAILED
                 }.distinctUntilChanged()
                 .stateIn(viewModelScope, SharingStarted.Lazily, false)

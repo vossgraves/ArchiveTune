@@ -30,18 +30,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ai.AiLyricsTranslator
-import moe.rukamori.archivetune.ai.AiServiceConfig
-import moe.rukamori.archivetune.constants.AiApiKeyKey
+import moe.rukamori.archivetune.ai.toAiServiceConfig
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
-import moe.rukamori.archivetune.constants.AiCustomEndpointKey
-import moe.rukamori.archivetune.constants.AiCustomModelKey
-import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.LyricsEntity
-import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.lyrics.LyricsResult
 import moe.rukamori.archivetune.lyrics.LyricsUtils
@@ -49,7 +44,6 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils.displayLyricsText
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
-import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
 import moe.rukamori.archivetune.utils.dataStore
@@ -318,6 +312,7 @@ class LyricsMenuViewModel
             mediaMetadata: MediaMetadata,
             lyrics: String,
             targetLanguage: String,
+            automatic: Boolean = false,
         ) {
             if (isAiTranslating.value || lyrics.isBlank()) return
             // Clear the translation dismissal for this media ID — the user
@@ -334,7 +329,7 @@ class LyricsMenuViewModel
                     var isAutomatic = false
                     try {
                         val prefs = context.dataStore.data.first()
-                        isAutomatic = prefs[AutoTranslateLyricsKey] ?: false
+                        isAutomatic = automatic
                         // Second line of defence for "Don't auto translate these languages".
                         //
                         // The callers gate on this too, but the setting had already been shipped
@@ -367,17 +362,7 @@ class LyricsMenuViewModel
                         val translatedLyrics =
                             AiLyricsTranslator().translate(
                                 config =
-                                    AiServiceConfig(
-                                        provider = prefs[AiProviderKey].toEnum(AiProvider.NONE),
-                                        apiKey = prefs[AiApiKeyKey].orEmpty(),
-                                        customEndpoint = prefs[AiCustomEndpointKey].orEmpty(),
-                                        model =
-                                            if (prefs[AiProviderKey].toEnum(AiProvider.NONE) == AiProvider.CUSTOM) {
-                                                prefs[AiCustomModelKey].orEmpty()
-                                            } else {
-                                                prefs[AiSelectedModelKey].orEmpty()
-                                            },
-                                    ),
+                                    prefs.toAiServiceConfig(),
                                 lyrics = lyrics,
                                 targetLanguage = targetLanguage.ifBlank { "ENGLISH" },
                             )

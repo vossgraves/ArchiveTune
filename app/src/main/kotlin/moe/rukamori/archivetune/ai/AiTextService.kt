@@ -19,6 +19,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.api.DeepLService
+import moe.rukamori.archivetune.api.MistralService
 import moe.rukamori.archivetune.constants.AiProvider
 import org.json.JSONArray
 import org.json.JSONObject
@@ -37,6 +39,27 @@ object AiTextService {
     private const val OpenRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions"
     private const val OpenRouterModelsEndpoint = "https://openrouter.ai/api/v1/models"
     private const val GeminiBaseEndpoint = "https://generativelanguage.googleapis.com/v1beta"
+
+    private fun openRouterCompletionEndpoint(baseUrl: String): String {
+        val value = baseUrl.trim().trimEnd('/')
+        return when {
+            value.isBlank() -> OpenRouterEndpoint
+            value.endsWith("/chat/completions") -> value
+            value.endsWith("/v1") -> "$value/chat/completions"
+            else -> "$value/v1/chat/completions"
+        }
+    }
+
+    private fun openRouterModelsEndpoint(baseUrl: String): String {
+        val value = baseUrl.trim().trimEnd('/')
+        return when {
+            value.isBlank() -> OpenRouterModelsEndpoint
+            value.endsWith("/models") -> value
+            value.endsWith("/chat/completions") -> value.removeSuffix("/chat/completions") + "/models"
+            value.endsWith("/v1") -> "$value/models"
+            else -> "$value/v1/models"
+        }
+    }
 
     /**
      * OkHttp's connection pool can enter a bad state after sustained use (stale sockets,
@@ -135,6 +158,39 @@ object AiTextService {
         formatName: String,
     ): List<String> {
         if (lines.isEmpty()) return emptyList()
+        when (config.provider) {
+            AiProvider.DEEPL ->
+                return AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_TRANSLATION) {
+                    DeepLService
+                        .translate(
+                            text = lines.joinToString("\n"),
+                            targetLanguage = targetLanguage,
+                            apiKey = config.apiKey,
+                            formality = config.deeplFormality,
+                        ).getOrElse { throw AiServiceException("DeepL translation failed", it) }
+                        .also { translated ->
+                            require(translated.size == lines.size) {
+                                "DeepL response changed the lyric segment count"
+                            }
+                        }
+                }
+            AiProvider.MISTRAL ->
+                return AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_TRANSLATION) {
+                    MistralService
+                        .translate(
+                            text = lines.joinToString("\n"),
+                            targetLanguage = targetLanguage,
+                            apiKey = config.apiKey,
+                            model = config.model.ifBlank { "mistral-small-latest" },
+                        ).getOrElse { throw AiServiceException("Mistral translation failed", it) }
+                        .also { translated ->
+                            require(translated.size == lines.size) {
+                                "Mistral response changed the lyric segment count"
+                            }
+                        }
+                }
+            else -> Unit
+        }
         val payload = JSONArray()
         lines.forEach { payload.put(it) }
         val response =
@@ -191,6 +247,26 @@ object AiTextService {
         formatName: String,
     ): List<String> {
         if (lines.isEmpty()) return emptyList()
+        if (config.provider == AiProvider.DEEPL) {
+            throw AiServiceException("DeepL does not support lyrics romanization")
+        }
+        if (config.provider == AiProvider.MISTRAL) {
+            return AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_ROMANIZATION) {
+                MistralService
+                    .translate(
+                        text = lines.joinToString("\n"),
+                        targetLanguage = "Latin",
+                        apiKey = config.apiKey,
+                        model = config.model.ifBlank { "mistral-small-latest" },
+                        mode = "romanize",
+                    ).getOrElse { throw AiServiceException("Mistral romanization failed", it) }
+                    .also { romanized ->
+                        require(romanized.size == lines.size) {
+                            "Mistral response changed the romanization segment count"
+                        }
+                    }
+            }
+        }
         val payload = JSONArray()
         lines.forEach { payload.put(it) }
         val response =
@@ -258,7 +334,7 @@ object AiTextService {
 
             AiProvider.OPENROUTER -> {
                 completeOpenAiCompatible(
-                    endpoint = OpenRouterEndpoint,
+                    endpoint = openRouterCompletionEndpoint(config.customEndpoint),
                     apiKey = config.apiKey,
                     model = model,
                     systemPrompt = systemPrompt,
@@ -311,7 +387,11 @@ object AiTextService {
         if (!config.canCallApi) throw AiServiceException("AI provider is not configured")
         return when (config.provider) {
             AiProvider.CHATGPT -> fetchOpenAiModels(OpenAiModelsEndpoint, config.apiKey)
-            AiProvider.OPENROUTER -> fetchOpenAiModels(OpenRouterModelsEndpoint, config.apiKey)
+            AiProvider.OPENROUTER ->
+                fetchOpenAiModels(
+                    openRouterModelsEndpoint(config.customEndpoint),
+                    config.apiKey,
+                )
             AiProvider.GEMINI -> fetchGeminiModels(config.apiKey)
             // DeepL / Mistral have no models-list endpoint exposed in this service.
             AiProvider.DEEPL, AiProvider.MISTRAL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
@@ -365,16 +445,26 @@ object AiTextService {
         temperature: Double,
         maxTokens: Int,
     ): String {
-        val endpoint = "$GeminiBaseEndpoint/models/${model.trim()}:generateContent?key=${apiKey.trim()}"
+        val endpoint = "$GeminiBaseEndpoint/models/${model.trim()}:generateContent"
         val body =
             JSONObject()
+                .put(
+                    "systemInstruction",
+                    JSONObject().put(
+                        "parts",
+                        JSONArray().put(JSONObject().put("text", systemPrompt)),
+                    ),
+                )
                 .put(
                     "contents",
                     JSONArray().put(
                         JSONObject().put(
+                            "role",
+                            "user",
+                        ).put(
                             "parts",
                             JSONArray().put(
-                                JSONObject().put("text", "$systemPrompt\n\n$userPrompt"),
+                                JSONObject().put("text", userPrompt),
                             ),
                         ),
                     ),
@@ -386,6 +476,7 @@ object AiTextService {
                 ).toString()
         val response =
             client.post(endpoint) {
+                header("x-goog-api-key", apiKey.trim())
                 contentType(ContentType.Application.Json)
                 setBody(body)
             }
