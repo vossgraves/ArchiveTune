@@ -64,6 +64,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.theme.LocalYumaColors
+import moe.rukamori.archivetune.ui.theme.yumaClickable
+import moe.rukamori.archivetune.ui.theme.yumaGlassCard
+import moe.rukamori.archivetune.ui.theme.yumaSegmentPosition
 @Composable
 fun SettingsProfileHeader(
     state: SettingsProfileState,
@@ -359,13 +363,14 @@ fun SettingsGroupCard(
                 ),
         )
 
-        Card(
-            shape = RoundedCornerShape(SettingsDimensions.GroupCardCornerRadius),
-            colors =
-                CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        val groupYuma = LocalYumaColors.current
+        Box(
+            modifier =
+                Modifier.yumaGlassCard(
+                    shape = RoundedCornerShape(SettingsDimensions.GroupCardCornerRadius),
+                    backgroundColor = groupYuma.glassBackground,
+                    borderColor = groupYuma.glassBorder,
                 ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
             Column {
                 group.items.forEachIndexed { index, item ->
@@ -568,26 +573,27 @@ fun SettingsSegmentedItem(
         label = "settingsSegmentScale",
     )
 
-    Card(
+    val yuma = LocalYumaColors.current
+    Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                }.clip(shape)
-                .focusable()
+                }.yumaGlassCard(
+                    shape = shape,
+                    backgroundColor = yuma.glassBackground,
+                    borderColor = yuma.glassBorder,
+                    // Only the group's first row gets the bright top edge, so a stack of rows
+                    // reads as one pane of glass rather than separate cards.
+                    position = yumaSegmentPosition(index, count),
+                ).focusable()
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = item.onClick,
                 ),
-        shape = shape,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
             modifier =
@@ -822,18 +828,17 @@ fun SettingsSearchResultItem(
             MaterialTheme.colorScheme.primary
         }
 
-    Card(
-        onClick = onClick,
+    val resultYuma = LocalYumaColors.current
+    Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 64.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                .heightIn(min = 64.dp)
+                .yumaGlassCard(
+                    shape = RoundedCornerShape(16.dp),
+                    backgroundColor = resultYuma.glassBackground,
+                    borderColor = resultYuma.glassBorder,
+                ).yumaClickable(onClick = onClick),
     ) {
         Row(
             modifier =

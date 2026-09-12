@@ -496,6 +496,10 @@ fun UpdateScreen(
             isLoadingCommits = false
             return@LaunchedEffect
         }
+        // Switching channels re-runs this, so clear the previous channel's commits rather than
+        // leaving them on screen while the new branch loads.
+        isLoadingCommits = true
+        commits = emptyList()
 
         val versionResult =
             when (updateChannel) {
@@ -510,10 +514,11 @@ fun UpdateScreen(
             }
         }
 
-        // Task 4: cap recent commits at 50 (was unlimited). The Updates page is meant for
-        // a quick glance at recent activity; the full history is always available on GitHub.
+        // Capped at 50: this page is for a glance at recent activity, and the full history is
+        // always on GitHub. Read from the channel's own branch — showing main's commits to a
+        // Nightly or Canary reader describes a build they are not on.
         Updater
-            .getCommitHistory(50)
+            .getCommitHistory(50, branch = Updater.branchForChannel(updateChannel))
             .onSuccess {
                 commits = it
             }.onFailure {

@@ -18,7 +18,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
-import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -305,10 +304,8 @@ object PoolAccountManager {
                     lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
-                    // A key pasted by the user on-device (pool site /dashboard → copy) wins over
-                    // the CI-baked build key, so personal accounts work without a custom APK.
-                    val pastedKey = cached(context, PoolApiKeyKey)?.trim().orEmpty()
-                    var readKey = pastedKey.ifBlank { BuildConfig.SOURCE_PROVIDER_KEY }
+                    // The read key is baked in at build time; there is no on-device override.
+                    val readKey = BuildConfig.SOURCE_PROVIDER_KEY
                     poolApiKey = readKey.ifBlank { null }
 
                     var result = fetchAccounts(context, url, readKey)
@@ -316,28 +313,6 @@ object PoolAccountManager {
                     if (!result.succeeded && result.code == 404 && url == accountsUrl && legacySourcesUrl != null) {
                         Timber.tag(TAG).d("/api/accounts unavailable; falling back to legacy /api/sources")
                         result = fetchAccounts(context, legacySourcesUrl!!, readKey)
-                    }
-                    // Stale personal-key recovery: a dashboard key pasted earlier can outlive its
-                    // registration on the pool (key rotated, or the pool's database was reset).
-                    // Every refresh then 401s forever and the app silently serves a dead source,
-                    // which looks exactly like "the pool has 0 accounts". Clear the stale
-                    // preference and retry with the build's baked key instead.
-                    if (!result.succeeded &&
-                        result.code == 401 &&
-                        readKey.isNotBlank() &&
-                        readKey != BuildConfig.SOURCE_PROVIDER_KEY &&
-                        BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()
-                    ) {
-                        Timber.tag(TAG).w("Pasted pool key was rejected (HTTP 401) — clearing it and retrying with the build key")
-                        runCatching {
-                            context.dataStore.edit { it.remove(PoolApiKeyKey) }
-                        }.onFailure { Timber.tag(TAG).w(it, "Failed to clear the stale pool key preference") }
-                        readKey = BuildConfig.SOURCE_PROVIDER_KEY
-                        poolApiKey = readKey
-                        result = fetchAccounts(context, url, readKey)
-                        if (!result.succeeded && result.code == 404 && url == accountsUrl && legacySourcesUrl != null) {
-                            result = fetchAccounts(context, legacySourcesUrl!!, readKey)
-                        }
                     }
                     // Record why the fetch failed — or clear it on success — so the settings screen
                     // can show the reason rather than a generic "failed". refresh()'s own Boolean
@@ -528,12 +503,7 @@ object PoolAccountManager {
 
     private suspend fun cached(context: Context, key: androidx.datastore.preferences.core.Preferences.Key<String>): String? {
         val raw = context.dataStore.getAsync(key)?.takeIf { it.isNotBlank() } ?: return null
-        PoolCacheCrypto.decrypt(raw)?.let { return it }
-        // Migrate old plaintext cache entries immediately; never write them back.
-        if (key == PoolApiKeyKey) {
-            context.dataStore.edit { prefs -> prefs[key] = PoolCacheCrypto.encrypt(raw) }
-        }
-        return raw
+        return PoolCacheCrypto.decrypt(raw) ?: raw
     }
 
     /**

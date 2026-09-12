@@ -1292,10 +1292,6 @@ val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallback
 val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEnabled")
 val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
-/** Per-user read key for the community Source Pool (created on the site's /dashboard).
- *  When set, overrides the CI-baked BuildConfig.SOURCE_PROVIDER_KEY as the Bearer token. */
-val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
-
 
 // When ON (default), synced lyrics render in place of the player artwork (BitChord-style
 // inline lyrics on the player screen). The lyrics button still opens the full lyrics page.

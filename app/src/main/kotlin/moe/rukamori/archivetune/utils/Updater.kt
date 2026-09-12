@@ -17,6 +17,7 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import moe.rukamori.archivetune.App
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.CanaryReleasesEtagKey
 import moe.rukamori.archivetune.constants.CanaryReleasesFingerprintKey
 import moe.rukamori.archivetune.constants.CanaryReleasesJsonKey
@@ -455,6 +456,17 @@ object Updater {
             latestReleaseTag = latest.tagName
             latestReleaseDownloadUrl = latest.downloadUrl
             latest
+        }
+
+    /**
+     * The branch each update channel is built from, so the Updates page can show the commits that
+     * will actually reach the reader rather than always showing `main`.
+     */
+    fun branchForChannel(channel: UpdateChannel): String =
+        when (channel) {
+            UpdateChannel.STABLE -> "main"
+            UpdateChannel.NIGHTLY -> PreChannel.NIGHTLY.branch
+            UpdateChannel.CANARY -> PreChannel.CANARY.branch
         }
 
     suspend fun getCommitHistory(

@@ -1165,6 +1165,7 @@
     <string name="applemusic_quality_hires">Hi-Res Lossless (up to 24/192)</string>
     <string name="applemusic_login">Sign in to Apple Music</string>
     <string name="applemusic_login_subtitle">Sign in with your Apple ID to get your Music User Token.</string>
+    <string name="applemusic_login_success">Apple Music signed in</string>
     <string name="applemusic_helper">Apple Music plays through the community source pool automatically — sign in with your own account for guaranteed access.</string>
     <string name="applemusic_helper_short">Pool account • or your own Music User Token</string>
     <string name="applemusic_sign_in_web">Sign in with Apple Music (web)</string>
@@ -1184,9 +1185,6 @@
     <string name="sources_tidal_token_help">Paste a Tidal o2_refresh token (the long JWT with \"type\":\"o2_refresh\" in its middle segment). The app exchanges it for fresh access tokens automatically. User ID is read from the token itself — no extra fields needed.</string>
     <string name="sources_tidal_token_verified">Tidal token verified — account connected.</string>
     <string name="sources_tidal_token_failed">Tidal could not refresh that token — it may be expired or revoked.</string>
-    <string name="pool_api_key_title">Pool API key</string>
-    <string name="pool_api_key_label">API key</string>
-    <string name="pool_api_key_help">Optional. Create a free account on the Source Pool site and copy your key from the dashboard — the app then uses YOUR key to fetch pooled accounts, instead of the key baked into this build. Leave empty to keep using the built-in key. Paste an empty field to remove a saved key.</string>
     <string name="pool_refresh_title">Refresh from pool</string>
     <string name="pool_refresh_description">Pull the latest shared accounts and instances from the community source pool</string>
     <string name="pool_refreshing">Refreshing from pool…</string>
