@@ -86,15 +86,8 @@ import moe.rukamori.archivetune.viewmodels.PaxsenixStatsState
 import androidx.compose.foundation.layout.asPaddingValues
 
 /**
- * Lyrics providers sub-page (Task 2): houses every lyrics-provider toggle plus the
- * Musixmatch experimental section that used to live inline on the Lyrics settings page.
- *
- * Behaviour preserved verbatim from the original inline groups:
- *   • All provider switches default to on (except Musixmatch experimental).
- *   • Paxsenix sub-toggles (Apple Music / NetEase / Spotify / Musixmatch / YouTube) only
- *     render when the parent Paxsenix toggle is on, and include the Paxsenix stats entry.
- *   • "Set first lyrics provider" opens the reorderable dialog. The dialog itself lives
- *     in LyricsSettings.kt and is `internal` so this screen can reuse it.
+ * Lyrics providers sub-page (Task 2): houses every lyrics-provider toggle plus the Musixmatch
+ * experimental section that used to live inline on the Lyrics settings page.
  */
 @Composable
 fun LyricsProvidersSettings(

@@ -12,16 +12,6 @@ import kotlin.math.abs
 
 /**
  * Shared heuristics for deciding whether a catalog search hit is actually the track we asked for.
- *
- * Every lossless provider searches a third-party catalog by text and has to judge the results, so the
- * same scoring is needed by each one. `TidalAudioProvider` and `QobuzAudioProvider` predate this file
- * and still carry their own private copies of these functions; this exists so Deezer did not become a
- * third copy. Migrating those two onto this object is a mechanical but behaviour-visible change to
- * working providers, so it is deliberately left as its own future change rather than bundled into the
- * commit that adds Deezer.
- *
- * The thresholds here are copied from those providers verbatim so all three sources agree on what
- * counts as a match.
  */
 internal object TrackMatching {
     /** Minimum score for a candidate to be accepted at all. */

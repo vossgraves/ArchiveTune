@@ -1106,13 +1106,9 @@ fun HomeGreetingHeader(
 }
 
 /**
- * "Jump back in" hero shelf — the BitChord lead-shelf treatment (2026-09-03
- * redesign): near-page-width cards (70% of the row, capped at 320dp, 0.92
- * aspect, 18dp corners) that page sideways, with the title/artist caption
- * laid over a scrim on the artwork itself.
- *
- * Uses [recentlyPlayed] (the listening-preference hero picks). Falls back
- * gracefully if fewer are available.
+ * "Jump back in" hero shelf — the BitChord lead-shelf treatment (2026-09-03 redesign):
+ * near-page-width cards (70% of the row, capped at 320dp, 0.92 aspect, 18dp corners) that page
+ * sideways, with the title/artist caption laid over a scrim on the artwork itself.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

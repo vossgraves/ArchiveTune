@@ -253,26 +253,8 @@ object AiLyricsDocumentParser {
         }
 
     private fun readTtmlLineText(paragraphElement: Element): String {
-        // Walk the paragraph's immediate children in document order and concatenate
-        // their text WITHOUT inserting artificial spaces between spans.
-        //
-        // The previous implementation joined span text with " " between every pair,
-        // which is correct for Latin-script word-synced lyrics (where each <span>
-        // is a separate word) but catastrophically wrong for CJK lyrics. Japanese
-        // word-synced TTML breaks "恋愛サーキュレーション" into per-mora spans
-        // ("恋", "愛", "サ", "ー", "キュ", "レ", "ー", "ション"), and joining those
-        // with spaces produces "恋 愛 サ ー キュ レ ー ション" — a string of broken
-        // Japanese that AI translators either refuse to translate or echo back
-        // unchanged, causing auto-translation to silently no-op for the entire song.
-        //
-        // The renderer's TTMLParser.parseSpanElements does the same direct-concat
-        // (lineText.append(wordText) with no separator), so this matches what the
-        // user actually sees on screen.
-        //
-        // Mixed-content <p> elements (direct text + nested spans, common in
-        // Musixmatch rich-sync TTML) are handled by including TEXT_NODE children
-        // in the walk — preserving any whitespace the source TTML puts between
-        // spans, instead of throwing it away and inserting our own.
+        // Walk the paragraph's immediate children in document order and concatenate their text
+        // WITHOUT inserting artificial spaces between spans.
         val builder = StringBuilder()
         val children = paragraphElement.childNodes
         for (i in 0 until children.length) {

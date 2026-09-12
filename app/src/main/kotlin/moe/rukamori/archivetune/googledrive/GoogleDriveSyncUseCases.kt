@@ -15,10 +15,6 @@ import javax.inject.Inject
  * Use cases for Google Drive sync — mirrors the structure of
  * [moe.rukamori.archivetune.backup.ObserveScheduledBackupSettingsUseCase] /
  * [moe.rukamori.archivetune.backup.UpdateScheduledBackupUseCase].
- *
- * The `Update` use case reschedules the WorkManager job after every settings change
- * (except for `setOverwrite` and `setRemoteFolder`, which don't affect when the next
- * sync runs) — this matches the local scheduled-backup behavior.
  */
 class ObserveGoogleDriveSyncSettingsUseCase
     @Inject

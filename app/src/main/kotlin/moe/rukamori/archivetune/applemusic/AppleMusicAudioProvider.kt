@@ -28,24 +28,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
-/**
- * Apple Music full-track playback source.
- *
- * Resolution pipeline (all verified against the live API with a Media-User-Token):
- *  1. Catalog search via the public AMP API (`/v1/catalog/{storefront}/search`) using the
- *     dev (Bearer) JWT + Media-User-Token — same endpoints as the canvas/lyrics providers.
- *  2. `POST https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/webPlayback` with
- *     `{"salableAdamId": <songId>}` + both tokens → per-flavor asset list. The `ctrp`
- *     (AES-CTR "clear-mode") flavors are the playable ones; `cbcp` flavors are FairPlay
- *     (`skd://`) and cannot be played on Android.
- *  3. The chosen asset URL serves an HLS playlist whose segments are byteranges of a single
- *     encrypted CENC fMP4 file (`METHOD=ISO-23001-7`). [AppleMusicProgressiveDataSource]
- *     serves that file progressively; the decryption key is obtained at the codec level via
- *     a Widevine L3 license exchange against the response's `hls-key-server-url`
- *     (`wa/acquireWebPlaybackLicense`) — the same protocol Chrome/EME speaks.
- *
- * The Media-User-Token must belong to an account with an active Apple Music subscription.
- */
+/** Apple Music full-track playback source. */
 object AppleMusicAudioProvider {
     private const val TAG = "AppleMusicSource"
 

@@ -23,23 +23,7 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * The one colour SimpMusic's now-playing wash ramps FROM.
- *
- * Deliberately not [moe.rukamori.archivetune.ui.player.rememberMeshPalette]. That reads the whole
- * swatch list by population and runs each colour through a `tuned()` pass that boosts saturation
- * 1.35x and clamps lightness into 0.28..0.58 — right for BitChord's mesh blobs, wrong here, where
- * it lifts a dark sleeve into a flat mid-tone poster wash.
- *
- * SimpMusic picks ONE swatch — dark vibrant — and ramps it into the backdrop colour
- * (`getColorFromPalette()` in its extension/UIExt.kt). The fallback chain below is theirs, in
- * their order: a sleeve with no dark-vibrant swatch falls through to dark-muted, then the plain
- * vibrant/muted pair, then the light ones, and finally black — which the wash renders as no glow
- * at all rather than an invented colour.
- *
- * Cached per URL for the life of the process, like the mesh palette it sits beside: a queue swiped
- * back and forth re-extracts nothing.
- */
+/** The one colour SimpMusic's now-playing wash ramps FROM. */
 private val washCache =
     object : LinkedHashMap<String, Color>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Color>): Boolean = size > 64

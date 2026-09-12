@@ -82,18 +82,7 @@ object SpotifyMapper {
         return if (artist.isEmpty()) title else "$artist $title"
     }
 
-    /**
-     * The best artwork URL Spotify offers for a playlist.
-     *
-     * Was a medium-size preference — the first image 200..400px wide — which is where the blurry
-     * covers on the Spotify home came from: those tiles are around 180dp, and on a 3x screen that
-     * is ~540 physical pixels being filled by a 300px image. Spotify publishes 640x640 for
-     * playlists and albums, so the largest entry is the right one to ask for; Coil downsamples to
-     * whatever the tile actually needs, and the smaller variants only ever cost detail.
-     *
-     * `width` is nullable in Spotify's payloads (and null for the ones this app synthesises), so
-     * an entry that does not declare a size sorts last rather than winning by accident.
-     */
+    /** The best artwork URL Spotify offers for a playlist. */
     fun getPlaylistThumbnail(playlist: SpotifyPlaylist): String? = largestImageUrl(playlist.images)
 
     /**

@@ -31,36 +31,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Fetches Spotify Canvas looping videos for the currently playing song.
- *
- * Two sources are tried, in order:
- *
- * 1. **Spotify's own Canvas endpoint** (`spclient.wg.spotify.com/canvaz-cache`).
- *    This is the authoritative source — it is the same endpoint the Spotify
- *    clients use, and it returns the real canvas mp4. It needs a Spotify access
- *    token and the song's `spotify:track:<id>` URI, both supplied by the host app
- *    through [tokenProvider] / [trackUriResolver] (the canvas module deliberately
- *    has no dependency on the app's Spotify or player code). When the user has no
- *    Spotify session this source is simply unavailable.
- *
- * 2. **The `mlc-ytify.kouzu.in` resolver**, keyed by YouTube Music video ID.
- *    Kept as a fallback for users without a Spotify login. Note that this
- *    resolver serves canvases only out of its own cache and currently reports
- *    zero cached canvases (`/api/stats` → `"canvas": 0`), answering every lookup
- *    with `404 {"detail":"No cached canvas"}` — which is why Spotify Canvas
- *    appeared completely broken when it was the *only* source.
- *
- * The `x-request-source: muzo` header is required on every kouzu.in request —
- * without it the server rate-limits the client. It is injected centrally by the
- * `MusicService.mediaOkHttpClient` interceptor for kouzu.in hosts, but this
- * provider uses its own Ktor client, so the header is added here via
- * `defaultRequest`.
- *
- * Results are cached in-memory for 1 hour per video ID to avoid hammering either
- * source on every recomposition / replay. A negative result is cached too, so a
- * song with no canvas doesn't re-query on every replay.
- */
+/** Fetches Spotify Canvas looping videos for the currently playing song. */
 object SpotifyCanvasProvider {
     /**
      * Fallback resolver base URL. The full URL is `$BASE_URL?id=<videoId>`.
@@ -88,14 +59,9 @@ object SpotifyCanvasProvider {
     var trackUriResolver: (suspend (videoId: String, title: String?, artist: String?) -> String?)? = null
 
     /**
-     * Supplies extra community/self-hosted resolver base URLs to try after Spotify's own
-     * endpoint and before the built-in one. Set by the host app from the user's
-     * preference; left null in tests and standalone use.
-     *
-     * Every public Canvas resolver on GitHub is a self-hosted wrapper that needs the
-     * operator's own Spotify cookie, so there is no additional instance worth hardcoding —
-     * what makes the fallback chain extensible is letting the user name the instances they
-     * can actually reach.
+     * Supplies extra community/self-hosted resolver base URLs to try after Spotify's own endpoint
+     * and before the built-in one. Set by the host app from the user's preference; left null in
+     * tests and standalone use.
      */
     @Volatile
     var extraResolverEndpointsProvider: (suspend () -> List<String>)? = null
@@ -166,13 +132,9 @@ object SpotifyCanvasProvider {
     private val cache = ConcurrentHashMap<String, CacheEntry>()
 
     /**
-     * Looks up the Spotify Canvas for the song identified by [videoId] (the
-     * YouTube Music video ID of the currently playing song). [songTitle] and
-     * [artistName] are used only to identify the song on Spotify for the official
-     * endpoint; the fallback resolver keys off [videoId] alone.
-     *
-     * Returns `null` if neither source has a canvas for the song, the song isn't
-     * on Spotify, or both requests fail.
+     * Looks up the Spotify Canvas for the song identified by [videoId] (the YouTube Music video ID
+     * of the currently playing song). [songTitle] and [artistName] are used only to identify the
+     * song on Spotify for the official endpoint; the fallback resolver keys off [videoId] alone.
      */
     suspend fun getByVideoId(
         videoId: String,

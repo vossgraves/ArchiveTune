@@ -25,20 +25,7 @@ import kotlin.math.abs
 
 /**
  * Streaming/playback provider for user-provided Qobuz-DL proxy instances (squid.wtf / kennyy /
- * arcod-style). ArchiveTune bundles NO endpoints — the user pastes their own instance base URLs in
- * settings; when the list is empty the provider resolves nothing and playback falls through to the
- * next audio source.
- *
- * Proxy API shape (common across the squid.wtf family):
- *  - GET {instance}/api/get-music?q={query}&offset=0
- *      -> { success, data: { tracks: { items: [ {id,title,performer:{name},album:{title},
- *           duration, maximum_bit_depth, maximum_sampling_rate, isrc}, ... ] } } }
- *  - GET {instance}/api/download-music?track_id={id}&quality={formatId}
- *      -> { success, data: { url: "https://.../file.flac?...&etsp=<expiry>" } }
- *
- * Parsing is intentionally defensive (multiple key shapes) because the proxies differ slightly.
- * This mirrors [TidalAudioProvider] but is leaner: it reuses [TidalAudioProvider.InstanceHealth]
- * so the settings status chips are shared, and there is no account/OAuth path (proxies are anon).
+ * arcod-style).
  */
 object QobuzAudioProvider {
     private const val USER_AGENT = "ArchiveTune-Android"
@@ -352,13 +339,8 @@ object QobuzAudioProvider {
         val album: String?,
         val durationMs: Long?,
         /**
-         * When non-null, [resolve] skips the title/artist search ([resolveTrackId] /
-         * [bestMatch]) and goes straight to [backend.download] with this trackId.
-         * This is set when the user picks a specific Qobuz track from the
-         * "Play from" source-search popup — the trackId comes directly from
-         * the Qobuz search API, so there's no ambiguity. Without this, the
-         * resolver would re-search by title+artist and might match a
-         * different Qobuz track (different master, deluxe edition, etc.).
+         * When non-null, [resolve] skips the title/artist search ([resolveTrackId] / [bestMatch])
+         * and goes straight to [backend.download] with this trackId.
          */
         val directTrackId: String? = null,
     )
@@ -455,27 +437,9 @@ object QobuzAudioProvider {
     }
 
     /**
-     * Public search — used by the Source chooser's "Play from" search popup to show
-     * Qobuz track results the user can pick from. Mirrors
+     * Public search — used by the Source chooser's "Play from" search popup to show Qobuz track
+     * results the user can pick from. Mirrors
      * [moe.rukamori.archivetune.tidal.TidalAudioProvider.searchCandidates].
-     *
-     * Searches every configured backend (direct API tokens + community proxy
-     * instances) and returns up to [limit] candidates total. The first backend
-     * that returns results wins; we don't merge across backends because the
-     * same track id can resolve differently across proxies (squid.wtf-style
-     * proxies use their own internal ids).
-     *
-     * AUTO-POPULATES tokens/instances: if [tokens] or [instances] are empty,
-     * pulls from [PoolAccountManager.qobuzAccounts] (community source pool) and
-     * [QobuzAudioProvider.discoverInstances] (community proxy discovery) before
-     * searching. This fixes the bug where the Source chooser's search popup
-     * showed "No results yet" for Qobuz even when the user had pool accounts
-     * loaded — the popup's `searchCandidates` call was hitting `orderedBackends`
-     * before MusicService.resolveQobuzStream had a chance to call setTokens.
-     *
-     * Returns an empty list when no backends are configured or every backend
-     * fails — callers should treat that as "no Qobuz results for this query",
-     * not a hard error.
      */
     fun searchCandidates(
         query: String,
@@ -618,23 +582,9 @@ object QobuzAudioProvider {
     }
 
     /**
-     * Clears the transient (process-lived) failure cache and per-instance
-     * cooldowns. Called on app foreground (MainActivity.onStart) so that
-     * stale failure entries from a previous session don't prevent Qobuz
-     * from being retried.
-     *
-     * Root cause of the "Qobuz not available until force-stop" bug:
-     * [failureCache] has a 10-minute TTL, and [instanceCooldownUntilMs]
-     * can last up to 10 minutes for hard cooldowns. When the user
-     * backgrounded the app and came back, these caches were still live,
-     * so Qobuz resolution returned null immediately without retrying.
-     * Force-stop cleared the process and all in-memory caches, which is
-     * why re-opening the app fixed it. This function provides the same
-     * cache-clearing effect without requiring a force-stop.
-     *
-     * Does NOT clear [streamCache] (successful stream resolutions) or
-     * [searchCache] (successful search results) — those are positive
-     * caches and clearing them would just cause unnecessary re-fetches.
+     * Clears the transient (process-lived) failure cache and per-instance cooldowns. Called on app
+     * foreground (MainActivity.onStart) so that stale failure entries from a previous session don't
+     * prevent Qobuz from being retried.
      */
     fun clearTransientCaches() {
         failureCache.clear()
@@ -1025,15 +975,7 @@ object QobuzAudioProvider {
     private fun JSONObject.trackId(): String? =
         stringOrNull("id") ?: longOrNull("id")?.toString() ?: stringOrNull("track_id")
 
-    /**
-     * Extracts a thumbnail URL from a Qobuz search result's album object.
-     * Handles all known Qobuz API image formats:
-     * - album.image as JSONArray of {size, url} objects (direct API)
-     * - album.image as JSONObject with small/large/thumbnail keys (proxy)
-     * - album.image as a direct URL string
-     * - album.cover_url / album.thumbnail_url as strings
-     * - item.thumbnail / item.cover as strings
-     */
+    /** Extracts a thumbnail URL from a Qobuz search result's album object. */
     private fun extractQobuzThumbnail(albumObj: JSONObject?, item: JSONObject): String? {
         if (albumObj != null) {
             // Try album.image

@@ -1222,16 +1222,6 @@ fun PreferenceGroup(
 /**
  * [PreferenceGroup] for a `LazyColumn`: same DSL, same shapes and spacing, but every row is its own
  * lazy item so a long settings page composes only what is on screen.
- *
- * The `verticalScroll` version composes every row before the first frame — sixty of them on
- * Appearance, each with a vector icon to inflate and text to lay out — which is why that screen was
- * slow to open and why its enter animation looked like it was missing: the slide had finished
- * before the content existed.
- *
- * [modifier] is applied to the group's leading item (the title, or the first row when there is
- * none), which is where a group-level [PreferencePositions.modifierFor] anchor wants to be — the
- * deep link scrolls to the top of the group. `scrollToKey` already copes with lazy lists: it walks
- * the list a viewport at a time to bring an uncomposed target into composition.
  */
 fun LazyListScope.preferenceGroup(
     modifier: Modifier = Modifier,

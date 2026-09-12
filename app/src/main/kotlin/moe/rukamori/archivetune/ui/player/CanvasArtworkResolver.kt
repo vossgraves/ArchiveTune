@@ -195,23 +195,7 @@ data class CanvasSourceResult(
     val artwork: CanvasArtwork,
 )
 
-/**
- * Fetch ALL canvas sources for a song (used by the "Save Canvas" overflow-
- * menu action). Unlike [resolveCanvasArtworkForPlayback] which returns the
- * first matching source, this queries every source independently and
- * returns all that have a canvas — so the user can pick which one to save
- * to internal storage.
- *
- * Sources queried (in parallel):
- * - Spotify Canvas (via mlc.kouzu.in resolver, by YouTube video ID)
- * - Apple Music (via AMP catalog, by song title + artist name)
- *
- * Returns a list of [CanvasSourceResult]. The list may be empty if no
- * source has a canvas for this song.
- *
- * NOTE: The codebase currently has no Tidal canvas implementation.
- * When/if Tidal canvas is added, it should be queried here too.
- */
+/** Fetch ALL canvas sources for a song (used by the "Save Canvas" overflow- menu action). */
 internal suspend fun fetchAllCanvasSourcesForSong(
     mediaId: String,
     songTitleRaw: String,

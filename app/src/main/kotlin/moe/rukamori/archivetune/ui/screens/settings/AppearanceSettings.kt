@@ -137,18 +137,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
 
-/**
- * The three pages Appearance is split across.
- *
- * The screen used to be one list of about sixty rows under six headers — the "too cluttered"
- * complaint, and a page nobody could scan. Splitting it also means each page opens with a
- * fraction of the work, which is what makes the enter animation visible again.
- *
- * All three share one implementation rather than three copies. The alternative was moving a
- * thousand lines into three functions and re-deriving which of the forty hoisted preferences each
- * one needs; the cost of this is that every page reads all forty, which is cheap — they all come
- * from one in-memory Preferences object — against a real risk of losing a wire in the move.
- */
+/** The three pages Appearance is split across. */
 enum class AppearanceSection { THEME, PLAYER, INTERFACE }
 
 /**

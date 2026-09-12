@@ -11,15 +11,7 @@
  */
 package moe.rukamori.archivetune.download
 
-/**
- * Identifies an audio container from its magic bytes.
- *
- * Exports used to hardcode `.mp3` / `audio/mpeg` for every file. That was wrong for most downloads —
- * YouTube audio is typically Opus or AAC in WebM/MP4, and lossless sources deliver FLAC — so exported
- * files carried an extension that contradicted their contents. Some players trust the extension and
- * fail outright; others silently mis-handle the file. Sniffing the header means the name always
- * matches the bytes.
- */
+/** Identifies an audio container from its magic bytes. */
 enum class AudioContainer(
     val extension: String,
     val mimeType: String,

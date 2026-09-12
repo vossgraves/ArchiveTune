@@ -33,13 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * What a touch *meant*, not what it should feel like — the shape of the buzz is
- * this file's business, so a screen never has to know what the motor under it
- * can do.
- *
- * Everything here is deliberately brief. The longest pattern is a three-beat
- * one under 65ms; a haptic that outlasts the finger stops reading as a response
- * to the tap and starts reading as the phone ringing.
+ * What a touch *meant*, not what it should feel like — the shape of the buzz is this file's
+ * business, so a screen never has to know what the motor under it can do.
  */
 enum class Haptic {
     /**
@@ -101,14 +96,8 @@ fun rememberHaptics(): Haptics {
 // ── The rhythms ───────────────────────────────────────────────────────────────
 
 /**
- * One beat of a pattern: which of the three short primitives to strike, how
- * hard relative to that primitive's nominal strength, and how long to wait
- * after the previous beat before striking it.
- *
- * Only the three genuinely *short* primitives are used. The platform also
- * offers rises, falls, thuds and a spin, and all of them run 80–500ms — long
- * enough that a two-beat pattern built from them would still be vibrating well
- * after the screen had finished responding.
+ * One beat of a pattern: which of the three short primitives to strike, how hard relative to that
+ * primitive's nominal strength, and how long to wait after the previous beat before striking it.
  */
 private class Beat(val kind: Kind, val scale: Float, val gapMs: Long) {
     enum class Kind(
@@ -373,13 +362,8 @@ private object Primitives {
 }
 
 /**
- * Tells the platform this buzz is touch feedback, which is what lets the system
- * scale or mute it alongside every other tap in the OS.
- *
- * Held by an object for the same reason as [Primitives] — [VibrationAttributes]
- * arrived in API 30, and the two-argument `vibrate` in 33 — so neither type is
- * named anywhere that loads on an older phone. A Kotlin `object` initialises on
- * first access, which makes this the cache as well.
+ * Tells the platform this buzz is touch feedback, which is what lets the system scale or mute it
+ * alongside every other tap in the OS.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private object TouchVibration {

@@ -970,59 +970,7 @@ fun FloatingNavigationToolbar(
     }
 }
 
-/**
- * Pre-Android 12 (pre-S) fallback for the frosted-glass surfaces (navigation bar, mini player).
- *
- * On Android 12+ the frosted effect uses [BlurEffect] (RenderEffect, hardware-accelerated, every
- * frame). Below API 31 RenderEffect is unavailable, so the previous implementation silently fell
- * back to a plain opaque surface — the frosted setting appeared to do nothing on older devices.
- *
- * This helper restores a real frosted effect on pre-S by periodically capturing the app-content
- * [GraphicsLayer] (the same one the S+ path uses) to a [Bitmap], running it through
- * [ImageBlurUtils.blur] (a pure-CPU stack blur that needs no RenderEffect), and publishing the
- * result as an [ImageBitmap] the caller draws with the same offset/alpha as the S+ path.
- *
- * SLICE OPTIMIZATION (fixes the "weird glitchy blur" the user reported on pre-S):
- * The original implementation captured the FULL app-content layer (typically 1080x2400 px on a
- * phone), blurred the entire thing, then drew a small slice of it on the bar via translate+clip.
- * That had three problems on pre-S hardware:
- *   1. The full-screen capture + full-screen blur was slow, forcing a 200 ms update interval
- *      (5 fps) — visible "jumps" as content scrolled, reading as glitchiness.
- *   2. [ImageBlurUtils.blur] downscales any source >720 px to 720 px before stack-blurring, then
- *      upscales back. On a full-screen source the downscale factor was ~0.3, so the blurred
- *      result was extremely low-resolution and looked pixelated/muddy when upscaled.
- *   3. Allocating a full-screen ARGB_8888 bitmap (~10 MB) every frame caused heavy GC pressure,
- *      adding stutter on top of the slow blur.
- *
- * The slice path fixes all three: we capture the full layer ONCE per update (unavoidable —
- * GraphicsLayer has no region capture), but then immediately extract just the small rectangle
- * that lies under the bar (e.g. 1080x240 px) via [Bitmap.createBitmap] before blurring. The
- * slice is small enough that [ImageBlurUtils.blur]'s 720 px downscale threshold either doesn't
- * trigger or triggers at a much milder factor (~0.67 instead of ~0.3), so the blur keeps real
- * resolution. The slice is also ~10x smaller, so allocation/GC is ~10x lighter and we can push
- * the update interval down to 80 ms (~12 fps) for visibly smoother tracking. The slice is
- * extracted with [blurRadiusPx] of padding on every side so the stack blur has neighboring
- * pixels to sample at the bar's edges — without padding the blur would just clamp the bar's own
- * edge pixels and the frost would look wrong at the boundary.
- *
- * The caller receives the small blurred slice (already aligned to the bar's top-left) and draws
- * it at (0, 0) — no translate, no clip — at the same bounded alpha as the S+ path. If the bar
- * moves between slice extraction and draw, the slice shows the content that was at the bar's
- * extraction-time position; for the navigation bar (which is fixed) and the mini player (which
- * only moves during drag), this is imperceptible.
- *
- * Returns `null` while the layer has no size (before first `record { ... }`), while the bar
- * hasn't been positioned yet, or if the capture fails — the caller should keep the opaque base
- * surface in that case.
- *
- * @param backdrop The shared capture handle (layer + content offset in root).
- * @param barPositionInRoot The bar's current top-left position in root coordinates. Read fresh
- *   each capture via [rememberUpdatedState], so the slice tracks the bar as it moves.
- * @param barSize The bar's current size in pixels. Read fresh each capture.
- * @param blurRadiusPx Blur radius in raw pixels (clamped to 0.5..48 by [ImageBlurUtils.blur]).
- * @param updateIntervalMs Capture+blur throttle. Default 80 ms (~12 fps) — fast enough for
- *   smooth frosted tracking, slow enough to not tank pre-S hardware.
- */
+/** Pre-Android 12 (pre-S) fallback for the frosted-glass surfaces (navigation bar, mini player). */
 @Composable
 internal fun rememberPreSFrostedBitmap(
     backdrop: NavigationBarBackdrop?,

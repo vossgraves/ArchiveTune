@@ -559,6 +559,10 @@
     <string name="slider_style_simple">Simple</string>
     <string name="misc">Misc</string>
     <string name="haptics">Vibration</string>
+    <string name="music_haptics">Music haptics</string>
+    <string name="music_haptics_desc">Vibrate in sync with the beat of the playing song (SpatialFlow engine)</string>
+    <string name="music_haptics_strength">Music haptics strength</string>
+    <string name="music_haptics_strength_value">%1$d%%</string>
     <string name="haptics_desc">Enable haptic feedback on interactive elements</string>
     <string name="default_open_tab">Default open tab</string>
     <string name="navigation_bar_style">Navigation bar style</string>

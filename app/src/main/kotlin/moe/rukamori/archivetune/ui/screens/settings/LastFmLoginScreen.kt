@@ -40,20 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 const val LASTFM_LOGIN_ROUTE = "settings/lastfm/login"
 
-/**
- * WebView-based Last.fm sign-in. One-tap: the user taps Connect in LastFMSettings →
- * this screen opens a WebView to Last.fm's official auth page (api_key + cb callback)
- * → user approves → Last.fm redirects to our custom scheme → we capture the token,
- * exchange it for a session key via auth.getSession, persist everything, navigate up.
- *
- * No API key / secret / username / password fields at all. The baked-in
- * [LastFmAppCredentials] identifies the application to Last.fm; each user's own
- * identity comes from the session key they get during their own sign-in.
- *
- * Ported from LastWave-native's `LoginScreen` + `AuthRepository.completeWebAuth` flow,
- * adapted to ArchiveTune's `AuthWebViewScreen` shared sheet (same UI as Tidal/Qobuz/
- * Deezer sign-in).
- */
+/** WebView-based Last.fm sign-in. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LastFmLoginScreen(navController: NavController) {

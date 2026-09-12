@@ -54,15 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 
-/**
- * Renders [factory]'s WebView inside the shared Spotify-style sign-in sheet.
- *
- * @param title bold heading at the top of the sheet.
- * @param subtitle one-line hint under the title explaining what the user should do.
- * @param onRelease optional teardown, invoked when the AndroidView leaves composition.
- * @param factory builds the WebView. The returned instance is tracked automatically for in-page
- *   back navigation, so callers no longer need their own reference for that.
- */
+/** Renders [factory]'s WebView inside the shared Spotify-style sign-in sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthWebViewScreen(

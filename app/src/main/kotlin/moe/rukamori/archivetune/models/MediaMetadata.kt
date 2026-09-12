@@ -33,17 +33,7 @@ data class MediaMetadata(
     val likedDate: LocalDateTime? = null,
     val inLibrary: LocalDateTime? = null,
     val isMusicVideo: Boolean = false,
-    /**
-     * ISRC of the recording this item represents, when the source catalogue supplied one.
-     *
-     * It is the one identifier every lossless catalogue agrees on — it names a single recording —
-     * so a source can be asked for exactly this take instead of scoring a title/artist search.
-     * Carried on the queue item (in memory) rather than the song table, which has no ISRC column;
-     * null for YouTube-sourced items, which publish no ISRC, and those still resolve by text.
-     *
-     * Declared last with a default so existing positional constructions keep compiling and queues
-     * serialized before this field existed still deserialize (serialVersionUID stays 1L).
-     */
+    /** ISRC of the recording this item represents, when the source catalogue supplied one. */
     val isrc: String? = null,
 ) : Serializable {
     companion object {

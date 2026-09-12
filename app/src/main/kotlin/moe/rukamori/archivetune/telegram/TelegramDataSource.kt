@@ -122,27 +122,7 @@ class TelegramDataSource : BaseDataSource(true) {
 
     override fun getUri(): Uri? = currentUri
 
-    /**
-     * Releases the player's handle on the stream but deliberately leaves TDLib
-     * **downloading**.
-     *
-     * This used to cancel the download, which quietly capped how far ahead of playback
-     * the file could ever get. ExoPlayer stops loading once its buffer is full (60 s of
-     * media here) and closes the data source; cancelling on close meant TDLib stopped
-     * fetching at that same point and only resumed when the buffer drained enough for
-     * the player to reopen. The downloaded prefix therefore tracked playback at a fixed
-     * distance instead of racing ahead, so a lossless track was streamed at roughly its
-     * own bitrate for its entire duration — and any sustained dip in throughput (which,
-     * for a large file on Telegram, is most likely *late* in the transfer) drained the
-     * buffer and stalled playback. That is the "plays fine for the first few minutes,
-     * buffers near the end" report.
-     *
-     * Leaving the download running lets TDLib finish the file well before playback
-     * reaches the end, after which reads are served from local disk and cannot stall.
-     * The number of concurrently retained files is bounded by [retainDownload], and the
-     * bytes land in TDLib's own cache — the same place a completed listen would have
-     * put them — so pause/resume and replays still cost nothing.
-     */
+    /** Releases the player's handle on the stream but deliberately leaves TDLib **downloading**. */
     override fun close() {
         if (opened) {
             opened = false
@@ -191,14 +171,6 @@ class TelegramDataSource : BaseDataSource(true) {
     /**
      * Waits until at least one byte at [offset] is present in TDLib's partial download, then
      * returns as much of the contiguous downloaded run as fits in [count].
-     *
-     * Returning a short read is both legal for a [DataSource] and important here: the previous
-     * implementation waited for the *entire* requested range before handing back any bytes. Near
-     * the end of a track `count` is clamped to `fileSize - offset`, so the condition became
-     * "the whole remainder of the file must be downloaded" — one large ExoPlayer request would
-     * block until the download fully completed, which is what made long lossless files stall
-     * within the last stretch of the song even though bytes were arriving steadily. Serving the
-     * available prefix keeps the renderer fed while the tail downloads.
      */
     private suspend fun awaitAndRead(
         offset: Long,

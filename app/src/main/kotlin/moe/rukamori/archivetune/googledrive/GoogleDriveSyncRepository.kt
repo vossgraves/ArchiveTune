@@ -24,19 +24,7 @@ import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * DataStore-backed repository for [GoogleDriveSyncSettings].
- *
- * Mirrors the pattern of [moe.rukamori.archivetune.backup.ScheduledBackupRepository]: a single
- * `observeSettings()` flow backed by DataStore Preferences, plus suspend updaters for each field.
- * All updaters serialize through [updateMutex] to prevent lost updates when multiple fields are
- * changed in rapid succession (e.g. user toggles enable + picks a frequency in quick succession).
- *
- * The settings keys are NOT portable across devices — they reference a device-specific SAF tree
- * URI whose persistable permission only exists on the device that granted it. They're added to
- * `NON_PORTABLE_PREFERENCE_KEYS` so the BackupArchiveRepository skips them when exporting a
- * portable SETTINGS backup.
- */
+/** DataStore-backed repository for [GoogleDriveSyncSettings]. */
 @Singleton
 class GoogleDriveSyncRepository
     @Inject

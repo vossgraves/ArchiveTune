@@ -15,23 +15,7 @@ import moe.rukamori.archivetune.utils.GlobalLog
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 
-/**
- * App-layer wrapper around the native [Musixmatch] lyrics module.
- *
- * Enabled only when the experimental toggle ([EnableMusixmatchExperimentalKey]) is
- * on; otherwise reports disabled so [LyricsHelper] skips it during the priority
- * race. When enabled, delegates the actual network call to the JVM-only [Musixmatch]
- * object — no Android imports leak into the module.
- *
- * Output type priority (matches the tracker doc):
- *  1. TTML richsync (word-synced)
- *  2. LRC subtitle (line-synced)
- *  3. Plain lyrics
- *
- * Falls through with `Result.failure` if Musixmatch has no match. The native
- * module already does a single token retry on auth failure, so callers don't
- * need their own retry loop.
- */
+/** App-layer wrapper around the native [Musixmatch] lyrics module. */
 object MusixmatchExperimentalLyricsProvider : LyricsProvider {
     // Wire the native module's log sink into GlobalLog so its diagnostic messages
     // (token fetch, macro HTTP status, parse failures, output-format selection) are

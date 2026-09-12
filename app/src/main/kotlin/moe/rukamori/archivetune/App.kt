@@ -567,28 +567,7 @@ class App :
             applicationScope.launch(Dispatchers.IO) { trimImageDiskCache(diskCache) }
         }
 
-        // Tuned OkHttp client dedicated to image fetching. Defaults in Coil 3
-        // / OkHttp use a small connection pool (5 idle, 5 min keepalive) and
-        // 10s connect/read/write timeouts — fine for a single image, but the
-        // home feed fires 20+ thumbnail requests in parallel on cold start,
-        // which exhausts the pool and serialises behind connect timeouts.
-        //
-        // This config:
-        //  * Raises the pool to 20 idle / 5 min keepalive so all parallel
-        //    thumbnail fetches reuse kept-alive sockets (no extra TLS
-        //    handshakes after the first hit to lh3.googleusercontent.com /
-        //    i.ytimg.com / mosaic.scdn.co).
-        //  * Drops connect timeout to 6s (don't hang the UI for 10s on a
-        //    dead CDN edge — let the next retry bucket kick in fast).
-        //  * Keeps read/write at 10s (large high-res thumbnails can still
-        //    take a moment on slow networks; we don't want to abort them).
-        //  * Enables retryOnConnectionFailure + followRedirects so CDN
-        //    302s (e.g. googleusercontent -> ggpht) resolve transparently.
-        //
-        // Combined with explicit `.size()` on every AsyncImage call (so
-        // Coil requests the smallest bucket the server offers instead of
-        // pulling maxresdefault for a 56dp tile), this makes thumbnails
-        // load near-instantly after the first cache miss.
+        // Tuned OkHttp client dedicated to image fetching.
         val imageHttpClient =
             OkHttpClient
                 .Builder()
@@ -703,17 +682,7 @@ private val PAXSENIX_PROVIDER_PATHS =
         "docs",
     )
 
-/**
- * Normalises a user-supplied Paxsenix endpoint down to the service root.
- *
- * The API documents a *separate* URL per lyrics provider
- * (`…/apple-music/lyrics`, `…/spotify/lyrics`, and so on), so users reasonably
- * paste one of those into the endpoint field. [PaxsenixLyrics] then appends its
- * own provider sub-path, producing `…/apple-music/lyrics/spotify/lyrics` and a
- * 404 for every request. Stripping any known provider path (plus query string
- * and fragment) means pasting any documented URL resolves to the same working
- * root, and a blank value still falls through to the built-in default.
- */
+/** Normalises a user-supplied Paxsenix endpoint down to the service root. */
 private fun normalizePaxsenixEndpoint(raw: String): String {
     val trimmed = raw.trim()
     if (trimmed.isBlank()) return ""
@@ -733,16 +702,8 @@ private fun normalizePaxsenixEndpoint(raw: String): String {
 }
 
 /**
- * Maps a now-playing song to its `spotify:track:<id>` URI so [SpotifyCanvasProvider]
- * can ask Spotify for the track's Canvas.
- *
- * Returns null when the user has no Spotify session, when there is nothing to
- * search on, or when no result looks like the same song. The artist check matters:
- * an unrelated track's canvas is worse than no canvas, and the search is a plain
- * text match that will happily return a cover or a remix.
- *
- * Callers are rate-limited by [SpotifyCanvasProvider]'s own one-hour result cache,
- * so this runs at most once per song per hour.
+ * Maps a now-playing song to its `spotify:track:<id>` URI so [SpotifyCanvasProvider] can ask
+ * Spotify for the track's Canvas.
  */
 private suspend fun resolveSpotifyTrackUri(
     title: String?,

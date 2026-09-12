@@ -341,19 +341,9 @@ fun AlbumScreen(
                         ).joinToString(MediaDetailMetadataSeparator)
                     val isBookmarked = albumWithSongs.album.bookmarkedAt != null
 
-                    // SimpMusic-style liquid glass backdrop source: the LazyColumn
-                    // itself carries the layerBackdrop modifier (see the LazyColumn
-                    // definition below), so the entire scrolling content is recorded
-                    // into the backdrop. The floating Liquid Glass back button
-                    // (top-start) and heart+more pill (top-end) are siblings of the
-                    // LazyColumn (children of the outer Box), so they sample the
-                    // backdrop without being recorded into it (which would cause a
-                    // RuntimeShader feedback crash). They are PERSISTENT — they stay
-                    // at the top of the screen no matter how far the user scrolls,
-                    // matching the SimpMusic reference look and the user's request.
-                    //
-                    // The hero item itself just renders the MediaDetailHero; no
-                    // inner Box / layerBackdrop wrapper is needed here.
+                    // SimpMusic-style liquid glass backdrop source: the LazyColumn itself carries
+                    // the layerBackdrop modifier (see the LazyColumn definition below), so the
+                    // entire scrolling content is recorded into the backdrop.
                     MediaDetailHero(
                         title = albumWithSongs.album.title,
                         thumbnailUrl = albumWithSongs.album.thumbnailUrl,
@@ -364,25 +354,9 @@ fun AlbumScreen(
                         isAdded = isBookmarked,
                         addContentDescription = R.string.add_to_library,
                         removeContentDescription = R.string.remove_from_library,
-                        // Pass the album's looping animated canvas (Apple Music
-                        // animated cover art) so the album thumbnail animates
-                        // the same way the song player's thumbnail does. Only
-                        // mounted when the canvas feature is enabled and the
-                        // album actually has a canvas (see AlbumViewModel).
-                        //
-                        // `canvasIsPlaying = true` (not the main player's
-                        // `isPlaying`) because on the album page the user
-                        // expects the animated cover to loop the moment they
-                        // open the album, regardless of whether a song is
-                        // currently playing — matching Apple Music. The
-                        // canvas ExoPlayer is a separate audio-disabled
-                        // instance (see CanvasArtworkPlayer), so playing it
-                        // has no effect on the main playback queue.
-                        //
-                        // `albumCanvasEnabled` is re-checked here, not just in the view
-                        // model: the fetch is skipped when the preference is off, but a
-                        // canvas already resolved before the user turned it off would
-                        // otherwise keep looping until the page was reopened.
+                        // Pass the album's looping animated canvas (Apple Music animated cover art)
+                        // so the album thumbnail animates the same way the song player's thumbnail
+                        // does.
                         canvasPrimaryUrl =
                             (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)
                                 ?.takeIf { albumCanvasEnabled },
@@ -742,19 +716,8 @@ fun AlbumScreen(
             }
         }
 
-        // Persistent Liquid Glass header buttons. These are siblings of the
-        // LazyColumn (children of the outer Box), positioned at top-start and
-        // top-end. They sample the artworkBackdrop (which captures the entire
-        // scrolling content via Modifier.layerBackdrop on the LazyColumn) to
-        // render the frosted-glass effect. They are PERSISTENT — they stay at
-        // the top of the screen no matter how far the user scrolls, matching
-        // the SimpMusic reference look.
-        //
-        // Shown only when:
-        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
-        //  - Not in selection mode (selection mode uses the TopAppBar below)
-        //  - The album has songs (so there's a hero to show)
-        //  - The albumWithSongs is loaded (for the heart toggle state)
+        // Persistent Liquid Glass header buttons. These are siblings of the LazyColumn (children of
+        // the outer Box), positioned at top-start and top-end.
         val currentAlbumWithSongs = albumWithSongs
         if (layerBackdropActive && !selection && currentAlbumWithSongs != null &&
             currentAlbumWithSongs.songs.isNotEmpty()

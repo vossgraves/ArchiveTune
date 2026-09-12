@@ -42,30 +42,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * AI-provided romanisation for the lyrics views.
- *
- * ## Why this is not just another branch inside [LyricsUtils]
- *
- * The built-in romanisers (Kuromoji for Japanese, hand-written tables for Korean/Hindi, ICU for
- * everything else) are pure, synchronous-ish and cheap, so the renderers call them **per line**. An
- * AI provider is the opposite on every count: it is network-bound, rate-limited and billed, so it has
- * to be called **once per track** with every line in one batch. That difference in granularity is why
- * this lives beside [LyricsUtils] rather than inside `romanizeLyricsLine`, and why results are held
- * in a per-track cache the renderers read from instead of being awaited inline.
- *
- * ## Lifecycle
- *
- * [request] is idempotent per session key: the first caller starts the work, everyone else joins the
- * same [Deferred]. Results land in [results], a StateFlow the renderers observe, so lyrics that were
- * already on screen pick up romanisation without a re-layout — the same mechanism
- * `LyricsEntry.romanizedTextFlow` uses for the built-in path.
- *
- * Results are memory-only and deliberately so. AI *translation* is persisted into `LyricsEntity`
- * because it replaces the lyrics text; romanisation is an annotation drawn above each line and has
- * nowhere to live in that schema without a second `source` value that could not coexist with
- * `AI_TRANSLATION`.
- */
+/** AI-provided romanisation for the lyrics views. */
 object AiLyricsRomanization {
     private const val TAG = "AiRomanization"
 
@@ -100,16 +77,6 @@ object AiLyricsRomanization {
     /**
      * Romanisation for one lyrics session, addressed by the **original line text** rather than by
      * index.
-     *
-     * Index alignment is not available here, and that is not a simplification: the two renderers
-     * parse the same lyrics into different index spaces. `LyricsV2` prepends a head entry and calls
-     * `insertInstrumentalBreaks`, `LyricsEnhanced` does neither, and the lyrics menu's manual request
-     * parses without either. All three derive the same [sessionKey] from the raw lyrics text, so an
-     * index-aligned cache filled by one of them was applied off-by-N by the next — every line's
-     * romanisation shifted onto its neighbour after a lyrics-style switch.
-     *
-     * Keying on the text is also just correct: identical lines have identical readings, so a chorus
-     * repeat resolves from the first occurrence instead of costing another entry.
      */
     @Immutable
     data class Result(
@@ -210,11 +177,6 @@ object AiLyricsRomanization {
     /**
      * Resolves romanisation for [lines] in the caller's own index space, or an empty list when
      * nothing has been fetched for [sessionKey] yet.
-     *
-     * This is the only way to read results, deliberately: it maps each line by its text, so a caller
-     * that prepends a head entry or inserts instrumental breaks gets the same answer as one that
-     * doesn't. Handing out the raw map instead would invite the index-aligned mistake back. See
-     * [Result].
      */
     fun linesFor(
         sessionKey: String,

@@ -28,14 +28,9 @@ enum class ArtworkProvider {
 }
 
 /**
- * The single source of truth for "which artwork is shown for this media item".
- * Every consumer (player, mini player, notification, blurred background, palette extraction)
- * must read the same [ResolvedArtwork] so the displayed image and the extracted palette
- * can never diverge.
- *
- * @param artworkIdentity stable identity of the actual image: a normalized URL, a provider
- * artwork id, or a content revision. Cache keys must be built from this, never from mediaId
- * alone, so that a changed image under the same mediaId cannot reuse stale derived state.
+ * The single source of truth for "which artwork is shown for this media item". Every consumer
+ * (player, mini player, notification, blurred background, palette extraction) must read the same
+ * [ResolvedArtwork] so the displayed image and the extracted palette can never diverge.
  */
 data class ResolvedArtwork(
     val mediaId: String,
@@ -83,16 +78,9 @@ data class ArtworkSettings(
     /** Tidal source is enabled and minimally configured (instances or account). */
     val tidalAvailable: Boolean,
     /**
-     * User-configured priority order for artwork providers. The resolver iterates this list
-     * in order and returns the first provider that has artwork for the current song. If a
-     * provider has no artwork, it falls back to the next one. Defaults to
-     * [moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder] when not explicitly set.
-     *
-     * Note: [PreferredArtworkProvider.SPOTIFY_CANVAS] is a video-based canvas provider
-     * handled separately by the Player UI (not by this resolver). It appears in the
-     * priority list for user discoverability and to control the canvas-source priority
-     * in [moe.rukamori.archivetune.ui.player.CanvasArtworkResolver], but this still-image
-     * resolver skips it.
+     * User-configured priority order for artwork providers. The resolver iterates this list in
+     * order and returns the first provider that has artwork for the current song. If a provider has
+     * no artwork, it falls back to the next one.
      */
     val providerOrder: List<PreferredArtworkProvider> = emptyList(),
 )

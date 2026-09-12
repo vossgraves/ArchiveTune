@@ -7,41 +7,7 @@
 
 package moe.rukamori.archivetune.audiosource
 
-/**
- * Reads a FLAC `STREAMINFO` block out of the first bytes of a stream.
- *
- * ## Why this exists
- *
- * Sources that hand us a bare file URL (the Qobuz backup mirror, self-hosted
- * proxies, any direct FLAC link) report no technical metadata at all, so
- * `MusicService.persistDirectStreamFormat` had nothing to work with and fell back
- * to a tier heuristic keyed off the stream's label: anything labelled "lossless"
- * became 44 100 Hz / 1 411 kbps. Every lossless track therefore showed *identical*
- * numbers in the player's Details card regardless of what was actually playing —
- * a 24-bit/44.1 kHz FLAC and a 16-bit/48 kHz FLAC were indistinguishable.
- *
- * FLAC puts everything needed in a fixed 34-byte `STREAMINFO` block that is
- * mandated to be the *first* metadata block, immediately after the 4-byte `fLaC`
- * marker. Parsing 42 bytes therefore yields the real sample rate, bit depth,
- * channel count and total sample count without decoding anything.
- *
- * The layout ([STREAMINFO](https://xiph.org/flac/format.html#metadata_block_streaminfo),
- * all big-endian, bit-packed after the first four fields):
- *
- * ```
- * offset 0  4B   "fLaC"
- *        4  1B   metadata block header: bit7 = last-block flag, bits6-0 = block type (0 = STREAMINFO)
- *        5  3B   block length (34 for STREAMINFO)
- *        8  2B   min block size
- *       10  2B   max block size
- *       12  3B   min frame size
- *       15  3B   max frame size
- *       18  8B   packed: 20 bits sample rate | 3 bits (channels-1) | 5 bits (bitDepth-1) | 36 bits total samples
- * ```
- *
- * so the packed field sits at absolute offset 18 (block data starts at 8, and the
- * field is 10 bytes into the block).
- */
+/** Reads a FLAC `STREAMINFO` block out of the first bytes of a stream. */
 object FlacStreamInfo {
     /** Bytes needed to cover `fLaC` + block header + the whole STREAMINFO block. */
     const val REQUIRED_BYTES: Int = 42

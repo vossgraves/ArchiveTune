@@ -674,18 +674,11 @@ fun BottomSheetPlayer(
     // the artwork (no blur behind the controls — pure color gradient instead).
     val dominantColor = gradientColors.firstOrNull() ?: MaterialTheme.colorScheme.primary
 
-    // ── V10 "Editorial" dominant-artwork control theme ──
-    // Both halves of the two-tone contract (field + accent) are derived from the
-    // artwork's DOMINANT palette color — gradientColors.first(), the highest-
-    // weighted swatch of the cover — HCT-toned per theme so they always keep
-    // proper contrast (dark: light accent over dark field; light: dark accent
-    // over light field). Previously these came from the *vibrant* seed, which
-    // only existed on the fresh-extraction path: a PlayerPaletteCache hit left
-    // the seeds null and collapsed both tones onto the same dominant color —
-    // pill text invisible against the pill. Deriving from dominantColor fixes
-    // that and matches the user request (2026-09-01): "button and control theme
-    // based on the dominant color from the album art". dominantColor falls back
-    // to the theme primary only when no palette has ever resolved.
+    // ── V10 "Editorial" dominant-artwork control theme ── Both halves of the two-tone contract
+    // (field + accent) are derived from the artwork's DOMINANT palette color —
+    // gradientColors.first(), the highest- weighted swatch of the cover — HCT-toned per theme so
+    // they always keep proper contrast (dark: light accent over dark field; light: dark accent over
+    // light field).
     val targetV10FieldColor =
         remember(dominantColor, useDarkTheme) {
             val hct = dominantColor.toHct()
@@ -1011,18 +1004,7 @@ fun BottomSheetPlayer(
             initialAnchor = COLLAPSED_ANCHOR,
         )
 
-    // Haze state for the frosted-glass blur behind the queue sheet. Ported
-    // verbatim from vivi-music's Player.kt: the player's backdrop artwork is
-    // tagged as the haze source, and a Haze-effect overlay (blurRadius = 80.dp,
-    // tint = Black 0.30, noiseFactor = 0.15) fades in over the player content
-    // while the queue is expanded. The queue's own background is transparent
-    // (Color.Unspecified) so the Haze shows through. This replaces the previous
-    // Compose BlurEffect(radius=32f) approach which was less blurred than
-    // vivi-music and only worked on Android 12+.
-    //
-    // NOTE: playerHazeState was removed in favor of queueArtHazeState (declared
-    // inline below), which always contains a real album-art image so the queue's
-    // blur is visible regardless of playerBackground style.
+    // Haze state for the frosted-glass blur behind the queue sheet.
 
     LaunchedEffect(state.isExpandedOrExpanding) {
         if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
@@ -1572,40 +1554,7 @@ fun BottomSheetPlayer(
             )
         }
 
-        // Haze-driven frosted-glass blur behind the queue sheet. Ported
-        // verbatim from vivi-music (beta) Player.kt — the player's backdrop
-        // artwork + controls are tagged as the haze source, and a Haze-effect
-        // overlay (blurRadius = 80.dp, tint = HazeTint(Black 0.30), noiseFactor
-        // = 0.15) fades in over them while the queue is expanded. The queue
-        // itself (rendered AFTER this Box closes) has a transparent background,
-        // so the Haze shows through. This replaces the previous Compose
-        // BlurEffect(radius=32f) approach which was less blurred than
-        // vivi-music and only worked on Android 12+ (Haze handles the API
-        // level gate internally and falls back to a software blur on older
-        // devices).
-        //
-        // ISSUE 3 FIX: drive the blur alpha directly from `queueSheetState.progress`
-        // instead of `isExpandedOrExpanding`. The old gate only flipped true on drag
-        // END (when performFling calls expand()), so the blur appeared to "snap in"
-        // only after the user lifted their finger. Reading `progress` (a
-        // derivedStateOf over the sheet's animatable value) updates continuously
-        // during the drag, so the blur now tracks the finger in real time.
-        //
-        // ISSUE 5 FIX: for non-BLUR player backgrounds (GRADIENT, COLORING, GLOW,
-        // DEFAULT), the player-content Box contains only flat/slowly-varying colors.
-        // Blurring a flat color produces a flat color — visually indistinguishable
-        // from no blur — so the queue sheet appeared to have no blur unless the user
-        // manually set playerBackground = BLUR. We now render a DEDICATED album-art
-        // hazeSource (queueArtHazeState) that always contains a real high-frequency
-        // image, so the queue's hazeEffect always has something meaningful to
-        // sample regardless of playerBackground style.
-        // The queue sheet is now opaque (queueSurfaceColor passed as its
-        // backgroundColor with opaqueBackground = true in Queue.kt), so the
-        // dedicated frosted-glass haze overlay that used to sit behind the
-        // transparent queue sheet is no longer needed. Setting this to 0f
-        // disables both the haze-source Box and the haze-effect overlay
-        // (they're gated on queueHazeAlpha > 0f), which also saves the GPU
-        // blur work during queue drag.
+        // Haze-driven frosted-glass blur behind the queue sheet.
         val queueHazeAlpha = 0f
 
         val queueArtHazeState = remember { HazeState() }
@@ -2768,38 +2717,6 @@ fun BottomSheetPlayer(
             }
 
         // Opaque backdrop that fades in with queueSheetState.progress.
-        //
-        // Why: non-Apple-Music player styles render a zoomed/gradient/blur
-        // artwork backdrop (PlayerBackground) at the back of the player, and
-        // the queue BottomSheet slides up from the bottom — so during the
-        // slide-up drag the queue sheet only covers the bottom portion of the
-        // screen, leaving the player's zoomed artwork exposed in the area
-        // above the queue sheet's top edge. The user expects NO artwork to be
-        // visible at all while sliding the queue up.
-        //
-        // IMPORTANT: we cannot use Modifier.background(color).graphicsLayer {
-        // alpha = ... } here — in Compose, `background` draws OUTSIDE the
-        // graphicsLayer (the layer only wraps the content INSIDE it, not the
-        // background modifier to its left), so the background would stay at
-        // full opacity regardless of the graphicsLayer alpha. That bug made
-        // the entire player invisible because the opaque backdrop covered
-        // everything (Thumbnail, controls, etc.) even when the queue was
-        // collapsed (alpha = 0 had no effect on the background color).
-        //
-        // Instead, we use queueSurfaceColor.copy(alpha = ...) so the alpha is
-        // baked into the color itself. When the queue is collapsed
-        // (progress = 0), the color is fully transparent and the backdrop is
-        // invisible — the player's Thumbnail/controls/PlayerBackground are all
-        // visible normally. As the queue slides up (progress → 1), the
-        // backdrop fades in to fully opaque, covering the zoomed artwork in
-        // the exposed area above the queue sheet's top edge. The queue sheet
-        // itself is also opaque (queueSurfaceColor passed as its
-        // backgroundColor with opaqueBackground = true in Queue.kt).
-        //
-        // Apple-Music style is unaffected: it doesn't render PlayerBackground,
-        // and its queue morphs in-place via SharedTransitionLayout (peek
-        // height = 0dp, so queueSheetState.progress stays 0 and this backdrop
-        // stays invisible).
         Box(
             modifier =
                 Modifier

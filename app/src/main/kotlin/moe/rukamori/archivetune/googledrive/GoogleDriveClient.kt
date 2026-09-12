@@ -25,46 +25,6 @@ import javax.inject.Singleton
 /**
  * Uploads backup files to a cloud folder chosen by the user via the Android Storage Access
  * Framework (SAF).
- *
- * ## Why SAF instead of the Drive REST API?
- *
- * An earlier implementation used `AccountManager.getAuthToken` to obtain an OAuth2 token for the
- * `drive.file` scope and then talked to the Drive REST v3 API directly. That approach failed with
- * `AuthenticatorException: UnregisteredOnApiConsole` because the app's package name + SHA-1
- * signing key was not registered on Google Cloud Console for that OAuth client — and for an
- * open-source app that end users build themselves, it never can be (every fork has a different
- * signing key).
- *
- * SAF sidesteps the entire problem:
- *   - The user picks a folder through the system `OpenDocumentTree` picker. The Drive app (and
- *     Nextcloud, Dropbox, etc.) exposes its folder tree as a DocumentsProvider, so the picker
- *     shows the user's actual Google Drive folder hierarchy.
- *   - The returned tree URI is persisted via `ContentResolver.takePersistableUriPermission`, so
- *     it survives app restarts and reboots.
- *   - Each sync writes the backup file directly into that folder via the framework
- *     [DocumentsContract] / `ContentResolver.openOutputStream` APIs — no OAuth token, no Cloud
- *     Console registration, no extra dependencies. The cloud provider handles authentication
- *     and uploading to its backend transparently.
- *
- * ## Upload flow
- *
- *   1. [uploadBackup] builds a local backup .zip into `cacheDir/gdrive_backup/` via
- *      [CreateBackupUseCase] (writing to a FileProvider-backed temp file).
- *   2. It resolves the persisted tree URI from [GoogleDriveSyncSettings.remoteFolderUri] and
- *      derives the folder's document URI via [DocumentsContract.buildDocumentUriUsingTree].
- *   3. If [GoogleDriveSyncSettings.overwriteExisting] is true and a child document with the
- *      target name already exists in the folder, that document is deleted first (SAF providers
- *      don't reliably overwrite an existing document in place — `createDocument` would produce
- *      a "name (1)" copy instead, so we delete explicitly to get a clean replace).
- *   4. A new child document is created with [DocumentsContract.createDocument] and the temp
- *      backup bytes are streamed into its output stream.
- *   5. The temp file is deleted on success or unrecoverable failure.
- *
- * ## Why DocumentsContract and not androidx.documentfile?
- *
- * [DocumentsContract] is a framework API (available since API 19) and needs no extra gradle
- * dependency. The app already uses it elsewhere (see `CachePlaylistScreen`), so this keeps the
- * dependency footprint unchanged.
  */
 @Singleton
 class GoogleDriveClient
@@ -73,18 +33,7 @@ class GoogleDriveClient
         @ApplicationContext private val context: Context,
         private val createBackupUseCase: CreateBackupUseCase,
     ) {
-        /**
-         * Result of an upload attempt.
-         *
-         *   - [Success] — the backup file was written to the picked folder.
-         *   - [TransientFailure] — a recoverable error (the folder URI is temporarily
-         *     unreachable, a provider-side hiccup, or an I/O blip). The caller should retry
-         *     with backoff.
-         *   - [PermanentFailure] — the folder URI is missing/malformed, the permission was
-         *     revoked, or the provider rejected the write. The caller should not retry
-         *     automatically and should surface a message prompting the user to re-pick a
-         *     folder.
-         */
+        /** Result of an upload attempt. */
         sealed interface UploadResult {
             data class Success(val fileName: String) : UploadResult
 
@@ -93,15 +42,7 @@ class GoogleDriveClient
             data class PermanentFailure(val message: String) : UploadResult
         }
 
-        /**
-         * Uploads a single backup file to the user-picked cloud folder.
-         *
-         * @param settings The current sync settings — must have a non-null
-         *   [GoogleDriveSyncSettings.remoteFolderUri] (the caller's responsibility to check
-         *   before invoking).
-         * @param backupFileName The user-visible name to give the uploaded file (without
-         *   extension — we append `.backup` here for consistency with local backups).
-         */
+        /** Uploads a single backup file to the user-picked cloud folder. */
         suspend fun uploadBackup(settings: GoogleDriveSyncSettings, backupFileName: String): UploadResult =
             withContext(Dispatchers.IO) {
                 val treeUriString = settings.remoteFolderUri
@@ -254,13 +195,8 @@ class GoogleDriveClient
 
             /**
              * Authorities registered by the Google Drive app's DocumentsProvider. When the user
-             * picks a Drive folder via the system `OpenDocumentTree` picker, the returned tree
-             * URI has one of these as its authority. Kept in sync with the same set in
-             * `BackupAndRestore.kt` (UI-side picker validation) — duplicated here so the worker
-             * doesn't have to depend on the UI module.
-             *
-             *   - `com.google.android.apps.docs.storage` — the modern Drive app.
-             *   - `com.google.android.apps.docs.storage.legacy` — older Drive app variants.
+             * picks a Drive folder via the system `OpenDocumentTree` picker, the returned tree URI
+             * has one of these as its authority.
              */
             private val GOOGLE_DRIVE_AUTHORITIES = setOf(
                 "com.google.android.apps.docs.storage",

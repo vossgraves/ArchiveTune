@@ -11,26 +11,7 @@ import android.media.MediaCodecList
 import timber.log.Timber
 import java.util.Locale
 
-/**
- * How the user's video-quality choice is encoded.
- *
- * The choice travels as a nullable `Int` — through [LocalVideoPreferredHeight], the
- * `preferredHeight` parameter of [rememberVideoArtworkStateOrNull], and Player.kt's
- * `rememberSaveable` holder. Keeping it a primitive is deliberate: `rememberSaveable` can persist
- * an `Int?` across configuration changes and process death with no custom `Saver`, which an enum
- * or sealed type would need.
- *
- * The encoding is therefore:
- *  - `null`            → **Auto**: best resolution the device decodes comfortably, capped at
- *                        [AUTO_HEIGHT_CEILING].
- *  - [DATA_SAVER]      → cap at [DATA_SAVER_HEIGHT_CEILING].
- *  - [HIGH_QUALITY]    → highest resolution YouTube offers, up to whatever this device can
- *                        actually decode ([VideoDecoderCapabilities.maxSupportedHeight]). This is
- *                        the path to 4K/8K "original quality".
- *  - any positive int  → an exact height picked from the Advanced list (e.g. `2160`).
- *
- * The two mode sentinels are negative so they can never collide with a real height.
- */
+/** How the user's video-quality choice is encoded. */
 object VideoQualityPreference {
     /** Sentinel for the "Data saver" mode. Negative so it cannot collide with a real height. */
     const val DATA_SAVER = -1
@@ -38,16 +19,7 @@ object VideoQualityPreference {
     /** Sentinel for the "High quality" mode — highest the device can decode. */
     const val HIGH_QUALITY = -2
 
-    /**
-     * Ceiling applied in Auto mode.
-     *
-     * Auto stays at 1080p on purpose. 4K VP9/AV1 decoding on mid-range mobile chipsets costs
-     * enough per-frame time that the video falls behind the separately-loaded audio track and
-     * trips the resync watchdog in [VideoArtworkState] — the exact reason the old hard-coded
-     * 1080p cap existed. Auto is the default, so it keeps the conservative behaviour; a user who
-     * wants the original resolution asks for it explicitly via High quality or Advanced, and then
-     * the only remaining ceiling is what the decoder reports.
-     */
+    /** Ceiling applied in Auto mode. */
     const val AUTO_HEIGHT_CEILING = 1080
 
     /** Ceiling applied in Data saver mode. */
@@ -89,11 +61,6 @@ object VideoDecoderCapabilities {
     /**
      * Used when the codec query fails or reports nothing usable (an OEM with a broken
      * `MediaCodecList`, for instance).
-     *
-     * 2160 rather than 1080: a failed probe should not silently take 4K away from a device that
-     * supports it. If the device really cannot decode 4K, [VideoArtworkState]'s existing
-     * playback-failure path falls back to album artwork, which is the same outcome as any other
-     * unplayable stream.
      */
     private const val FALLBACK_MAX_HEIGHT = 2160
 

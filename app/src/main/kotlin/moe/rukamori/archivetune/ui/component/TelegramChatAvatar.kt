@@ -37,15 +37,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.telegram.TelegramClient
 import java.io.File
 
-/**
- * Circular Telegram chat avatar.
- *
- * @param photoMinithumbnail Inline JPEG bytes (typically ~40×40). Shown instantly while the
- *   full photo downloads. May be null.
- * @param photoFileId TDLib file id of the small photo. When > 0, the full photo is downloaded
- *   via [TelegramClient.downloadFileBlocking] and replaces the minithumbnail. 0 = no photo.
- * @param size Diameter of the avatar circle. Defaults to 48.dp.
- */
+/** Circular Telegram chat avatar. */
 @Composable
 fun TelegramChatAvatar(
     photoMinithumbnail: ByteArray?,

@@ -10,14 +10,9 @@ package moe.rukamori.archivetune.spotify.models
 import kotlinx.serialization.Serializable
 
 /**
- * A node in the user's Spotify library tree as exposed by the libraryV3 GraphQL
- * operation. The user can organize playlists into folders and nest folders inside
- * folders; libraryV3 returns each level as a list of [SpotifyLibraryItem] entries.
- *
- * The library API exposes both the flat list of playlists ([SpotifyPlaylist]) used
- * for places that don't care about hierarchy (Android Auto, picker dialogs, search)
- * and this hierarchical view used by the library UI to faithfully render the user's
- * folder organization.
+ * A node in the user's Spotify library tree as exposed by the libraryV3 GraphQL operation. The user
+ * can organize playlists into folders and nest folders inside folders; libraryV3 returns each level
+ * as a list of [SpotifyLibraryItem] entries.
  */
 @Serializable
 sealed class SpotifyLibraryItem {

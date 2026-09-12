@@ -15,8 +15,12 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -28,12 +32,14 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,6 +49,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlin.math.roundToInt
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -52,6 +59,7 @@ import moe.rukamori.archivetune.constants.ForceHighRefreshRateKey
 import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.PauseListenHistoryKey
 import moe.rukamori.archivetune.constants.PauseSearchHistoryKey
+import moe.rukamori.archivetune.playback.MusicHapticsSettings
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -59,13 +67,14 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
-import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
     val database = LocalDatabase.current
     val context = LocalContext.current
+    var musicHapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
+    var musicHapticsStrength by remember { mutableIntStateOf(MusicHapticsSettings.strengthPercent(context)) }
     val isAndroid12OrLater = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(
@@ -289,6 +298,42 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.vibration), null) },
                         checked = enableHapticFeedback,
                         onCheckedChange = onEnableHapticFeedbackChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.music_haptics)) },
+                        description = stringResource(R.string.music_haptics_desc),
+                        icon = { Icon(painterResource(R.drawable.vibration), null) },
+                        checked = musicHapticsEnabled,
+                        onCheckedChange = { next ->
+                            MusicHapticsSettings.setEnabled(context, next)
+                            musicHapticsEnabled = next
+                        },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.music_haptics_strength)) },
+                        description = stringResource(R.string.music_haptics_strength_value, musicHapticsStrength),
+                        icon = { Icon(painterResource(R.drawable.vibration), null) },
+                        isEnabled = musicHapticsEnabled,
+                        content = {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Slider(
+                                value = musicHapticsStrength.toFloat(),
+                                onValueChange = { musicHapticsStrength = it.roundToInt() },
+                                onValueChangeFinished = {
+                                    MusicHapticsSettings.setStrengthPercent(context, musicHapticsStrength)
+                                },
+                                valueRange = 0f..100f,
+                                steps = 19,
+                                enabled = musicHapticsEnabled,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        },
                     )
                 }
 

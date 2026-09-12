@@ -58,15 +58,7 @@ val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
 val SpotifyCanvasKey = booleanPreferencesKey("spotifyCanvas")
 
-/**
- * Whether an album page plays the album's looping motion artwork behind its header.
- *
- * Deliberately separate from [ArchiveTuneCanvasKey], which governs the *player's*
- * now-playing canvas: the two are different surfaces with different costs (the album
- * header loop starts as soon as a page opens, whether or not anything is playing), and
- * a user who wants one does not necessarily want the other. Default on, so albums that
- * have motion artwork animate the way they do in Apple Music.
- */
+/** Whether an album page plays the album's looping motion artwork behind its header. */
 val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
 
 /**
@@ -339,23 +331,7 @@ object DownloadSourceConfig {
     val REQUIRES_POOL: Set<DownloadSource> =
         setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
 
-    /**
-     * Cache-key prefix a source's downloaded bytes are stored under, e.g. `"qobuz_backup:"`.
-     *
-     * `DownloadUtil` namespaces each source's cache entries so bytes from one source can never be
-     * served for another, then has to check every prefix when deciding whether a song is already
-     * fully cached. Deriving the list here rather than writing it out at each of those call sites
-     * is what keeps a newly added source from being silently skipped by the cache lookups — which
-     * is exactly what happened to [DownloadSource.QOBUZ_BACKUP] and [DownloadSource.JIOSAAVN]: they
-     * resolved and downloaded fine, but their cached bytes were invisible to the completeness check
-     * and to the purge-on-failure path, so a download that had already succeeded was fetched again.
-     *
-     * [DownloadSource.AUTO] and [DownloadSource.YOUTUBE_MUSIC] are excluded: neither ever writes a
-     * prefixed key (the YouTube fallback uses the bare media id).
-     *
-     * `Locale.US` matters — `TIDAL` and `JIOSAAVN` both contain `I`, which lowercases to a dotless
-     * `ı` under a Turkish locale and would not match the key that was written.
-     */
+    /** Cache-key prefix a source's downloaded bytes are stored under, e.g. `"qobuz_backup:"`. */
     val CACHE_KEY_PREFIXES: List<String> =
         DownloadSource.entries
             .filterNot { it == DownloadSource.AUTO || it == DownloadSource.YOUTUBE_MUSIC }
@@ -366,13 +342,8 @@ object DownloadSourceConfig {
 
     /**
      * Resolves the effective ordered list of all download sources from the stored CSV, preserving
-     * the user's chosen order and slotting any missing sources in above [DownloadSource.YOUTUBE_MUSIC].
-     *
-     * Mirrors `AudioSourceConfig.parseOrder`, and for the same reason: appending meant that a user
-     * who had touched the order picker before a source existed got that source listed *below*
-     * YouTube Music, where the list reads as if it ends. Every real download source sits above
-     * YouTube Music in [DEFAULT_ORDER], so inserting there is both correct and the one placement
-     * that cannot disturb the order the user actually chose.
+     * the user's chosen order and slotting any missing sources in above
+     * [DownloadSource.YOUTUBE_MUSIC].
      */
     fun parseOrder(rawOrder: String?): List<DownloadSource> {
         val stored =
@@ -965,20 +936,9 @@ fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvi
 }
 
 /**
- * Artwork providers that can be prioritised by the user. The order in this enum is NOT the
- * priority — the user-configured order (stored in [ArtworkProviderOrderKey]) determines which
- * provider is tried first when resolving artwork for a song. If the top-priority provider has
- * no artwork for the current song, the resolver falls back to the next provider in the list.
- *
- * - [LOCAL_EMBEDDED]: artwork extracted from a local file. Always wins for local media
- *   regardless of priority order (a local file's embedded cover is the authoritative source).
- * - [ORIGINAL_METADATA]: artwork URL that arrived with the original media metadata
- *   (YouTube/innertube/DB `thumbnailUrl`). This is the default artwork for streaming songs.
- * - [TIDAL]: artwork fetched from Tidal as a fallback when no original artwork exists.
- * - [SPOTIFY_CANVAS]: Spotify Canvas video artwork (looping video, fetched via the
- *   `mlc.kouzu.in` canvas API).
- * - [ARCHIVETUNE_CANVAS]: Apple Music motion artwork (animated cover art fetched
- *   from Apple's MusicKit/AMP API).
+ * Artwork providers that can be prioritised by the user. The order in this enum is NOT the priority
+ * — the user-configured order (stored in [ArtworkProviderOrderKey]) determines which provider is
+ * tried first when resolving artwork for a song.
  */
 enum class PreferredArtworkProvider {
     LOCAL_EMBEDDED,
@@ -1025,17 +985,9 @@ enum class HomeScreenStyle {
 val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
 
 /**
- * Which service the Home tab is showing. The two homes are separate pages you switch between,
- * not one feed with the other stacked into it — signing into Spotify must not cost you the
- * YouTube home, and vice versa.
- *
- * SPOTIFY resolves back to YOUTUBE while [SpotifySpDcKey] is blank (see NavigationBuilder), so a
- * signed-out user can never be stranded on an empty page.
- *
- * This briefly lived as a third `HomeScreenStyle` case, which conflated "which service" with
- * "which layout" and meant the two could not be chosen independently. `toEnum` falls back to the
- * default on an unknown name, so anyone who had picked that case lands on the YouTube home and
- * finds Spotify on the switcher.
+ * Which service the Home tab is showing. The two homes are separate pages you switch between, not
+ * one feed with the other stacked into it — signing into Spotify must not cost you the YouTube
+ * home, and vice versa.
  */
 enum class HomeSource {
     YOUTUBE,
@@ -1077,12 +1029,6 @@ enum class PlayerDesignStyle {
     /**
      * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their own
      * package and share nothing with the numbered styles above.
-     *
-     * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
-     * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
-     * page: swipe up for the next song, down for the previous. [SIMPMUSIC] is SimpMusic's default
-     * now-playing screen — a diagonal palette wash with the sleeve on a queue-backed pager. All
-     * three are views over the app's one playback engine and queue, not players of their own.
      */
     BITCHORD,
     TIKTOK,
@@ -1534,33 +1480,10 @@ val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
 // source is forced for that specific song (subject to the metadata match gate), overriding the
 // global source order. Persisted here so it is included in Settings backups.
 val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
-/**
- * Per-song Qobuz trackId override (CSV of `songId=qobuzTrackId;…`).
- *
- * When the user picks a specific Qobuz track from the "Play from"
- * source-search popup, we persist the Qobuz trackId here so the playback
- * resolver can download the exact track instead of re-searching by
- * title+artist (which could match a different Qobuz track — different
- * master, deluxe edition, etc.).
- *
- * Keyed by the song's existing mediaId (the YouTube video id), so changing
- * the source does NOT change the song's mediaId — the song is not
- * registered as a new entry in the playback history / "recently listened".
- */
+/** Per-song Qobuz trackId override (CSV of `songId=qobuzTrackId;…`). */
 val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
 
-/**
- * Per-song Qobuz-**backup** video-id override (CSV of `songId=youtubeVideoId;…`).
- *
- * The backup mirror is keyed by YouTube video id, and until now the resolver
- * simply reused the playing song's own media id. That works for the automatic
- * path but not for an explicit pick in the "Play from" popup: the row the user
- * chose is a *different* catalogue entry, whose id is the only way to address the
- * FLAC they asked for. Storing it here lets `resolveQobuzBackupStream` fetch that
- * exact mirror entry while the song keeps its own media id — so the queue, the
- * artwork, the title and the listening history are all untouched, and only the
- * audio changes.
- */
+/** Per-song Qobuz-**backup** video-id override (CSV of `songId=youtubeVideoId;…`). */
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 
 

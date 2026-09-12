@@ -70,12 +70,6 @@ object TidalAccountManager {
     /**
      * Same connection pool and dispatcher as [client] (newBuilder shares both), with deadlines
      * short enough to abandon one account and move to the next.
-     *
-     * The 20s ceiling on [client] is right for a login or a token exchange, where the user is
-     * waiting on that one request and a slow network should be tolerated. It is wrong inside the
-     * pool-account loop, where each attempt is disposable: three unreachable accounts cost a
-     * minute of silence before playback even reaches Qobuz. Resolution is two small JSON calls
-     * against api.tidal.com, so anything past 8s is a dead account, not a slow one.
      */
     private val resolveClient =
         client
@@ -105,13 +99,7 @@ object TidalAccountManager {
     /**
      * Exchanges a stored refresh token for a fresh access token via the OAuth `refresh_token`
      * grant. Tidal typically does not return a new refresh_token here, so callers should keep the
-     * existing one when [TokenResult.refreshToken] is null. Returns null on failure (expired /
-     * revoked / offline), signalling the caller to fall back to the public instances.
-     *
-     * [flow] selects which OAuth client the refresh runs against: a PKCE session must refresh with
-     * the PKCE client, a device session with the device client. A [FLOW_WEBCAPTURE] session has no
-     * refresh token at all, so refresh is impossible and returns null immediately (the caller then
-     * prompts a re-login).
+     * existing one when [TokenResult.refreshToken] is null.
      */
     suspend fun refreshAccessToken(
         refreshToken: String,

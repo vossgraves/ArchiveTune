@@ -19,23 +19,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-/**
- * Loads TDLib's native library, fetching it on demand when the build did not bundle it.
- *
- * Why this exists: `libtdjni.so` is 21.7 MB per ABI — 8.7 MB compressed into the APK and the full
- * 21.7 MB extracted on install, since the app packages native libs with `useLegacyPackaging`. That
- * is paid by every user, while Telegram is an optional integration most never sign in to. A build
- * made with `-PslimTdlib=true` omits it and this fetches it the first time someone actually opens
- * Telegram.
- *
- * The default build still bundles it, so nothing changes unless that flag is set — see
- * [BuildConfig.TDLIB_BUNDLED].
- *
- * Not Play Feature Delivery: that needs App Bundles and Play, and this app ships APKs on GitHub
- * releases. The download is therefore hand-rolled, which is also why the digests below are
- * compiled in rather than fetched — a manifest downloaded over the same channel as the payload
- * verifies nothing.
- */
+/** Loads TDLib's native library, fetching it on demand when the build did not bundle it. */
 object TdLibNativeLibrary {
     private const val TAG = "TdLibNative"
 

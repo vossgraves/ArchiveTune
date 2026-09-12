@@ -10,24 +10,8 @@ package moe.rukamori.archivetune.lastfm
 import moe.rukamori.archivetune.lastfm.models.UserImage
 
 /**
- * Port of LastWave-native's [com.lastwave.app.data.artwork.ArtworkNormalizer] — a faithful
- * copy of the image-selection helpers LastWave uses at every Last.fm image-array read site.
- *
- * Two responsibilities, identical to the LastWave original:
- *
- *  1. **Placeholder filter** — Last.fm serves a real, non-blank URL for its own gray
- *     "no artwork" placeholder graphic. That URL contains the constant hash below; a blank
- *     check alone is not enough to tell real art from a placeholder, so any URL containing
- *     the hash is rejected by [isRealImage] before it is trusted.
- *
- *  2. **Size priority** — Last.fm image arrays are unordered w.r.t. size, so [bestImageUrl]
- *     picks the best quality by walking the canonical priority order
- *     `extralarge > large > medium > (any remaining real image)`, exactly matching the
- *     repeated `find(extralarge) || find(large) || find(medium) || find(any)` chain used
- *     throughout LastWave-native's home screen.
- *
- * Kept as a free-standing object, not a class, because the LastWave original has no state
- * here — just filtering.
+ * Port of LastWave-native's [com.lastwave.app.data.artwork.ArtworkNormalizer] — a faithful copy of
+ * the image-selection helpers LastWave uses at every Last.fm image-array read site.
  */
 object LastFmArtworkNormalizer {
     /** The exact hash Last.fm embeds in its own gray "no artwork" placeholder image. */

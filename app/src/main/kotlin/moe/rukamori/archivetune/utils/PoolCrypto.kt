@@ -24,22 +24,6 @@ import javax.crypto.spec.SecretKeySpec
  * Decrypts sensitive credential values shared by the community Source Pool website. The site
  * encrypts fields (Tidal/Qobuz tokens, app IDs, …) end-to-end with AES-256-GCM before returning
  * them from `/api/sources`, so the raw JSON contains ciphertext rather than usable tokens.
- *
- * Two key schemes exist; the feed's `encryption` field says which one was used:
- *  - "read-key"  (v2, preferred): the key is DERIVED from the read key the app presented —
- *    SHA-256("archivepool-client:" + readKey). The app therefore needs ONLY its source-provider
- *    key; no second POOL_CLIENT_KEY has to match the server deployment. Mirrors
- *    lib/crypto.ts deriveClientKey() on the pool server, byte-for-byte.
- *  - "client-key" (legacy): a static base64 32-byte key baked into the build, which must match
- *    the site's POOL_CLIENT_KEY. Kept so older pool deployments keep working.
- *
- * Wire format produced by the site (colon-delimited, all base64):
- *   `enc:1:<iv>:<ciphertext+authTag>`
- * The 16-byte GCM auth tag is appended to the ciphertext, which is exactly what
- * `AES/GCM/NoPadding` expects here.
- *
- * All methods are best-effort: a blank key, malformed blob, or auth failure returns null when the
- * input is encrypted. Plaintext values still pass through unchanged.
  */
 object PoolCrypto {
     private const val PREFIX = "enc:1:"

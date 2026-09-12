@@ -509,19 +509,8 @@ class MainActivity : ComponentActivity() {
         playPendingDeepLinkQueueIfReady()
         openPendingAodModeIfReady()
 
-        // Qobuz cache staleness fix: clear the transient failure cache and
-        // instance cooldowns on app foreground so Qobuz is retried without
-        // requiring a force-stop. Also clear the resolved-sources record
-        // for the currently-playing song so the "Play from" source picker
-        // reflects fresh availability.
-        //
-        // Root cause: QobuzAudioProvider.failureCache (10-min TTL) and
-        // instanceCooldownUntilMs (up to 10-min) are process-lived. When
-        // the user backgrounded the app and came back, these caches were
-        // still live, so Qobuz resolution returned null immediately
-        // without retrying. Force-stop cleared the process (and all
-        // in-memory caches), which is why re-opening the app fixed it.
-        // This provides the same cache-clearing effect without force-stop.
+        // Qobuz cache staleness fix: clear the transient failure cache and instance cooldowns on
+        // app foreground so Qobuz is retried without requiring a force-stop.
         QobuzAudioProvider.clearTransientCaches()
         playerConnection?.service?.let { service ->
             val currentMediaId = playerConnection?.mediaMetadata?.value?.id
@@ -536,16 +525,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Drops the current [PlayerConnection]. Safe to call repeatedly.
-     *
-     * unbindService() does NOT trigger onServiceDisconnected — Android only
-     * delivers that callback on a service crash — so every clean unbind path
-     * must dispose here, or the connection stays registered as a listener on
-     * the service's long-lived player and pins this Activity (plus its whole
-     * Compose tree) until the service itself dies. One leaked connection
-     * accumulates per background/foreground cycle without this.
-     */
+    /** Drops the current [PlayerConnection]. Safe to call repeatedly. */
     private fun disposePlayerConnection() {
         pendingAodModeJob?.cancel()
         pendingAodModeJob = null
@@ -630,17 +610,7 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    /**
-     * Computes the [PictureInPictureParams] for the current playback.
-     *
-     * Uses a 16:9 aspect ratio (the standard for music videos on YouTube)
-     * since the actual video surface bounds aren't easily accessible from
-     * the activity. 16:9 (1.78) is well within Android's supported range
-     * of [1.0, 2.39].
-     *
-     * PiP requires API 26+ (Build.VERSION_CODES.O); the app's minSdk is 26
-     * so no version guard is needed.
-     */
+    /** Computes the [PictureInPictureParams] for the current playback. */
     private fun buildPipParams(): PictureInPictureParams =
         PictureInPictureParams
             .Builder()
@@ -1636,30 +1606,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Cache the status bar top inset observed while the status bar is VISIBLE.
-                    // When shouldHideStatusBars becomes true, WindowInsets.statusBars reports 0
-                    // (the controller hides the bar), but the shared TopAppBar (further below)
-                    // uses WindowInsets.safeDrawing which still reports displayCutout top —
-                    // causing the TopAppBar and the content to drift apart by ~displayCutout
-                    // top, and the profile picture / "ArchiveTune" header collide with the
-                    // content beneath (album cards slide under the header).
-                    //
-                    // By remembering the last non-zero top inset and substituting it for
-                    // systemBars when the status bar is hidden, both the TopAppBar and the
-                    // content use a consistent inset source and stay aligned.
-                    //
-                    // In addition to the status-bar cache, we also floor the effective top
-                    // with WindowInsets.displayCutout's top inset. The displayCutout inset
-                    // is reported independently of status-bar visibility (it tracks the
-                    // physical notch / punch-hole / camera cutout), so it remains non-zero
-                    // even when the user enables "Hide status bar" app-wide from launch —
-                    // precisely the case where the status-bar cache never gets seeded.
-                    // Taking the max guarantees content always sits below every phone's
-                    // notch, mirroring the proven pattern in QueueComponents.kt:1720-1722.
-                    //
-                    // WindowInsets.statusBars / displayCutout are @Composable properties,
-                    // so we read them in the composable scope (not inside snapshotFlow)
-                    // and update the cached values via a simple LaunchedEffect keyed on
-                    // the observed px values.
                     val currentStatusBarTopPx = WindowInsets.statusBars.getTop(density)
                     val currentDisplayCutoutTopPx = WindowInsets.displayCutout.getTop(density)
                     var cachedStatusBarTop by remember { mutableStateOf(0.dp) }
@@ -2880,20 +2826,16 @@ class MainActivity : ComponentActivity() {
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
                                                     // Liquid-glass nav lag fix (ported from 4nx3b
-                                                    // batch-8, 2026-08-29): `Modifier.offset` runs in
-                                                    // the LAYOUT phase, so every spring frame (nav
-                                                    // bar height animating when the mini player docks)
-                                                    // and every sheet-drag frame (player progress)
-                                                    // re-laid-out the entire FloatingNavigationToolbar
-                                                    // subtree — cascading to every onGloballyPositioned
-                                                    // callback, re-positioning the kyant drawBackdrop
-                                                    // shaders and invalidating the app-wide
-                                                    // layerBackdrop recording on the NavHost root.
-                                                    // graphicsLayer runs in the DRAW phase only:
-                                                    // layout coordinates stay stable, callbacks don't
-                                                    // fire, the shader chain doesn't recompute per
-                                                    // frame. Visual identical; liquid glass surfaces
-                                                    // are NOT sacrificed.
+                                                    // batch-8, 2026-08-29): `Modifier.offset` runs
+                                                    // in the LAYOUT phase, so every spring frame
+                                                    // (nav bar height animating when the mini
+                                                    // player docks) and every sheet-drag frame
+                                                    // (player progress) re-laid-out the entire
+                                                    // FloatingNavigationToolbar subtree — cascading
+                                                    // to every onGloballyPositioned callback,
+                                                    // re-positioning the kyant drawBackdrop shaders
+                                                    // and invalidating the app-wide layerBackdrop
+                                                    // recording on the NavHost root.
                                                     .graphicsLayer {
                                                         translationY =
                                                             if (bottomNavigationBarHeight == 0.dp) {

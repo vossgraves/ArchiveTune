@@ -436,20 +436,9 @@ fun ArtistScreen(
                         }
                     val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
 
-                    // SimpMusic-style liquid glass backdrop source: the
-                    // LazyColumn itself carries the layerBackdrop modifier
-                    // (see the LazyColumn definition above), so the entire
-                    // scrolling content is recorded into the backdrop. The
-                    // floating Liquid Glass back button (top-start) and
-                    // more-actions pill (top-end) are siblings of the
-                    // LazyColumn (children of the outer Box), so they sample
-                    // the backdrop without being recorded into it. They are
-                    // PERSISTENT — they stay at the top of the screen no
-                    // matter how far the user scrolls.
-                    //
-                    // The hero item itself just renders the artwork + gradient
-                    // + title column directly in the hero Box; no inner
-                    // backdrop-source Box wrapper is needed here.
+                    // SimpMusic-style liquid glass backdrop source: the LazyColumn itself carries
+                    // the layerBackdrop modifier (see the LazyColumn definition above), so the
+                    // entire scrolling content is recorded into the backdrop.
                     Box(
                         modifier =
                             Modifier

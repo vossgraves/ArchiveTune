@@ -34,18 +34,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
-/**
- * Deep links from settings search to an individual preference on a sub-screen.
- *
- * The anchor is handed over through this object rather than a navigation argument on purpose.
- * Adding an optional query arg would mean changing the route strings of screens that a lot of
- * existing `navigate("settings/player")` calls already point at, and a mismatch there fails at
- * runtime rather than at compile time. A highlight is also purely transient: it should not
- * survive process death and be replayed when the user returns to the screen days later, which
- * is exactly what a saved nav argument would do.
- *
- * Main thread only, which is where navigation and composition both run.
- */
+/** Deep links from settings search to an individual preference on a sub-screen. */
 object SettingsAnchorRequest {
     /**
      * How long a request stays claimable. Some settings screens bail out of composition on their

@@ -231,30 +231,16 @@ private fun List<BitChordQueueSong>.stableQueueKeys(prefix: String = ""): List<S
 }
 
 /**
- * How far in from either end of the queue a held row starts scrolling the list,
- * and how fast it scrolls once it is all the way at the edge.
- *
- * The zone is a shade deeper than the 28.dp the list fades out over, so the
- * list is already moving by the time the row begins to disappear into the fade
- * rather than only once it has. The speed at the edge is about six rows a
- * second: quick enough to cross a long queue without waiting on it, slow
- * enough to still read the titles going past and stop on the right one.
+ * How far in from either end of the queue a held row starts scrolling the list, and how fast it
+ * scrolls once it is all the way at the edge.
  */
 private val QUEUE_EDGE_SCROLL_ZONE = 40.dp
 private val QUEUE_EDGE_SCROLL_SPEED = 340.dp
 
 /**
- * The pace, in pixels a second, to scroll a list at while a row occupying
- * [top] to [bottom] is held in a viewport spanning [viewportStart] to
- * [viewportEnd] — negative towards the start of the list, positive towards its
- * end, and zero while the row is clear of both edges.
- *
- * Ramped by how far into the [zone] the row has reached, so how fast the queue
- * goes by stays the user's to choose — but from a fifth of [speed] rather than
- * from nothing, since a row just inside the zone should visibly move the list
- * instead of creeping a pixel a second until it is pushed further. A viewport
- * too short to hold the row clear of both edges at once scrolls neither way,
- * rather than picking one arbitrarily and running away with it.
+ * The pace, in pixels a second, to scroll a list at while a row occupying [top] to [bottom] is held
+ * in a viewport spanning [viewportStart] to [viewportEnd] — negative towards the start of the list,
+ * positive towards its end, and zero while the row is clear of both edges.
  */
 internal fun edgeScrollSpeed(
     top: Float,
@@ -276,15 +262,7 @@ internal fun edgeScrollSpeed(
     return if (reach < 0f) -ramp else ramp
 }
 
-/**
- * Drag-to-reorder for the queue's LazyColumn.
- *
- * Each swap goes to the player the moment the dragged row crosses a
- * neighbour, so the live queue is always what's on screen and the rows the
- * drag displaces animate to their new slots off it. The dragged row is
- * tracked by its LazyColumn key rather than by index, because the index under
- * it changes with every swap.
- */
+/** Drag-to-reorder for the queue's LazyColumn. */
 @Composable
 private fun rememberQueueDragState(
     listState: LazyListState,
@@ -329,16 +307,8 @@ private fun rememberQueueDragState(
 }
 
 /**
- * Where a held row is being held, what it may do from there, and the moves it
- * has sent to the player on the way.
- *
- * The whole thing turns on one number: [heldCenter], where the row's centre is
- * being held, in the LazyColumn's own viewport pixels. The finger moves it and
- * nothing else does — not a scroll, not a swap, not a relayout. Everything
- * drawn or decided is then read back off the live layout against it: the row
- * is drawn at whatever its slot currently is plus the distance to
- * [heldCenter], and it trades places with whichever neighbour's slot
- * [heldCenter] has reached into.
+ * Where a held row is being held, what it may do from there, and the moves it has sent to the
+ * player on the way.
  */
 private class QueueDragState(private val listState: LazyListState) {
     var lazyRange: IntRange = IntRange.EMPTY
@@ -353,15 +323,7 @@ private class QueueDragState(private val listState: LazyListState) {
     var draggedKey by mutableStateOf<Any?>(null)
         private set
 
-    /**
-     * How far from its own slot to draw the held row, in pixels.
-     *
-     * Not simply the distance to [heldCenter]: a queue longer than the screen
-     * has nowhere to show a row above its first slot or below its last, so a
-     * finger held past either end was drawing the row off the list into
-     * nothing. Kept inside the viewport it sits at whichever edge it reached
-     * and stays visible there while the auto-scroll carries the list under it.
-     */
+    /** How far from its own slot to draw the held row, in pixels. */
     var renderOffset by mutableFloatStateOf(0f)
         private set
 
@@ -502,15 +464,7 @@ private class QueueDragState(private val listState: LazyListState) {
         setAutoScroll(if (blocked) 0f else speed)
     }
 
-    /**
-     * Holds the drag inside the section it started in.
-     *
-     * A row can only be dropped between the first and last slots of its own
-     * section — the playing track and the history above it are not the user's
-     * to reorder. What it does not do is stop [heldCenter] running on past the
-     * boundary, and a finger a screen beyond it then has that whole distance
-     * to travel back before the row answers again.
-     */
+    /** Holds the drag inside the section it started in. */
     private fun holdToSection(items: List<LazyListItemInfo>, dragged: LazyListItemInfo) {
         val half = dragged.size / 2f
         items.firstOrNull { it.index == lazyRange.first }?.let {

@@ -24,13 +24,8 @@ import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.dataStore
 
 /**
- * Collects the credentials [CrossServicePlaylistImporter] needs for the
- * services whose playlist APIs reject anonymous reads (Tidal and Qobuz).
- *
- * Mirrors the precedence used by the playback resolvers: the user's own
- * linked account first, then a shared community Source Pool account. Nothing
- * here throws — a missing credential simply comes back null and the importer
- * turns it into a "sign in first" message.
+ * Collects the credentials [CrossServicePlaylistImporter] needs for the services whose playlist
+ * APIs reject anonymous reads (Tidal and Qobuz).
  */
 object CrossServiceImportCredentials {
 

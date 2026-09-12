@@ -495,16 +495,9 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 }
 
 /**
- * A preference row that opens a slider dialog when tapped. Mirrors the swipe-sensitivity
- * UX used in PlayerSettings / AppearanceSettings so all float-valued tuning knobs share
- * the same interaction model.
- *
- * When [preview] is non-null, the dialog renders a live preview above the slider that
- * reflects the in-progress [tempValue] (passed to the preview lambda) so the user can
- * see exactly how the change will look before committing.
- *
- * When [default] is non-null, the dialog includes a "Reset" button that snaps the slider
- * back to the default value before the user confirms.
+ * A preference row that opens a slider dialog when tapped. Mirrors the swipe-sensitivity UX used in
+ * PlayerSettings / AppearanceSettings so all float-valued tuning knobs share the same interaction
+ * model.
  */
 @Composable
 private fun SliderPreferenceRow(
@@ -628,18 +621,8 @@ private fun SliderPreferenceRow(
 }
 
 /**
- * A miniature, self-contained mock of the floating / docked navigation bar used inside
- * the slider-dialog preview. It mirrors the visual language of [FloatingNavigationToolbar]
- * — same surface color logic (opacity × (1 − transparency)), same indicator pill behind
- * the selected icon, same corner-radius / width / height / label-spacing knobs — but is
- * intentionally simplified: no sliding-pill animation, no frosted backdrop, no real
- * navigation. The bar floats over a faux-screen gradient so transparency / opacity
- * changes are immediately visible.
- *
- * The preview always shows all three labels (Home / Search / Library) and always marks
- * Home as selected, even when the user has globally hidden labels — the point of the
- * preview is to show the effect of the dimension being adjusted, and hiding labels would
- * make the "label spacing" slider invisible.
+ * A miniature, self-contained mock of the floating / docked navigation bar used inside the
+ * slider-dialog preview.
  */
 @Composable
 private fun NavBarPreview(

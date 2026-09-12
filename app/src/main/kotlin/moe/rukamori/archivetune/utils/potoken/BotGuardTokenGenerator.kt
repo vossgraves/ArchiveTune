@@ -43,28 +43,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Generates cryptographically valid PoTokens by running YouTube's BotGuard
- * challenge inside a headless [WebView].
- *
- * ## Lifecycle
- *
- * 1. [initialize] — called once from `Application.onCreate()` with the app context.
- * 2. [preWarm] — optional, boots the WebView at startup to avoid first-call delay.
- * 3. [mintToken] — suspend function, called per video. Reuses the engine until
- *    it expires (~50 min) or the session changes.
- * 4. [onAppBackgrounded] — releases the WebView to free ~50 MB of memory.
- *
- * ## Optimizations
- *
- * - **Suspend API** — [mintToken] is a suspend function, never blocks the calling thread.
- * - **Pre-warm** — [preWarm] bootstraps the engine at app startup so the first
- *   real mint is instant.
- * - **Player token cache** — Caches per-video tokens (LRU, max 200) to avoid
- *   redundant mints when the same video is played multiple times.
- * - **Session token reuse** — The session token is minted once per engine and
- *   reused for all videos until the engine expires or the session changes.
- * - **Background cleanup** — [onAppBackgrounded] releases the WebView to free memory.
- *   The engine is recreated on the next [mintToken] call.
+ * Generates cryptographically valid PoTokens by running YouTube's BotGuard challenge inside a
+ * headless [WebView].
  */
 object BotGuardTokenGenerator {
     private const val TAG = "BotGuardTokenGen"
@@ -145,18 +125,7 @@ object BotGuardTokenGenerator {
         }
     }
 
-    /**
-     * Mint a PoToken pair for the given [videoId] and [sessionId].
-     *
-     * Returns `null` when:
-     * - [initialize] was never called
-     * - The system has no usable WebView
-     * - BotGuard bootstrap timed out
-     * - The WebView is permanently broken
-     *
-     * This is a **suspend function** — never blocks the calling thread.
-     * Call from a coroutine context (e.g. `Dispatchers.IO`).
-     */
+    /** Mint a PoToken pair for the given [videoId] and [sessionId]. */
     suspend fun mintToken(
         videoId: String,
         sessionId: String,

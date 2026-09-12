@@ -181,25 +181,7 @@ fun BackupAndRestore(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             uri?.let(viewModel::onScheduledBackupDirectorySelected)
         }
-    // SAF folder picker for the cloud/local backup folder. The system OpenDocumentTree picker
-    // shows the user's full document-provider tree — Google Drive (if installed), Dropbox,
-    // Nextcloud, OneDrive, and any other registered cloud provider, plus local storage. The
-    // user picks the exact folder backups should land in. We persist read+write URI permission
-    // so the choice survives app restarts and reboots, then hand the tree URI + its display
-    // name to the ViewModel.
-    //
-    // We accept ANY folder, not just Drive. The picker can't show Drive folders unless the
-    // Google Drive app is installed (it registers the Drive DocumentsProvider) — rejecting
-    // non-Drive URIs (as the previous PR #74 did) made the feature completely unusable for
-    // users who'd uninstalled Drive, which was the bug report that motivated this revision.
-    //
-    // To prevent the original "user picked local storage by mistake" bug, we detect
-    // local-storage authorities and show a confirmation dialog before persisting the pick —
-    // the user has to explicitly opt in to a local folder. Cloud-provider URIs are accepted
-    // immediately.
-    //
-    // We hold the pending URI in [pendingGDriveFolderUri] while the local-folder confirmation
-    // is on screen, so we can persist it if the user confirms, or discard it if they cancel.
+    // SAF folder picker for the cloud/local backup folder.
     var pendingGDriveFolderUri by remember { mutableStateOf<Uri?>(null) }
     val gdriveFolderPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
@@ -769,29 +751,7 @@ private val ScheduledBackupFrequency.labelRes: Int
             ScheduledBackupFrequency.CUSTOM -> R.string.scheduled_backup_custom
         }
 
-/**
- * Google Drive sync section — mirrors [ScheduledBackupSection] in structure.
- *
- * Layout:
- *   - "Drive folder" entry — opens the SAF folder picker (OpenDocumentTree). Shows the picked
- *     folder name plus the detected provider (e.g. "Music · Google Drive", or
- *     "Music · Local storage (local — not cloud)" for local-storage picks). Any folder is
- *     accepted — Drive, Dropbox, Nextcloud, OneDrive, or local storage. Local-storage picks
- *     trigger a confirmation dialog before being persisted so the user is aware backups won't
- *     reach the cloud.
- *   - "Clear folder" entry — appears only once a folder is picked. Releases the persisted URI
- *     permission (via the ViewModel) and disables auto-sync.
- *   - "Enable Google Drive sync" switch (disabled until a folder is picked).
- *   - "Backup schedule" enum list — DAILY / WEEKLY / MONTHLY / CUSTOM (date picker).
- *   - "Overwrite existing Drive backup" switch.
- *   - "Sync now" entry — triggers an immediate one-shot upload to the picked folder.
- *   - "Last synced: …" footer (or "Last sync failed — will retry automatically" on failure).
- *
- * The frequency selector, overwrite switch, enable toggle, and sync-now entry are all gated on
- * `folderConfigured` (= any folder has been picked) — we don't restrict to Drive because the
- * SAF picker can't show Drive folders unless the Drive app is installed, and rejecting non-Drive
- * picks made the feature unusable for users who'd uninstalled Drive.
- */
+/** Google Drive sync section — mirrors [ScheduledBackupSection] in structure. */
 @Composable
 private fun GoogleDriveSyncSection(
     data: GoogleDriveSyncUiData,
@@ -1148,12 +1108,8 @@ private fun BackupOptionsDialog(
 
 /**
  * Resolves the human-readable display name of a SAF tree URI's root folder by querying its
- * [DocumentsContract.Document.COLUMN_DISPLAY_NAME]. Used right after the user picks a folder
- * via `OpenDocumentTree` so the UI can show which folder was chosen.
- *
- * Returns the empty string if the name can't be resolved (the caller falls back to a default
- * label in that case). Runs a synchronous ContentResolver query — only call from a launcher
- * callback or a background thread, never from the main recomposition path.
+ * [DocumentsContract.Document.COLUMN_DISPLAY_NAME]. Used right after the user picks a folder via
+ * `OpenDocumentTree` so the UI can show which folder was chosen.
  */
 private fun resolveFolderDisplayName(context: android.content.Context, treeUri: Uri): String {
     return try {
@@ -1174,13 +1130,9 @@ private fun resolveFolderDisplayName(context: android.content.Context, treeUri: 
 }
 
 /**
- * Mapping from a SAF tree URI's authority to a friendly provider label. Used to display
- * "Music · Google Drive" (or Dropbox, Nextcloud, OneDrive, Local storage) in the folder row
- * so the user knows at a glance where backups will land.
- *
- * Keep this list in sync with [LOCAL_STORAGE_AUTHORITIES] — local-storage authorities get
- * the "Local storage" label AND a "(local — not cloud)" suffix in the UI to make it obvious
- * backups won't reach the cloud.
+ * Mapping from a SAF tree URI's authority to a friendly provider label. Used to display "Music ·
+ * Google Drive" (or Dropbox, Nextcloud, OneDrive, Local storage) in the folder row so the user
+ * knows at a glance where backups will land.
  */
 private val PROVIDER_LABELS: Map<String, Int> = mapOf(
     "com.google.android.apps.docs.storage" to R.string.google_drive_sync_provider_drive,
@@ -1212,14 +1164,9 @@ private fun isLocalStorageTreeUri(uri: Uri): Boolean {
 }
 
 /**
- * Returns a friendly provider label string for the given SAF tree URI string, or null if the
- * URI can't be parsed or the provider isn't recognized. Recognized providers: Google Drive,
- * Dropbox, Nextcloud, OneDrive, Local storage. Unrecognized cloud providers get a generic
- * "Cloud folder" label so the user at least knows it's not local.
- *
- * Compose-side lookup — called from a composable, so it uses [stringResource] to resolve the
- * label. Returns null if the URI is malformed (the caller falls back to showing just the
- * folder name).
+ * Returns a friendly provider label string for the given SAF tree URI string, or null if the URI
+ * can't be parsed or the provider isn't recognized. Recognized providers: Google Drive, Dropbox,
+ * Nextcloud, OneDrive, Local storage.
  */
 @Composable
 private fun providerLabelForUri(uriString: String): String? {

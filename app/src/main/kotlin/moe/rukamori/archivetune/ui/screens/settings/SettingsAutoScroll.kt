@@ -32,43 +32,8 @@ import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 /**
- * Reveals one preference on a settings sub-page: scrolls it into view and flashes a tint over
- * it. Drives the `?scrollTo=<key>` deep links that settings search hands out.
- *
- * ## Usage
- *
- * ```kotlin
- * fun SomeSettings(navController: NavController, scrollTo: String? = null) {
- *     val positions = rememberPreferencePositions()
- *     val scrollState = rememberScrollState()
- *     Column(
- *         Modifier
- *             .then(positions.containerModifier())   // must be OUTSIDE verticalScroll
- *             .verticalScroll(scrollState),
- *     ) {
- *         PreferenceGroup(modifier = positions.modifierFor("dynamic_theme"), title = "Theme") { … }
- *     }
- *     LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
- * }
- * ```
- *
- * ## Why the container modifier is required
- *
- * [modifierFor] can only measure a row in *root* coordinates — preference rows sit two or three
- * layout levels deep (scrolling Column > PreferenceGroup's Column > inner Column), so a
- * parent-relative offset would be measured against the wrong box. A root y-position, however,
- * includes everything above the list: status bar, top app bar, and content padding. The old
- * implementation scrolled straight to that number, so every jump overshot the target by the
- * height of the app bar — the requested row ended up above the viewport and the row *below* it
- * was what the user saw.
- *
- * Registering the viewport's own root y-position closes that gap: the distance to travel is
- * `rowTop - viewportTop`, which is a pure delta and needs no knowledge of the current scroll
- * offset. [containerModifier] must therefore be chained *before* `verticalScroll`, where it
- * measures the viewport instead of the content that slides inside it.
- *
- * When a screen forgets the container modifier the viewport top is treated as 0, which
- * reproduces the old overshooting behaviour rather than failing outright.
+ * Reveals one preference on a settings sub-page: scrolls it into view and flashes a tint over it.
+ * Drives the `?scrollTo=<key>` deep links that settings search hands out.
  */
 @Composable
 fun rememberPreferencePositions(): PreferencePositions {
@@ -103,17 +68,8 @@ class PreferencePositions {
         }
 
     /**
-     * Marks a preference as the row identified by [keys]: records where it is and draws the
-     * reveal tint when one of them is the one being revealed.
-     *
-     * More than one key is accepted because the search index and the screens disagree in places:
-     * the same row is listed under a legacy key on a parent page and under its own key on the
-     * sub-page that actually owns it (`lrclib` vs `enable_lrclib`). Registering both aliases on
-     * the one row is cheaper and less error-prone than renaming index entries users may already
-     * be searching for.
-     *
-     * The tint is drawn *over* the row rather than behind it, because preference rows are Cards
-     * with an opaque container colour — anything painted behind them is covered up.
+     * Marks a preference as the row identified by [keys]: records where it is and draws the reveal
+     * tint when one of them is the one being revealed.
      */
     fun modifierFor(vararg keys: String): Modifier =
         Modifier
@@ -138,16 +94,6 @@ class PreferencePositions {
     /**
      * Scrolls [scrollState] until the row registered for [key] sits at the top of the viewport,
      * then flashes the highlight.
-     *
-     * Waits for the row to be measured first: a deep link composes the screen and starts this
-     * effect in the same frame, before any [modifierFor] callback has run. Rows that are never
-     * registered (a search result whose target has no anchor yet) leave the screen where it
-     * opened, which is the same place it would have been without the deep link.
-     *
-     * The scroll runs as a short convergence loop rather than a single jump because scrolling
-     * can change the layout it was aimed at — groups that size themselves against the viewport,
-     * and rows whose content only measures once visible. Each pass re-reads the row's freshly
-     * measured position, so a second pass corrects whatever the first one disturbed.
      */
     suspend fun scrollToKey(
         key: String?,
@@ -172,16 +118,6 @@ class PreferencePositions {
 
     /**
      * Waits until the row for [key] has reported a position, returning false when it never does.
-     *
-     * Two reasons a row can be unmeasured. In a `verticalScroll` column every row is composed
-     * whether or not it is visible, so it only needs a few frames to lay out — the poll loop
-     * covers that. A `LazyColumn` screen, though, never composes rows that are far below the
-     * viewport, so waiting alone would time out on exactly the deep targets that need scrolling
-     * the most. Stepping down the list a viewport at a time brings those into composition; the
-     * walk stops as soon as the row registers, leaving the convergence loop to land it precisely.
-     *
-     * A walk that finds nothing rewinds itself, so an unanchored key leaves the screen at the
-     * top rather than parked at the bottom of a list the user never asked to scroll.
      */
     private suspend fun awaitMeasurement(
         key: String,

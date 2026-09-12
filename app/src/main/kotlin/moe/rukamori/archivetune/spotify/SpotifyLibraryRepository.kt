@@ -245,12 +245,6 @@ class SpotifyLibraryRepository
         /**
          * Guarantee the playlist list is populated: disk cache first, then a network fetch the
          * first time it is needed on an empty cache.
-         *
-         * The Library's Spotify tab used to show an empty list forever when the cache was cold —
-         * only a pull-to-refresh ever fetched — while the songs/artists/albums sections fetch on
-         * first open. This gives playlists the same "fetch once when empty" behavior without
-         * re-introducing the app-start refresh the batch-8 loading-perf fix removed: a screen
-         * that is never opened still never fetches, and a warm cache is served instantly.
          */
         suspend fun ensurePlaylists() {
             withContext(Dispatchers.IO) {
@@ -494,17 +488,9 @@ class SpotifyLibraryRepository
 
 
         /**
-         * Returns a usable Spotify access token, minting one from the stored `sp_dc`
-         * cookie when the cached token is missing or expired, or null when the user has
-         * not connected a Spotify account.
-         *
-         * Exists because features outside the Spotify library screens need the session
-         * too. `SpotifyCanvasProvider` read the `Spotify.accessToken` global directly,
-         * which is only populated as a side effect of some *earlier* Spotify library
-         * call — so on a fresh launch the official Canvas endpoint was skipped for want
-         * of a token even though the user was connected, and canvas silently fell through
-         * to the (empty) community resolver. Going through the repository reuses the same
-         * mutex, DataStore cache and refresh logic as every other Spotify call.
+         * Returns a usable Spotify access token, minting one from the stored `sp_dc` cookie when
+         * the cached token is missing or expired, or null when the user has not connected a Spotify
+         * account.
          */
         suspend fun ensureAccessToken(): String? =
             runCatching {

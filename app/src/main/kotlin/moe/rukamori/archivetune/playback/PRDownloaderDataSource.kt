@@ -34,66 +34,8 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * A Media3 [DataSource] that delegates the actual HTTP fetching to
- * [PRDownloader](https://github.com/amitshekhariitbhu/PRDownloader) — a
- * lightweight (~45 KB) file download library with pause/resume, retry,
- * and progress callbacks.
- *
- * ## Why PRDownloader instead of Ketch?
- *
- * The previous [KetchHttpDataSource] delegates to Ketch, a WorkManager-based
- * downloader. Ketch's WorkManager job scheduling + Flow observation added
- * ~200ms of overhead per download and, more critically, its temp-file
- * lifecycle occasionally left partial files in `cacheDir/ketch_tmp/` that
- * silently corrupted subsequent exports (the export screen would assemble
- * spans from the download cache, but a half-written temp file from a
- * cancelled Ketch job would bleed into the next download's cache entries).
- *
- * PRDownloader is simpler: a single OkHttp call per download, with a
- * callback API ([OnDownloadListener]) that we bridge to a
- * [CountDownLatch] for blocking until completion. The temp file is
- * deleted synchronously in [close], and we verify it exists and is
- * non-empty before serving it via [FileDataSource].
- *
- * ## Data flow
- *
- * ```
- * Media3 DownloadManager
- *   └─ CacheDataSource (downloadCache)
- *      └─ ResolvingDataSource (resolves mediaId → URL)
- *         └─ CacheDataSource (playerCache, read-only upstream)
- *            └─ PRDownloaderDataSource   ←  this class
- *               ├─ PRDownloader.download(url, tempDir, fileName)
- *               ├─ wait for onDownloadComplete() via CountDownLatch
- *               └─ FileDataSource(tempFile).read(buffer, off, len)
- * ```
- *
- * The temp file is deleted in [close]. If the same URL is requested
- * again (e.g. a retry), a fresh temp file is created — PRDownloader has
- * no resume state across [DataSource] sessions.
- *
- * ## Range requests
- *
- * Media3's [DownloadManager] always opens with `position=0,
- * length=C.LENGTH_UNSET` (full file) for downloads. We support ranges
- * anyway by seeking into the temp file via [FileDataSource] — this
- * keeps the data source usable for non-download callers.
- *
- * ## Integrity verification
- *
- * After PRDownloader reports completion, we verify:
- *   1. The temp file exists and is non-empty.
- *   2. The file size matches the expected content length. The expected
- *      length comes from two sources (in priority order):
- *        a. A HEAD request to the resolved URL (returns Content-Length).
- *        b. The DataSpec's `httpRequestHeaders["X-Expected-Content-Length"]`
- *           if pre-warmed upstream (set by DownloadUtil.prewarmSongForDownload
- *           from FormatEntity.contentLength).
- *   3. If neither is available (e.g. chunked transfer), we accept the
- *      file but log a warning so it shows up in the in-app logcat viewer.
- *
- * If verification fails, we throw [IOException] so Media3's
- * [DownloadManager] marks the download as failed and the failure-listener
- * (`DownloadUtil.onDownloadChanged`) purges the partial cache entries.
+ * [PRDownloader](https://github.com/amitshekhariitbhu/PRDownloader) — a lightweight (~45 KB) file
+ * download library with pause/resume, retry, and progress callbacks.
  */
 internal class PRDownloaderDataSource private constructor(
     private val context: Context,
@@ -244,24 +186,9 @@ internal class PRDownloaderDataSource private constructor(
             throw IOException("PRDownloader reported success but temp file is missing/empty: $target")
         }
 
-        // ── Real integrity verification ──
-        // PRDownloader 1.0.2 has a known issue where `onDownloadComplete()`
-        // can fire on a partial file when the upstream connection drops
-        // mid-stream (especially on chunked-transfer CDNs that don't send
-        // Content-Length). The temp file's size will be less than the real
-        // audio length but PRDownloader happily reports success.
-        //
-        // To prevent Media3 from marking STATE_COMPLETED on a truncated
-        // file (which then causes ExoPlayer to throw ParserException
-        // during playback), we verify the actual size against the expected
-        // content length, sourced from either:
-        //   1. A HEAD request to the URL (authoritative when the CDN
-        //      supports HEAD + returns Content-Length).
-        //   2. The DataSpec's httpRequestHeaders (set by DownloadUtil's
-        //      prewarm path from FormatEntity.contentLength).
-        //
-        // When neither source yields an expected length (chunked transfer
-        // + no upstream metadata), we accept the file but emit a warning.
+        // ── Real integrity verification ── PRDownloader 1.0.2 has a known issue where
+        // `onDownloadComplete()` can fire on a partial file when the upstream connection drops
+        // mid-stream (especially on chunked-transfer CDNs that don't send Content-Length).
         val expectedLength = resolveExpectedContentLength(url, dataSpec)
         if (expectedLength > 0L) {
             val actualLength = target.length()
@@ -336,19 +263,8 @@ internal class PRDownloaderDataSource private constructor(
     }
 
     /**
-     * Resolves the expected content length for the download, used to verify
-     * that PRDownloader didn't silently truncate the file.
-     *
-     * Resolution order:
-     *  1. The DataSpec's `httpRequestHeaders["X-Expected-Content-Length"]`
-     *     (set by DownloadUtil.prewarmSongForDownload from FormatEntity).
-     *  2. A synchronous HEAD request to the URL (best-effort, with a
-     *     short timeout — if it fails or returns no Content-Length, we
-     *     return 0 and the verification step is skipped).
-     *
-     * Returns 0 if no expected length can be determined (chunked transfer
-     * with no upstream metadata) — in that case the file is accepted as-is
-     * to avoid false negatives for CDNs that genuinely don't expose size.
+     * Resolves the expected content length for the download, used to verify that PRDownloader
+     * didn't silently truncate the file.
      */
     private fun resolveExpectedContentLength(url: String, dataSpec: DataSpec): Long {
         // (1) Upstream-provided hint (set by prewarm from FormatEntity).

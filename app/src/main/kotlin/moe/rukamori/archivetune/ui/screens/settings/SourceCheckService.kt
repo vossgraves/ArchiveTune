@@ -32,27 +32,7 @@ data class SourceCheckResult(
     val summary: String,
 )
 
-/**
- * Per-source health probe for the "Check source" row in Source Settings.
- *
- * Each source has different infrastructure, so each has its own probe:
- *  - Tidal: refresh the source pool, count Tidal accounts, verify the first
- *    premium pool token against the official Tidal API (this is the path that
- *    actually streams), and report public instances as the optional fallback.
- *  - Qobuz: refresh the pool, count Qobuz accounts (premium first), then
- *    try a real user/get call on the first pool token to verify it works.
- *  - Qobuz backup: ping https://mlc.kouzu.in/api/stream?id=<test_id> with a
- *    HEAD request (the test id is a stable, well-known music video) and verify
- *    it returns an audio content type.
- *  - Deezer: refresh the pool, count both pooled and manually signed-in credentials, then verify
- *    the one the resolver would use first against the Deezer gateway.
- *  - JioSaavn: ping the JioSaavn public search API with a canned query and
- *    verify it returns at least one result.
- *
- * All probes run off the main thread and never throw — failures are caught
- * and reported in the [SourceCheckResult.summary] so the user sees what
- * went wrong.
- */
+/** Per-source health probe for the "Check source" row in Source Settings. */
 object SourceCheckService {
     /** Stable, well-known YouTube video id used to probe the kouzu.in backup. */
     private const val KOZU_PROBE_YT_ID = "dQw4w9WgXcQ"

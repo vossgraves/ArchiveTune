@@ -92,15 +92,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
 
 /**
- * Best-effort: sum the cached bytes for a song across all source-prefixed
- * cache keys (qobuz:, tidal:, deezer:, and the bare mediaId). Used as a
- * fallback when the persisted FormatEntity has contentLength == 0 — common
- * for FLAC streams where the upstream provider doesn't expose
- * Content-Length on the resolved stream URL. Returns 0 if no cache entries
- * exist for the song yet (e.g. before playback starts).
- *
- * This is intentionally a thin reflection of what's on disk — it does not
- * distinguish between partial and complete caches, just sums span sizes.
+ * Best-effort: sum the cached bytes for a song across all source-prefixed cache keys (qobuz:,
+ * tidal:, deezer:, and the bare mediaId).
  */
 private fun sumCachedBytesForSong(
     downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil?,

@@ -122,18 +122,7 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
-/**
- * Renders all streaming-source preference groups inline in the caller's scrolling Column. Called
- * from Settings → Sources, which is the one place per-source quality lives: Player Settings used to
- * carry a second, compact copy of the same pickers over the same preference keys, so the same
- * setting appeared in two screens and neither was obviously the real one. Emits, in order: the
- * common "Sources" group (preferred-source picker + YouTube history sync), then YouTube, Tidal and
- * Qobuz specific groups.
- *
- * [positions] belongs to the *host* screen: these rows are searchable, and settings search deep
- * links to them with `?scrollTo=<key>`, which only resolves if the anchors register against the
- * scroll state the host owns.
- */
+/** Renders all streaming-source preference groups inline in the caller's scrolling Column. */
 @Composable
 internal fun PlaybackSourceSections(
     navController: NavController,
@@ -661,18 +650,8 @@ internal fun PlaybackSourceSections(
 }
 
 /**
- * "Check source" row — runs a per-source health probe via [SourceCheckService]
- * and shows the result in a dialog. Lets the user diagnose why a source isn't
- * working without having to look at logcat.
- *
- * The probe runs off the main thread. While it's running, the row shows a
- * spinner instead of the check icon. The result is shown in a [DefaultDialog]
- * with an OK button — closing the dialog dismisses it.
- *
- * Each source has its own probe logic — see [SourceCheckService] for details.
- * Sources that use the source pool (Tidal, Qobuz, Deezer) refresh the pool
- * before counting accounts; sources that don't (JioSaavn, Qobuz backup) just
- * ping their endpoint directly.
+ * "Check source" row — runs a per-source health probe via [SourceCheckService] and shows the result
+ * in a dialog. Lets the user diagnose why a source isn't working without having to look at logcat.
  */
 @Composable
 private fun SourceCheckRow(source: AudioSourceType) {

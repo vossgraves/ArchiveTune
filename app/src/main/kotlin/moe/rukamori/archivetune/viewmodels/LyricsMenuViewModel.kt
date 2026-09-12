@@ -109,17 +109,9 @@ class LyricsMenuViewModel
         val translationUndo: StateFlow<LyricsTranslationUndoSnapshot?> = _translationUndo.asStateFlow()
 
         /**
-         * Set of media IDs for which the user has clicked "Undo Translation".
-         * While a media ID is in this set, auto-translation is suppressed —
-         * the user explicitly reverted the translation and does NOT want it
-         * re-translated automatically. The dismissal is cleared when the user
-         * manually triggers translation again via [translateLyricsWithAi].
-         *
-         * This is session-scoped (in-memory) rather than persisted, because
-         * the user's intent is "don't auto-translate this song again for now"
-         * — not "never translate this song again forever". If the app is
-         * restarted, auto-translate may fire once more; the user can undo
-         * again if desired.
+         * Set of media IDs for which the user has clicked "Undo Translation". While a media ID is
+         * in this set, auto-translation is suppressed — the user explicitly reverted the
+         * translation and does NOT want it re-translated automatically.
          */
         private val _translationDismissedMediaIds = MutableStateFlow<Set<String>>(emptySet())
         val translationDismissedMediaIds: StateFlow<Set<String>> =
@@ -241,28 +233,7 @@ class LyricsMenuViewModel
             providerName: String = "",
         ) {
             viewModelScope.launch(Dispatchers.IO) {
-                // When AI_TRANSLATION is saved without an explicit providerName
-                // (e.g. legacy translator menu at LyricsMenu.kt that calls
-                // `updateLyrics(mediaMetadata, lyrics, source = AI_TRANSLATION)`
-                // with no providerName argument), the default empty string
-                // would otherwise WIPE the original provider's attribution —
-                // causing both the constant overlay header AND the in-stream
-                // SyncedLine header injected by `buildSyncedLyrics(providerHeader
-                // = lyricsProviderLabel)` to vanish the moment translation lands.
-                //
-                // Resolution order when caller passed an empty providerName
-                // for an AI_TRANSLATION save:
-                //   1. captureLyricsBeforeTranslation (so the undo snapshot
-                //      holds the original provider — captures is a no-op if
-                //      the song is already captured or already AI_TRANSLATED).
-                //   2. Try the undo snapshot's providerName for THIS song.
-                //   3. Fall back to whatever the existing DB row currently
-                //      has (covers the retry-AI-on-already-translated case
-                //      where capture returns early without updating the
-                //      snapshot because the existing source is already
-                //      AI_TRANSLATION — without this branch, an empty
-                //      snapshot or a different song's snapshot would let the
-                //      empty string through and wipe the provider attribution).
+                // When AI_TRANSLATION is saved without an explicit providerName (e.g.
                 val effectiveProviderName =
                     if (source == LyricsEntity.Source.AI_TRANSLATION && providerName.isBlank()) {
                         captureLyricsBeforeTranslation(mediaMetadata.id)
@@ -330,17 +301,6 @@ class LyricsMenuViewModel
                     try {
                         val prefs = context.dataStore.data.first()
                         // Second line of defence for "Don't auto translate these languages".
-                        //
-                        // The callers gate on this too, but the setting had already been shipped
-                        // broken once precisely because enforcement lived only in the UI layer: both
-                        // trigger sites omitted the argument and `shouldAutoTranslate`'s default
-                        // quietly accepted it. Every automatic translation funnels through here, so
-                        // checking again makes the guard structural rather than a convention new
-                        // call sites have to remember.
-                        //
-                        // Only for automatic runs: the setting says "don't *auto* translate", so a
-                        // deliberate tap on "Translate with AI" must still work on an excluded
-                        // language.
                         if (isAutomatic) {
                             val excluded = prefs[AutoTranslateExcludedLanguagesKey] ?: emptySet()
                             val dominant = LyricsUtils.detectDominantLanguageCode(lyrics)
@@ -454,31 +414,9 @@ class LyricsMenuViewModel
 
         private suspend fun saveTranslatedLyrics(mediaId: String, lyrics: String) {
             captureLyricsBeforeTranslation(mediaId)
-            // Preserve the ORIGINAL provider's name so the in-lyrics-stream
-            // "Lyrics from [provider]" header does not disappear the moment
-            // AI translation saves a new LyricsEntity. Previously the AI
-            // translation path called `replaceLyrics(id, lyrics, source=AI_TRANSLATION)`
-            // without passing `providerName`, which defaulted to "" —
-            // wiping the provider attribution and causing both the constant
-            // overlay header AND the in-stream SyncedLine header injected by
-            // `buildSyncedLyrics(providerHeader = lyricsProviderLabel)` to
-            // vanish on translation.
-            //
-            // Resolution order for the preserved providerName:
-            //   1. The undo snapshot's providerName IF it was captured for
-            //      THIS mediaId (covers the common path: user is auto-
-            //      translating a song that still has the original REMOTE /
-            //      EMBEDDED lyrics with a providerName, capture succeeds,
-            //      snapshot holds it).
-            //   2. The existing DB row's providerName as a fallback. This
-            //      covers the edge case where capture returned early WITHOUT
-            //      updating the snapshot because the existing source was
-            //      already AI_TRANSLATION (e.g. a retry after a failed AI
-            //      translation that left source=AI_TRANSLATION with no
-            //      translation content). In that case `_translationUndo` is
-            //      either null (fresh ViewModel) or holds a DIFFERENT song's
-            //      snapshot — reading from the DB gives us the right answer
-            //      rather than letting an empty string through.
+            // Preserve the ORIGINAL provider's name so the in-lyrics-stream "Lyrics from
+            // [provider]" header does not disappear the moment AI translation saves a new
+            // LyricsEntity.
             val snapshotMatch = _translationUndo.value?.takeIf { it.mediaId == mediaId }
             val preservedProviderName =
                 snapshotMatch?.providerName?.takeIf { it.isNotBlank() }

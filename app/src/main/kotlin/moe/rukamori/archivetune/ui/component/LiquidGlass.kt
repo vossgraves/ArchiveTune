@@ -61,42 +61,12 @@ fun rememberBackdrop(color: Color): PlatformBackdrop =
 fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBackdrop(backdrop)
 
 /**
- * App-content [LayerBackdrop] used by the Liquid Glass mini player and the Liquid
- * Glass navigation bar. Created in [moe.rukamori.archivetune.MainActivity] and
- * applied via [Modifier.layerBackdrop] to the same Box that already records
- * content for the frosted nav bar — so the backdrop captures the entire app
- * surface every frame, and any sibling consumer (mini player / nav bar) can
- * sample it with [Modifier.liquidGlass].
- *
- * Null when Liquid Glass is disabled or the device is below Android 12 (the
- * kyant RuntimeShader stack requires API 31+).
+ * App-content [LayerBackdrop] used by the Liquid Glass mini player and the Liquid Glass navigation
+ * bar.
  */
 val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
-/**
- * Applies the SimpMusic liquid-glass effect to any element.
- *
- * Encapsulates the per-surface [GraphicsLayer], the Kyant `drawBackdrop`
- * effect stack and the press/hold "liquid" interaction (a slight scale-up,
- * deeper refraction and a radial glow that follows the finger, springing
- * back on release). The press gesture is observe-only, so wrapped click
- * handlers keep working.
- *
- * The element MUST be a sibling of the backdrop source (the box carrying
- * [layerBackdrop]); nesting it inside the source creates a render-feedback
- * loop that crashes the RuntimeShader.
- *
- * @param baseColor Optional OPAQUE color drawn UNDER the backdrop sample
- *   (via the kyant `onDrawBehind` callback). When the backdrop has content
- *   (e.g. album art behind the nav bar), the backdrop sample covers the
- *   base color — producing the liquid glass refraction effect. When the
- *   backdrop is EMPTY (e.g. bottom of a short page with no content behind),
- *   the backdrop sample is transparent and the opaque base color shows
- *   through — so the element is always visible instead of "completely
- *   transparent". Pass `Color.Unspecified` to skip the base color (the
- *   original SimpMusic behavior — relies on the backdrop always having
- *   content).
- */
+/** Applies the SimpMusic liquid-glass effect to any element. */
 @Composable
 fun Modifier.liquidGlass(
     backdrop: PlatformBackdrop,
@@ -152,18 +122,8 @@ fun Modifier.liquidGlass(
 }
 
 /**
- * A liquid-glass surface wrapping arbitrary [content] (e.g. a pill of icon
- * buttons). Thin convenience over [liquidGlass]; pure common code.
- *
- * `interactive` defaults to `false` here because callers wrap their own
- * clickable children (e.g. `Material3IconButton`). When `interactive = true`,
- * the kyant `drawBackdrop` modifier installs a press-observing `pointerInput`
- * on the container that competes with the inner click handler — on some
- * devices/Compose versions the press detector consumes the UP event before
- * the inner `IconButton.onClick` fires, making the icon "unclickable".
- * Disabling interactivity keeps the visual blur/vibrancy/lens effect while
- * letting clicks pass through to the wrapped children. Callers that want the
- * press-based lens animation on the container itself can opt back in.
+ * A liquid-glass surface wrapping arbitrary [content] (e.g. a pill of icon buttons). Thin
+ * convenience over [liquidGlass]; pure common code.
  */
 @Composable
 fun LiquidGlassContainer(
@@ -182,19 +142,10 @@ fun LiquidGlassContainer(
 }
 
 /**
- * A rounded-rect liquid-glass pill that hosts a row of icon buttons — the
- * SimpMusic "heart + more" cluster that floats at the top-end of the album /
- * artist / playlist header. The pill is 48dp tall with a 24dp corner radius
- * and uses the same `Modifier.liquidGlass` effect as the circular back
+ * A rounded-rect liquid-glass pill that hosts a row of icon buttons — the SimpMusic "heart + more"
+ * cluster that floats at the top-end of the album / artist / playlist header. The pill is 48dp tall
+ * with a 24dp corner radius and uses the same `Modifier.liquidGlass` effect as the circular back
  * button.
- *
- * The pill MUST be a sibling of (not a child of) the composable carrying
- * [layerBackdrop] — otherwise the RuntimeShader enters a render-feedback
- * loop and crashes.
- *
- * Caller is responsible for laying out the row of icon buttons inside
- * [content]; each icon should be a 48dp square to match the back button
- * tap target size.
  */
 @Composable
 fun LiquidGlassActionPill(

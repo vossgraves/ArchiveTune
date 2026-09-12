@@ -16,16 +16,6 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * Blowfish stream layout used by Deezer's CDN, plus the `deezer://` URI wrapper that carries a
  * resolved stream from [DeezerAudioProvider] to [DeezerDecryptingDataSource].
- *
- * Deezer does not serve plain audio: the CDN returns the file in fixed 2048-byte chunks where every
- * third chunk is Blowfish-CBC encrypted under a key derived from the track id, and the rest are
- * plaintext. So there is no URL we could hand to Media3 directly — the bytes have to be transformed
- * in flight, which is why a custom DataSource exists at all.
- *
- * The chunk layout is what makes seeking survivable. Each encrypted chunk restarts from the same
- * fixed IV instead of chaining into the next one, so any chunk can be decrypted without having read
- * the ones before it. That is the property [DeezerDecryptingDataSource] relies on to seek: it snaps
- * a requested byte offset down to a chunk boundary rather than having to stream from zero.
  */
 internal object DeezerCrypto {
     /** Deezer's CDN chunk size. Encryption applies per whole chunk, so this is also the seek grain. */

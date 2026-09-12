@@ -864,13 +864,8 @@ object ThemePalettes {
         )
 
     /**
-     * Palettes that were removed for being pixel-identical to another entry, mapped to the one
-     * that stayed.
-     *
-     * Cyberpunk was Magenta Pop, Candy was Hot Pink and Rainbow was YouTube Red — same colour in
-     * all four roles, so the picker showed the same dot twice and picking either gave the same
-     * theme. The selection is stored by id, so without this a user sitting on one of the three
-     * would silently drop back to the default theme on the next launch.
+     * Palettes that were removed for being pixel-identical to another entry, mapped to the one that
+     * stayed.
      */
     private val RetiredPaletteIds =
         mapOf(

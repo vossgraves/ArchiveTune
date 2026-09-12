@@ -10,18 +10,7 @@ package moe.rukamori.archivetune.voicesearch
 import android.content.Context
 import kotlinx.coroutines.flow.StateFlow
 
-/**
- * Cross-flavor voice search abstraction.
- *
- * - `gms` flavor uses `com.google.android.gms:play-services-speech` (on-device
- *   SpeechRecognizer backed by Google Play Services — does NOT require the
- *   standalone Google app to be installed).
- * - `foss` flavor uses a no-op implementation (FOSS builds have no GMS dependency).
- *
- * The UI calls [startListening] and observes [state]; when recognition completes
- * successfully the recognized text is emitted via [StateFlow] and the search bar
- * can route it through the existing play-from-voice-search pipeline.
- */
+/** Cross-flavor voice search abstraction. */
 interface VoiceSearchController {
     val state: StateFlow<VoiceSearchState>
 

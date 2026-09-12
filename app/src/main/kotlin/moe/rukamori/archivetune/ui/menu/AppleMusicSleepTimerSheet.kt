@@ -64,23 +64,7 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/**
- * Apple Music–style sleep timer sheet.
- *
- * Renders as a compact modal sheet with:
- *  - A header showing the current timer status (Off / End of song / m:ss remaining).
- *  - A horizontal wrap of preset duration chips (5/10/15/20/30/45/60/90 min).
- *  - A slider that lets the user pick any duration between 1 and 120 minutes
- *    (Apple Music exposes the same slider in its sleep timer popover).
- *  - An "End of current song" chip.
- *  - A "Turn off timer" chip that only appears when the timer is active.
- *
- * Designed to be embedded inside the existing bottom-sheet menu container that
- * PlayerMenu already lives in (so we don't introduce a second modal layer).
- * The parent supplies the active [SleepTimer] instance so this composable can
- * poll it for the live countdown and call [SleepTimer.start] / [SleepTimer.clear]
- * directly — no extra callback wiring required.
- */
+/** Apple Music–style sleep timer sheet. */
 @Composable
 fun AppleMusicSleepTimerSheet(
     sleepTimer: SleepTimer,

@@ -53,26 +53,8 @@ import moe.rukamori.archivetune.utils.CanvasSaver
 import moe.rukamori.archivetune.utils.CanvasSaveResult
 
 /**
- * Dialog that lists every available canvas source for a song and lets the
- * user save any of them to internal storage (Movies/ArchiveTune Canvas/).
- *
- * On open, it launches a coroutine to query every canvas source
- * (Spotify Canvas via mlc.kouzu.in, Apple Music via AMP) in parallel via
- * [fetchAllCanvasSourcesForSong]. While loading, a spinner is shown. Once
- * results arrive, each source is rendered as a row with:
- * - source name (Spotify Canvas / Apple Music)
- * - the regular canvas URL (or "Unavailable" if not present)
- * - the vertical canvas URL (or "Unavailable")
- * - a "Save regular" and "Save vertical" button for each available variant
- *
- * Tapping a Save button downloads the video via [CanvasSaver.saveCanvasVideo]
- * and toasts the result. HLS `.m3u8` URLs (typically Apple Music) are
- * rejected up-front with a toast explaining they can't be saved.
- *
- * NOTE: The codebase currently has no Tidal canvas implementation —
- * only Spotify Canvas + Apple Music. When/if Tidal canvas is added,
- * it should be queried in [fetchAllCanvasSourcesForSong] and will
- * automatically appear here.
+ * Dialog that lists every available canvas source for a song and lets the user save any of them to
+ * internal storage (Movies/ArchiveTune Canvas/).
  */
 @Composable
 fun SaveCanvasDialog(

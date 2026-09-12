@@ -1142,11 +1142,6 @@ private fun ModelPickerPreference(
 /**
  * Multi-select dialog behind both "Don't auto translate these languages" and "Don't romanise these
  * languages".
- *
- * Lists every language known to [TranslatorLanguages] with a checkbox. Toggling a checkbox
- * adds/removes its uppercase code in whichever persisted set the caller passed in — the two features
- * share the code space (`TranslatorLang.code`) and the detector (`LyricsUtils.detectDominantLanguageCode`),
- * so they can share the picker too.
  */
 @Composable
 private fun ExcludedLanguagesDialog(

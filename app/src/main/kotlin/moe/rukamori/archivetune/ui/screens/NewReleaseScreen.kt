@@ -621,19 +621,7 @@ private fun NewReleaseHorizontalSection(
     }
 }
 
-/**
- * Modern summary header — replaces the old frosted-glass summary card.
- *
- * Layout:
- *  - Top row: "Total releases" label + count number grouped together on the
- *    left (so the number sits beside the label, not floating at the right
- *    edge — user-requested fix), with a search affordance icon on the right
- *  - Bottom: tab strip as a horizontally-scrollable row of clean tonal chips
- *    (scrollable so 4 tabs never truncate "Albums" → "Albu" on narrow screens)
- *
- * No frosted glass, no oversized rounded container — just typography +
- * a clean tab strip.
- */
+/** Modern summary header — replaces the old frosted-glass summary card. */
 @Composable
 private fun NewReleaseSummaryHeader(
     content: NewReleaseContent,

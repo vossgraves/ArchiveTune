@@ -218,11 +218,6 @@ fun TelegramBotChatScreen(
     /**
      * Collects every reply (tracks + inline prompts) that arrives on [chatId] within the timeout
      * window, then returns the result so the caller can drive UI state from a coroutine scope.
-     * [afterMessageId] is the message id of either the user's just-sent link (initial send) or
-     * the prompt the user just answered (post-choice collection).
-     *
-     * Side-effect: bumps [highestSeenMessageId] so the next collector cycle starts after the
-     * highest id we've ever observed in this chat.
      */
     suspend fun collectAndApply(
         chatId: Long,

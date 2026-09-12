@@ -322,15 +322,8 @@ class LastFmSettingsViewModel
         }
 
         /**
-         * (Task 4) Persists a custom-endpoint config (provider pinned to
-         * CUSTOM, plus the entered endpoint URL / API key / shared secret)
-         * directly via [saveServiceConfig]. The dialog in LastFMSettings
-         * pre-validates the endpoint URL through [LastFM.normalizeEndpoint]
-         * before calling this, so by the time we get here the endpoint is
-         * well-formed — but we re-normalize defensively in case the user
-         * pasted something with a trailing slash that the dialog didn't
-         * trim. Clears the active session (if any) because the new provider
-         * almost certainly needs a fresh login.
+         * (Task 4) Persists a custom-endpoint config (provider pinned to CUSTOM, plus the entered
+         * endpoint URL / API key / shared secret) directly via [saveServiceConfig].
          */
         fun saveCustomEndpoint(endpoint: String, apiKey: String, secret: String) {
             viewModelScope.launch(Dispatchers.IO) {

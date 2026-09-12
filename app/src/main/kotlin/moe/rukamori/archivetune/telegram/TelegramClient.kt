@@ -152,14 +152,6 @@ object TelegramClient {
     /**
      * Starts the client only when a TDLib session is already on disk. This is what app startup
      * should call.
-     *
-     * [ensureStarted] loads libtdjni.so — 21.7 MB mapped — and spins up TDLib's actor and network
-     * threads. Calling it unconditionally at launch meant every user paid that, including the
-     * majority who have never signed in to Telegram and for whom the client could only ever sit at
-     * the phone-number prompt. Nothing else auto-starts the client, so gating here is safe: the
-     * playback and cover paths run only for a signed-in user, whose session directory exists, and
-     * the settings and login screens call [ensureStarted] directly to start it cold. logOut()
-     * deletes TDLib's database, so signing out also stops the next launch from starting it.
      */
     fun startIfSessionExists(context: Context): Boolean {
         if (!runCatching { sessionDir(context).exists() }.getOrDefault(false)) return false
@@ -276,25 +268,8 @@ object TelegramClient {
     }
 
     /**
-     * Forces TDLib to pull a chat's message history from the server so that a
-     * subsequent [fetchAudioPage] (SearchChatMessages) has something to search.
-     *
-     * `OpenChat` alone is not enough for a private channel that the user has
-     * never scrolled: TDLib's local message database is empty, and
-     * `SearchChatMessages` is answered from that local index, so the first call
-     * returns an empty page with no error. That is why a freshly added private
-     * channel materialised an empty playlist until "Refresh from Telegram" was
-     * tapped — by then TDLib had populated the history in the background.
-     *
-     * `GetChatHistory` is the documented way to force the fetch, and TDLib
-     * deliberately returns fewer messages than requested (often zero on the
-     * first call) while it goes to the network — the documentation says to
-     * repeat the request. This loops until a call returns messages, or until
-     * [maxRounds] is exhausted.
-     *
-     * Returns true when history was observed, false when the chat genuinely has
-     * nothing (or the calls kept failing) — callers can still try to search,
-     * since a false negative here is not fatal.
+     * Forces TDLib to pull a chat's message history from the server so that a subsequent
+     * [fetchAudioPage] (SearchChatMessages) has something to search.
      */
     suspend fun primeChatHistory(
         chatId: Long,

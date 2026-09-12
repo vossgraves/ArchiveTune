@@ -190,11 +190,6 @@ private val LyricsSwipeDismissThreshold = 96.dp
 /**
  * Plumbs the lyrics-scroll signal up from [LyricsEnhanced] / [LyricsV2] (which own the
  * LazyListState internally) to [LyricsScreen] without changing every signature along the way.
- *
- * Default value is a no-op. [LyricsScreen] supplies a real setter that flips
- * `isUserScrollingLyrics`, which the controls no longer consume — they are always visible now.
- * bottom controls slide in when the user scrolls lyrics — even when the
- * "Show lyrics player controls" preference is OFF.
  */
 val LocalLyricsScrollListener = compositionLocalOf<(Boolean) -> Unit> { {} }
 
@@ -892,31 +887,8 @@ private fun MovingBlurBackground(
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
     // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
-    // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it
-    // once with ImageBlurUtils, render via Image. The drift animation is NOT applied on pre-S —
-    // the pre-S fallback uses a single pre-blurred bitmap, and animating its offset every frame
-    // caused visible glitches and tearing on older devices (and the moving-blur effect relies
-    // on per-frame Modifier.blur re-evaluation that pre-S simply cannot do). Instead the pre-S
-    // path renders the blurred bitmap statically at a fixed scale that covers the screen with
-    // no black bars, giving a clean static blurred background. The drift animation runs only on
-    // Android 12+ where Modifier.blur is hardware-accelerated and re-blurs every frame.
-    //
-    // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
-    // no-op and the bitmap stays pinned.
-    // Wandering backdrop, shared with the Apple-Music-style player — see [BlurWanderDrift] for
-    // the path. It walks between random waypoints with eased legs, so the artwork always finishes
-    // the leg it is on and comes to rest before setting off in a new, randomly chosen direction.
-    // Neither of the earlier versions did that: a pair of RepeatMode.Reverse tweens turned around
-    // at full speed at ±160 / ±120 (the backdrop "whipping around"), and the Lissajous path that
-    // replaced them still spent half of every cycle retracing its way back, which reads as the
-    // colours suddenly travelling the other way.
-    //
-    // The offsets are deliberately left inside FloatState and read only from the graphicsLayer
-    // lambda below, which is a draw-phase read. Unwrapping them here would invalidate this whole
-    // composable (AnimatedContent, BoxWithConstraints, the AsyncImage subtree) on every animation
-    // frame, competing with the lyric scroll and the karaoke sweep for frame budget.
-    //
-    // Pre-S doesn't drift at all (see below), so the frame loop is not started there.
+    // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it once
+    // with ImageBlurUtils, render via Image.
     val blurWander = rememberBlurWanderDrift(active = !isPreS)
     BoxWithConstraints(
         modifier =

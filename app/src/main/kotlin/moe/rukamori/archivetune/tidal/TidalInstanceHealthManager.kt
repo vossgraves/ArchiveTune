@@ -25,17 +25,6 @@ import timber.log.Timber
 /**
  * Scans the configured/public Tidal instances, remembers which ones actually work, and feeds the
  * result into the resolver's runtime health map so playback prioritises verified instances.
- *
- * Design goals (per the app's needs):
- *  - Run subtly on app open: instances are probed **sequentially with a small delay** so a burst of
- *    parallel requests never degrades startup performance.
- *  - Detect account status: an instance whose backing account is unsubscribed only serves 30s
- *    previews; those are classified [TidalAudioProvider.InstanceHealth.PREVIEW_ONLY] and dropped
- *    from the working set just like dead instances.
- *  - Persist working instances across launches ([TidalVerifiedInstancesKey]) so we can show status
- *    instantly and avoid re-probing everything every time.
- *  - The manual "fetch public" action reuses [refresh] with discovery enabled: fetch → verify →
- *    save.
  */
 object TidalInstanceHealthManager {
     private const val STAGGER_DELAY_MS = 350L

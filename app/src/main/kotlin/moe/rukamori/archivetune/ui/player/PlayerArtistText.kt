@@ -31,19 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.models.MediaMetadata
 
-/**
- * Renders a comma-separated artist line where **each artist name is individually tappable**.
- *
- * This is a generic, single-purpose leaf primitive (think "a smarter Text") — it owns the only
- * tricky bit of the artist line: mapping a tap position back to the artist span underneath it.
- * It carries no style opinions of its own, so every player style can reuse it without this file
- * ever needing changes when a new style is added.
- *
- * Note on marquee: callers typically apply [androidx.compose.foundation.basicMarquee] via
- * [modifier]. Hit-testing uses the static [TextLayoutResult], so a tap landing during the marquee
- * scroll resolves against the un-scrolled layout. This matches the pre-existing behavior of the
- * classic player and is acceptable for the short, rarely-scrolling artist line.
- */
+/** Renders a comma-separated artist line where **each artist name is individually tappable**. */
 @Composable
 fun ClickableArtists(
     artists: List<MediaMetadata.Artist>,

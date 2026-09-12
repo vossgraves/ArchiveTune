@@ -326,13 +326,9 @@ fun LazyListScope.homeFeedMoreSkeleton() {
 // ============================================================================
 
 /**
- * BitChord-style section header: title at BitChord's headlineMedium scale
- * (22sp, W700, tight tracking) with an optional subtitle below at the card
- * title scale, sitting at the page gutter with 10dp of vertical padding.
- *
- * [leadingIcon] and [thumbnail] keep the fork's existing affordances (account
- * avatar, per-section glyph) rendered inline before the title; [onClick]
- * navigates when the header is tappable, matching the fork's headers.
+ * BitChord-style section header: title at BitChord's headlineMedium scale (22sp, W700, tight
+ * tracking) with an optional subtitle below at the card title scale, sitting at the page gutter
+ * with 10dp of vertical padding.
  */
 @Composable
 fun HomeFeedSectionHeader(

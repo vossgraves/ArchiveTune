@@ -19,18 +19,7 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-/**
- * Result of a canvas-video save attempt.
- *
- * - [Success]: the video was saved to user-visible storage. [uri] is the
- *   MediaStore (or FileProvider) URI the user can open in any gallery /
- *   files app. [filePath] is a human-readable path for toast messages.
- * - [Failure]: the download or MediaStore insertion failed. [message]
- *   explains what went wrong (used for the failure toast).
- * - [NotDownloadable]: the URL is an HLS `.m3u8` playlist or a non-http(s)
- *   URL — these can't be saved as a single mp4 file. The user is told the
- *   source can't be saved (typically Apple Music HLS canvases).
- */
+/** Result of a canvas-video save attempt. */
 sealed class CanvasSaveResult {
     data class Success(
         val uri: Uri,
@@ -43,23 +32,8 @@ sealed class CanvasSaveResult {
 }
 
 /**
- * Downloads a canvas video from [videoUrl] and saves it to user-visible
- * storage (Movies/ArchiveTune Canvas/ on Android 10+ via MediaStore.Video,
- * or the app's Movies directory on pre-Q).
- *
- * Used by the "Save Canvas" overflow-menu action to let the user save the
- * looping canvas video for a song to their device. The file is saved as
- * `<songTitle> (<sourceName>).mp4` so multiple sources for the same song
- * don't collide.
- *
- * HLS `.m3u8` URLs and non-http(s) URLs are rejected up-front (returns
- * [CanvasSaveResult.NotDownloadable]) because saving a single mp4 from an
- * HLS stream requires demuxing/remuxing, which is out of scope. This
- * primarily affects Apple Music canvases (which are HLS); BetterLyrics and
- * ArchiveTune Canvas mirror URLs are direct mp4s and save fine.
- *
- * Must be called on a background dispatcher (it does network I/O + disk
- * writes); callers typically wrap it in `withContext(Dispatchers.IO)`.
+ * Downloads a canvas video from [videoUrl] and saves it to user-visible storage (Movies/ArchiveTune
+ * Canvas/ on Android 10+ via MediaStore.Video, or the app's Movies directory on pre-Q).
  */
 object CanvasSaver {
     private val client: OkHttpClient by lazy {

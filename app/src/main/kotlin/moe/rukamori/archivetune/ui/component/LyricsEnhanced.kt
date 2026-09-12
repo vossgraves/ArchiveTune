@@ -230,31 +230,7 @@ private const val POSITION_RESET_BACKWARD_THRESHOLD_MS = 1000L
 // the window is only that the shimmer holds a moment longer.
 private const val ROMANIZATION_FIRST_BUILD_GRACE_MS = 700L
 
-/**
- * One published [SyncedLyrics] plus the identity of the romanisation baked into it.
- *
- * ### Why the generation counter exists
- *
- * `KaraokeLyricsView` caches a measured layout per line index and, once a line has been composed,
- * derives everything it draws from a `remember {}` with no keys — so a line that was first composed
- * from a layout without phonetics keeps drawing that layout for as long as its composition lives,
- * no matter what arrives in the line data afterwards. The view's own `Crossfade` does rebuild the
- * subtree when the lyrics object changes, but its layout cache is remembered *outside* that
- * crossfade and is only cleared from a `LaunchedEffect` — i.e. one frame *after* the replacement
- * lines have already been composed against the stale entries.
- *
- * The result was reported as "romanisation only shows up after the first two or three lines": the
- * handful of lines on screen when romanisation landed were pinned to their phonetic-less layout,
- * while every line composed later — as the song scrolled on — picked the phonetics up normally.
- *
- * [generation] is bumped whenever a build replaces an already-visible one with different
- * romanisation, and it participates in the `key(...)` around the karaoke view. That disposes the
- * view together with its layout cache, so the replacement lines are measured from scratch. It is
- * deliberately NOT bumped for the first build of a session (there is nothing on screen to
- * invalidate), nor when only the translation changed — translations are drawn by an ordinary `Text`
- * that recomposes on its own, and AI translations land ~30-60s in, where a re-key would be very
- * visible.
- */
+/** One published [SyncedLyrics] plus the identity of the romanisation baked into it. */
 private data class KaraokeBuild(
     val lyrics: SyncedLyrics,
     val romanization: Map<Int, List<String?>>,
@@ -613,50 +589,10 @@ fun LyricsEnhanced(
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
     // The scroll state is recreated together with the subtree that owns it.
-    //
-    // The karaoke view is re-keyed on [positionResetCounter] (see the KaraokeLyricsView
-    // call site) because the mocharealm library keeps no per-play state of its own, and on
-    // [karaokeGeneration] because it keeps a per-line layout cache that outlives the lyrics
-    // object it was measured from (see [KaraokeBuild]). Either re-key
-    // disposes one LazyColumn and composes another; keeping a single hoisted
-    // LazyListState across the swap left the state briefly bound to two lazy layouts and
-    // then owned by the disposed one, so scrolls silently went nowhere and layoutInfo
-    // reported a stale viewport — the list snapped to the first line and then sat there,
-    // which is the "resets on repeat but never animates again, fixed only by reopening
-    // the lyrics" symptom. Recreating the state with its layout keeps the two in step,
-    // and every effect that drives scrolling is keyed on the same counters so they all
-    // observe the live state.
     val listState = key(lyricsSessionKey, positionResetCounter, karaokeGeneration) { rememberLazyListState() }
 
-    // ── First-frame placement ──
-    // A fresh LazyListState starts at line 0 and the auto-scroll collector below
-    // walks it to the active line. Drawing during that trip is what made the
-    // lyrics visibly reposition themselves every time the view was opened — most
-    // obvious in the Apple Music player, which composes this view from scratch on
-    // every open, so the user saw the first verse for a frame and then a jump
-    // plus a 280ms settle to wherever the song actually is.
-    //
-    // So: keep the lines invisible until the active one has been placed (the
-    // first placement snaps instead of animating, since nothing is on screen to
-    // animate), then fade them in.
-    //
-    // The key deliberately does NOT include the line count. `syncedLyrics` is built on
-    // Dispatchers.Default, so it is *always* empty on the first composition and always grows to N
-    // one or two frames later. Keying on the size therefore re-ran this `remember` after the view
-    // was already on screen, handing back a brand-new `mutableStateOf(true)` that snapped the alpha
-    // from 1 straight back to 0 (the hide has `durationMillis = 0`) and swallowed the collector's
-    // `awaitingFirstFocus = false` write — the lyrics blinked out for the full
-    // LYRIC_FIRST_FOCUS_TIMEOUT_MS and then faded back in. That is the "lyrics disappear for a
-    // split second right after opening" report, and it fired on every single open of the Apple
-    // Music player because that player composes this view from scratch each time.
-    //
-    // `isSynced` is derived synchronously from the raw lyrics text, so it is already correct on
-    // frame 1: the gate arms before anything is drawn and is only ever disarmed, never re-armed.
-    // A late-arriving *session* (new track, new lyrics text, repeat) still re-arms it, because
-    // lyricsSessionKey covers all three — and so does a late romanisation, via
-    // [karaokeGeneration], because that re-keys the karaoke view and its fresh LazyListState
-    // starts back at line 0. The gate is what hides that trip; it is only ever armed for the
-    // build that actually replaces visible lines, never for the first build of a session.
+    // ── First-frame placement ── A fresh LazyListState starts at line 0 and the auto-scroll
+    // collector below walks it to the active line.
     var awaitingFirstFocus by
         remember(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
             mutableStateOf(isSynced)
@@ -699,18 +635,7 @@ fun LyricsEnhanced(
         var anchorFrameNanos = 0L
         var lastRawPositionMs = player.currentPosition.coerceAtLeast(0L)
         // Cache the current line index + boundary timestamps to avoid calling
-        // findLastStartedLineIndex (binary search) every frame. In the common
-        // case the position stays within the current line for several seconds,
-        // so we only need to re-search when the position crosses a line
-        // boundary. This reduces per-frame work from O(log N) to O(1) and,
-        // more importantly, avoids the `playbackSyncPosition()` lambda call
-        // (3 State reads + arithmetic) on the vast majority of frames — we
-        // reuse the `effectivePositionMs` already computed for the playback
-        // interpolation instead of re-reading `playbackPositionMs.longValue`.
-        //
-        // The cache is invalidated when `syncedLyrics` changes (e.g. when
-        // romanization finishes) by tracking the identity of the last-seen
-        // SyncedLyrics object.
+        // findLastStartedLineIndex (binary search) every frame.
         var lastLyricsRef: SyncedLyrics? = null
         var cachedLineIdx = -1
         var cachedCurrentLineStart = Int.MIN_VALUE
@@ -881,28 +806,7 @@ fun LyricsEnhanced(
         onLyricsScroll(isManualScrolling)
     }
 
-    // NOTE: this LaunchedEffect used to key on `syncedLyrics` as well. That
-    // was wrong: every time `syncedLyrics` was reassigned (which happens up to
-    // 3× per track — initial build, empty-romanization placeholder, final
-    // romanization map; plus once more if AI translation completes mid-playback),
-    // the entire snapshotFlow + collectLatest was torn down and re-created,
-    // forcing `forceNextScroll = true` and triggering a visible instant-jump
-    // `scrollToItem` to the current line. Each re-launch also re-awaited the
-    // viewport-ready snapshotFlow, adding a 1-2 frame gap where auto-scroll
-    // was inactive. With AI translation completing ~30-60s after the user
-    // opens lyrics (typical LLM response time), this produced a visible
-    // "lyrics jump + brief stutter" right around the 1-minute mark — exactly
-    // the symptom the user reported as "lags after a minute or so".
-    //
-    // Fix: hoist `syncedLyrics` into a rememberUpdatedState so the LaunchedEffect
-    // does NOT re-launch on content changes. The snapshotFlow block reads the
-    // latest value through the State, and `distinctUntilChanged` on the emitted
-    // index naturally filters out content-only updates (the line index doesn't
-    // change just because phonetic/translation text was added). If the line
-    // index DOES change (e.g. the new lyrics have different line timings), the
-    // playback loop's `lyricsChanged` branch already invalidates `cachedLineIdx`
-    // and updates `currentLineIndexState`, which flows through the snapshotFlow
-    // and triggers a normal (non-forced) scroll.
+    // NOTE: this LaunchedEffect used to key on `syncedLyrics` as well.
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
     // Restart this collector after a repeat, or after a romanisation re-key. The karaoke view is
     // re-keyed at the same time, and the fresh collector resets its focus state before it
@@ -1215,22 +1119,12 @@ fun LyricsEnhanced(
                 ) {
                     val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
 
-                    // Keyed on the session + a position-reset counter so that when
-                    // the song repeats (REPEAT_MODE_ONE wraps position to 0) or the
-                    // user seeks backward by more than 1 second, the
-                    // KaraokeLyricsView instance is disposed and recreated — the
-                    // library's internal highlight state doesn't reset on
-                    // backward position jumps, so without this re-key the
-                    // karaoke animation freezes at the line that was active
-                    // just before the repeat.
-                    //
-                    // [karaokeGeneration] is in the key for the same reason at a different
-                    // layer: the library caches one measured glyph layout per line index in a
-                    // map remembered here, outside its own Crossfade, and each line pins what it
-                    // draws to whichever entry that map held when the line was first composed.
-                    // A build that adds romanisation to lines already on screen therefore has to
-                    // dispose the cache along with them, or those lines never show it. See
-                    // [KaraokeBuild].
+                    // Keyed on the session + a position-reset counter so that when the song repeats
+                    // (REPEAT_MODE_ONE wraps position to 0) or the user seeks backward by more than
+                    // 1 second, the KaraokeLyricsView instance is disposed and recreated — the
+                    // library's internal highlight state doesn't reset on backward position jumps,
+                    // so without this re-key the karaoke animation freezes at the line that was
+                    // active just before the repeat.
                     key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
                         KaraokeLyricsView(
                             listState = listState,
@@ -1265,19 +1159,7 @@ fun LyricsEnhanced(
                             showTranslation = showTranslations,
                             showPhonetic = romanizationPreferences.showsRomanization,
                             offset = lyricsViewportOffset,
-                            // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
-                            // many items outside the viewport are kept composed (not
-                            // disposed) — each kept-alive item still participates in
-                            // the per-frame measure pass during auto-scroll. The
-                            // mocharealm KaraokeLyricsView library measures every
-                            // kept-alive karaoke line on every scroll event; each line
-                            // contains N syllables that each need a fill-ratio
-                            // computation. 8dp keeps at most ~1 line alive on each
-                            // side of the viewport, minimizing the measure cost
-                            // during the instant `scrollBy` snap on line changes.
-                            // This is the single biggest lever we have for reducing
-                            // the word-synced lyrics lag in Enhanced style (V2 uses
-                            // its own renderer and doesn't have this cost).
+                            // Reduced from 36.dp → 20.dp → 8.dp.
                             keepAliveZone = 8.dp,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -1767,13 +1649,6 @@ private fun Double.toMilliseconds(): Int = (this * 1000.0).roundToInt().coerceAt
 /**
  * Reshapes AI romanisation — one string per lyric line — into the per-word map [buildSyncedLyrics]
  * expects.
- *
- * The built-in path romanises word by word for word-synced TTML, which an AI provider cannot do
- * affordably: a three-minute song is a few hundred lines but a few thousand words, and asking for
- * per-word output also loses the sentence context that makes a model's reading better than a table's
- * in the first place. So the model gets whole lines, and for word-synced lines the returned words are
- * distributed across the syllables proportionally — the same approximation
- * [buildWrappingKaraokeSyllables] already makes for line-synced lyrics.
  */
 private fun aiRomanizationMap(
     entries: List<LyricsEntry>,
@@ -1887,25 +1762,11 @@ private fun buildSyncedLyrics(
             )
         } else {
             val nextEntry = entries.getOrNull(index + 1)
-            // ── Why `end` must be exactly the next line's start ──
-            // KaraokeLyricsView picks the focused line with
-            //     lines.indices.firstOrNull { pos >= it.start && pos < effectiveEnd(it) }
-            //         ?: lines.indexOfFirst { it.start > pos }   // ← the *upcoming* line
-            //         ?: lines.lastIndex
-            // so any instant that falls in a gap between one line's end and the next line's start
-            // resolves to the line that has NOT started yet. This branch used to clamp `end` to
-            // start + 4s whenever the gap to the next line exceeded 3s, which manufactured exactly
-            // such a gap on every slow line and every verse boundary: 4s into a line with a 9s gap
-            // the focus, the scale-up and the spring placement all moved to the next line while the
-            // current one was still being sung. That is the "line-synced lyrics in Enhanced style
-            // scroll way too soon" report, and it is Enhanced-only because LyricsV2 resolves the
-            // active line itself (last line whose start has passed) instead of asking the library.
-            //
-            // Butting each line's end against the next line's start removes the gaps entirely, so
-            // the library's first predicate always matches and always agrees with
-            // findLastStartedLineIndex — which is what drives our own auto-scroll. The two can no
-            // longer disagree, and a line stays focused for as long as it is the most recent one,
-            // exactly like Apple Music holds the last sung line through an instrumental break.
+            // ── Why `end` must be exactly the next line's start ── KaraokeLyricsView picks the
+            // focused line with lines.indices.firstOrNull { pos >= it.start && pos <
+            // effectiveEnd(it) } ?: lines.indexOfFirst { it.start > pos } // ← the *upcoming* line
+            // ?: lines.lastIndex so any instant that falls in a gap between one line's end and the
+            // next line's start resolves to the line that has NOT started yet.
             val lineEnd =
                 if (nextEntry != null && nextEntry.time > entry.time) {
                     val handOver = entry.time + LINE_SYNCED_MAX_FOCUS_HOLD_MS

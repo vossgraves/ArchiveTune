@@ -22,38 +22,9 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 /**
- * Resolves album/track cover URLs from third-party catalogues that the Last.fm
- * API doesn't always carry. Used as a fallback chain in the Last.fm dashboard
- * so that tracks without a Last.fm image still get a real thumbnail instead of
- * the generic music-note placeholder.
- *
- * Resolvers (tried in order):
- *
- * 1. [iTunesCoverUrl] — iTunes Search API. Free, no auth, no rate-limit issues
- *    at the volumes a single user generates. Covers most western pop/rock and
- *    a good chunk of K-pop and J-pop that has international distribution.
- *
- * 2. [deezerCoverUrl] — Deezer public search API. Free, no auth. Excellent
- *    coverage for European / Asian catalogues; often has covers iTunes lacks
- *    (and vice-versa), so we query both and take the first non-empty result.
- *
- * 3. [lastFmTrackInfoCoverUrl] — Last.fm's own `track.getInfo` endpoint. The
- *    top-tracks / recent-tracks endpoints return a small/medium image set
- *    that is often empty, but `track.getInfo` returns the full image set
- *    (including extralarge) which is populated for the vast majority of
- *    tracks Last.fm knows about — even obscure ones the catalogues miss.
- *
- * 4. [coverArtArchiveCoverUrl] — MusicBrainz Cover Art Archive. Public, free,
- *    no auth. Cover Art Archive hosts album covers keyed by MBID; we resolve
- *    the MBID via MusicBrainz's search endpoint and then pull the front cover.
- *    Excellent for releases that have an MBID but no commercial catalogue
- *    presence (indie / Vocaloid / doujin / anime OSTs).
- *
- * 5. [spotifyOEmbedCoverUrl] — Spotify's public oEmbed endpoint. Free, no
- *    auth. Given a Spotify track URL it returns the track's artwork via
- *    oEmbed. We search Spotify's open embed endpoint by query (it accepts
- *    a free-text search via the `q` parameter on the public search page)
- *    and pull the first result's cover.
+ * Resolves album/track cover URLs from third-party catalogues that the Last.fm API doesn't always
+ * carry. Used as a fallback chain in the Last.fm dashboard so that tracks without a Last.fm image
+ * still get a real thumbnail instead of the generic music-note placeholder.
  */
 object CatalogueCoverProvider {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -317,13 +288,8 @@ object CatalogueCoverProvider {
         }
 
     /**
-     * Spotify oEmbed endpoint.
-     * Spotify's open https://open.spotify.com/search/q/{query} page returns HTML
-     * with og:image meta tags — we scrape the first track result's cover.
-     *
-     * This is a last-resort fallback when all catalogues come up empty. It's
-     * somewhat fragile (depends on Spotify's HTML structure) but works for
-     * tracks that exist on Spotify but not on iTunes/Deezer.
+     * Spotify oEmbed endpoint. Spotify's open https://open.spotify.com/search/q/{query} page
+     * returns HTML with og:image meta tags — we scrape the first track result's cover.
      */
     suspend fun spotifyOEmbedCoverUrl(
         title: String,

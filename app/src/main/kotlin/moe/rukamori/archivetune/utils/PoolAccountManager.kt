@@ -32,26 +32,6 @@ import java.util.concurrent.TimeUnit
 /**
  * Fetches shared premium **accounts** (not just instances) from the community Source Pool website's
  * `/api/sources` endpoint and caches their credentials for the Tidal/Qobuz resolvers.
- *
- * This is the account-consuming counterpart to [moe.rukamori.archivetune.tidal.TidalInstanceHealthManager],
- * which only handles instance base URLs. Where instances are proxy servers, accounts are real
- * subscriber tokens that let the app resolve full-quality FLAC directly against the official APIs
- * without anyone hosting a restream server.
- *
- * Security model:
- *  - The pool exposes account tokens as AES-256-GCM ciphertext (E2E). We decrypt locally with
- *    [PoolCrypto]: on the v2 feed protocol the key is DERIVED from the read key we present
- *    (X-Pool-Client: v2), so the app needs only its source-provider key. Older feeds use the
- *    static [BuildConfig.POOL_CLIENT_KEY], which must match the site's POOL_CLIENT_KEY.
- *  - When the pool enforces read keys, we present `BuildConfig.SOURCE_PROVIDER_KEY` as a bearer.
- *
- * Behaviour:
- *  - Disabled entirely when no `SOURCE_PROVIDER_URL` is baked in (mirrors instance discovery).
- *  - Results are cached in memory for the resolvers (synchronous getters) and persisted to the
- *    DataStore so accounts are available immediately on the next cold start, before the network
- *    refresh completes.
- *  - [refresh] is throttled so it hits the network at most once per [MIN_REFRESH_INTERVAL_MS]
- *    unless `force` is set.
  */
 object PoolAccountManager {
     private const val TAG = "PoolAccounts"
@@ -80,16 +60,7 @@ object PoolAccountManager {
     @Volatile
     private var appContext: Context? = null
 
-    /**
-     * Why the last pool fetch failed, or null when it succeeded (or no pool URL is configured).
-     *
-     * [refresh] returns `hasAccounts()`, which is true whenever *anything* is in the persisted
-     * cache — so a pool that 404s on every request still reported "success" to the settings
-     * screen as long as one stale account survived from an earlier session. That made a broken
-     * pool indistinguishable from a working one in the UI, and the real HTTP status was only
-     * ever visible in logcat. Callers surface this alongside the result so the reason reaches
-     * the user instead of just the log.
-     */
+    /** Why the last pool fetch failed, or null when it succeeded (or no pool URL is configured). */
     @Volatile
     var lastFeedError: String? = null
         private set
@@ -196,16 +167,7 @@ object PoolAccountManager {
 
     private val legacySourcesUrl: String? get() = poolBaseUrl?.let { "$it/api/sources" }
 
-    /**
-     * How long an account that just failed to resolve is tried last for.
-     *
-     * The server needs three reports (or its hourly sweep) before it stops serving a dead account,
-     * and the app only re-reads the feed every 15 minutes — so without this, a dead account was
-     * retried at the front of the list on *every* track, burning its full timeout each time
-     * (20s per Tidal attempt) before anything else was tried. Ten minutes is long enough to cover
-     * a listening session's worth of skips and short enough that an account which recovers, or one
-     * demoted by a single network blip, comes back on its own.
-     */
+    /** How long an account that just failed to resolve is tried last for. */
     private const val ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000L
 
     /** "service:id" -> the time it becomes worth trying first again. */

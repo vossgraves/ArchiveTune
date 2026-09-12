@@ -20,19 +20,7 @@ import moe.rukamori.archivetune.utils.reportException
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-/**
- * WorkManager worker that performs a cloud backup sync via SAF.
- *
- * Loads settings from [GoogleDriveSyncRepository], bails out if disabled or no folder is
- * configured, then delegates to [GoogleDriveClient.uploadBackup]. After a successful upload,
- * schedules the next run via [GoogleDriveSyncScheduler.appendNext].
- *
- * Returns:
- *   - `Result.success()` after a successful upload (or when settings are disabled — nothing to do).
- *   - `Result.retry()` on a transient failure (the folder URI is temporarily unreachable, a
- *     provider-side hiccup, or an I/O blip). WorkManager backs off exponentially.
- *   - `Result.failure()` on permanent failure (folder permission revoked, URI malformed).
- */
+/** WorkManager worker that performs a cloud backup sync via SAF. */
 class GoogleDriveSyncWorker(
     context: Context,
     parameters: WorkerParameters,
@@ -91,17 +79,8 @@ class GoogleDriveSyncWorker(
 }
 
 /**
- * Hilt entry point used by [GoogleDriveSyncWorker] to access the Drive sync dependencies without
- * a Hilt-injected constructor (WorkManager instantiates workers via its own factory).
- *
- * Method names are prefixed with `googleDrive` because Hilt generates a single `SingletonC`
- * class that implements EVERY `@EntryPoint` interface installed in `SingletonComponent`. If
- * two entry points expose methods with the same name and JVM-erased signature (e.g.
- * `repository()` returning different types), the generated Java class has two methods with the
- * same name + parameter list but different return types — which the JVM rejects with
- * "Found conflicting entry point declarations". This was happening between
- * `ScheduledBackupWorkerEntryPoint` (pre-existing) and this interface, so the Google Drive
- * entry point uses unique method names to avoid the clash.
+ * Hilt entry point used by [GoogleDriveSyncWorker] to access the Drive sync dependencies without a
+ * Hilt-injected constructor (WorkManager instantiates workers via its own factory).
  */
 @EntryPoint
 @InstallIn(SingletonComponent::class)

@@ -99,21 +99,7 @@ private const val DriftRadians = (PI * 0.45f).toFloat()
 private const val CrossfadeMillis = 1_400
 private const val DriftMillis = 8_000
 
-/**
- * The mesh field for [palette], crossfading over ~1.4s when [trackKey] changes.
- *
- * The blobs drift when there is a reason to — the backdrop appearing, or the track changing — and
- * then come to rest. They used to orbit forever, which meant re-blurring a full-screen layer at
- * display refresh rate for as long as the player was up, for motion that reads as ambient at best
- * and is invisible while the phone is in a pocket.
- *
- * **Nothing here is read during composition.** The crossfade and the drift are both `Animatable`s
- * read inside the draw lambda, so a frame of either invalidates drawing alone and composition
- * never runs. The version this replaces animated five colours with `animateColorAsState` and read
- * them in composition, which recomposed the whole backdrop on every frame of the crossfade — and
- * each of those recompositions re-derived the tuned palette, four HSL round-trips and three list
- * allocations at a time. Drawing a blurred full-screen layer is expensive enough on its own.
- */
+/** The mesh field for [palette], crossfading over ~1.4s when [trackKey] changes. */
 @Composable
 fun MeshBackdrop(
     palette: MeshPalette,
@@ -273,15 +259,7 @@ fun rememberMeshPalette(imageUrl: String?): MeshPalette {
     return state.value
 }
 
-/**
- * Four mesh colours drawn from the artwork.
- *
- * The named swatches — vibrant, muted and friends — are a convenience over the full set, and on
- * dark or desaturated sleeves every vibrant slot comes back null. Topping the rest up from
- * [FallbackColors] is what left those covers sitting under the stock purple. So the whole swatch
- * list is read instead, and any shortfall is derived from the art's own colours rather than
- * borrowed.
- */
+/** Four mesh colours drawn from the artwork. */
 private fun paletteOf(bitmap: Bitmap): List<Color> {
     fun swatchesOf(builder: Palette.Builder): List<Color> =
         builder

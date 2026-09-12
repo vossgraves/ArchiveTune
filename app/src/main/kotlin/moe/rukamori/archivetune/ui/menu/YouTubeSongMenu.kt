@@ -649,19 +649,10 @@ fun YouTubeSongMenu(
                                         database.transaction {
                                             insert(song.toMediaMetadata())
                                         }
-                                        // Pre-warm the player cache before handing off
-                                        // to Media3 DownloadManager. This implements the
-                                        // "cache-first" download workflow:
-                                        //   1. Resolve the highest-quality stream available
-                                        //      (Qobuz FLAC → Tidal FLAC → YT M4A).
-                                        //   2. Stream the bytes into playerCache under the
-                                        //      source-prefixed key (e.g. "qobuz:$songId").
-                                        //   3. Then DownloadManager.open() hits the cache
-                                        //      and serves bytes locally (no second fetch).
-                                        // The prewarm runs on Dispatchers.IO; the actual
-                                        // DownloadRequest is enqueued only after it
-                                        // completes (or fails — downloads still work
-                                        // without prewarm, just slower + lossy fallback).
+                                        // Pre-warm the player cache before handing off to Media3
+                                        // DownloadManager. This implements the "cache-first"
+                                        // download workflow: 1. Resolve the highest-quality stream
+                                        // available (Qobuz FLAC → Tidal FLAC → YT M4A). 2.
                                         coroutineScope.launch {
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(song.id)
