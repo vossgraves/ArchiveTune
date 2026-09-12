@@ -31,6 +31,11 @@ import moe.rukamori.archivetune.constants.AiRomanizeExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.DeeplApiKeyKey
+import moe.rukamori.archivetune.constants.DeeplFormalityKey
+import moe.rukamori.archivetune.constants.OpenRouterApiKeyKey
+import moe.rukamori.archivetune.constants.OpenRouterBaseUrlKey
+import moe.rukamori.archivetune.constants.OpenRouterModelKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -146,19 +151,48 @@ object AiLyricsRomanization {
         val (customEndpoint) = rememberPreference(AiCustomEndpointKey, defaultValue = "")
         val (selectedModel) = rememberPreference(AiSelectedModelKey, defaultValue = "")
         val (customModel) = rememberPreference(AiCustomModelKey, defaultValue = "")
+        val (openRouterApiKey) = rememberPreference(OpenRouterApiKeyKey, defaultValue = "")
+        val (openRouterBaseUrl) = rememberPreference(OpenRouterBaseUrlKey, defaultValue = "")
+        val (openRouterModel) = rememberPreference(OpenRouterModelKey, defaultValue = "openai/gpt-4o-mini")
+        val (deeplApiKey) = rememberPreference(DeeplApiKeyKey, defaultValue = "")
+        val (deeplFormality) = rememberPreference(DeeplFormalityKey, defaultValue = "default")
 
-        return remember(enabled, auto, excluded, provider, apiKey, customEndpoint, selectedModel, customModel) {
+        return remember(
+            enabled,
+            auto,
+            excluded,
+            provider,
+            apiKey,
+            customEndpoint,
+            selectedModel,
+            customModel,
+            openRouterApiKey,
+            openRouterBaseUrl,
+            openRouterModel,
+            deeplApiKey,
+            deeplFormality,
+        ) {
             Settings(
                 enabled = enabled,
                 auto = auto,
                 excludedLanguages = excluded,
                 config =
-                    AiServiceConfig(
-                        provider = provider,
-                        apiKey = apiKey,
-                        customEndpoint = customEndpoint,
-                        model = if (provider == AiProvider.CUSTOM) customModel else selectedModel,
-                    ),
+                    if (provider == AiProvider.OPENROUTER) {
+                        AiServiceConfig(
+                            provider,
+                            openRouterApiKey,
+                            openRouterBaseUrl,
+                            openRouterModel.ifBlank { "openai/gpt-4o-mini" },
+                        )
+                    } else {
+                        AiServiceConfig(
+                            provider = provider,
+                            apiKey = if (provider == AiProvider.DEEPL) deeplApiKey else apiKey,
+                            customEndpoint = customEndpoint,
+                            model = if (provider == AiProvider.CUSTOM) customModel else selectedModel,
+                            deeplFormality = deeplFormality,
+                        )
+                    },
             )
         }
     }

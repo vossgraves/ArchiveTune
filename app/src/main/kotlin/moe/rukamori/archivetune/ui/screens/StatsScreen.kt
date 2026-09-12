@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -57,15 +59,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -100,10 +107,12 @@ import moe.rukamori.archivetune.db.entities.SongWithStats
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
+import moe.rukamori.archivetune.innertube.pages.HistoryPage
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.ui.component.ChoiceChipsRow
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
@@ -118,9 +127,16 @@ import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.viewmodels.StatsScreenState
 import moe.rukamori.archivetune.viewmodels.StatsViewModel
+import moe.rukamori.archivetune.viewmodels.HistoryViewModel
+import moe.rukamori.archivetune.viewmodels.RemoteHistoryUiState
+import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
+import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import android.graphics.Color as AndroidColor
 
 @OptIn(
@@ -133,6 +149,41 @@ fun StatsScreen(
     navController: NavController,
     viewModel: StatsViewModel = hiltViewModel(),
 ) {
+    var selectedSource by rememberSaveable { mutableStateOf(StatsSource.LOCAL) }
+    val historyViewModel: HistoryViewModel = hiltViewModel()
+    val spotifyViewModel: SpotifyLibraryViewModel = hiltViewModel()
+    val remoteHistoryState by historyViewModel.remoteHistoryState.collectAsStateWithLifecycle()
+    val spotifyHistory by spotifyViewModel.recentlyPlayed.collectAsStateWithLifecycle()
+
+    LaunchedEffect(selectedSource) {
+        when (selectedSource) {
+            StatsSource.LOCAL -> Unit
+            StatsSource.YOUTUBE -> historyViewModel.fetchRemoteHistory()
+            StatsSource.SPOTIFY -> spotifyViewModel.loadRecentlyPlayed()
+        }
+    }
+
+    if (selectedSource != StatsSource.LOCAL) {
+        RemoteStatsScreen(
+            navController = navController,
+            source = selectedSource,
+            onSourceSelected = { selectedSource = it },
+            remoteHistoryState = remoteHistoryState,
+            spotifyHistory = spotifyHistory.items,
+            spotifyLoading = spotifyHistory.isLoading ||
+                (spotifyHistory.items == null && spotifyHistory.errorMessage == null),
+            spotifyError = spotifyHistory.errorMessage,
+            onRetry = {
+                when (selectedSource) {
+                    StatsSource.YOUTUBE -> historyViewModel.fetchRemoteHistory()
+                    StatsSource.SPOTIFY -> spotifyViewModel.loadRecentlyPlayed(force = true)
+                    StatsSource.LOCAL -> Unit
+                }
+            },
+        )
+        return
+    }
+
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current
@@ -153,12 +204,18 @@ fun StatsScreen(
                 StatsStatusScreen(
                     navController = navController,
                     loading = true,
+                    selectedSource = selectedSource,
+                    onSourceSelected = { selectedSource = it },
                 )
                 return
             }
 
             StatsScreenState.Empty -> {
-                StatsStatusScreen(navController = navController)
+                StatsStatusScreen(
+                    navController = navController,
+                    selectedSource = selectedSource,
+                    onSourceSelected = { selectedSource = it },
+                )
                 return
             }
 
@@ -167,6 +224,8 @@ fun StatsScreen(
                     navController = navController,
                     errorMessage = stringResource(state.messageResId),
                     onRetry = viewModel::retry,
+                    selectedSource = selectedSource,
+                    onSourceSelected = { selectedSource = it },
                 )
                 return
             }
@@ -296,6 +355,14 @@ fun StatsScreen(
                         .align(Alignment.TopCenter)
                         .padding(top = scaffoldPadding.calculateTopPadding()),
             ) {
+                item(key = "sourceControls", contentType = "controls") {
+                    StatsSourceSelector(
+                        selectedSource = selectedSource,
+                        onSourceSelected = { selectedSource = it },
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+
                 item(key = "rangeControls", contentType = "controls") {
                     StatsFilterPanel(modifier = Modifier.animateItem()) {
                         ChoiceChipsRow(
@@ -600,6 +667,8 @@ private fun StatsStatusScreen(
     loading: Boolean = false,
     errorMessage: String? = null,
     onRetry: (() -> Unit)? = null,
+    selectedSource: StatsSource,
+    onSourceSelected: (StatsSource) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -616,49 +685,560 @@ private fun StatsStatusScreen(
             )
         },
     ) { contentPadding ->
-        Box(
+        Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(contentPadding)
-                    .padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center,
+                    .padding(contentPadding),
         ) {
-            if (loading) {
-                LoadingIndicator(modifier = Modifier.size(48.dp))
-            } else {
-                Column(
-                    modifier = Modifier.widthIn(max = 420.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        text =
-                            if (errorMessage == null) {
-                                stringResource(R.string.stats_empty_title)
-                            } else {
-                                errorMessage
-                            },
-                        style = MaterialTheme.typography.titleLarge,
-                        textAlign = TextAlign.Center,
-                    )
-                    if (errorMessage == null) {
+            StatsSourceSelector(
+                selectedSource = selectedSource,
+                onSourceSelected = onSourceSelected,
+            )
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (loading) {
+                    LoadingIndicator(modifier = Modifier.size(48.dp))
+                } else {
+                    Column(
+                        modifier = Modifier.widthIn(max = 420.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
                         Text(
-                            text = stringResource(R.string.stats_empty_message),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text =
+                                if (errorMessage == null) {
+                                    stringResource(R.string.stats_empty_title)
+                                } else {
+                                    errorMessage
+                                },
+                            style = MaterialTheme.typography.titleLarge,
                             textAlign = TextAlign.Center,
                         )
-                    }
-                    if (onRetry != null) {
-                        Button(onClick = onRetry) {
-                            Text(stringResource(R.string.retry))
+                        if (errorMessage == null) {
+                            Text(
+                                text = stringResource(R.string.stats_empty_message),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        if (onRetry != null) {
+                            Button(onClick = onRetry) {
+                                Text(stringResource(R.string.retry))
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+private enum class StatsSource(val label: String) {
+    LOCAL("Local"),
+    YOUTUBE("YouTube"),
+    SPOTIFY("Spotify"),
+}
+
+private data class RemoteStatsData(
+    val sourceName: String,
+    val plays: Int,
+    val uniqueTracks: Int,
+    val uniqueArtists: Int,
+    val totalDurationMillis: Long,
+    val tracks: List<RemoteStatsTrack>,
+    val artists: List<RemoteStatsRank>,
+    val activity: List<RemoteStatsRank>,
+)
+
+private data class RemoteStatsTrack(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val durationMillis: Long,
+    val playCount: Int = 1,
+)
+
+private data class RemoteStatsRank(
+    val label: String,
+    val count: Int,
+)
+
+private enum class RemoteStatsRange(val label: String) {
+    DAYS_7("7D"),
+    DAYS_30("30D"),
+    DAYS_90("90D"),
+    YEAR_1("1Y"),
+    ALL("All"),
+}
+
+@Composable
+private fun StatsSourceSelector(
+    selectedSource: StatsSource,
+    onSourceSelected: (StatsSource) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatsSource.entries.forEach { source ->
+            val selected = source == selectedSource
+            Surface(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onSourceSelected(source) },
+                shape = RoundedCornerShape(14.dp),
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    },
+            ) {
+                Text(
+                    text = source.label,
+                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelLarge,
+                    color =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteStatsScreen(
+    navController: NavController,
+    source: StatsSource,
+    onSourceSelected: (StatsSource) -> Unit,
+    remoteHistoryState: RemoteHistoryUiState,
+    spotifyHistory: List<SpotifyPlayHistory>?,
+    spotifyLoading: Boolean,
+    spotifyError: String?,
+    onRetry: () -> Unit,
+) {
+    var selectedRange by rememberSaveable { mutableStateOf(RemoteStatsRange.ALL) }
+    val data =
+        when (source) {
+            StatsSource.LOCAL -> null
+            StatsSource.YOUTUBE ->
+                when (remoteHistoryState) {
+                    RemoteHistoryUiState.Loading -> null
+                    RemoteHistoryUiState.Empty -> RemoteStatsData("YouTube", 0, 0, 0, 0, emptyList(), emptyList(), emptyList())
+                    RemoteHistoryUiState.Error -> null
+                    is RemoteHistoryUiState.Success -> remoteHistoryStats(remoteHistoryState.page, selectedRange)
+                }
+            StatsSource.SPOTIFY -> spotifyHistory?.let { spotifyHistoryStats(it, selectedRange) }
+        }
+
+    Scaffold(
+        topBar = {
+            LargeFlexibleTopAppBar(
+                title = { Text(stringResource(R.string.stats)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    }
+                },
+            )
+        },
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(contentPadding),
+        ) {
+            StatsSourceSelector(selectedSource = source, onSourceSelected = onSourceSelected)
+            RemoteStatsRangeSelector(
+                selectedRange = selectedRange,
+                onRangeSelected = { selectedRange = it },
+            )
+            when {
+                source == StatsSource.YOUTUBE && remoteHistoryState == RemoteHistoryUiState.Loading ||
+                    source == StatsSource.SPOTIFY && spotifyLoading -> {
+                    RemoteStatsMessage(loading = true)
+                }
+
+                source == StatsSource.YOUTUBE && remoteHistoryState == RemoteHistoryUiState.Error -> {
+                    RemoteStatsMessage(message = "Couldn't load your YouTube history.", onRetry = onRetry)
+                }
+
+                source == StatsSource.SPOTIFY && spotifyError != null -> {
+                    RemoteStatsMessage(message = spotifyError, onRetry = onRetry)
+                }
+
+                data == null || data.plays == 0 -> {
+                    RemoteStatsMessage(message = "No recent ${source.label} listening history is available.")
+                }
+
+                else -> RemoteStatsDashboard(data, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteStatsRangeSelector(
+    selectedRange: RemoteStatsRange,
+    onRangeSelected: (RemoteStatsRange) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        RemoteStatsRange.entries.forEach { range ->
+            val selected = range == selectedRange
+            Surface(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onRangeSelected(range) },
+                shape = RoundedCornerShape(12.dp),
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+            ) {
+                Text(
+                    text = range.label,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelMedium,
+                    color =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.RemoteStatsMessage(
+    loading: Boolean = false,
+    message: String? = null,
+    onRetry: (() -> Unit)? = null,
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (loading) {
+            LoadingIndicator(modifier = Modifier.size(48.dp))
+        } else {
+            Column(
+                modifier = Modifier.widthIn(max = 420.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = message.orEmpty(),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (onRetry != null) {
+                    Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteStatsDashboard(
+    data: RemoteStatsData,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                        MaterialTheme.colorScheme.surfaceContainerLow,
+                                    ),
+                                ),
+                            ).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = "${data.sourceName} listening",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Recent history supplied by ${data.sourceName}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (data.totalDurationMillis > 0) {
+                        Text(
+                            text = makeTimeString(data.totalDurationMillis),
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RemoteMetricCard("Plays", data.plays.toString(), Modifier.weight(1f))
+                RemoteMetricCard("Tracks", data.uniqueTracks.toString(), Modifier.weight(1f))
+                RemoteMetricCard("Artists", data.uniqueArtists.toString(), Modifier.weight(1f))
+            }
+        }
+        item {
+            RemoteRankChart(
+                title = "Top artists",
+                ranks = data.artists,
+                gradient = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary),
+            )
+        }
+        if (data.activity.isNotEmpty()) {
+            item {
+                RemoteRankChart(
+                    title = if (data.sourceName == "Spotify") "Listening by hour" else "History sections",
+                    ranks = data.activity,
+                    gradient = listOf(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.primary),
+                )
+            }
+        }
+        item { StatsSectionHeader(title = "Top tracks", supportingText = data.tracks.size.toString()) }
+        items(data.tracks.take(10), key = { it.id }) { track ->
+            RemoteTrackRow(track = track)
+        }
+    }
+}
+
+@Composable
+private fun RemoteMetricCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun RemoteRankChart(title: String, ranks: List<RemoteStatsRank>, gradient: List<Color>) {
+    if (ranks.isEmpty()) return
+    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            val maximum = ranks.maxOf { it.count }.coerceAtLeast(1)
+            ranks.take(5).forEach { rank ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text(rank.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+                        Text(rank.count.toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth(rank.count.toFloat() / maximum)
+                                    .fillMaxHeight()
+                                    .background(Brush.horizontalGradient(gradient)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteTrackRow(track: RemoteStatsTrack) {
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(36.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(track.playCount.toString(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (track.durationMillis > 0) {
+                Text(makeTimeString(track.durationMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private fun remoteHistoryStats(page: HistoryPage, range: RemoteStatsRange): RemoteStatsData {
+    val sections = page.sections.orEmpty().filter { it.isWithin(range) }
+    val tracks = sections.flatMap { section ->
+        section.songs.map { song ->
+            RemoteStatsTrack(
+                id = song.id,
+                title = song.title,
+                artist = song.artists.joinToString { it.name },
+                durationMillis = (song.duration ?: 0).toLong() * 1_000,
+            )
+        }
+    }
+    return remoteStats(
+        sourceName = "YouTube",
+        tracks = tracks,
+        activity =
+            sections
+                .map { RemoteStatsRank(it.title.ifBlank { "Recent" }, it.songs.size) }
+                .filter { it.count > 0 },
+    )
+}
+
+private fun spotifyHistoryStats(history: List<SpotifyPlayHistory>, range: RemoteStatsRange): RemoteStatsData {
+    val filteredHistory = history.filter { it.isWithin(range) }
+    val tracks = filteredHistory.mapNotNull { play ->
+        play.track?.let { track ->
+            RemoteStatsTrack(
+                id = track.id,
+                title = track.name,
+                artist = track.artists.joinToString { it.name },
+                durationMillis = track.durationMs.toLong(),
+            )
+        }
+    }
+    val activity =
+        filteredHistory.mapNotNull { play ->
+            play.playedAt
+                ?.let { runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()).hour }.getOrNull() }
+        }.groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedBy { it.key }
+            .map { (hour, count) -> RemoteStatsRank("${hour.toString().padStart(2, '0')}:00", count) }
+    return remoteStats(sourceName = "Spotify", tracks = tracks, activity = activity)
+}
+
+private fun SpotifyPlayHistory.isWithin(range: RemoteStatsRange): Boolean {
+    if (range == RemoteStatsRange.ALL) return true
+    val playedAt = playedAt?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return false
+    val cutoff = Instant.now().minusSeconds(range.cutoffDays * 24L * 60L * 60L)
+    return !playedAt.isBefore(cutoff)
+}
+
+private fun HistoryPage.HistorySection.isWithin(range: RemoteStatsRange): Boolean {
+    if (range == RemoteStatsRange.ALL) return true
+    val title = title.trim().lowercase(Locale.getDefault())
+    val date =
+        when {
+            title == "today" -> LocalDate.now()
+            title == "yesterday" -> LocalDate.now().minusDays(1)
+            title.contains("this week") -> LocalDate.now()
+            title.contains("last week") -> LocalDate.now().minusDays(7)
+            else -> parseHistoryDate(title)
+        } ?: return false
+    val cutoff = LocalDate.now().minusDays((range.cutoffDays - 1).coerceAtLeast(0).toLong())
+    return !date.isBefore(cutoff)
+}
+
+private fun parseHistoryDate(title: String): LocalDate? {
+    val year = LocalDate.now().year
+    val fullDateFormatters =
+        listOf(
+            DateTimeFormatter.ofPattern("MMM d, uuuu", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("MMMM d, uuuu", Locale.ENGLISH),
+        )
+    fullDateFormatters.firstNotNullOfOrNull { formatter ->
+        runCatching { LocalDate.parse(title.replaceFirstChar { it.uppercase() }, formatter) }.getOrNull()
+    }?.let { return it }
+    return listOf("MMM d", "MMMM d").firstNotNullOfOrNull { pattern ->
+        runCatching {
+            LocalDate.parse(
+                "${title.replaceFirstChar { it.uppercase() }}, $year",
+                DateTimeFormatter.ofPattern("$pattern, uuuu", Locale.ENGLISH),
+            )
+        }.getOrNull()
+    }?.let { parsed -> if (parsed.isAfter(LocalDate.now())) parsed.minusYears(1) else parsed }
+}
+
+private val RemoteStatsRange.cutoffDays: Int
+    get() =
+        when (this) {
+            RemoteStatsRange.DAYS_7 -> 7
+            RemoteStatsRange.DAYS_30 -> 30
+            RemoteStatsRange.DAYS_90 -> 90
+            RemoteStatsRange.YEAR_1 -> 365
+            RemoteStatsRange.ALL -> Int.MAX_VALUE
+        }
+
+private fun remoteStats(
+    sourceName: String,
+    tracks: List<RemoteStatsTrack>,
+    activity: List<RemoteStatsRank>,
+): RemoteStatsData {
+    val rankedTracks =
+        tracks.groupBy { it.id }
+            .map { (id, plays) ->
+                plays.first().copy(
+                    id = id,
+                    playCount = plays.size,
+                )
+            }
+            .sortedByDescending(RemoteStatsTrack::playCount)
+    val artists =
+        tracks.groupBy { it.artist.ifBlank { "Unknown artist" } }
+            .map { (artist, plays) -> RemoteStatsRank(artist, plays.size) }
+            .sortedByDescending(RemoteStatsRank::count)
+    return RemoteStatsData(
+        sourceName = sourceName,
+        plays = tracks.size,
+        uniqueTracks = rankedTracks.size,
+        uniqueArtists = artists.size,
+        totalDurationMillis = tracks.sumOf(RemoteStatsTrack::durationMillis),
+        tracks = rankedTracks,
+        artists = artists,
+        activity = activity,
+    )
 }
 
 @Composable

@@ -657,6 +657,7 @@ fun AppleMusicPlayerContent(
             mediaMetadata = mediaMetadata,
             lyrics = text,
             targetLanguage = translatorTargetLang,
+            automatic = true,
         )
     }
 
