@@ -41,6 +41,7 @@ import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
 import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
+import moe.rukamori.archivetune.constants.SpotifyHistorySyncEnabledKey
 import moe.rukamori.archivetune.constants.TidalAccessTokenKey
 import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -79,6 +80,7 @@ fun IntegrationScreen(
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
+    val (syncSpotifyHistory, onSyncSpotifyHistoryChange) = rememberPreference(SpotifyHistorySyncEnabledKey, false)
     var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
 
     var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
@@ -248,8 +250,10 @@ fun IntegrationScreen(
                 spotifyAccountPreferences(
                     state = spotifyState,
                     showPlaylists = showSpotifyPlaylists,
+                    syncHistory = syncSpotifyHistory,
                     onConnectClick = { showSpotifyLogin = true },
                     onShowPlaylistsChange = onShowSpotifyPlaylistsChange,
+                    onSyncHistoryChange = onSyncSpotifyHistoryChange,
                     onReloadClick = spotifyAccountViewModel::reloadPlaylists,
                     onLogoutClick = { spotifyAccountViewModel.logout() },
                 )

@@ -593,14 +593,17 @@ fun SettingsSegmentedItem(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 88.dp)
-                    .padding(horizontal = 22.dp, vertical = 14.dp),
+                    .heightIn(min = SettingsDimensions.SegmentedItemMinHeight)
+                    .padding(
+                        horizontal = SettingsDimensions.SegmentedItemPaddingHorizontal,
+                        vertical = SettingsDimensions.SegmentedItemPaddingVertical,
+                    ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier =
                     Modifier
-                        .size(52.dp)
+                        .size(SettingsDimensions.SegmentedIconBoxSize)
                         .clip(CircleShape)
                         .background(effectiveAccent),
                 contentAlignment = Alignment.Center,
@@ -618,7 +621,7 @@ fun SettingsSegmentedItem(
                             painter = item.icon,
                             contentDescription = null,
                             tint = iconContentColor,
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(SettingsDimensions.SegmentedIconSize),
                         )
                     }
                 } else {
@@ -626,12 +629,12 @@ fun SettingsSegmentedItem(
                         painter = item.icon,
                         contentDescription = null,
                         tint = iconContentColor,
-                        modifier = Modifier.size(26.dp),
+                        modifier = Modifier.size(SettingsDimensions.SegmentedIconSize),
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(18.dp))
+            Spacer(modifier = Modifier.width(SettingsDimensions.SegmentedIconSpacing))
 
             Column(
                 modifier = Modifier.weight(1f),
@@ -646,7 +649,7 @@ fun SettingsSegmentedItem(
                     overflow = TextOverflow.Ellipsis,
                 )
                 item.subtitle?.let { subtitle ->
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(SettingsDimensions.RowTextSpacing))
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,
@@ -658,7 +661,7 @@ fun SettingsSegmentedItem(
             }
 
             item.badge?.let { badge ->
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(SettingsDimensions.SegmentedBadgeSpacing))
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -667,7 +670,11 @@ fun SettingsSegmentedItem(
                         text = badge,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        modifier =
+                            Modifier.padding(
+                                horizontal = SettingsDimensions.SegmentedBadgePaddingH,
+                                vertical = SettingsDimensions.SegmentedBadgePaddingV,
+                            ),
                     )
                 }
             }
@@ -679,8 +686,8 @@ private fun segmentedSettingsItemShape(
     index: Int,
     count: Int,
 ): Shape {
-    val large = 28.dp
-    val small = 6.dp
+    val large = SettingsDimensions.SegmentedCornerLarge
+    val small = SettingsDimensions.SegmentedCornerSmall
     return when {
         count <= 1 -> {
             RoundedCornerShape(large)

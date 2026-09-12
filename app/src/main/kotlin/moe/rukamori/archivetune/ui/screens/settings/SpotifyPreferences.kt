@@ -90,8 +90,10 @@ private const val SpotifyLoginUserAgent =
 internal fun PreferenceGroupScope.spotifyAccountPreferences(
     state: SpotifyAccountUiState,
     showPlaylists: Boolean,
+    syncHistory: Boolean,
     onConnectClick: () -> Unit,
     onShowPlaylistsChange: (Boolean) -> Unit,
+    onSyncHistoryChange: (Boolean) -> Unit,
     onReloadClick: () -> Unit,
     onLogoutClick: () -> Unit,
 ) {
@@ -156,6 +158,17 @@ internal fun PreferenceGroupScope.spotifyAccountPreferences(
             icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
             checked = showPlaylists,
             onCheckedChange = onShowPlaylistsChange,
+            isEnabled = !state.isLoading,
+        )
+    }
+
+    item {
+        SwitchPreference(
+            title = { Text(stringResource(R.string.spotify_sync_history)) },
+            description = stringResource(R.string.spotify_sync_history_desc),
+            icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+            checked = syncHistory,
+            onCheckedChange = onSyncHistoryChange,
             isEnabled = !state.isLoading,
         )
     }

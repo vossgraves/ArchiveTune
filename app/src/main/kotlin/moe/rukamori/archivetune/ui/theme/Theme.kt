@@ -194,7 +194,9 @@ fun ArchiveTuneTheme(
             motionScheme = motionScheme,
             typography = typography,
             shapes = expressiveShapes,
-            content = content,
+            content = {
+                YumaTheme(darkTheme = darkTheme, content = content)
+            },
         )
     }
 }

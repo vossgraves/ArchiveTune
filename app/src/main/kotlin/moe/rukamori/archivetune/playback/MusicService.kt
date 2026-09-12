@@ -7812,6 +7812,7 @@ class MusicService :
         updateInitialBufferRecovery(playbackState)
         if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
             enqueueCurrentHistorySessionForFinalization()
+            val playbackWasRequested = player.playWhenReady || crossfadePlaybackRequested
             if (!isCrossfading || playbackState == Player.STATE_IDLE) {
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             } else if (playbackState == Player.STATE_ENDED) {
@@ -7824,6 +7825,18 @@ class MusicService :
                 // already promoting itself or never became ready — either way, releasing it
                 // here is safe and prevents a stuck `pauseAtEndOfMediaItems`.
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+            }
+            if (playbackState == Player.STATE_ENDED &&
+                CrossfadePolicy.shouldResumeAfterEnded(
+                    playbackRequested = playbackWasRequested,
+                    hasNextItem = player.hasNextMediaItem(),
+                    repeatOne = player.repeatMode == REPEAT_MODE_ONE,
+                    suppressAutoPlayback = suppressAutoPlayback,
+                )
+            ) {
+                player.seekToNextMediaItem()
+                player.playWhenReady = true
+                player.play()
             }
             if (playbackState == Player.STATE_ENDED &&
                 !suppressAutoPlayback &&
@@ -11297,10 +11310,14 @@ class MusicService :
         DefaultLoadControl
             .Builder()
             .setBufferDurationsMs(
-                PRIMARY_MIN_BUFFER_MS,
-                PRIMARY_MAX_BUFFER_MS,
-                PRIMARY_BUFFER_FOR_PLAYBACK_MS,
-                PRIMARY_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+                if (useConservativePlaybackProfile()) CONSERVATIVE_MIN_BUFFER_MS else PRIMARY_MIN_BUFFER_MS,
+                if (useConservativePlaybackProfile()) CONSERVATIVE_MAX_BUFFER_MS else PRIMARY_MAX_BUFFER_MS,
+                if (useConservativePlaybackProfile()) CONSERVATIVE_BUFFER_FOR_PLAYBACK_MS else PRIMARY_BUFFER_FOR_PLAYBACK_MS,
+                if (useConservativePlaybackProfile()) {
+                    CONSERVATIVE_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+                } else {
+                    PRIMARY_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+                },
             ).setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -11308,12 +11325,26 @@ class MusicService :
         DefaultLoadControl
             .Builder()
             .setBufferDurationsMs(
-                CROSSFADE_MIN_BUFFER_MS,
-                CROSSFADE_MAX_BUFFER_MS,
-                CROSSFADE_MIN_BUFFER_BEFORE_START_MS.toInt(),
-                CROSSFADE_MIN_BUFFER_BEFORE_START_MS.toInt(),
+                if (useConservativePlaybackProfile()) CONSERVATIVE_CROSSFADE_MIN_BUFFER_MS else CROSSFADE_MIN_BUFFER_MS,
+                if (useConservativePlaybackProfile()) CONSERVATIVE_CROSSFADE_MAX_BUFFER_MS else CROSSFADE_MAX_BUFFER_MS,
+                if (useConservativePlaybackProfile()) {
+                    CONSERVATIVE_CROSSFADE_BUFFER_BEFORE_START_MS
+                } else {
+                    CROSSFADE_MIN_BUFFER_BEFORE_START_MS.toInt()
+                },
+                if (useConservativePlaybackProfile()) {
+                    CONSERVATIVE_CROSSFADE_BUFFER_BEFORE_START_MS
+                } else {
+                    CROSSFADE_MIN_BUFFER_BEFORE_START_MS.toInt()
+                },
             ).setPrioritizeTimeOverSizeThresholds(true)
             .build()
+
+    private fun useConservativePlaybackProfile(): Boolean {
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        return activityManager?.isLowRamDevice == true || powerManager?.isPowerSaveMode == true
+    }
 
     private fun createRenderersFactory() =
         object : DefaultRenderersFactory(this) {
@@ -12154,6 +12185,13 @@ class MusicService :
         const val PRIMARY_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 750
         const val CROSSFADE_MIN_BUFFER_MS = 15_000
         const val CROSSFADE_MAX_BUFFER_MS = 45_000
+        private const val CONSERVATIVE_MIN_BUFFER_MS = 8_000
+        private const val CONSERVATIVE_MAX_BUFFER_MS = 24_000
+        private const val CONSERVATIVE_BUFFER_FOR_PLAYBACK_MS = 250
+        private const val CONSERVATIVE_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 1_000
+        private const val CONSERVATIVE_CROSSFADE_MIN_BUFFER_MS = 8_000
+        private const val CONSERVATIVE_CROSSFADE_MAX_BUFFER_MS = 24_000
+        private const val CONSERVATIVE_CROSSFADE_BUFFER_BEFORE_START_MS = 3_000
         const val CROSSFADE_FRAME_MS = 32L
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f

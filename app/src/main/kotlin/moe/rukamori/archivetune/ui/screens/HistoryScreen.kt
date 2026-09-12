@@ -115,6 +115,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HistorySource
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
+import moe.rukamori.archivetune.constants.SpotifyHistorySyncEnabledKey
 import moe.rukamori.archivetune.db.entities.EventWithSong
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -122,6 +123,7 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.pages.HistoryPage
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
@@ -245,7 +247,8 @@ fun HistoryScreen(
     // Spotify's play history sits beside the YouTube account's. Gated on the same pair of
     // conditions the Library's Spotify source uses — signed in, and Spotify content switched on in
     // Integration — so a user who has not opted in sees exactly the two pills they had before.
-    val spotifyHistoryAvailable = rememberLibrarySourceAvailable()
+    val (spotifyHistorySyncEnabled, _) = rememberPreference(SpotifyHistorySyncEnabledKey, false)
+    val spotifyHistoryAvailable = rememberLibrarySourceAvailable() && spotifyHistorySyncEnabled
     val spotifyViewModel: SpotifyLibraryViewModel = hiltViewModel()
     val spotifyHistory by spotifyViewModel.recentlyPlayed.collectAsStateWithLifecycle()
     val spotifyAccountRevision by spotifyViewModel.accountRevision.collectAsStateWithLifecycle()

@@ -1059,6 +1059,8 @@ enum class SpotifyHomeStyle {
 
 val SpotifyHomeStyleKey = stringPreferencesKey("spotifyHomeStyle")
 
+val SpotifyHistorySyncEnabledKey = booleanPreferencesKey("spotifyHistorySyncEnabled")
+
 enum class PlayerDesignStyle {
     V1,
     V2,
