@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.decide.outputs.should_build }}
-      nightly_tag: ${{ steps.decide.outputs.nightly_tag }}
-      nightly_name: ${{ steps.decide.outputs.nightly_name }}
+      canary_tag: ${{ steps.decide.outputs.canary_tag }}
+      canary_name: ${{ steps.decide.outputs.canary_name }}
       version_name: ${{ steps.decide.outputs.version_name }}
       version_code: ${{ steps.decide.outputs.version_code }}
     steps:
@@ -59,7 +59,7 @@ jobs:
           # Timestamped tag: N<yyyyMMddHHmm>. The updater sorts canary releases by the numeric
           # digits after the leading "N", so a lexical/numeric timestamp gives correct ordering.
           TS="$(date -u +'%Y%m%d%H%M')"
-          NIGHTLY_TAG="C${TS}"
+          CANARY_TAG="C${TS}"
           BASE_VERSION="$(grep -oP 'baseVersionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo '0.0.0')"
           MAJOR_MINOR="$(echo "$BASE_VERSION" | cut -d. -f1-2)"
           SHORT_SHA="$(git rev-parse --short HEAD)"
@@ -70,8 +70,8 @@ jobs:
           # count). The in-app updater embeds that versionCode in the release notes ("at-build:<n>")
           # and compares build numbers, so the fixed versionName never triggers a false "update
           # available" while genuinely newer builds still do.
-          echo "nightly_tag=${NIGHTLY_TAG}" >> "$GITHUB_OUTPUT"
-          echo "nightly_name=Canary ${MAJOR_MINOR}.${COMMIT_COUNT}-${SHORT_SHA} (${TS})" >> "$GITHUB_OUTPUT"
+          echo "canary_tag=${CANARY_TAG}" >> "$GITHUB_OUTPUT"
+          echo "canary_name=Canary ${MAJOR_MINOR}.${COMMIT_COUNT}-${SHORT_SHA} (${TS})" >> "$GITHUB_OUTPUT"
           echo "version_name=${BASE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "version_code=${COMMIT_COUNT}" >> "$GITHUB_OUTPUT"
 
@@ -82,22 +82,22 @@ jobs:
           fi
 
           # Find the most recent existing nightly release (tag starting with N + digits).
-          LAST_NIGHTLY_SHA=""
+          LAST_CANARY_SHA=""
           LAST_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
             --jq '[.[] | select(.tagName | test("^C[0-9]+"))] | sort_by(.createdAt) | last | .tagName' 2>/dev/null || true)"
           if [ -n "${LAST_TAG:-}" ] && [ "$LAST_TAG" != "null" ]; then
-            LAST_NIGHTLY_SHA="$(gh release view "$LAST_TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq '.targetCommitish' 2>/dev/null || true)"
+            LAST_CANARY_SHA="$(gh release view "$LAST_TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq '.targetCommitish' 2>/dev/null || true)"
           fi
 
-          if [ -z "${LAST_NIGHTLY_SHA:-}" ]; then
+          if [ -z "${LAST_CANARY_SHA:-}" ]; then
             echo "No previous nightly found; building."
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # Resolve the target ref to a commit and compare with HEAD.
-          if git cat-file -e "${LAST_NIGHTLY_SHA}^{commit}" 2>/dev/null; then
-            if [ "$(git rev-parse HEAD)" = "$(git rev-parse "${LAST_NIGHTLY_SHA}^{commit}")" ]; then
+          if git cat-file -e "${LAST_CANARY_SHA}^{commit}" 2>/dev/null; then
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse "${LAST_CANARY_SHA}^{commit}")" ]; then
               echo "No new commits since last nightly ($LAST_TAG); skipping."
               echo "should_build=false" >> "$GITHUB_OUTPUT"
               exit 0
@@ -107,7 +107,7 @@ jobs:
           echo "should_build=true" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build Nightly APKs
+    name: Build Canary APKs
     needs: check
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
@@ -115,7 +115,7 @@ jobs:
       VERSION_NAME_OVERRIDE: ${{ needs.check.outputs.version_name }}
       VERSION_CODE_OVERRIDE: ${{ needs.check.outputs.version_code }}
       NIGHTLY_BUILD_HASH: ${{ github.sha }}
-      # Marks the APK as a canary/nightly build (BuildConfig.IS_NIGHTLY). Drives the default update
+      # Marks the APK as a Canary build. Drives the default update
       # channel and the build-number-based canary update comparison.
       IS_CANARY_BUILD: 'true'
     strategy:
@@ -275,7 +275,7 @@ jobs:
           find app/build/outputs/apk -maxdepth 8 -type d -print || true
           exit 1
 
-      - name: Verify nightly signing secrets
+      - name: Verify Canary signing secrets
         shell: bash
         env:
           KEYSTORE: ${{ secrets.KEYSTORE }}
@@ -294,7 +294,7 @@ jobs:
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
-          echo "Nightly signing secrets present."
+          echo "Canary signing secrets present."
 
       - name: Sign APK (release keystore)
         uses: ilharp/sign-android-release@v2.0.0
@@ -330,7 +330,7 @@ jobs:
           name: ${{ steps.variant.outputs.artifact_name }}
           path: ${{ steps.release_dir.outputs.release_dir }}/out/${{ steps.variant.outputs.apk_name }}
 
-  create-nightly:
+  create-canary:
     needs: [check, build]
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
@@ -358,7 +358,7 @@ jobs:
           LAST_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
             --jq '[.[] | select(.tagName | test("^C[0-9]+"))] | sort_by(.createdAt) | last | .tagName' 2>/dev/null || true)"
           {
-            echo "# Nightly build"
+            echo "# Canary build"
             echo ""
             echo "Automated canary build from the dev branch. Not intended for production use."
             echo ""
@@ -367,7 +367,7 @@ jobs:
             echo "<!-- at-build:${VERSION_CODE} -->"
             echo ""
             echo "## Pull requests"
-          } > nightly_notes.md
+          } > canary_notes.md
           # List merged PRs into the dev branch since the last nightly tag (or the
           # last 30 PRs if there's no prior tag). PR titles give users a
           # human-readable summary of what changed, complementing the raw commit
@@ -377,59 +377,60 @@ jobs:
             gh pr list --repo "$GITHUB_REPOSITORY" --base dev --state merged \
               --search "merged:>=${MERGE_BASE}" \
               --json title,number,author \
-              --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> nightly_notes.md || true
+              --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> canary_notes.md || true
           else
             gh pr list --repo "$GITHUB_REPOSITORY" --base dev --state merged --limit 30 \
               --json title,number,author \
-              --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> nightly_notes.md || true
+              --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> canary_notes.md || true
           fi
           {
             echo ""
             echo "## Commits"
-          } >> nightly_notes.md
+          } >> canary_notes.md
           if [ -n "${LAST_TAG:-}" ] && [ "$LAST_TAG" != "null" ] && git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
             # -n 500 caps the list: after a large sync jump the range can contain thousands of
             # commits and the release body would exceed GitHub's 125k-character limit.
-            git log --pretty=format:'- %s (%h)' -n 500 "${LAST_TAG}..HEAD" >> nightly_notes.md || true
+            git log --pretty=format:'- %s (%h)' -n 500 "${LAST_TAG}..HEAD" >> canary_notes.md || true
           else
-            git log --pretty=format:'- %s (%h)' -n 30 >> nightly_notes.md || true
+            git log --pretty=format:'- %s (%h)' -n 30 >> canary_notes.md || true
           fi
-          echo "" >> nightly_notes.md
+          echo "" >> canary_notes.md
           # Hard guarantee against GitHub's 125k-character release-body limit.
-          head -c 120000 nightly_notes.md > nightly_notes.tmp && mv nightly_notes.tmp nightly_notes.md
+          head -c 120000 canary_notes.md > canary_notes.tmp && mv canary_notes.tmp canary_notes.md
 
-      - name: Create nightly prerelease
+      - name: Create Canary prerelease
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-          NIGHTLY_TAG: ${{ needs.check.outputs.nightly_tag }}
-          NIGHTLY_NAME: ${{ needs.check.outputs.nightly_name }}
+          CANARY_TAG: ${{ needs.check.outputs.canary_tag }}
+          CANARY_NAME: ${{ needs.check.outputs.canary_name }}
         run: |
           set -euo pipefail
-          MOBILE_UNIVERSAL_APK="$(find downloaded_artifacts/app-gms-mobile-universal-nightly -name '*.apk' | head -n 1)"
-          OTHER_APKS="$(find downloaded_artifacts -path '*/app-*-nightly/*.apk' ! -path '*/app-gms-mobile-universal-nightly/*')"
+          MOBILE_UNIVERSAL_APK="$(find downloaded_artifacts/app-gms-mobile-universal-canary -name '*.apk' | head -n 1)"
+          OTHER_APKS="$(find downloaded_artifacts -path '*/app-*-canary/*.apk' ! -path '*/app-gms-mobile-universal-canary/*')"
+          test -n "$MOBILE_UNIVERSAL_APK" || { echo "::error::Missing GMS mobile universal Canary APK"; exit 1; }
 
-          gh release create "$NIGHTLY_TAG" \
+          gh release create "$CANARY_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ github.sha }}" \
-            --title "$NIGHTLY_NAME" \
-            --notes-file nightly_notes.md \
+            --title "$CANARY_NAME" \
+            --notes-file canary_notes.md \
             --prerelease \
             "$MOBILE_UNIVERSAL_APK" \
             $OTHER_APKS
 
-      - name: Prune old nightly prereleases (keep newest 5)
+      - name: Prune old Canary prereleases (keep newest 5)
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Delete all but the 5 most recent nightly (N*) releases and their tags.
+          # Delete all but the 5 most recent Canary (C*) releases and their tags.
           mapfile -t OLD < <(
             gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt \
               --jq '[.[] | select(.tagName | test("^C[0-9]+"))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName'
           )
           for tag in "${OLD[@]:-}"; do
             [ -z "$tag" ] && continue
-            echo "Deleting old nightly: $tag"
+            echo "Deleting old Canary release: $tag"
             gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           done
