@@ -301,7 +301,6 @@ fun PreferenceEntry(
                         text = description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
                         modifier = Modifier,
                     )
                 }
@@ -1296,7 +1295,6 @@ fun PreferenceGroupTitle(
     MarqueeText(
         text = title,
         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary),
-        maxLines = 1,
         modifier = modifier.padding(
             horizontal = SettingsDimensions.SectionHeaderHorizontalPadding,
             vertical = SettingsDimensions.SectionHeaderBottomPadding,
