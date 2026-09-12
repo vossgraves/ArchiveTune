@@ -326,10 +326,9 @@ class LyricsMenuViewModel
             aiTranslationJob =
                 viewModelScope.launch(Dispatchers.IO) {
                     isAiTranslating.value = true
-                    var isAutomatic = false
+                    val isAutomatic = automatic
                     try {
                         val prefs = context.dataStore.data.first()
-                        isAutomatic = automatic
                         // Second line of defence for "Don't auto translate these languages".
                         //
                         // The callers gate on this too, but the setting had already been shipped

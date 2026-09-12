@@ -57,7 +57,7 @@ jobs:
           set -euo pipefail
 
           # Timestamped tag: C<yyyyMMddHHmm>. The updater sorts canary releases by the numeric
-          # digits after the leading "N", so a lexical/numeric timestamp gives correct ordering.
+          # digits after the leading "C", so a lexical/numeric timestamp gives correct ordering.
           TS="$(date -u +'%Y%m%d%H%M')"
           CANARY_TAG="C${TS}"
           BASE_VERSION="$(grep -oP 'baseVersionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo '0.0.0')"

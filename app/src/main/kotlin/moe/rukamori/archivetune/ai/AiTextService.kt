@@ -169,8 +169,8 @@ object AiTextService {
                             formality = config.deeplFormality,
                         ).getOrElse { throw AiServiceException("DeepL translation failed", it) }
                         .also { translated ->
-                            require(translated.size == lines.size) {
-                                "DeepL response changed the lyric segment count"
+                            if (translated.size != lines.size) {
+                                throw AiServiceException("DeepL response changed the lyric segment count")
                             }
                         }
                 }
@@ -184,8 +184,8 @@ object AiTextService {
                             model = config.model.ifBlank { "mistral-small-latest" },
                         ).getOrElse { throw AiServiceException("Mistral translation failed", it) }
                         .also { translated ->
-                            require(translated.size == lines.size) {
-                                "Mistral response changed the lyric segment count"
+                            if (translated.size != lines.size) {
+                                throw AiServiceException("Mistral response changed the lyric segment count")
                             }
                         }
                 }
@@ -261,8 +261,8 @@ object AiTextService {
                         mode = "romanize",
                     ).getOrElse { throw AiServiceException("Mistral romanization failed", it) }
                     .also { romanized ->
-                        require(romanized.size == lines.size) {
-                            "Mistral response changed the romanization segment count"
+                        if (romanized.size != lines.size) {
+                            throw AiServiceException("Mistral response changed the romanization segment count")
                         }
                     }
             }
