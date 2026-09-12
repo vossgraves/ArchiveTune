@@ -16,30 +16,33 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
 import java.io.File
+import java.io.InputStream
 import java.security.MessageDigest
+import java.util.zip.GZIPInputStream
 import java.util.concurrent.TimeUnit
 
 /** Loads TDLib's native library, fetching it on demand when the build did not bundle it. */
 object TdLibNativeLibrary {
     private const val TAG = "TdLibNative"
 
-    /** Must match the `com.github.tdlibx:td` version in app/build.gradle.kts. */
-    const val VERSION = "1.8.56"
+    /** The TDLight build the vendored org.drinkless.tdlib binding was generated from. */
+    const val VERSION = "tdlight-2b51b33"
 
     private const val LIB_NAME = "tdjni"
     private const val FILE_NAME = "libtdjni.so"
 
     /**
-     * SHA-256 of each ABI's library as shipped in the td AAR, taken from the artifact this build
-     * resolves. A download that does not match one of these is discarded — the digests are the
-     * only thing standing between the app and whatever the release host serves.
+     * SHA-256 of each ABI's **decompressed** library, published as the release's
+     * libtdjni-digests.txt beside the .so.gz downloads. A download that does not match one of
+     * these is discarded — the digests are the only thing standing between the app and whatever
+     * the release host serves, which is what makes hosting them upstream safe.
      */
     private val DIGESTS =
         mapOf(
-            "arm64-v8a" to "7c1751197b35a64261e3b3f21764874c9ee8795e4b6118c23a74499426c44b91",
-            "armeabi-v7a" to "56bcd646dae3442a2aeefee3ce28b72c14dc257488d267d4ed76e7e01e08f158",
-            "x86" to "4c1d128b862a35c293dc96a20cb9f41ffa33144c80b9ded858028bc3f9ca93ec",
-            "x86_64" to "567bb5aaccdcc1d8280577f2f9fe8e82178908c72f513436972493fd6ad6dabd",
+            "arm64-v8a" to "29e0ffb1e99ef30f1ae6db1a9ffc76e4bb82f6a888f91999596de237d17ea110",
+            "armeabi-v7a" to "d30b446aa6906274655e68317460b485c41cac3c258a86fa99627add089bce12",
+            "x86" to "3d3a67b2b0a924d3a2105fde12d852517cfd871371d94eddad9425e32622166e",
+            "x86_64" to "5b114899f4e0aeefb2580131c6d3d48a9135c008328fca94368ccccc2f3550e7",
         )
 
     @Volatile
@@ -50,12 +53,12 @@ object TdLibNativeLibrary {
             .Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
-            // No callTimeout: this is a 21 MB body and the deadline that matters is per-read.
+            // No callTimeout: this is a ~10 MB body and the deadline that matters is per-read.
             .build()
 
     /**
-     * The device's ABI, as one of the four the AAR ships. `SUPPORTED_ABIS` is ordered best-first,
-     * so a 64-bit device that also lists armeabi-v7a still picks arm64-v8a.
+     * The device's ABI, as one of the four the release ships. `SUPPORTED_ABIS` is ordered
+     * best-first, so a 64-bit device that also lists armeabi-v7a still picks arm64-v8a.
      */
     private val abi: String?
         get() = Build.SUPPORTED_ABIS.firstOrNull { it in DIGESTS }
@@ -130,7 +133,7 @@ object TdLibNativeLibrary {
                 return@withContext false
             }
 
-            val url = "$base/libtdjni-$VERSION-$abi.so"
+            val url = "$base/libtdjni-$abi.so.gz"
             val destination = target(context)
             destination.parentFile?.mkdirs()
             val partial = File(destination.absolutePath + ".part")
@@ -144,17 +147,20 @@ object TdLibNativeLibrary {
                             return@use false
                         }
                         val body = response.body ?: return@use false
+                        // contentLength is the compressed size, so progress is reported against
+                        // bytes pulled off the wire rather than bytes written to disk.
                         val total = body.contentLength()
-                        var read = 0L
-                        body.byteStream().use { input ->
+                        val counting = CountingInputStream(body.byteStream())
+                        GZIPInputStream(counting).use { gunzip ->
                             partial.outputStream().use { output ->
                                 val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
                                 while (true) {
-                                    val n = input.read(buffer)
+                                    val n = gunzip.read(buffer)
                                     if (n < 0) break
                                     output.write(buffer, 0, n)
-                                    read += n
-                                    onProgress(if (total > 0) read.toFloat() / total else -1f)
+                                    onProgress(
+                                        if (total > 0) (counting.count.toFloat() / total).coerceAtMost(1f) else -1f,
+                                    )
                                 }
                             }
                         }
@@ -200,4 +206,26 @@ object TdLibNativeLibrary {
     }
 
     private const val DOWNLOAD_BUFFER_BYTES = 64 * 1024
+
+    /**
+     * Counts bytes read from the wire so download progress tracks the compressed body, which is
+     * what `Content-Length` describes. Reading `GZIPInputStream`'s output instead would overshoot,
+     * since the decompressed library is roughly twice the size of the transfer.
+     */
+    private class CountingInputStream(
+        private val source: InputStream,
+    ) : InputStream() {
+        var count = 0L
+            private set
+
+        override fun read(): Int = source.read().also { if (it >= 0) count++ }
+
+        override fun read(
+            b: ByteArray,
+            off: Int,
+            len: Int,
+        ): Int = source.read(b, off, len).also { if (it > 0) count += it }
+
+        override fun close() = source.close()
+    }
 }

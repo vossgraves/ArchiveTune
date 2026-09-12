@@ -221,10 +221,12 @@ object TelegramClient {
         extractInviteLink(trimmed)?.let { inviteLink ->
             runCatching {
                 val inviteInfo = send<TdApi.ChatInviteLinkInfo>(TdApi.CheckChatInviteLink(inviteLink))
-                // If the invite link is valid, try to join the chat.
-                // If already a member, JoinChatByInviteLink returns the chat id anyway.
+                // Joining reports one of four outcomes; only Success carries a chat id. A pending
+                // join request, a bot-approval gate or a decline all fall through to the invite
+                // info's own chatId below, which is what an already-joined chat resolves through.
                 val joinedChatId = runCatching {
-                    send<TdApi.Chat>(TdApi.JoinChatByInviteLink(inviteLink)).id
+                    (send<TdApi.ChatJoinResult>(TdApi.JoinChatByInviteLink(inviteLink))
+                        as? TdApi.ChatJoinResultSuccess)?.chatId
                 }.getOrNull()
                 val chatId = joinedChatId ?: inviteInfo.chatId
                 if (chatId != 0L) {
@@ -240,13 +242,13 @@ object TelegramClient {
             runCatching { send(TdApi.SearchPublicChat(username)) }
                 .onSuccess { chatIds += it.id }
         }
-        runCatching { send(TdApi.SearchPublicChats(trimmed)) }
+        runCatching { send<TdApi.Chats>(TdApi.SearchPublicChats(trimmed, null)) }
             .onSuccess { chatIds += it.chatIds.toList() }
         // SearchPublicChats only ever returns chats with a public username, so a private
         // channel the user is already a member of could not be found by name at all — the
         // only way in was to re-paste its invite link. SearchChats searches the user's own
         // chat list locally, which is exactly where a joined private channel lives.
-        runCatching { send(TdApi.SearchChats(trimmed, LOCAL_CHAT_SEARCH_LIMIT)) }
+        runCatching { send<TdApi.Chats>(TdApi.SearchChats(trimmed, null, LOCAL_CHAT_SEARCH_LIMIT)) }
             .onSuccess { chatIds += it.chatIds.toList() }
 
         return chatIds.mapNotNull { chatId ->

@@ -29,7 +29,7 @@ here must preserve the invariants below.
 ## Dependency gotchas
 
 - `settings.gradle.kts` declares a GCS mirror of Maven Central **before** `mavenCentral()` — do not reorder (Maven Central 429-rate-limits CI).
-- JitPack is scoped via `exclusiveContent` to an allow-list of `com.github.*` groups (TeamNewPipe, tdlibx, PRDownloader, jaudiotagger, MetrolistGroup…). A new `com.github.*` dependency fails until its group is added.
+- JitPack is scoped via `exclusiveContent` to an allow-list of `com.github.*` groups (TeamNewPipe, PRDownloader, jaudiotagger, MetrolistGroup…). A new `com.github.*` dependency fails until its group is added.
 - The embedded Python/yt-dlp layer (Chaquopy) was removed on 2026-08-26: YouTube stream resolution is native-only via the compiled InnerTube core (`NativeStreamRepository` + BotGuard/QuickJS PO tokens). Upstream still carries Chaquopy — expect merge conflicts in `app/build.gradle.kts`, `gradle/libs.versions.toml`, and `playback/stream/*` on sync; resolve them by keeping the fork's native-only shape.
 
 ## Automated upstream sync (state as of 2026-08-26 — verify before relying on it)

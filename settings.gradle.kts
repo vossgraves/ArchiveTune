@@ -71,9 +71,6 @@ dependencyResolutionManagement {
             filter {
                 includeGroup("com.github.therealbush")
                 includeGroup("com.github.TeamNewPipe")
-                // Prebuilt TDLib (Telegram Database Library) AAR with bundled JNI natives,
-                // used by the Telegram channel streaming integration.
-                includeGroup("com.github.tdlibx")
                 // PRDownloader — lightweight (~45 KB) file download library with
                 // pause/resume, retry, and progress callbacks. Used as the HTTP
                 // fetcher inside PRDownloaderDataSource (Media3 DataSource wrapper).
