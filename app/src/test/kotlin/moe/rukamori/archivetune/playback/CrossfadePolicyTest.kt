@@ -191,4 +191,40 @@ class CrossfadePolicyTest {
         // target vanished from the queue (queue replacement): refuse
         assertFalse(CrossfadePolicy.mayPromote(snapshot(true, -1)))
     }
+
+    @Test
+    fun endedPlaybackResumesOnlyWhenPlaybackWasRequestedAndAQueueTargetExists() {
+        assertTrue(
+            CrossfadePolicy.shouldResumeAfterEnded(
+                playbackRequested = true,
+                hasNextItem = true,
+                repeatOne = false,
+                suppressAutoPlayback = false,
+            ),
+        )
+        assertTrue(
+            CrossfadePolicy.shouldResumeAfterEnded(
+                playbackRequested = true,
+                hasNextItem = false,
+                repeatOne = true,
+                suppressAutoPlayback = false,
+            ),
+        )
+        assertFalse(
+            CrossfadePolicy.shouldResumeAfterEnded(
+                playbackRequested = false,
+                hasNextItem = true,
+                repeatOne = false,
+                suppressAutoPlayback = false,
+            ),
+        )
+        assertFalse(
+            CrossfadePolicy.shouldResumeAfterEnded(
+                playbackRequested = true,
+                hasNextItem = true,
+                repeatOne = false,
+                suppressAutoPlayback = true,
+            ),
+        )
+    }
 }

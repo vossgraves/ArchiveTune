@@ -1,22 +1,13 @@
 /*
- * ArchiveTune (2026)
- * © Rukamori — github.com/rukamori
+ * YumaPlayer (2026) | Modified work by MuwMix
+ * ArchiveTune (2026) | Original work by © Rukamori
  * GPL-3.0 License | Contributors: see git history
- * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package moe.rukamori.archivetune.ui.component
 
-import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.isSpecified
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.foundation.border
-import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -25,10 +16,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -40,23 +34,24 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.contentColorFor
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -67,6 +62,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -86,8 +82,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -103,6 +102,12 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_RANGE
+import moe.rukamori.archivetune.ui.screens.settings.SettingsDimensions
+import moe.rukamori.archivetune.ui.theme.LocalYumaColors
+import moe.rukamori.archivetune.ui.theme.YumaSegmentPosition
+import moe.rukamori.archivetune.ui.theme.yumaClickable
+import moe.rukamori.archivetune.ui.theme.yumaGlassCard
+import moe.rukamori.archivetune.ui.theme.yumaSegmentPosition
 import kotlin.math.roundToInt
 
 val LocalPreferenceInGroup = compositionLocalOf { false }
@@ -110,23 +115,30 @@ val LocalPreferenceInGroup = compositionLocalOf { false }
 enum class PreferenceGroupPosition { Single, First, Middle, Last }
 
 val LocalPreferenceGroupPosition = compositionLocalOf<PreferenceGroupPosition?> { null }
+val LocalPreferenceItemIndex = compositionLocalOf { 0 }
 
-private val PreferenceGroupLargeCorner = 28.dp
-private val PreferenceGroupSmallCorner = 6.dp
-private val PreferenceGroupHorizontalPadding = 26.dp
-private val PreferenceEntryMinHeight = 88.dp
-private val PreferenceEntryHorizontalPadding = 22.dp
-private val PreferenceEntryVerticalPadding = 18.dp
+private val PreferenceGroupHorizontalPadding = SettingsDimensions.ScreenHorizontalPadding
+private val PreferenceEntryMinHeight = 0.dp
+private val PreferenceEntryHorizontalPadding = SettingsDimensions.RowHorizontalPadding
+private val PreferenceEntryVerticalPadding = SettingsDimensions.RowVerticalPadding
 
 @Composable
-private fun rememberPreferenceIconShape(): Shape = MaterialShapes.Ghostish.toShape()
+fun rememberPreferenceIconShape(key: Any? = LocalPreferenceItemIndex.current): Shape {
+    val seed = kotlin.math.abs(key?.hashCode() ?: 0)
+    return when (seed % 4) {
+        0 -> MaterialShapes.Ghostish.toShape()
+        1 -> MaterialShapes.Clover4Leaf.toShape()
+        2 -> MaterialShapes.Cookie9Sided.toShape()
+        else -> MaterialShapes.Pill.toShape()
+    }
+}
 
 private fun segmentedPreferenceItemShape(
     index: Int,
     count: Int,
 ): Shape {
-    val large = PreferenceGroupLargeCorner
-    val small = PreferenceGroupSmallCorner
+    val large = SettingsDimensions.SegmentedCornerLarge
+    val small = SettingsDimensions.SegmentedCornerSmall
     return when {
         count <= 1 -> {
             RoundedCornerShape(large)
@@ -179,222 +191,139 @@ fun PreferenceEntry(
     trailingContent: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     isEnabled: Boolean = true,
-    // Yuma affordance: a trailing chevron for rows that open another screen. Off by default and
-    // ignored when the row already has its own trailingContent, so no existing caller changes.
     showChevron: Boolean = false,
     shape: Shape? = null,
 ) {
-    val inGroup = LocalPreferenceInGroup.current
-    val groupPosition = LocalPreferenceGroupPosition.current
-    val preferenceItemShape =
-        remember(groupPosition) {
-            preferenceItemShapeForPosition(groupPosition)
-        }
-    val preferenceIconShape = rememberPreferenceIconShape()
-    val resolvedShape = shape ?: preferenceItemShape
-    // Only rows that can actually be pressed pay for the press animation. It costs an
-    // InteractionSource, a coroutine collecting it, an Animatable and a render node PER ROW, and
-    // roughly half the rows on a settings page are switches and sliders with no onClick at all —
-    // for those the whole thing animated nothing.
-    val clickable = isEnabled && onClick != null
     val interactionSource = remember { MutableInteractionSource() }
-    val pressScale =
-        if (clickable) {
-            val isPressed by interactionSource.collectIsPressedAsState()
-            // Yuma press feedback: a slightly deeper, springier shrink than the old high-stiffness
-            // 0.98 twitch, so a tap reads as a physical press rather than a flicker.
-            val scale by animateFloatAsState(
-                targetValue = if (isPressed) 0.96f else 1f,
-                animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-                label = "prefScale",
-            )
-            Modifier.graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-        } else {
-            Modifier
-        }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && isEnabled && onClick != null) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+        label = "prefScale",
+    )
 
-    val rowContent: @Composable () -> Unit = {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier =
+    val colors = LocalYumaColors.current
+    val isInGroup = LocalPreferenceInGroup.current
+    val groupPosition = LocalPreferenceGroupPosition.current
+    val segmentPosition = when (if (isInGroup) groupPosition else PreferenceGroupPosition.Single) {
+        null, PreferenceGroupPosition.Single -> YumaSegmentPosition.Single
+        PreferenceGroupPosition.First -> YumaSegmentPosition.First
+        PreferenceGroupPosition.Middle -> YumaSegmentPosition.Middle
+        PreferenceGroupPosition.Last -> YumaSegmentPosition.Last
+    }
+
+    val resolvedShape = shape ?: preferenceItemShapeForPosition(if (isInGroup) groupPosition else PreferenceGroupPosition.Single)
+
+    val boxModifier = modifier
+        .fillMaxWidth()
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .yumaGlassCard(
+            shape = resolvedShape,
+            backgroundColor = colors.glassBackground,
+            borderColor = colors.glassBorder,
+            position = segmentPosition,
+        )
+        .clip(resolvedShape)
+        .then(
+            if (isEnabled && onClick != null) {
                 Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = PreferenceEntryMinHeight)
-                    // No explicit focusable(): clickable() already makes this a focus target, and
-                    // chaining both left two of them per row. On a remote that is a stop that
-                    // highlights the row and then does nothing when OK is pressed, because the
-                    // click handler hangs off the other one.
+                    .focusable()
                     .clickable(
                         interactionSource = interactionSource,
-                        indication = LocalIndication.current,
-                        enabled = clickable,
-                        onClick = onClick ?: {},
-                    ).alpha(if (isEnabled) 1f else 0.5f)
-                    .padding(
-                        horizontal = PreferenceEntryHorizontalPadding,
-                        vertical = PreferenceEntryVerticalPadding,
-                    ),
+                        indication = null,
+                        onClick = onClick
+                    )
+            } else {
+                Modifier
+            }
+        )
+        .alpha(if (isEnabled) 1f else 0.5f)
+
+    Box(modifier = boxModifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = SettingsDimensions.SegmentedItemMinHeight)
+                .padding(
+                    horizontal = SettingsDimensions.SegmentedItemPaddingHorizontal,
+                    vertical = SettingsDimensions.SegmentedItemPaddingVertical
+                )
         ) {
             if (icon != null) {
-                // Yuma icon treatment: a filled accent chip with a contrasting glyph, instead of a
-                // bare primary-tinted icon on the card. contentColorFor gives the on-primary colour
-                // the glyph needs to stay legible on the fill; fall back to surface if the theme
-                // leaves it unspecified.
-                val accent = MaterialTheme.colorScheme.primary
-                val onAccent =
-                    contentColorFor(accent).takeIf { it.isSpecified } ?: MaterialTheme.colorScheme.surface
+                val iconShape = rememberPreferenceIconShape()
+                val effectiveAccent = MaterialTheme.colorScheme.primary
+                val iconContentCandidate = contentColorFor(effectiveAccent)
+                val iconContentColor =
+                    if (iconContentCandidate.isSpecified) {
+                        iconContentCandidate
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }
+
                 Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.CenterVertically)
-                            .size(44.dp)
-                            .clip(preferenceIconShape)
-                            .background(accent),
+                    modifier = Modifier
+                        .size(SettingsDimensions.SegmentedIconBoxSize)
+                        .clip(iconShape)
+                        .background(effectiveAccent),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CompositionLocalProvider(LocalContentColor provides onAccent) {
-                        icon()
+                    CompositionLocalProvider(LocalContentColor provides iconContentColor) {
+                        Box(
+                            modifier = Modifier.size(SettingsDimensions.SegmentedIconSize),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            icon()
+                        }
                     }
                 }
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(SettingsDimensions.SegmentedIconSpacing))
             }
 
             Column(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-                // Neither line scrolls. A settings row is a static label, not a now-playing
-                // ticker: sideways motion on something you are trying to read down a list is
-                // noise, and every visible row doing it at once is worse. Titles are short and
-                // simply wrap on the rare occasion they need to.
-                //
-                // Row height is bounded by clamping the description instead — two lines and an
-                // ellipsis, which is the shape the rest of the app already uses for prose under a
-                // heading. That keeps rows near-uniform without taking the text away.
-                ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
+                ProvideTextStyle(
+                    MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
                     title()
                 }
                 if (description != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
+                    Spacer(Modifier.height(SettingsDimensions.SegmentedRowSpacing))
+                    MarqueeText(
                         text = description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier,
                     )
                 }
                 content?.invoke()
             }
 
             if (trailingContent != null) {
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(SettingsDimensions.BadgePaddingH))
                 Box(modifier = Modifier.align(Alignment.CenterVertically)) {
                     trailingContent()
                 }
             } else if (showChevron) {
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(SettingsDimensions.RowChevronSpacing))
                 Icon(
                     painter = painterResource(R.drawable.ic_arrow_right),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                    modifier =
-                        Modifier
-                            .align(Alignment.CenterVertically)
-                            .size(18.dp),
+                    modifier = Modifier.size(SettingsDimensions.ChevronSize),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SettingsDimensions.RowChevronAlpha)
                 )
             }
         }
     }
-
-    val glass = rememberSettingsGlassEnabled()
-
-    Card(
-        shape = resolvedShape,
-        colors =
-            CardDefaults.cardColors(
-                // Transparent under glass: the tint and the hairline are drawn by the modifier
-                // below, which needs to paint them itself to get the vertical gradient on the
-                // border. Card's own container colour would sit on top of that.
-                containerColor =
-                    if (glass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = if (inGroup) 0.dp else 16.dp,
-                    vertical = if (inGroup) 0.dp else 3.dp,
-                ).then(pressScale)
-                .then(if (glass) Modifier.preferenceGlass(resolvedShape, groupPosition) else Modifier),
-    ) {
-        rowContent()
-    }
 }
-
-/**
- * True when settings rows should wear the glass treatment.
- *
- * Tied to the Liquid Glass switch in Appearance rather than a setting of its own: it is the same
- * decision, and two toggles for one look is how the glass options got scattered in the first
- * place. Below Android 12 the app's glass effects are unsupported, so the rows stay solid there.
- */
-@Composable
-private fun rememberSettingsGlassEnabled(): Boolean {
-    val (enabled) = rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
-    return enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-}
-
-/**
- * The glass surface: a translucent fill and a hairline that fades from bright at the top of the
- * row to almost nothing at the bottom, so a group of rows reads as one pane catching light down
- * its leading edge rather than four separate outlined boxes.
- *
- * The alphas vary by the row's position in its group — a first row is bright at the top and half
- * as bright where it meets the next, a middle row is even, a last row fades out — which is what
- * makes a stack of them look continuous. Same treatment as Yuma's settings, driven off the
- * position this file already tracks for the corner radii.
- */
-@Composable
-private fun Modifier.preferenceGlass(
-    shape: Shape,
-    position: PreferenceGroupPosition?,
-): Modifier {
-    val dark = !MaterialTheme.colorScheme.surface.isLight()
-    val fill =
-        if (dark) {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-        } else {
-            Color.White.copy(alpha = 0.65f)
-        }
-    val stroke = MaterialTheme.colorScheme.primary.copy(alpha = if (dark) 0.10f else 0.14f)
-    val (topAlpha, bottomAlpha) =
-        when (position) {
-            null, PreferenceGroupPosition.Single -> 0.20f to 0.04f
-            PreferenceGroupPosition.First -> 0.20f to 0.08f
-            PreferenceGroupPosition.Middle -> 0.08f to 0.08f
-            PreferenceGroupPosition.Last -> 0.08f to 0.04f
-        }
-
-    return this
-        .background(fill, shape)
-        .border(
-            width = 1.dp,
-            brush =
-                Brush.verticalGradient(
-                    0f to stroke.copy(alpha = stroke.alpha * topAlpha / 0.20f),
-                    1f to stroke.copy(alpha = stroke.alpha * bottomAlpha / 0.20f),
-                ),
-            shape = shape,
-        )
-}
-
-/** Luminance test, so the glass fill can lighten a light theme and darken a dark one. */
-private fun Color.isLight(): Boolean = luminance() > 0.5f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -484,13 +413,13 @@ fun <T> ListPreference(
     values: List<T>,
     valueText: @Composable (T) -> String,
     valueDescription: (@Composable (T) -> String)? = null,
-    isValueEnabled: (T) -> Boolean = { true },
     onValueSelected: (T) -> Unit,
     isEnabled: Boolean = true,
 ) {
     var showBottomSheet by remember {
         mutableStateOf(false)
     }
+    @Suppress("DEPRECATION")
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
 
@@ -501,7 +430,6 @@ fun <T> ListPreference(
             selectedValue = selectedValue,
             valueText = valueText,
             valueDescription = valueDescription,
-            isValueEnabled = isValueEnabled,
             sheetState = sheetState,
             onDismiss = { showBottomSheet = false },
             onValueSelected = { value ->
@@ -527,7 +455,7 @@ fun <T> ListPreference(
         },
         trailingContent = {
             Icon(
-                painter = painterResource(R.drawable.arrow_forward),
+                painter = painterResource(R.drawable.ic_arrow_right),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp),
@@ -572,7 +500,6 @@ private fun <T> PreferenceSelectionBottomSheet(
     selectedValue: T,
     valueText: @Composable (T) -> String,
     valueDescription: (@Composable (T) -> String)? = null,
-    isValueEnabled: (T) -> Boolean,
     sheetState: SheetState,
     onDismiss: () -> Unit,
     onValueSelected: (T) -> Unit,
@@ -580,58 +507,78 @@ private fun <T> PreferenceSelectionBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        dragHandle = {
-            BottomSheetDefaults.DragHandle(
-                width = 48.dp,
-                height = 5.dp,
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-            )
-        },
+        dragHandle = null,
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 26.dp)
-                    .padding(bottom = 12.dp),
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SettingsDimensions.BottomSheetHorizontalPadding)
+                .padding(bottom = SettingsDimensions.BottomSheetBottomPadding)
+                .navigationBarsPadding(),
+            shape = RoundedCornerShape(SettingsDimensions.BottomSheetCornerRadius),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(
+                width = SettingsDimensions.GlassBorderThickness,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+            ),
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
         ) {
-            ProvideTextStyle(
-                MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 18.dp, bottom = 22.dp),
-                ) {
-                    title()
-                }
-            }
-
-            LazyColumn(
+            Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 520.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                        .padding(horizontal = SettingsDimensions.BottomSheetContentPaddingH)
+                        .padding(top = SettingsDimensions.BottomSheetContentPaddingTop, bottom = SettingsDimensions.BottomSheetContentPaddingBottom),
             ) {
-                itemsIndexed(
-                    items = values,
-                    key = { index, value -> preferenceOptionKey(index, value) },
-                    contentType = { _, _ -> "preference_option" },
-                ) { _, value ->
-                    PreferenceSelectionOption(
-                        text = valueText(value),
-                        description = valueDescription?.invoke(value),
-                        selected = value == selectedValue,
-                        enabled = isValueEnabled(value),
-                        onClick = { onValueSelected(value) },
-                    )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = SettingsDimensions.BottomSheetDragHandleBottomPadding)
+                        .size(width = SettingsDimensions.BottomSheetDragHandleWidth, height = SettingsDimensions.BottomSheetDragHandleHeight)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)),
+                )
+
+                ProvideTextStyle(
+                    MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = SettingsDimensions.BottomSheetTitleBottomPadding),
+                    ) {
+                        title()
+                    }
+                }
+
+                LazyColumn(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = SettingsDimensions.BottomSheetListMaxHeight),
+                ) {
+                    itemsIndexed(
+                        items = values,
+                        key = { index, value -> preferenceOptionKey(index, value) },
+                        contentType = { _, _ -> "preference_option" },
+                    ) { index, value ->
+                        val shape = segmentedPreferenceItemShape(index, values.size)
+                        val position = yumaSegmentPosition(index, values.size)
+                        val isLast = index == values.lastIndex
+                        PreferenceSelectionOption(
+                            text = valueText(value),
+                            description = valueDescription?.invoke(value),
+                            selected = value == selectedValue,
+                            shape = shape,
+                            position = position,
+                            modifier = Modifier.padding(bottom = if (isLast) 0.dp else SettingsDimensions.SegmentedItemGap),
+                            onClick = { onValueSelected(value) },
+                        )
+                    }
                 }
             }
         }
@@ -643,64 +590,77 @@ private fun PreferenceSelectionOption(
     text: String,
     description: String? = null,
     selected: Boolean,
-    enabled: Boolean,
+    shape: Shape,
+    position: YumaSegmentPosition = YumaSegmentPosition.Single,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val containerColor =
-        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh
+    val colors = LocalYumaColors.current
     val contentColor =
-        if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
     val descriptionColor =
-        if (selected) contentColor.copy(alpha = 0.78f) else MaterialTheme.colorScheme.onSurfaceVariant
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
 
-    Row(
+    val backgroundColor =
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else colors.glassBackground
+    val borderColor =
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else colors.glassBorder
+
+    Box(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
-                .heightIn(min = if (description == null) 72.dp else 96.dp)
-                .alpha(if (enabled) 1f else 0.5f)
-                .clip(MaterialTheme.shapes.extraLarge)
-                .background(containerColor)
-                .selectable(
-                    selected = selected,
-                    enabled = enabled,
-                    onClick = onClick,
-                    role = Role.RadioButton,
-                ).padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
+                .yumaClickable(pressedScale = 0.96f, onClick = onClick)
+                .yumaGlassCard(
+                    shape = shape,
+                    backgroundColor = backgroundColor,
+                    borderColor = borderColor,
+                    strokeWidth = SettingsDimensions.GlassBorderThickness,
+                    position = position,
+                )
+                .clip(shape)
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = 14.dp,
+                ),
     ) {
-        Column(
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.weight(1f),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                color = contentColor,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (description != null) {
-                Spacer(Modifier.height(4.dp))
+            Column(
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.weight(1f),
+            ) {
                 Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = descriptionColor,
-                    maxLines = 3,
+                    text = text,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = contentColor,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (description != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = descriptionColor,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-        }
 
-        if (selected) {
-            Spacer(Modifier.width(16.dp))
-            Icon(
-                painter = painterResource(R.drawable.check),
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(28.dp),
-            )
+            if (selected) {
+                Spacer(Modifier.width(SettingsDimensions.BottomSheetOptionIconSpacing))
+                Icon(
+                    painter = painterResource(R.drawable.check),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(SettingsDimensions.BottomSheetOptionIconSize),
+                )
+            }
         }
     }
 }
@@ -710,9 +670,11 @@ private fun PreferenceValueChip(text: String) {
     Box(
         modifier =
             Modifier
-                .clip(RoundedCornerShape(50))
+                .height(38.dp)
+                .clip(RoundedCornerShape(20.dp))
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                .padding(horizontal = 16.dp, vertical = 7.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
@@ -801,7 +763,7 @@ fun EditTextPreference(
     onValueChange: (String) -> Unit,
     singleLine: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-    isInputValid: (String) -> Boolean = { it.isNotEmpty() },
+    isInputValid: (String) -> Boolean = { true },
     isEnabled: Boolean = true,
 ) {
     var showDialog by remember {
@@ -948,6 +910,7 @@ fun SliderPreference(
                     val sliderState =
                         rememberSliderState(
                             value = sliderValue,
+                            steps = 10,
                             valueRange = HISTORY_DURATION_RANGE,
                             onValueChangeFinished = {},
                         )
@@ -1124,14 +1087,7 @@ fun NumberPickerPreference(
         mutableStateOf(false)
     }
 
-    // KEY the remember on `value` (the persisted value) so that opening the
-    // dialog always starts the slider at the persisted value, and so that
-    // recompositions triggered while the dialog is open (e.g. from a parent
-    // recomposing on drag-tick) do NOT reset `sliderValue` back to the
-    // initial value of 1. This mirrors the fix already applied to
-    // `SliderPreference` (Preference.kt:771) when HistoryDuration migrated
-    // Float→Int, and was simply never applied here.
-    var sliderValue by remember(value) {
+    var sliderValue by remember {
         mutableFloatStateOf(value.toFloat())
     }
 
@@ -1148,6 +1104,7 @@ fun NumberPickerPreference(
             onDismiss = { showDialog = false },
             onConfirm = {
                 val rounded = sliderValue.roundToInt().coerceIn(minValue, maxValue)
+                sliderValue = rounded.toFloat()
                 showDialog = false
                 onValueChange.invoke(rounded)
             },
@@ -1168,22 +1125,17 @@ fun NumberPickerPreference(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Read the slider state ONCE per dialog open (keyed on
-                    // `value`), then never overwrite `pickerSliderState.value`
-                    // from `sliderValue` again on subsequent recompositions —
-                    // doing so caused the slider to snap back to 1 mid-drag
-                    // because the recomposition ran before `sliderValue` was
-                    // committed by the gesture handler.
                     val pickerSliderState =
                         rememberSliderState(
                             value = sliderValue,
-                            steps = maxValue - minValue - 1,
+                            steps = (maxValue - minValue - 1).coerceAtLeast(0),
                             valueRange = minValue.toFloat()..maxValue.toFloat(),
                             onValueChangeFinished = {},
                         )
                     pickerSliderState.onValueChange = {
                         sliderValue = it.coerceIn(minValue.toFloat(), maxValue.toFloat())
                     }
+                    pickerSliderState.value = sliderValue
 
                     Slider(
                         state = pickerSliderState,
@@ -1238,16 +1190,14 @@ fun PreferenceGroup(
         if (title != null) {
             PreferenceGroupTitle(
                 title = title,
-                modifier = Modifier.padding(horizontal = PreferenceGroupHorizontalPadding),
             )
         }
 
         Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = PreferenceGroupHorizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PreferenceGroupHorizontalPadding),
+            verticalArrangement = Arrangement.spacedBy(SettingsDimensions.SegmentedItemGap)
         ) {
             scope.items.forEachIndexed { index, itemContent ->
                 val position =
@@ -1260,6 +1210,7 @@ fun PreferenceGroup(
                 CompositionLocalProvider(
                     LocalPreferenceInGroup provides true,
                     LocalPreferenceGroupPosition provides position,
+                    LocalPreferenceItemIndex provides index,
                 ) {
                     itemContent()
                 }
@@ -1330,9 +1281,9 @@ fun LazyListScope.preferenceGroup(
 @Composable
 fun PreferenceGroupDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(
-        modifier = modifier.padding(start = 60.dp),
-        thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+        modifier = modifier.padding(start = SettingsDimensions.DividerStartIndent),
+        thickness = SettingsDimensions.DividerThickness,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = SettingsDimensions.DividerAlpha),
     )
 }
 
@@ -1341,11 +1292,12 @@ fun PreferenceGroupTitle(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    Text(
+    MarqueeText(
         text = title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary),
+        modifier = modifier.padding(
+            horizontal = SettingsDimensions.SectionHeaderHorizontalPadding,
+            vertical = SettingsDimensions.SectionHeaderBottomPadding,
+        ),
     )
 }

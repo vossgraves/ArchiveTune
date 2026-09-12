@@ -129,4 +129,14 @@ object CrossfadePolicy {
             !snapshot.hasError &&
             !snapshot.isIdle &&
             !snapshot.isEnded
+
+    fun shouldResumeAfterEnded(
+        playbackRequested: Boolean,
+        hasNextItem: Boolean,
+        repeatOne: Boolean,
+        suppressAutoPlayback: Boolean,
+    ): Boolean =
+        playbackRequested &&
+            !suppressAutoPlayback &&
+            (hasNextItem || repeatOne)
 }
