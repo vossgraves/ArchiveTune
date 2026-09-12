@@ -5,7 +5,7 @@
 - Active branch: `hoplite/kalchedon-2e14097c-yuma-settings-ui`
 - Target: `canary`
 - Pull request: [#163](https://github.com/vossgraves/ArchiveTune/pull/163)
-- Latest published head before this handoff extension: `4f9773031a667394e04f2ef75e8c335913318286`
+- Latest published head: `1beb8197c07c1d7d483b459f09061f9f1f910a2b`
 - Canary release assembly fix: PR #162, merged.
 
 PR #163 contains the Yuma-style settings visual system while retaining ArchiveTune routes, search anchors, provider pages, and fork-specific settings. The branch now also contains explicit recovery when a crossfade reaches `STATE_ENDED` without completing its handoff, plus an opt-in Spotify recently-played history setting.
