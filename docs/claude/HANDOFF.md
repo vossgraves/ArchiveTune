@@ -1,30 +1,47 @@
 # ArchiveTune handoff
 
-## Current delivery
+## Where things are
 
-- Active branch: `hoplite/kalchedon-2e14097c-yuma-settings-ui`
-- Target: `canary`
-- Pull request: [#163](https://github.com/vossgraves/ArchiveTune/pull/163)
-- Latest published head: `1beb8197c07c1d7d483b459f09061f9f1f910a2b`
-- Canary release assembly fix: PR #162, merged.
+`canary` is the integration branch (PRs #162, #163, #164 are merged into it). It has
+not been merged into `dev` — the device QA in [RELEASES.md](RELEASES.md) is still
+outstanding, and that is the only thing gating the merge.
 
-PR #163 contains the Yuma-style settings visual system while retaining ArchiveTune routes, search anchors, provider pages, and fork-specific settings. The branch now also contains explicit recovery when a crossfade reaches `STATE_ENDED` without completing its handoff, plus an opt-in Spotify recently-played history setting.
+Shipped on `canary` and not yet device-tested:
 
-## Verification state
+- Yuma glass visual system on the shared settings row, so all 31 settings screens
+  restyle at once. ArchiveTune routes, search anchors and provider pages are intact.
+- Crossfade recovery when the outgoing player hits `STATE_ENDED` mid-fade
+  (`CrossfadePolicy.shouldResumeAfterEnded`, unit tested). This is the fix for the
+  reported "second song stops" bug and is the single highest-value thing to verify.
+- Shorter buffers on low-RAM devices and in battery saver
+  (`MusicService.useConservativePlaybackProfile`). Sampled once per player build.
+- Remote stats: Stats screen can read YouTube and Spotify history, not just local.
+- AI plumbing: one `Preferences.toAiServiceConfig()` instead of five copies, DeepL and
+  Mistral wired into translate/romanize, OpenRouter base-URL normalisation, and the
+  Gemini key moved out of the query string into the `x-goog-api-key` header.
+- Opt-in read-only Spotify Recently Played in History.
 
-- `git diff --check`: required before publication.
-- Focused crossfade tests cover gain, readiness, advancement, promotion, and ended-transition recovery.
-- The supplied playback log showed Tidal without a configured instance and Apple Music without a usable Widevine key before YouTube recovered the track. It did not prove a SpatialFlow crossfade fault.
-- Canary CI is required for compiler and release verification. Physical-device QA remains outstanding.
+## Known gaps on canary
+
+- `StatsScreen.kt` has hardcoded English UI strings ("Top tracks", "Listening by hour",
+  "Unknown artist", the source and range labels). They need extracting to
+  `archivetune_strings.xml` before this reaches a release channel.
+- `AppleMusicLoginScreen` no longer detects a completed sign-in — the cookie probe and
+  `setAcceptThirdPartyCookies` were removed. The user must back out of the WebView
+  manually. Decide whether to restore the probe or keep the manual flow.
+- `QobuzLoginScreen.saveToken` drops invalid credentials with no toast, so a failed
+  login looks like nothing happened.
 
 ## Research conclusions
 
-SpatialFlow uses a second Media3 player, 50–60 second buffering, a 250 ms progress loop, and simpler linear crossfade handoff. ArchiveTune already has stronger readiness, generation, cache, codec, audio-route, and promotion safeguards. Do not wholesale copy SpatialFlow; measure CPU, network, codec, cache, and thermal behavior first.
+SpatialFlow uses a second Media3 player, 50–60s buffering, a 250ms progress loop and a
+simpler linear crossfade handoff. ArchiveTune already has stronger readiness, generation,
+cache, codec, audio-route and promotion safeguards — do not copy it wholesale; measure first.
 
-The upstream `4nx3b/ArchiveTune` `dev` snapshot used for comparison was `0a6062248253df7802c1575e55a8b2005c6243c5`. Its crossfade pause fix is already represented in this fork. Focused upstream candidates include the baseline profile and further preload/lifecycle fixes; wholesale synchronization is prohibited by the fork invariants.
+The `4nx3b/ArchiveTune` `dev` snapshot compared against was `0a6062248`. Its crossfade
+pause fix is already represented here. The baseline profile and further preload/lifecycle
+fixes are worth porting individually; wholesale sync is prohibited by the fork invariants.
 
-SpotifySync drives an invisible Spotify WebView and low-volume playback to mirror current media into Spotify. That is not a passive history API and would add battery, privacy, and account risk. Stash uses broader account/library synchronization. ArchiveTune’s new option is read-only Spotify Recently Played visibility in History and does not start background playback.
-
-## Next action
-
-Run focused tests and inspect Canary CI. Then perform device QA with crossfade on and off, source fallback enabled, Spotify history enabled, and low-end/battery-saver conditions before merging to `dev`.
+SpotifySync drives an invisible Spotify WebView at low volume to mirror playback into
+Spotify. That is not a passive history API and carries battery, privacy and account risk.
+The shipped option is read-only Recently Played visibility and starts no playback.

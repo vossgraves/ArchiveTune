@@ -1,40 +1,61 @@
-# ArchiveTune development guide
+# CLAUDE.md
 
-ArchiveTune is a forked Kotlin/Compose Android player. Read [AGENTS.md](AGENTS.md) before changing code; its fork invariants are authoritative.
+ArchiveTune — a Kotlin/Compose Android music player. Multi-source: Tidal, Deezer,
+Qobuz and Telegram serve audio, Spotify serves catalog metadata only, YouTube is
+the final fallback.
 
-## Build and test
+**Read [AGENTS.md](AGENTS.md) first.** It carries the fork invariants — protected
+files, the removed phone-home surface, signing rules, submodule handling. Nothing
+here overrides it.
 
-The project uses JDK 21, Android compileSdk 37, and Gradle 9.6.1.
+## Build
 
-```bash
-./gradlew assembleGmsMobileUniversalDebug
-./gradlew :app:testGmsMobileUniversalDebugUnitTest
+JDK 21, compileSdk 37, Gradle wrapper 9.6.1. Flavors: `gms|foss` × `mobile|tv` ×
+`universal|arm64|…`.
+
+```
+./gradlew assembleGmsMobileUniversalDebug          # compile check
+./gradlew :app:testGmsMobileUniversalDebugUnitTest # fork contract tests
 ```
 
-The Canary integration target is `canary`. Device QA must finish before changes are merged into `dev`. CI is the authoritative build path when a local Gradle daemon cannot complete.
+CI builds `gms-mobile-arm64` and `gms-tv-universal` on every push to `main`/`dev`;
+that is the only compile signal if you cannot build locally. There is no `foss`+`tv`
+variant, deliberately — the fork ships GMS-only.
 
-## Architecture rules
+## Branches
 
-- Tidal, Deezer, Qobuz, Telegram, and YouTube remain audio providers. Spotify is catalog, library, search, playlist, and history metadata; it is not an `AudioSourceType`.
-- Playback resolution goes through `resolveMultiSourceDataSpec` and `MusicService` scheme routing. Do not bypass the multi-source chain.
-- Native YouTube stream resolution remains in the fork. Do not restore Chaquopy, yt-dlp, upstream signing fallbacks, koiverse endpoints, or removed keystore files.
-- Submodules must be committed and pushed before their gitlinks are updated.
-- New Kotlin files keep the GPL header. Comments should explain non-obvious decisions only; do not add narration or stale TODOs.
+`canary` is the integration branch and builds the C-tagged Canary channel. It merges
+into `dev` only after the device QA in [docs/claude/RELEASES.md](docs/claude/RELEASES.md);
+`dev` builds the N-tagged Nightly channel, and `main` is stable.
 
-## Durable handoff
+## Subsystems
 
-The maintained task state is in [docs/claude/](docs/claude/):
+| Doc | What it covers |
+|---|---|
+| [docs/extraction.md](docs/extraction.md) | YouTube stream resolution: client order, PO tokens, backoff, yt-dlp fallback |
+| [docs/lyrics.md](docs/lyrics.md) | The three renderers, the word sweep, which surface uses which |
+| [docs/sponsorblock.md](docs/sponsorblock.md) | Segment lookup and skipping |
+| [docs/tv.md](docs/tv.md) | Android TV / Fire TV: detection, focus, what is known to be missing |
+| [docs/spotify-native-playback.md](docs/spotify-native-playback.md) | Playing Spotify tracks with no YouTube release: shipped ISRC resolution, and the unshipped native-id design |
+| [docs/REMOVED_RUKAMORI_COMPONENTS.md](docs/REMOVED_RUKAMORI_COMPONENTS.md) | What the 2026-08 cleanup deleted, and why not to restore it |
 
-- [HANDOFF.md](docs/claude/HANDOFF.md) — current branch, PR, verification, and device-QA state.
-- [ARCHITECTURE.md](docs/claude/ARCHITECTURE.md) — protected playback, source, and lifecycle boundaries.
-- [SETTINGS.md](docs/claude/SETTINGS.md) — settings routes, search anchors, and Apple Music surface status.
-- [RELEASES.md](docs/claude/RELEASES.md) — Canary/Nightly build and installation procedure.
-- [BACKLOG.md](docs/claude/BACKLOG.md) — prioritized follow-up work and known gaps.
+## Task state
 
-Existing subsystem references remain useful: [docs/extraction.md](docs/extraction.md), [docs/lyrics.md](docs/lyrics.md), [docs/sponsorblock.md](docs/sponsorblock.md), [docs/tv.md](docs/tv.md), and [docs/spotify-native-playback.md](docs/spotify-native-playback.md).
+[docs/claude/](docs/claude/) carries what survives between sessions:
+[HANDOFF.md](docs/claude/HANDOFF.md) (what is in flight),
+[ARCHITECTURE.md](docs/claude/ARCHITECTURE.md) (playback and source boundaries),
+[SETTINGS.md](docs/claude/SETTINGS.md) (routes, search anchors, Apple Music status),
+[RELEASES.md](docs/claude/RELEASES.md) (release + device QA),
+[BACKLOG.md](docs/claude/BACKLOG.md).
 
-## Review discipline
+## House rules
 
-Keep changes reviewable and preserve tests under `app/src/test` and `lastfm/src/test`; they protect fork contracts. Review `git diff --check`, run the focused unit tests, inspect the affected routes in a managed Preview where applicable, and use Canary CI plus a physical-device pass for playback, thermal, and release validation.
-
-Do not merge into `dev` before the device-QA checklist in [docs/claude/RELEASES.md](docs/claude/RELEASES.md) is complete.
+- Comments explain *why*, not *what*. Most code needs none.
+- Player styles are self-contained (`bitchord/`, `simpmusic/`, `tiktok/`). The one
+  exception is the swept lyric renderer — see [docs/lyrics.md](docs/lyrics.md).
+- New `.kt` files keep the GPL header banner. Never rewrite an existing file's
+  copyright banner to credit a different project. No formatter task; match the file
+  around you.
+- User-facing strings go in `strings.xml`/`archivetune_strings.xml`, never inline.
+- Never restore anything in `docs/REMOVED_RUKAMORI_COMPONENTS.md` without reading
+  why it went.

@@ -7835,7 +7835,6 @@ class MusicService :
                 )
             ) {
                 player.seekToNextMediaItem()
-                player.playWhenReady = true
                 player.play()
             }
             if (playbackState == Player.STATE_ENDED &&
@@ -11306,40 +11305,40 @@ class MusicService :
         }
     }
 
-    private fun createPrimaryLoadControl(): DefaultLoadControl =
-        DefaultLoadControl
+    private fun createPrimaryLoadControl(): DefaultLoadControl {
+        val lean = useConservativePlaybackProfile()
+        return DefaultLoadControl
             .Builder()
             .setBufferDurationsMs(
-                if (useConservativePlaybackProfile()) CONSERVATIVE_MIN_BUFFER_MS else PRIMARY_MIN_BUFFER_MS,
-                if (useConservativePlaybackProfile()) CONSERVATIVE_MAX_BUFFER_MS else PRIMARY_MAX_BUFFER_MS,
-                if (useConservativePlaybackProfile()) CONSERVATIVE_BUFFER_FOR_PLAYBACK_MS else PRIMARY_BUFFER_FOR_PLAYBACK_MS,
-                if (useConservativePlaybackProfile()) {
-                    CONSERVATIVE_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
-                } else {
-                    PRIMARY_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
-                },
+                if (lean) CONSERVATIVE_MIN_BUFFER_MS else PRIMARY_MIN_BUFFER_MS,
+                if (lean) CONSERVATIVE_MAX_BUFFER_MS else PRIMARY_MAX_BUFFER_MS,
+                if (lean) CONSERVATIVE_BUFFER_FOR_PLAYBACK_MS else PRIMARY_BUFFER_FOR_PLAYBACK_MS,
+                if (lean) CONSERVATIVE_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS else PRIMARY_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
             ).setPrioritizeTimeOverSizeThresholds(true)
             .build()
+    }
 
-    private fun createCrossfadeLoadControl(): DefaultLoadControl =
-        DefaultLoadControl
+    private fun createCrossfadeLoadControl(): DefaultLoadControl {
+        val lean = useConservativePlaybackProfile()
+        val bufferBeforeStart =
+            if (lean) CONSERVATIVE_CROSSFADE_BUFFER_BEFORE_START_MS else CROSSFADE_MIN_BUFFER_BEFORE_START_MS.toInt()
+        return DefaultLoadControl
             .Builder()
             .setBufferDurationsMs(
-                if (useConservativePlaybackProfile()) CONSERVATIVE_CROSSFADE_MIN_BUFFER_MS else CROSSFADE_MIN_BUFFER_MS,
-                if (useConservativePlaybackProfile()) CONSERVATIVE_CROSSFADE_MAX_BUFFER_MS else CROSSFADE_MAX_BUFFER_MS,
-                if (useConservativePlaybackProfile()) {
-                    CONSERVATIVE_CROSSFADE_BUFFER_BEFORE_START_MS
-                } else {
-                    CROSSFADE_MIN_BUFFER_BEFORE_START_MS.toInt()
-                },
-                if (useConservativePlaybackProfile()) {
-                    CONSERVATIVE_CROSSFADE_BUFFER_BEFORE_START_MS
-                } else {
-                    CROSSFADE_MIN_BUFFER_BEFORE_START_MS.toInt()
-                },
+                if (lean) CONSERVATIVE_CROSSFADE_MIN_BUFFER_MS else CROSSFADE_MIN_BUFFER_MS,
+                if (lean) CONSERVATIVE_CROSSFADE_MAX_BUFFER_MS else CROSSFADE_MAX_BUFFER_MS,
+                bufferBeforeStart,
+                bufferBeforeStart,
             ).setPrioritizeTimeOverSizeThresholds(true)
             .build()
+    }
 
+    /**
+     * Low-RAM devices and battery saver get shorter buffers: the default 60s ceiling is a lot of
+     * heap to hold on a 1GB device, and a saver-mode radio wakes less often than the prefetch
+     * assumes. Sampled once per player build, so toggling saver mid-track takes effect on the next
+     * player.
+     */
     private fun useConservativePlaybackProfile(): Boolean {
         val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager

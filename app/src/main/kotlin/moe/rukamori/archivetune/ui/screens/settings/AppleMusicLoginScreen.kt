@@ -20,9 +20,9 @@ const val APPLE_MUSIC_LOGIN_ROUTE = "settings/applemusic/login"
 private const val LOGIN_URL = "https://music.apple.com/login"
 
 /**
- * Browser sign-in for Apple Music. The web session cookie proves the account is
- * live; the Music User Token itself is pasted on the Apple Music settings page
- * because MusicKit JS keeps it out of the cookie jar. See [AppleMusicSettings].
+ * Browser sign-in for Apple Music. Sign-in completion is not detected here — MusicKit JS keeps the
+ * Music User Token out of the cookie jar, so the token is pasted on the Apple Music settings page
+ * and the user backs out of this screen manually. See [AppleMusicSettings].
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
