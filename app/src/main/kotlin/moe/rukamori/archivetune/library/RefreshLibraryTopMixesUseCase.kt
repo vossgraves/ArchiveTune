@@ -17,15 +17,10 @@ import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.ai.AiRateLimiter
 import moe.rukamori.archivetune.ai.AiServiceConfig
 import moe.rukamori.archivetune.ai.AiTextService
-import moe.rukamori.archivetune.constants.AiApiKeyKey
+import moe.rukamori.archivetune.ai.toAiServiceConfig
 import moe.rukamori.archivetune.constants.AiMixLastGeneratedAtKey
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
-import moe.rukamori.archivetune.constants.AiCustomEndpointKey
-import moe.rukamori.archivetune.constants.AiCustomModelKey
-import moe.rukamori.archivetune.constants.AiProvider
-import moe.rukamori.archivetune.constants.AiProviderKey
-import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.innertube.YouTube
@@ -93,18 +88,7 @@ class RefreshLibraryTopMixesUseCase
 
         private suspend fun readAiConfig(): AiServiceConfig {
             val prefs = context.dataStore.data.first()
-            val provider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
-            return AiServiceConfig(
-                provider = provider,
-                apiKey = prefs[AiApiKeyKey].orEmpty(),
-                customEndpoint = prefs[AiCustomEndpointKey].orEmpty(),
-                model =
-                    if (provider == AiProvider.CUSTOM) {
-                        prefs[AiCustomModelKey].orEmpty()
-                    } else {
-                        prefs[AiSelectedModelKey].orEmpty()
-                    },
-            )
+            return prefs.toAiServiceConfig()
         }
 
         private suspend fun isAiValidationFailed(): Boolean =

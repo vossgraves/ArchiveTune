@@ -549,6 +549,7 @@ fun BitChordPlayerContent(
             mediaMetadata = mediaMetadata,
             lyrics = text,
             targetLanguage = translatorTargetLang,
+            automatic = true,
         )
     }
 

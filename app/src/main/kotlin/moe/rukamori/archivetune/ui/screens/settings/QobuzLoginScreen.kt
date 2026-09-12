@@ -34,6 +34,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
@@ -110,6 +111,7 @@ fun QobuzLoginScreen(navController: NavController) {
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
     fun saveToken(token: String, appId: String, appSecret: String) {
+        if (token.length <= 20 || appId.length <= 3 || !appSecret.matches(Regex("[a-f0-9]{32}"))) return
         scope.launch {
             context.dataStore.edit { prefs ->
                 val existing = QobuzToken.listFromJson(prefs[QobuzTokensKey])
@@ -117,6 +119,7 @@ fun QobuzLoginScreen(navController: NavController) {
                     (existing.filterNot { it.token == token }) +
                         QobuzToken(token = token, appId = appId, appSecret = appSecret, label = "Web login")
                 prefs[QobuzTokensKey] = QobuzToken.listToJson(merged)
+                prefs[QobuzEnabledKey] = true
             }
             toast(context.getString(R.string.qobuz_login_success))
             navController.navigateUp()
@@ -139,6 +142,7 @@ fun QobuzLoginScreen(navController: NavController) {
 
     // When the bundle secret arrives, save immediately if we already have credentials.
     fun onSecretReceived(secret: String) {
+        if (!secret.matches(Regex("[a-f0-9]{32}"))) return
         scrapedSecret = secret
         val (token, appId) = captured ?: return
         // Secret arrived after credentials — save now, no dialog needed.
@@ -153,7 +157,7 @@ fun QobuzLoginScreen(navController: NavController) {
                 icon = { Icon(painterResource(R.drawable.token), null) },
                 title = { Text(stringResource(R.string.qobuz_app_secret_title)) },
                 placeholder = { Text(stringResource(R.string.qobuz_app_secret_hint)) },
-                isInputValid = { it.trim().length >= 16 },
+                isInputValid = { it.trim().matches(Regex("[a-f0-9]{32}")) },
                 onDone = { secret -> saveToken(token, appId, secret.trim()) },
                 onDismiss = {
                     showSecretDialog = false

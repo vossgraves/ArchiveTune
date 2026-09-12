@@ -28,15 +28,10 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ai.AiModelOption
 import moe.rukamori.archivetune.ai.AiServiceConfig
 import moe.rukamori.archivetune.ai.AiTextService
-import moe.rukamori.archivetune.constants.AiApiKeyKey
+import moe.rukamori.archivetune.ai.toAiServiceConfig
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
-import moe.rukamori.archivetune.constants.AiCustomEndpointKey
-import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
-import moe.rukamori.archivetune.constants.AiProviderKey
-import moe.rukamori.archivetune.constants.AiSelectedModelKey
-import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.utils.dataStore
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -99,12 +94,16 @@ class AiIntegrationSettingsViewModel
                     _availableModels.value = emptyList()
                     try {
                         val config =
-                            AiServiceConfig(
-                                provider = provider,
-                                apiKey = apiKey,
-                                customEndpoint = customEndpoint,
-                                model = "",
-                            )
+                            if (provider == AiProvider.OPENROUTER) {
+                                context.dataStore.data.first().toAiServiceConfig().copy(model = "")
+                            } else {
+                                AiServiceConfig(
+                                    provider = provider,
+                                    apiKey = apiKey,
+                                    customEndpoint = customEndpoint,
+                                    model = "",
+                                )
+                            }
                         val models = AiTextService.fetchModels(config)
                         if (requestId == fetchModelsRequestId.get()) {
                             _availableModels.value = models
@@ -158,19 +157,7 @@ class AiIntegrationSettingsViewModel
 
         private suspend fun readConfig(): AiServiceConfig {
             val prefs = context.dataStore.data.first()
-            val provider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
-            val model =
-                if (provider == AiProvider.CUSTOM) {
-                    prefs[AiCustomModelKey].orEmpty()
-                } else {
-                    prefs[AiSelectedModelKey].orEmpty()
-                }
-            return AiServiceConfig(
-                provider = provider,
-                apiKey = prefs[AiApiKeyKey].orEmpty(),
-                customEndpoint = prefs[AiCustomEndpointKey].orEmpty(),
-                model = model,
-            )
+            return prefs.toAiServiceConfig()
         }
 
         private fun Throwable.shortMessage(fallback: String): String {

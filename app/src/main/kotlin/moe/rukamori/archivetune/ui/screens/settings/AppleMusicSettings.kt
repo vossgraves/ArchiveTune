@@ -102,7 +102,7 @@ fun AppleMusicSettings(navController: NavController) {
 
     val (mediaToken, onMediaTokenChange) = rememberPreference(AppleMusicMediaUserTokenKey, "")
     val (devToken, onDevTokenChange) = rememberPreference(AppleMusicDevTokenKey, "")
-    val signedIn = mediaToken.isNotBlank()
+    val signedIn = mediaToken.isNotBlank() && devToken.isNotBlank()
 
     var showTokenSheet by rememberSaveable { mutableStateOf(false) }
 

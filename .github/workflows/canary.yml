@@ -1,8 +1,8 @@
 name: Canary build
 
-# Produces canary/dev builds for the in-app updater's CANARY channel.
-# Runs on every push to the 'dev' branch (and on demand). The updater looks for GitHub
-# releases whose tag starts with "N" followed by date digits (newest wins) and whose assets
+# Produces Canary builds for the in-app updater's CANARY channel.
+# Runs on every push to the 'canary' branch (and on demand). The updater looks for GitHub
+# releases whose tag starts with "C" followed by date digits (newest wins) and whose assets
 # are named app-<dist>-<device>-<abi>-canary.apk.
 on:
   push:
@@ -22,9 +22,9 @@ concurrency:
   # unshipped. Queueing instead means the build already running finishes and its APK exists.
   #
   # Deliberately NOT per-commit (group: ...-${{ github.sha }}), which would let every commit build
-  # in parallel: the release tag is N<yyyyMMddHHmm>, minute-granular, so two builds finishing in the
+  # in parallel: the release tag is C<yyyyMMddHHmm>, minute-granular, so two builds finishing in the
   # same minute would collide on `gh release create`. Widening the tag is not an escape — the
-  # in-app updater matches it with Regex("""N\d{8}(?:\d{4})?""") and .matches(), a whole-string
+  # in-app updater matches it with Regex("""C\d{8}(?:\d{4})?""") and .matches(), a whole-string
   # match, so a SHA suffix or a seconds field would make every canary release invisible to already
   # installed apps. Serialised runs start >=1 build apart, so the timestamp cannot repeat.
   #
@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Timestamped tag: N<yyyyMMddHHmm>. The updater sorts canary releases by the numeric
+          # Timestamped tag: C<yyyyMMddHHmm>. The updater sorts canary releases by the numeric
           # digits after the leading "N", so a lexical/numeric timestamp gives correct ordering.
           TS="$(date -u +'%Y%m%d%H%M')"
           CANARY_TAG="C${TS}"
@@ -81,7 +81,7 @@ jobs:
             exit 0
           fi
 
-          # Find the most recent existing nightly release (tag starting with N + digits).
+          # Find the most recent existing Canary release (tag starting with C + digits).
           LAST_CANARY_SHA=""
           LAST_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
             --jq '[.[] | select(.tagName | test("^C[0-9]+"))] | sort_by(.createdAt) | last | .tagName' 2>/dev/null || true)"
@@ -90,7 +90,7 @@ jobs:
           fi
 
           if [ -z "${LAST_CANARY_SHA:-}" ]; then
-            echo "No previous nightly found; building."
+            echo "No previous Canary release found; building."
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -98,12 +98,12 @@ jobs:
           # Resolve the target ref to a commit and compare with HEAD.
           if git cat-file -e "${LAST_CANARY_SHA}^{commit}" 2>/dev/null; then
             if [ "$(git rev-parse HEAD)" = "$(git rev-parse "${LAST_CANARY_SHA}^{commit}")" ]; then
-              echo "No new commits since last nightly ($LAST_TAG); skipping."
+              echo "No new commits since last Canary release ($LAST_TAG); skipping."
               echo "should_build=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
-          echo "New commits since last nightly ($LAST_TAG); building."
+          echo "New commits since last Canary release ($LAST_TAG); building."
           echo "should_build=true" >> "$GITHUB_OUTPUT"
 
   build:
@@ -194,7 +194,7 @@ jobs:
           echo "device_cap=$DEVICE_CAP" >> "$GITHUB_OUTPUT"
           echo "abi_cap=$ABI_CAP" >> "$GITHUB_OUTPUT"
           echo "gradle_task=assemble${DISTRIBUTION_CAP}${DEVICE_CAP}${ABI_CAP}Release" >> "$GITHUB_OUTPUT"
-          # Nightly asset name expected by the updater's canary channel.
+          # Canary asset name expected by the updater's Canary channel.
           echo "artifact_name=app-${DISTRIBUTION}-${DEVICE}-${ABI}-canary" >> "$GITHUB_OUTPUT"
           echo "apk_name=app-${DISTRIBUTION}-${DEVICE}-${ABI}-canary.apk" >> "$GITHUB_OUTPUT"
 
@@ -287,7 +287,7 @@ jobs:
           missing=0
           for var in KEYSTORE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD; do
             if [ -z "${!var:-}" ]; then
-              echo "::error::Missing required secret $var for nightly signing. Configure KEYSTORE, KEY_ALIAS, KEYSTORE_PASSWORD, and KEY_PASSWORD as GitHub Actions secrets. The committed debug keystore fallback was removed."
+              echo "::error::Missing required secret $var for Canary signing. Configure KEYSTORE, KEY_ALIAS, KEYSTORE_PASSWORD, and KEY_PASSWORD as GitHub Actions secrets. The committed debug keystore fallback was removed."
               missing=1
             fi
           done
@@ -347,7 +347,7 @@ jobs:
         with:
           path: downloaded_artifacts/
 
-      - name: Build changelog since last nightly
+      - name: Build changelog since last Canary release
         id: changelog
         shell: bash
         env:
@@ -360,7 +360,7 @@ jobs:
           {
             echo "# Canary build"
             echo ""
-            echo "Automated canary build from the dev branch. Not intended for production use."
+            echo "Automated Canary build from the canary branch. Not intended for production use."
             echo ""
             # Machine-readable monotonic build number read by the in-app updater to compare canary
             # builds (the display versionName is fixed, so the updater compares this instead).
@@ -368,18 +368,18 @@ jobs:
             echo ""
             echo "## Pull requests"
           } > canary_notes.md
-          # List merged PRs into the dev branch since the last nightly tag (or the
+          # List merged PRs into the canary branch since the last Canary tag (or the
           # last 30 PRs if there's no prior tag). PR titles give users a
           # human-readable summary of what changed, complementing the raw commit
           # log below.
           if [ -n "${LAST_TAG:-}" ] && [ "$LAST_TAG" != "null" ] && git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
             MERGE_BASE="$(git merge-base "$LAST_TAG" HEAD)"
-            gh pr list --repo "$GITHUB_REPOSITORY" --base dev --state merged \
+            gh pr list --repo "$GITHUB_REPOSITORY" --base canary --state merged \
               --search "merged:>=${MERGE_BASE}" \
               --json title,number,author \
               --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> canary_notes.md || true
           else
-            gh pr list --repo "$GITHUB_REPOSITORY" --base dev --state merged --limit 30 \
+            gh pr list --repo "$GITHUB_REPOSITORY" --base canary --state merged --limit 30 \
               --json title,number,author \
               --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> canary_notes.md || true
           fi
