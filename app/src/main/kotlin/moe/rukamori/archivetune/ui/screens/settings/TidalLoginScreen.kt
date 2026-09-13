@@ -219,6 +219,9 @@ fun TidalLoginScreen(navController: NavController) {
                                 if (token != null) {
                                     finishLogin(token, TidalAccountManager.FLOW_WEBCAPTURE)
                                 } else {
+                                    // The player sends a Bearer before anyone signs in, so this is
+                                    // the ordinary case on first load rather than an error worth a
+                                    // toast; reopen the gate and wait for the signed-in one.
                                     handled.set(false)
                                 }
                             }

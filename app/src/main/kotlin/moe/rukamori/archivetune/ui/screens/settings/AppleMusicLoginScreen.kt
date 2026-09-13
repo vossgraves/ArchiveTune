@@ -63,7 +63,11 @@ javascript:(function () {
   }
   var timer = setInterval(function () {
     tries++;
-    if (tries > 240) { clearInterval(timer); return; }
+    if (tries > 240) {
+      clearInterval(timer);
+      try { AppleAuth.onGaveUp(); } catch (e) {}
+      return;
+    }
     var dev = null, usr = null;
     try {
       var mk = window.MusicKit && window.MusicKit.getInstance && window.MusicKit.getInstance();
@@ -133,6 +137,18 @@ fun AppleMusicLoginScreen(navController: NavController) {
                                     .makeText(context, R.string.applemusic_login_success, Toast.LENGTH_SHORT)
                                     .show()
                                 navController.navigateUp()
+                            }
+                        }
+
+                        @JavascriptInterface
+                        fun onGaveUp() {
+                            // The poll has no event to hook, so a page that never signs in simply
+                            // stops. Say so, or the screen looks like it is still working.
+                            if (handled.get()) return
+                            scope.launch {
+                                Toast
+                                    .makeText(context, R.string.applemusic_login_timeout, Toast.LENGTH_LONG)
+                                    .show()
                             }
                         }
                     },

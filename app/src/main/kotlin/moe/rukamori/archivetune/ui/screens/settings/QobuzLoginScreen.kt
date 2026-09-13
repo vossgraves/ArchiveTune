@@ -4,16 +4,12 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * WebView-based Qobuz sign-in. Mirrors the Tidal login: after the user signs in on
- * play.qobuz.com, a JS hook captures the X-User-Auth-Token, X-App-Id, and scrapes the
- * app_secret (32-char hex) from the loaded bundle scripts. When all three are found the
- * session is saved automatically with no manual input. If the secret cannot be scraped
- * a fallback dialog lets the user paste it manually.
+ * WebView-based Qobuz sign-in. See docs/qobuz-login.md for why the app_secret has to be found by
+ * trial rather than by matching.
  */
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.annotation.SuppressLint
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -32,11 +28,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzBundleSecrets
 import moe.rukamori.archivetune.qobuz.QobuzToken
+import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.utils.dataStore
@@ -47,10 +48,16 @@ const val QOBUZ_LOGIN_ROUTE = "settings/qobuz/login"
 
 private const val QOBUZ_WEB_PLAYER_URL = "https://play.qobuz.com/login"
 
-// Hooks fetch()/XHR to capture the auth token + app_id headers, then scrapes loaded bundle
-// scripts for the 32-char hex app_secret. Calls onCredentials(token, appId) as soon as the
-// headers are seen, and onSecret(secret) once a valid candidate is found in a bundle script.
-// Both run once per page load (guarded by __atQobuzHook).
+private val AppSecret = Regex("^[a-f0-9]{32}$")
+
+/**
+ * Hooks fetch()/XHR to capture the `X-User-Auth-Token` and `X-App-Id` headers the web player sends,
+ * then re-fetches the bundle scripts to collect app_secret candidates.
+ *
+ * It reports every candidate rather than picking one, because the bundle is full of 32-character hex
+ * strings that look exactly like the secret. `keyed:` marks one found next to the app id, which is
+ * worth trying first; `legacy:` carries an older bundle's split secret for the app to reassemble.
+ */
 private val QOBUZ_HOOK_JS =
     """
     javascript:(function(){
@@ -64,31 +71,24 @@ private val QOBUZ_HOOK_JS =
       }catch(e){}}
       try{var of=window.fetch;if(of){window.fetch=function(){try{var a=arguments[1];if(a&&a.headers){scanHeaders(a.headers);}}catch(e){}return of.apply(this,arguments);};}}catch(e){}
       try{var os=XMLHttpRequest.prototype.setRequestHeader;XMLHttpRequest.prototype.setRequestHeader=function(k,v){try{var kk=String(k).toLowerCase();if(kk==='x-user-auth-token'&&v&&v.length>20){tok=v;}if(kk==='x-app-id'&&v){app=v;}pushCreds();}catch(e){}return os.apply(this,arguments);};}catch(e){}
-      // Scrape the app_secret from bundle scripts: it is a 32-char lowercase hex string that
-      // appears as a standalone value (surrounded by quotes or punctuation) in the JS bundle.
+      function collect(js){
+        var out=[],seen={};
+        var keyed=/app_?[sS]ecret"?\s*[:=]\s*"([a-f0-9]{32})"/g,m;
+        while((m=keyed.exec(js))!==null){if(!seen[m[1]]){seen[m[1]]=1;out.push('keyed:'+m[1]);}}
+        var legacy=/[a-z]\.initialSeed\("([\w=]+)",\s*window\.utimezone\.[a-z]+\)/g;
+        var frag=/name:"[^"]*\/[A-Za-z_]+",info:"([\w=]+)",extras:"([\w=]+)"/g;
+        var seeds=[],frags=[];
+        while((m=legacy.exec(js))!==null){seeds.push(m[1]);}
+        while((m=frag.exec(js))!==null){frags.push([m[1],m[2]]);}
+        for(var i=0;i<seeds.length;i++){for(var j=0;j<frags.length;j++){out.push('legacy:'+seeds[i]+':'+frags[j][0]+':'+frags[j][1]);}}
+        var bare=/[^a-fA-F0-9]([a-f0-9]{32})[^a-fA-F0-9]/g;
+        while((m=bare.exec(js))!==null){if(!seen[m[1]]){seen[m[1]]=1;out.push('hex:'+m[1]);}}
+        if(out.length){try{QobuzAuth.onSecretCandidates(out.join('\n'));}catch(e){}}
+      }
       try{
         var scripts=document.querySelectorAll('script[src]');
-        var scraped=false;
-        function scanBundle(js){
-          if(scraped)return;
-          var matches=js.match(/[^a-fA-F0-9]([a-f0-9]{32})[^a-fA-F0-9]/g);
-          if(!matches)return;
-          var seen={};
-          for(var i=0;i<matches.length;i++){
-            var m=matches[i].replace(/[^a-f0-9]/g,'');
-            if(m.length===32&&!seen[m]){seen[m]=1;
-              // Skip known non-secret patterns (md5 of empty string, common constants).
-              if(m==='d41d8cd98f00b204e9800998ecf8427e')continue;
-              scraped=true;
-              try{QobuzAuth.onSecret(m);}catch(e){}
-              return;
-            }
-          }
-        }
         for(var i=0;i<scripts.length;i++){
-          (function(src){
-            fetch(src).then(function(r){return r.text();}).then(scanBundle).catch(function(){});
-          })(scripts[i].src);
+          (function(src){fetch(src).then(function(r){return r.text();}).then(collect).catch(function(){});})(scripts[i].src);
         }
       }catch(e){}
     })()
@@ -99,70 +99,97 @@ private val QOBUZ_HOOK_JS =
 fun QobuzLoginScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val credentialHandled = remember { AtomicBoolean(false) }
 
-    // Captured headers from the web player.
+    // Held so the secret search can start as soon as either half arrives, in whichever order.
     var captured by remember { mutableStateOf<Pair<String, String>?>(null) }
-    // App secret scraped from the bundle — null until found.
-    var scrapedSecret by remember { mutableStateOf<String?>(null) }
-    // Whether to show the manual-paste fallback dialog.
+    var candidates by remember { mutableStateOf<List<String>>(emptyList()) }
     var showSecretDialog by remember { mutableStateOf(false) }
 
-    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    // The search is network-bound and can outlive several bundle callbacks, so only one runs at a
+    // time, and a candidate the API has already rejected is never paid for twice.
+    val searching = remember { AtomicBoolean(false) }
+    val rejected = remember { mutableSetOf<String>() }
 
-    fun saveToken(token: String, appId: String, appSecret: String) {
-        if (token.length <= 20 || appId.length <= 3 || !appSecret.matches(Regex("[a-f0-9]{32}"))) return
+    fun toast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    suspend fun save(token: QobuzToken) {
+        context.dataStore.edit { prefs ->
+            val existing = QobuzToken.listFromJson(prefs[QobuzTokensKey])
+            prefs[QobuzTokensKey] =
+                QobuzToken.listToJson(existing.filterNot { it.token == token.token } + token)
+            // Signing in is an explicit opt-in to a source that defaults off; leaving it off would
+            // make a successful login look like it did nothing.
+            prefs[QobuzEnabledKey] = true
+        }
+        toast(context.getString(R.string.qobuz_login_success))
+        navController.navigateUp()
+    }
+
+    /**
+     * Tries each candidate against the API and keeps the first that can sign a stream request.
+     *
+     * Matching cannot do this job: the secret is indistinguishable from a chunk hash on sight, so an
+     * earlier version saved whichever hex string appeared first and reported success, leaving a
+     * session that failed on the first play. Only the API can tell them apart.
+     */
+    fun searchForSecret(
+        token: String,
+        appId: String,
+        pool: List<String>,
+    ) {
+        val untried = pool.filterNot(rejected::contains)
+        if (untried.isEmpty() || !searching.compareAndSet(false, true)) return
         scope.launch {
-            context.dataStore.edit { prefs ->
-                val existing = QobuzToken.listFromJson(prefs[QobuzTokensKey])
-                val merged =
-                    (existing.filterNot { it.token == token }) +
-                        QobuzToken(token = token, appId = appId, appSecret = appSecret, label = "Web login")
-                prefs[QobuzTokensKey] = QobuzToken.listToJson(merged)
-                prefs[QobuzEnabledKey] = true
+            val verified =
+                withContext(Dispatchers.IO) {
+                    untried.firstNotNullOfOrNull { candidate ->
+                        val attempt =
+                            QobuzToken(token = token, appId = appId, appSecret = candidate, label = LABEL)
+                        val healthy =
+                            QobuzAudioProvider.verifyToken(attempt, null, 0) !=
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE
+                        if (healthy) attempt else null.also { rejected += candidate }
+                    }
+                }
+            searching.set(false)
+            if (verified != null) {
+                save(verified)
+            } else {
+                // Every candidate was rejected, so the bundle changed shape or this token cannot
+                // sign. Ask rather than leaving the screen looking idle.
+                toast(context.getString(R.string.qobuz_app_secret_not_found))
+                showSecretDialog = true
             }
-            toast(context.getString(R.string.qobuz_login_success))
-            navController.navigateUp()
         }
     }
 
-    // When credentials arrive, check if we already have the scraped secret and save immediately;
-    // otherwise hold and wait (or fall through to the dialog after a short window).
-    fun onCredentialsReceived(token: String, appId: String) {
-        val secret = scrapedSecret
-        if (secret != null) {
-            saveToken(token, appId, secret)
-        } else {
-            // Hold the credentials; the secret callback will fire saveToken when it arrives.
-            // If the user navigates away from the login page before the secret arrives we fall
-            // back to the manual dialog.
-            captured = token to appId
-        }
+    fun onCredentials(
+        token: String,
+        appId: String,
+    ) {
+        captured = token to appId
+        searchForSecret(token, appId, candidates)
     }
 
-    // When the bundle secret arrives, save immediately if we already have credentials.
-    fun onSecretReceived(secret: String) {
-        if (!secret.matches(Regex("[a-f0-9]{32}"))) return
-        scrapedSecret = secret
-        val (token, appId) = captured ?: return
-        // Secret arrived after credentials — save now, no dialog needed.
-        showSecretDialog = false
-        saveToken(token, appId, secret)
+    fun onCandidates(found: List<String>) {
+        candidates = (candidates + found).distinct()
+        captured?.let { (token, appId) -> searchForSecret(token, appId, candidates) }
     }
 
-    // Fallback manual-paste dialog — shown only when scraping failed.
     if (showSecretDialog) {
         captured?.let { (token, appId) ->
             TextFieldDialog(
                 icon = { Icon(painterResource(R.drawable.token), null) },
                 title = { Text(stringResource(R.string.qobuz_app_secret_title)) },
                 placeholder = { Text(stringResource(R.string.qobuz_app_secret_hint)) },
-                isInputValid = { it.trim().matches(Regex("[a-f0-9]{32}")) },
-                onDone = { secret -> saveToken(token, appId, secret.trim()) },
-                onDismiss = {
+                isInputValid = { AppSecret.matches(it.trim()) },
+                onDone = { secret ->
                     showSecretDialog = false
-                    credentialHandled.set(false)
+                    searchForSecret(token, appId, listOf(secret.trim()))
                 },
+                onDismiss = { showSecretDialog = false },
             )
         }
     }
@@ -175,7 +202,10 @@ fun QobuzLoginScreen(navController: NavController) {
             WebView(ctx).apply {
                 webViewClient =
                     object : WebViewClient() {
-                        override fun onPageFinished(view: WebView, url: String?) {
+                        override fun onPageFinished(
+                            view: WebView,
+                            url: String?,
+                        ) {
                             if (url?.contains("qobuz.com", ignoreCase = true) == true) {
                                 view.loadUrl(QOBUZ_HOOK_JS)
                             }
@@ -191,16 +221,20 @@ fun QobuzLoginScreen(navController: NavController) {
                 addJavascriptInterface(
                     object {
                         @JavascriptInterface
-                        fun onCredentials(token: String?, appId: String?) {
+                        fun onCredentials(
+                            token: String?,
+                            appId: String?,
+                        ) {
                             if (token.isNullOrBlank() || appId.isNullOrBlank()) return
-                            if (!credentialHandled.compareAndSet(false, true)) return
-                            scope.launch { onCredentialsReceived(token, appId) }
+                            if (token.length <= 20 || appId.length <= 3) return
+                            scope.launch { onCredentials(token, appId) }
                         }
 
                         @JavascriptInterface
-                        fun onSecret(secret: String?) {
-                            if (secret.isNullOrBlank() || secret.length != 32) return
-                            scope.launch { onSecretReceived(secret) }
+                        fun onSecretCandidates(payload: String?) {
+                            val found = QobuzBundleSecrets.candidates(payload.orEmpty())
+                            if (found.isEmpty()) return
+                            scope.launch { onCandidates(found) }
                         }
                     },
                     "QobuzAuth",
@@ -211,15 +245,6 @@ fun QobuzLoginScreen(navController: NavController) {
             }
         },
     )
-
-    // After credentials are held for a bit without a secret arriving, surface the fallback dialog.
-    // We use a LaunchedEffect with a 4-second timeout rather than making the user wait forever.
-    captured?.let {
-        androidx.compose.runtime.LaunchedEffect(it) {
-            kotlinx.coroutines.delay(4_000)
-            if (scrapedSecret == null && !showSecretDialog) {
-                showSecretDialog = true
-            }
-        }
-    }
 }
+
+private const val LABEL = "Web login"

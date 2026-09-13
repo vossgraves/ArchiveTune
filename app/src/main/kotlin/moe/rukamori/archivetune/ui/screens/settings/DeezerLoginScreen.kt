@@ -80,8 +80,10 @@ fun DeezerLoginScreen(navController: NavController) {
             val info = withContext(Dispatchers.IO) { DeezerAudioProvider.verifyArl(arl) }
             if (info == null) {
                 // Not signed in yet (or the cookie is stale) — let the user keep going rather than
-                // closing the screen on them.
+                // closing the screen on them, but say so: an anonymous visitor also gets an `arl`,
+                // so silence here looks identical to the screen doing nothing at all.
                 handled.set(false)
+                toast(context.getString(R.string.deezer_login_not_signed_in))
                 return@launch
             }
             context.dataStore.edit { prefs ->
