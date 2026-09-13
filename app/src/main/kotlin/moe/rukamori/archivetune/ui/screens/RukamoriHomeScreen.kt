@@ -405,7 +405,11 @@ private fun RukamoriHomeContent(
                             )
                         }
                     } else if (
-                        uiState.quickPicksMode == QuickPicks.LAST_LISTEN &&
+                        // Not gated on LAST_LISTEN. YouTube does not always put a quick-picks
+                        // section in the home feed, and when it does not, the mode is still
+                        // QUICK_PICKS — which left this branch unreachable and the carousel gone
+                        // from the page entirely rather than falling back to what is on device.
+                        uiState.quickPicksMode != QuickPicks.DONT_SHOW &&
                         uiState.quickPicks.isNotEmpty()
                     ) {
                         rukamoriSectionSpacer("quick_picks")
@@ -416,7 +420,14 @@ private fun RukamoriHomeContent(
                             HomeSectionHeader(
                                 title = stringResource(R.string.quick_picks),
                                 leadingIcon = {
-                                    HomeSectionLeadingIcon(iconRes = R.drawable.history)
+                                    HomeSectionLeadingIcon(
+                                        iconRes =
+                                            if (uiState.quickPicksMode == QuickPicks.LAST_LISTEN) {
+                                                R.drawable.history
+                                            } else {
+                                                R.drawable.discover_tune
+                                            },
+                                    )
                                 },
                                 modifier = Modifier.animateItem(),
                             )

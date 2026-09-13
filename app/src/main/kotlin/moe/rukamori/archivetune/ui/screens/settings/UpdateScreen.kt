@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -99,6 +100,10 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.compose.AsyncImage
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -113,6 +118,8 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.MarkdownText
+import moe.rukamori.archivetune.ui.theme.LocalYumaColors
+import moe.rukamori.archivetune.ui.theme.yumaGlassCard
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.AppUpdateInstaller
@@ -121,10 +128,6 @@ import moe.rukamori.archivetune.utils.UpdateNotificationManager
 import moe.rukamori.archivetune.utils.Updater
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1017,13 +1020,16 @@ private fun UpdateStatusPanel(
         }
     val statusShape = MaterialShapes.SoftBurst.toShape()
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ),
+    val panelYuma = LocalYumaColors.current
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .yumaGlassCard(
+                    shape = RoundedCornerShape(SettingsDimensions.SegmentedCornerLarge),
+                    backgroundColor = panelYuma.glassBackground,
+                    borderColor = panelYuma.glassBorder,
+                ),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -1148,77 +1154,84 @@ private fun UpdatePreferencesPanel(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SegmentedListItem(
-            onClick = { onUpdateNotificationChange(!enableUpdateNotification) },
-            shapes =
-                ListItemDefaults.shapes(
-                    shape = MaterialTheme.shapes.extraLarge,
-                ),
-            modifier = Modifier.fillMaxWidth(),
-            colors =
-                ListItemDefaults.segmentedColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            leadingContent = {
-                FeatureIcon(
-                    iconRes = R.drawable.new_release,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            },
-            trailingContent = {
-                Switch(
-                    checked = enableUpdateNotification,
-                    onCheckedChange = null,
-                )
-            },
-            supportingContent = {
-                Text(text = stringResource(R.string.enable_update_notification_channel_desc))
-            },
-            content = {
-                Text(text = stringResource(R.string.enable_update_notification))
-            },
-        )
+        SettingsGlassSegment(index = 0, count = 1) {
+            SegmentedListItem(
+                onClick = { onUpdateNotificationChange(!enableUpdateNotification) },
+                shapes =
+                    ListItemDefaults.shapes(
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ),
+                modifier = Modifier.fillMaxWidth(),
+                colors =
+                    ListItemDefaults.segmentedColors(
+                        containerColor = Color.Transparent,
+                    ),
+                leadingContent = {
+                    FeatureIcon(
+                        iconRes = R.drawable.new_release,
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = enableUpdateNotification,
+                        onCheckedChange = null,
+                    )
+                },
+                supportingContent = {
+                    Text(text = stringResource(R.string.enable_update_notification_channel_desc))
+                },
+                content = {
+                    Text(text = stringResource(R.string.enable_update_notification))
+                },
+            )
+        }
 
-        SegmentedListItem(
-            onClick = { onPersistentUpdatePopupChange(!persistentUpdatePopup) },
-            shapes =
-                ListItemDefaults.shapes(
-                    shape = MaterialTheme.shapes.extraLarge,
-                ),
-            modifier = Modifier.fillMaxWidth(),
-            colors =
-                ListItemDefaults.segmentedColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            leadingContent = {
-                FeatureIcon(
-                    iconRes = R.drawable.ic_repeat,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                )
-            },
-            trailingContent = {
-                Switch(
-                    checked = persistentUpdatePopup,
-                    onCheckedChange = null,
-                )
-            },
-            supportingContent = {
-                Text(text = stringResource(R.string.persistent_update_popup_desc))
-            },
-            content = {
-                Text(text = stringResource(R.string.persistent_update_popup))
-            },
-        )
+        SettingsGlassSegment(index = 0, count = 1) {
+            SegmentedListItem(
+                onClick = { onPersistentUpdatePopupChange(!persistentUpdatePopup) },
+                shapes =
+                    ListItemDefaults.shapes(
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ),
+                modifier = Modifier.fillMaxWidth(),
+                colors =
+                    ListItemDefaults.segmentedColors(
+                        containerColor = Color.Transparent,
+                    ),
+                leadingContent = {
+                    FeatureIcon(
+                        iconRes = R.drawable.ic_repeat,
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = persistentUpdatePopup,
+                        onCheckedChange = null,
+                    )
+                },
+                supportingContent = {
+                    Text(text = stringResource(R.string.persistent_update_popup_desc))
+                },
+                content = {
+                    Text(text = stringResource(R.string.persistent_update_popup))
+                },
+            )
+        }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
-            colors =
-                CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
+        val cardYuma = LocalYumaColors.current
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .yumaGlassCard(
+                        shape = RoundedCornerShape(SettingsDimensions.SegmentedCornerLarge),
+                        backgroundColor = cardYuma.glassBackground,
+                        borderColor = cardYuma.glassBorder,
+                    ),
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
@@ -1301,60 +1314,62 @@ private fun CommitHistorySection(
         modifier = modifier.animateContentSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        SegmentedListItem(
-            onClick = onToggleExpanded,
-            shapes =
-                ListItemDefaults.shapes(
-                    shape = MaterialTheme.shapes.extraLarge,
-                ),
-            modifier = Modifier.fillMaxWidth(),
-            colors =
-                ListItemDefaults.segmentedColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            leadingContent = {
-                FeatureIcon(
-                    iconRes = R.drawable.history,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            },
-            trailingContent = {
-                Icon(
-                    painter = painterResource(R.drawable.expand_more),
-                    contentDescription = null,
-                    modifier = Modifier.rotate(rotationAngle),
-                )
-            },
-            supportingContent = {
-                Text(
-                    text =
-                        when {
-                            isLoading -> {
-                                stringResource(R.string.updates_loading_commits)
-                            }
+        SettingsGlassSegment(index = 0, count = 1) {
+            SegmentedListItem(
+                onClick = onToggleExpanded,
+                shapes =
+                    ListItemDefaults.shapes(
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ),
+                modifier = Modifier.fillMaxWidth(),
+                colors =
+                    ListItemDefaults.segmentedColors(
+                        containerColor = Color.Transparent,
+                    ),
+                leadingContent = {
+                    FeatureIcon(
+                        iconRes = R.drawable.history,
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                },
+                trailingContent = {
+                    Icon(
+                        painter = painterResource(R.drawable.expand_more),
+                        contentDescription = null,
+                        modifier = Modifier.rotate(rotationAngle),
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        text =
+                            when {
+                                isLoading -> {
+                                    stringResource(R.string.updates_loading_commits)
+                                }
 
-                            commits.isEmpty() -> {
-                                stringResource(R.string.updates_no_commits)
-                            }
+                                commits.isEmpty() -> {
+                                    stringResource(R.string.updates_no_commits)
+                                }
 
-                            else -> {
-                                stringResource(
-                                    R.string.updates_recent_commits_count,
-                                    commits.size,
-                                )
-                            }
-                        },
-                )
-            },
-            content = {
-                Text(
-                    text = stringResource(R.string.recent_commits),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            },
-        )
+                                else -> {
+                                    stringResource(
+                                        R.string.updates_recent_commits_count,
+                                        commits.size,
+                                    )
+                                }
+                            },
+                    )
+                },
+                content = {
+                    Text(
+                        text = stringResource(R.string.recent_commits),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+            )
+        }
 
         AnimatedVisibility(visible = isExpanded) {
             when {
@@ -1456,59 +1471,61 @@ private fun CommitItem(
     count: Int,
     onClick: () -> Unit,
 ) {
-    SegmentedListItem(
-        onClick = onClick,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp),
-        colors =
-            ListItemDefaults.segmentedColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        leadingContent = {
-            CommitAvatar(avatarUrl = commit.authorAvatarUrl)
-        },
-        trailingContent = {
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        supportingContent = {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = commit.sha,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.primary,
+    SettingsGlassSegment(index = index, count = count) {
+        SegmentedListItem(
+            onClick = onClick,
+            shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp),
+            colors =
+                ListItemDefaults.segmentedColors(
+                    containerColor = Color.Transparent,
+                ),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            leadingContent = {
+                CommitAvatar(avatarUrl = commit.authorAvatarUrl)
+            },
+            trailingContent = {
+                Icon(
+                    painter = painterResource(R.drawable.arrow_forward),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = commit.sha,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text =
+                            if (commit.date.isNotEmpty()) {
+                                commit.author + " - " + formatCommitDate(commit.date)
+                            } else {
+                                commit.author
+                            },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            content = {
                 Text(
-                    text =
-                        if (commit.date.isNotEmpty()) {
-                            commit.author + " - " + formatCommitDate(commit.date)
-                        } else {
-                            commit.author
-                        },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    text = commit.message,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-        },
-        content = {
-            Text(
-                text = commit.message,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+            },
+        )
+    }
 }
 
 @Composable

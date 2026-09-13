@@ -415,15 +415,8 @@ fun BottomSheetPlayer(
         key = PlayerBackgroundStyleKey,
         defaultValue = PlayerBackgroundStyle.DEFAULT,
     )
-    val playerUsesFixedBackground =
-        playerDesignStyle == PlayerDesignStyle.V8 ||
-            playerDesignStyle == PlayerDesignStyle.V9 ||
-            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
-            playerDesignStyle == PlayerDesignStyle.BITCHORD ||
-            playerDesignStyle == PlayerDesignStyle.TIKTOK ||
-            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC
-    val playerBackground =
-        if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
+    // The style itself says whether the reader's pick applies; see PlayerDesignStyle.
+    val playerBackground = playerDesignStyle.resolveBackground(storedPlayerBackground)
 
     // Custom background preferences (image + effects)
     val (playerCustomImageUri) = rememberPreference(PlayerCustomImageUriKey, "")

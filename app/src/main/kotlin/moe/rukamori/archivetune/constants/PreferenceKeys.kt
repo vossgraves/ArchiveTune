@@ -1022,7 +1022,26 @@ val SpotifyHomeStyleKey = stringPreferencesKey("spotifyHomeStyle")
 
 val SpotifyHistorySyncEnabledKey = booleanPreferencesKey("spotifyHistorySyncEnabled")
 
-enum class PlayerDesignStyle {
+/**
+ * A player look, and what it does about its own backdrop.
+ *
+ * The two facts below used to live as hand-written lists in two files — one in Player.kt deciding
+ * what to render, one in AppearanceSettings.kt deciding what to offer — and they had drifted apart:
+ * three styles showed a background picker the player then ignored, and two hid a picker the player
+ * would have honoured. Keeping both on the entry means a new style declares its behaviour once and
+ * neither screen can disagree with it.
+ *
+ * @property nativeBackground the backdrop the style draws for itself, or null when it has no
+ *   opinion and simply renders whatever the reader picked. A style with one still renders that
+ *   backdrop when the reader has expressed no preference.
+ * @property supportsBackgroundChoice whether the picker is offered at all. False for styles whose
+ *   backdrop is the look — Apple Music without its blurred cover is not Apple Music — and for
+ *   TikTok, whose full-bleed pages cover the backdrop so completely that changing it does nothing.
+ */
+enum class PlayerDesignStyle(
+    val nativeBackground: PlayerBackgroundStyle? = null,
+    val supportsBackgroundChoice: Boolean = true,
+) {
     V1,
     V2,
     V3,
@@ -1030,18 +1049,29 @@ enum class PlayerDesignStyle {
     V5,
     V6,
     V7,
-    V8,
-    V9,
-    APPLE_MUSIC,
+    V8(nativeBackground = PlayerBackgroundStyle.DEFAULT, supportsBackgroundChoice = false),
+    V9(nativeBackground = PlayerBackgroundStyle.DEFAULT, supportsBackgroundChoice = false),
+
+    /** The blurred, expanded cover is the whole look. */
+    APPLE_MUSIC(nativeBackground = PlayerBackgroundStyle.BLUR, supportsBackgroundChoice = false),
     V10,
 
     /**
-     * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their own
-     * package and share nothing with the numbered styles above.
+     * Self-contained styles: their layout, controls and lyrics surface live in their own package
+     * and share nothing with the numbered styles above. Their backdrops, however, are the shared
+     * ones under another name — BitChord and TikTok both draw MeshBackdrop, which is the animated
+     * glow, and SimpMusic draws a diagonal palette wash, which is the gradient.
      */
-    BITCHORD,
-    TIKTOK,
-    SIMPMUSIC,
+    BITCHORD(nativeBackground = PlayerBackgroundStyle.GLOW_ANIMATED),
+
+    /** The vertical pager sits on top of the backdrop, so a different one would never be seen. */
+    TIKTOK(nativeBackground = PlayerBackgroundStyle.GLOW_ANIMATED, supportsBackgroundChoice = false),
+    SIMPMUSIC(nativeBackground = PlayerBackgroundStyle.GRADIENT),
+    ;
+
+    /** What to actually render: the reader's pick where it is offered, the style's own otherwise. */
+    fun resolveBackground(stored: PlayerBackgroundStyle): PlayerBackgroundStyle =
+        if (supportsBackgroundChoice) stored else nativeBackground ?: stored
 }
 
 enum class PlayerBackgroundStyle {

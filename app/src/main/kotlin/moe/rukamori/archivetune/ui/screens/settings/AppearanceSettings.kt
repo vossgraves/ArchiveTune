@@ -430,17 +430,9 @@ fun AppearanceSectionSettings(
             }
         }
     val lyricsBackground = configuredLyricsBackground.resolveFor(playerBackground)
-    val isPlayerStyleCustomizationEnabled =
-        when (playerDesignStyle) {
-            PlayerDesignStyle.V7,
-            PlayerDesignStyle.V8,
-            PlayerDesignStyle.V9,
-            PlayerDesignStyle.APPLE_MUSIC,
-            PlayerDesignStyle.V10,
-            -> false
-
-            else -> true
-        }
+    // Same source of truth the player renders from, so the picker can never offer a backdrop the
+    // player will discard — or hide one it would have honoured.
+    val isPlayerStyleCustomizationEnabled = playerDesignStyle.supportsBackgroundChoice
     val isVolumeBarSupported =
         playerDesignStyle == PlayerDesignStyle.V7 ||
             playerDesignStyle == PlayerDesignStyle.V8

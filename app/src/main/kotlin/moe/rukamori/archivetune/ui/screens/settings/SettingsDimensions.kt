@@ -15,6 +15,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
+import moe.rukamori.archivetune.LocalAnimationScale
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 
 object SettingsDimensions {
@@ -84,11 +85,30 @@ object SettingsDimensions {
 object SettingsAnimations {
     val PressScale = 0.96f
 
+    /**
+     * The shared press/expand spring, adapted to the system's animator duration scale.
+     *
+     * Compose already shortens durations when the scale drops, but a spring is physics, not a
+     * duration: at 0.5x it still has to render the same overshoot and settle in half the frames,
+     * which is what reads as choppy rather than fast. Below 1x the damping rises towards critical
+     * so there is no overshoot left to draw, and the stiffness comes down so the remaining travel
+     * is spread over the frames that are actually available. At 0 the system has turned animation
+     * off and the honest answer is to snap.
+     */
     @Composable
-    fun <T> pressSpring(): FiniteAnimationSpec<T> =
-        if (LocalAnimationsDisabled.current) {
-            snap()
-        } else {
-            spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium)
-        }
+    fun <T> pressSpring(): FiniteAnimationSpec<T> {
+        val scale = LocalAnimationScale.current
+        if (LocalAnimationsDisabled.current || scale <= 0f) return snap()
+        if (scale >= 1f) return spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium)
+        return spring(
+            dampingRatio = lerp(1f, 0.6f, scale),
+            stiffness = lerp(Spring.StiffnessMediumLow, Spring.StiffnessMedium, scale),
+        )
+    }
+
+    private fun lerp(
+        from: Float,
+        to: Float,
+        fraction: Float,
+    ): Float = from + (to - from) * fraction.coerceIn(0f, 1f)
 }

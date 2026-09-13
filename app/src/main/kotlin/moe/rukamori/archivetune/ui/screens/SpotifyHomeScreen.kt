@@ -6,12 +6,9 @@
 
 package moe.rukamori.archivetune.ui.screens
 
-import moe.rukamori.archivetune.spotify.isSpotifyDj
-import moe.rukamori.archivetune.spotify.SPOTIFY_DJ_PLAYLIST_ID
-import androidx.compose.ui.platform.LocalContext
-import android.widget.Toast
-import android.net.Uri
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -34,38 +31,34 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import moe.rukamori.archivetune.constants.GridThumbnailCornerRadius
-import moe.rukamori.archivetune.extensions.togglePlayPause
-import moe.rukamori.archivetune.ui.component.GridItem
-import moe.rukamori.archivetune.ui.component.MarqueeText
-import moe.rukamori.archivetune.ui.component.ItemThumbnail
-import moe.rukamori.archivetune.utils.joinByBullet
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,27 +71,35 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.ui.component.pressScaleClickable
+import moe.rukamori.archivetune.constants.GridThumbnailCornerRadius
+import moe.rukamori.archivetune.constants.SpotifyHomeStyle
+import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
+import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.Artist
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.spotify.SPOTIFY_DJ_PLAYLIST_ID
 import moe.rukamori.archivetune.spotify.SpotifyHomeAction
 import moe.rukamori.archivetune.spotify.SpotifyHomeNavigationEvent
-import moe.rukamori.archivetune.spotify.SpotifyHomeSection
 import moe.rukamori.archivetune.spotify.SpotifyHomeScreenState
+import moe.rukamori.archivetune.spotify.SpotifyHomeSection
 import moe.rukamori.archivetune.spotify.SpotifyHomeViewModel
 import moe.rukamori.archivetune.spotify.SpotifyRecentItem
 import moe.rukamori.archivetune.spotify.SpotifyTracksQueue
+import moe.rukamori.archivetune.spotify.isSpotifyDj
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
-import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
+import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
-import moe.rukamori.archivetune.constants.SpotifyHomeStyle
-import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.GridItem
+import moe.rukamori.archivetune.ui.component.ItemThumbnail
+import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
+import moe.rukamori.archivetune.ui.component.pressScaleClickable
+import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 
 /**
@@ -212,6 +213,9 @@ fun SpotifyHomeScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val metrics = rememberSpotifyHomeMetrics()
+    val homeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
+    val tonalStart = MaterialTheme.colorScheme.primaryContainer
+    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
     val onSwitchToYoutube = rememberSwitchToYouTube()
 
     DisposableEffect(viewModel) {
@@ -241,6 +245,27 @@ fun SpotifyHomeScreen(
                 }
             )
     ) {
+        // Until now the three styles differed only in dp, which is why switching them read as
+        // nothing happening. The Rukamori one is defined by its tonal wash on the YouTube home;
+        // without it here the two Rukamori homes were the same layout under different paint.
+        if (homeStyle == SpotifyHomeStyle.RUKAMORI) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(430.dp)
+                        .align(Alignment.TopCenter)
+                        .drawWithCache {
+                            val brush =
+                                Brush.verticalGradient(
+                                    0f to tonalStart.copy(alpha = 0.30f),
+                                    0.42f to tonalMiddle.copy(alpha = 0.14f),
+                                    1f to Color.Transparent,
+                                )
+                            onDrawBehind { drawRect(brush) }
+                        },
+            )
+        }
         when (val state = screenState) {
             SpotifyHomeScreenState.Loading -> {
                 HomeStatePane(
@@ -311,7 +336,38 @@ fun SpotifyHomeScreen(
                             )
                         }
 
-                        state.sections.forEachIndexed { index, section ->
+                        val quickPicks = pickQuickPicksSection(state.sections)
+                        if (quickPicks != null) {
+                            item(key = "spotify_quick_picks_header", contentType = "section_header") {
+                                HomeSectionHeader(
+                                    title = stringResource(R.string.quick_picks),
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                            item(key = "spotify_quick_picks", contentType = "quick_picks") {
+                                val quickPicksTitle = resolveSpotifySectionTitle(quickPicks)
+                                SpotifyQuickPicksCarousel(
+                                    tracks = quickPicks.tracks,
+                                    activeTrackId = mediaMetadata?.spotifyTrackId,
+                                    isPlaying = isPlaying,
+                                    resolvingItemKey = resolvingItemKey,
+                                    onTrackClick = { track ->
+                                        if (mediaMetadata?.spotifyTrackId == track.id) {
+                                            viewModel.cancelSelection()
+                                            playerConnection.player.togglePlayPause()
+                                        } else {
+                                            viewModel.onAction(
+                                                SpotifyHomeAction.TrackClick(track, quickPicks.tracks, quickPicksTitle),
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                        }
+
+                        // The promoted shelf is skipped here so it is not drawn twice.
+                        state.sections.filterNot { it === quickPicks }.forEachIndexed { index, section ->
                             item(
                                 key = "spotify_section_title_${section.title}_$index",
                                 contentType = "section_header"
