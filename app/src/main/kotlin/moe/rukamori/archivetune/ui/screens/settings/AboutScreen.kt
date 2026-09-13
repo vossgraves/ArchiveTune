@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,17 +31,15 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import android.widget.Toast
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
@@ -65,10 +65,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -77,7 +78,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.graphics.Color
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -85,10 +85,12 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.CanaryChannelUnlockedKey
-import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.theme.LocalYumaColors
+import moe.rukamori.archivetune.ui.theme.yumaGlassCard
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AboutContributorUiCollection
 import moe.rukamori.archivetune.viewmodels.AboutContributorsUiState
 import moe.rukamori.archivetune.viewmodels.AboutDependencyLicenseUiCollection
@@ -103,7 +105,6 @@ import moe.rukamori.archivetune.viewmodels.AboutUiModel
 import moe.rukamori.archivetune.viewmodels.AboutViewModel
 import moe.rukamori.archivetune.viewmodels.TeamMember
 import moe.rukamori.archivetune.viewmodels.TeamMemberCollection
-import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -551,38 +552,40 @@ private fun TranslationContributorListItem(
     itemCount: Int,
     modifier: Modifier = Modifier,
 ) {
-    SegmentedListItem(
-        onClick = NoOpAction,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = if (contributors == null) 64.dp else 76.dp),
-        colors = AboutListItemDefaults.colors(),
-        leadingContent = {
-            AboutLeadingIcon(iconResId = R.drawable.language)
-        },
-        supportingContent =
-            contributors?.let { contributorNames ->
-                {
-                    Text(
-                        text = contributorNames,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+    SettingsGlassSegment(index = index, count = itemCount, modifier = modifier) {
+        SegmentedListItem(
+            onClick = NoOpAction,
+            shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = if (contributors == null) 64.dp else 76.dp),
+            colors = AboutListItemDefaults.colors(),
+            leadingContent = {
+                AboutLeadingIcon(iconResId = R.drawable.language)
             },
-        content = {
-            Text(
-                text = language,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+            supportingContent =
+                contributors?.let { contributorNames ->
+                    {
+                        Text(
+                            text = contributorNames,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
+            content = {
+                Text(
+                    text = language,
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        )
+    }
 }
 
 @Composable
@@ -630,48 +633,50 @@ private fun DependencyLicenseListItem(
     itemCount: Int,
     modifier: Modifier = Modifier,
 ) {
-    SegmentedListItem(
-        onClick = NoOpAction,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = 76.dp),
-        colors = AboutListItemDefaults.colors(),
-        leadingContent = {
-            AboutLeadingIcon(iconResId = R.drawable.info)
-        },
-        overlineContent =
-            version?.let { versionName ->
-                {
-                    Text(
-                        text = versionName,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+    SettingsGlassSegment(index = index, count = itemCount, modifier = modifier) {
+        SegmentedListItem(
+            onClick = NoOpAction,
+            shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 76.dp),
+            colors = AboutListItemDefaults.colors(),
+            leadingContent = {
+                AboutLeadingIcon(iconResId = R.drawable.info)
             },
-        supportingContent = {
-            Text(
-                text = licenses ?: stringResource(R.string.about_license_unknown),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        content = {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+            overlineContent =
+                version?.let { versionName ->
+                    {
+                        Text(
+                            text = versionName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
+            supportingContent = {
+                Text(
+                    text = licenses ?: stringResource(R.string.about_license_unknown),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            content = {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        )
+    }
 }
 
 @Composable
@@ -791,14 +796,14 @@ private fun AboutIdentityCard(
     onOpenUri: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.extraLarge,
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    val yuma = LocalYumaColors.current
+    Box(
+        modifier =
+            modifier.yumaGlassCard(
+                shape = RoundedCornerShape(SettingsDimensions.SegmentedCornerLarge),
+                backgroundColor = yuma.glassBackground,
+                borderColor = yuma.glassBorder,
             ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             if (maxWidth >= AboutDimensions.HorizontalHeroBreakpoint) {
@@ -1020,32 +1025,34 @@ private fun AboutActionListItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SegmentedListItem(
-        onClick = onClick,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp),
-        colors = AboutListItemDefaults.colors(),
-        leadingContent = {
-            AboutLeadingIcon(iconResId = iconResId)
-        },
-        trailingContent = {
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        content = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        },
-    )
+    SettingsGlassSegment(index = index, count = itemCount, modifier = modifier) {
+        SegmentedListItem(
+            onClick = onClick,
+            shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp),
+            colors = AboutListItemDefaults.colors(),
+            leadingContent = {
+                AboutLeadingIcon(iconResId = iconResId)
+            },
+            trailingContent = {
+                Icon(
+                    painter = painterResource(R.drawable.arrow_forward),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            content = {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            },
+        )
+    }
 }
 
 @Composable
@@ -1060,7 +1067,7 @@ private fun TeamMemberSection(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AboutSpacing.xs),
     ) {
-        AboutSectionHeader(title = title)
+        SettingsSectionLabel(text = title)
         Column(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
             repeat(members.size) { index ->
                 TeamMemberListItem(
@@ -1074,23 +1081,6 @@ private fun TeamMemberSection(
             }
         }
     }
-}
-
-@Composable
-private fun AboutSectionHeader(
-    title: String,
-    modifier: Modifier = Modifier,
-) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMediumEmphasized,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier =
-            modifier.padding(
-                horizontal = SettingsDimensions.SectionHeaderHorizontalPadding,
-                vertical = SettingsDimensions.SectionHeaderBottomPadding,
-            ),
-    )
 }
 
 @Composable
@@ -1113,58 +1103,60 @@ private fun TeamMemberListItem(
             }
         }
 
-    SegmentedListItem(
-        onClick = onClick,
-        shapes =
-            if (itemCount == 1) {
-                ListItemDefaults.shapes(
-                    shape = MaterialTheme.shapes.extraLarge,
+    SettingsGlassSegment(index = index, count = itemCount, modifier = modifier) {
+        SegmentedListItem(
+            onClick = onClick,
+            shapes =
+                if (itemCount == 1) {
+                    ListItemDefaults.shapes(
+                        shape = MaterialTheme.shapes.extraLarge,
+                    )
+                } else {
+                    ListItemDefaults.segmentedShapes(index = index, count = itemCount)
+                },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = minHeight),
+            colors = AboutListItemDefaults.colors(),
+            verticalAlignment = Alignment.CenterVertically,
+            leadingContent = {
+                AsyncImage(
+                    model = member.avatarUrl,
+                    contentDescription = member.name,
+                    modifier =
+                        Modifier
+                            .size(avatarSize)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 )
-            } else {
-                ListItemDefaults.segmentedShapes(index = index, count = itemCount)
             },
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = minHeight),
-        colors = AboutListItemDefaults.colors(),
-        verticalAlignment = Alignment.CenterVertically,
-        leadingContent = {
-            AsyncImage(
-                model = member.avatarUrl,
-                contentDescription = member.name,
-                modifier =
-                    Modifier
-                        .size(avatarSize)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            )
-        },
-        supportingContent = {
-            Text(
-                text = stringResource(member.positionResId),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        trailingContent = {
-            MemberLinkActions(
-                links = member.links,
-                onOpenUri = onOpenUri,
-            )
-        },
-        content = {
-            Text(
-                text = member.name,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+            supportingContent = {
+                Text(
+                    text = stringResource(member.positionResId),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            trailingContent = {
+                MemberLinkActions(
+                    links = member.links,
+                    onOpenUri = onOpenUri,
+                )
+            },
+            content = {
+                Text(
+                    text = member.name,
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1209,7 +1201,7 @@ private fun ContributorsSection(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AboutSpacing.xs),
     ) {
-        AboutSectionHeader(title = stringResource(R.string.about_contributors))
+        SettingsSectionLabel(text = stringResource(R.string.about_contributors))
         when (state) {
             AboutContributorsUiState.Loading -> {
                 ContributorStatusContent(
@@ -1253,11 +1245,16 @@ private fun ContributorStatusContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    val yuma = LocalYumaColors.current
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .yumaGlassCard(
+                    shape = RoundedCornerShape(SettingsDimensions.GlassCornerRadius),
+                    backgroundColor = yuma.glassBackground,
+                    borderColor = yuma.glassBorder,
+                ),
     ) {
         Column(
             modifier =
@@ -1328,35 +1325,37 @@ private fun ContributorListItem(
 ) {
     val onClick = remember(profileUrl, onOpenProfile) { { onOpenProfile(profileUrl) } }
 
-    SegmentedListItem(
-        onClick = onClick,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = 72.dp),
-        colors = AboutListItemDefaults.colors(),
-        leadingContent = {
-            AsyncImage(
-                model = avatarUrl,
-                contentDescription = login,
-                modifier =
-                    Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            )
-        },
-        content = {
-            Text(
-                text = login,
-                style = MaterialTheme.typography.bodyLargeEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+    SettingsGlassSegment(index = index, count = itemCount, modifier = modifier) {
+        SegmentedListItem(
+            onClick = onClick,
+            shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 72.dp),
+            colors = AboutListItemDefaults.colors(),
+            leadingContent = {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = login,
+                    modifier =
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                )
+            },
+            content = {
+                Text(
+                    text = login,
+                    style = MaterialTheme.typography.bodyLargeEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        )
+    }
 }
 
 @Composable
@@ -1369,34 +1368,36 @@ private fun ContributorReadMoreListItem(
 ) {
     val onClick = remember(readMoreUrl, onOpenProfile) { { onOpenProfile(readMoreUrl) } }
 
-    SegmentedListItem(
-        onClick = onClick,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = 72.dp),
-        colors = AboutListItemDefaults.colors(),
-        leadingContent = {
-            AboutLeadingIcon(iconResId = R.drawable.add_circle)
-        },
-        trailingContent = {
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        content = {
-            Text(
-                text = stringResource(R.string.more),
-                style = MaterialTheme.typography.bodyLargeEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+    SettingsGlassSegment(index = index, count = itemCount, modifier = modifier) {
+        SegmentedListItem(
+            onClick = onClick,
+            shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 72.dp),
+            colors = AboutListItemDefaults.colors(),
+            leadingContent = {
+                AboutLeadingIcon(iconResId = R.drawable.add_circle)
+            },
+            trailingContent = {
+                Icon(
+                    painter = painterResource(R.drawable.arrow_forward),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            content = {
+                Text(
+                    text = stringResource(R.string.more),
+                    style = MaterialTheme.typography.bodyLargeEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        )
+    }
 }
 
 @Composable
@@ -1439,7 +1440,8 @@ private object AboutListItemDefaults {
     @Composable
     fun colors() =
         ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            // The glass segment behind the row draws the fill; a second one would just lighten it.
+            containerColor = Color.Transparent,
         )
 }
 

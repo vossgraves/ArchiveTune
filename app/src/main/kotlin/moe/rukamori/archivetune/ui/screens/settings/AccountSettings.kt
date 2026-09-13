@@ -129,9 +129,7 @@ import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.theme.LocalYumaColors
-import moe.rukamori.archivetune.ui.theme.yumaClickable
 import moe.rukamori.archivetune.ui.theme.yumaGlassCard
-import moe.rukamori.archivetune.ui.theme.yumaSegmentPosition
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.PreferenceStore
@@ -1238,10 +1236,7 @@ private fun ExpressiveSwitchRow(
     )
 }
 
-/**
- * The glass segment shared by every account-settings row. Rows in one group agree on shape and
- * stroke through [yumaSegmentPosition], so a stack reads as a single pane rather than as cards.
- */
+/** The row body shared by every account-settings entry; the glass pane comes from the segment. */
 @Composable
 private fun ExpressiveRow(
     index: Int,
@@ -1253,19 +1248,7 @@ private fun ExpressiveRow(
     subtitleMaxLines: Int,
     trailing: @Composable () -> Unit,
 ) {
-    val shape = remember(index, count) { segmentedSettingsItemShape(index, count) }
-    val yuma = LocalYumaColors.current
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .yumaGlassCard(
-                    shape = shape,
-                    backgroundColor = yuma.glassBackground,
-                    borderColor = yuma.glassBorder,
-                    position = yumaSegmentPosition(index, count),
-                ).yumaClickable(onClick = onClick),
-    ) {
+    SettingsGlassSegment(index = index, count = count, onClick = onClick) {
         Row(
             modifier =
                 Modifier

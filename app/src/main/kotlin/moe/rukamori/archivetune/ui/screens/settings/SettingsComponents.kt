@@ -17,6 +17,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -564,36 +565,11 @@ fun SettingsSegmentedItem(
         } else {
             MaterialTheme.colorScheme.surface
         }
-    val shape = remember(index, count) { segmentedSettingsItemShape(index, count) }
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) SettingsAnimations.PressScale else 1f,
-        animationSpec = SettingsAnimations.pressSpring(),
-        label = "settingsSegmentScale",
-    )
-
-    val yuma = LocalYumaColors.current
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }.yumaGlassCard(
-                    shape = shape,
-                    backgroundColor = yuma.glassBackground,
-                    borderColor = yuma.glassBorder,
-                    // Only the group's first row gets the bright top edge, so a stack of rows
-                    // reads as one pane of glass rather than separate cards.
-                    position = yumaSegmentPosition(index, count),
-                ).focusable()
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = item.onClick,
-                ),
+    SettingsGlassSegment(
+        index = index,
+        count = count,
+        modifier = modifier,
+        onClick = item.onClick,
     ) {
         Row(
             modifier =
@@ -685,6 +661,43 @@ fun SettingsSegmentedItem(
                 }
             }
         }
+    }
+}
+
+/**
+ * The glass pane behind one row of a stacked settings group. [index] and [count] pick the corner
+ * radii and the stroke gradient, so a stack of segments reads as one pane lit from above rather
+ * than as separate cards.
+ *
+ * Pass [onClick] for the Yuma press spring. Leave it null when the content handles its own clicks
+ * — a Material list item, say — and only the pane is wanted.
+ */
+@Composable
+fun SettingsGlassSegment(
+    index: Int,
+    count: Int,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val shape = remember(index, count) { segmentedSettingsItemShape(index, count) }
+    val yuma = LocalYumaColors.current
+    val glass =
+        modifier
+            .fillMaxWidth()
+            .yumaGlassCard(
+                shape = shape,
+                backgroundColor = yuma.glassBackground,
+                borderColor = yuma.glassBorder,
+                position = yumaSegmentPosition(index, count),
+            )
+    if (onClick == null) {
+        Box(modifier = glass, content = content)
+    } else {
+        Box(
+            modifier = glass.focusable().yumaClickable(onClick = onClick),
+            content = content,
+        )
     }
 }
 
