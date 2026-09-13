@@ -105,6 +105,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.CanaryChannelUnlockedKey
 import moe.rukamori.archivetune.constants.EnableUpdateNotificationKey
+import moe.rukamori.archivetune.constants.PersistentUpdatePopupKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
 import moe.rukamori.archivetune.defaultUpdateChannel
@@ -146,6 +147,8 @@ fun UpdateScreen(
             EnableUpdateNotificationKey,
             defaultValue = false,
         )
+    val (persistentUpdatePopup, onPersistentUpdatePopupChange) =
+        rememberPreference(PersistentUpdatePopupKey, defaultValue = false)
     val (updateChannel, onUpdateChannelChange) =
         rememberEnumPreference(
             UpdateChannelKey,
@@ -609,11 +612,13 @@ fun UpdateScreen(
                     updateChannel = updateChannel,
                     isUpdateAvailable = isUpdateAvailable,
                     enableUpdateNotification = enableUpdateNotification,
+                    persistentUpdatePopup = persistentUpdatePopup,
                     useWideLayout = useWideLayout,
                     onCheckForUpdate = onCheckForUpdate,
                     onOpenChangelog = {
                         navController.navigate("settings/changelog?channel=$updateChannel")
                     },
+                    onPersistentUpdatePopupChange = onPersistentUpdatePopupChange,
                     onUpdateNotificationChange = { enabled ->
                         if (enabled) {
                             showEnableUpdateNotificationConfirmDialog = true
@@ -896,11 +901,13 @@ private fun UpdateDashboard(
     updateChannel: UpdateChannel,
     isUpdateAvailable: Boolean,
     enableUpdateNotification: Boolean,
+    persistentUpdatePopup: Boolean,
     useWideLayout: Boolean,
     modifier: Modifier = Modifier,
     onCheckForUpdate: () -> Unit,
     onOpenChangelog: () -> Unit,
     onUpdateNotificationChange: (Boolean) -> Unit,
+    onPersistentUpdatePopupChange: (Boolean) -> Unit,
     onStableSelected: () -> Unit,
     onNightlySelected: () -> Unit,
     onCanarySelected: () -> Unit,
@@ -923,9 +930,11 @@ private fun UpdateDashboard(
             )
             UpdatePreferencesPanel(
                 enableUpdateNotification = enableUpdateNotification,
+                persistentUpdatePopup = persistentUpdatePopup,
                 updateChannel = updateChannel,
                 canaryUnlocked = canaryUnlocked,
                 onUpdateNotificationChange = onUpdateNotificationChange,
+                onPersistentUpdatePopupChange = onPersistentUpdatePopupChange,
                 onStableSelected = onStableSelected,
                 onNightlySelected = onNightlySelected,
                 onCanarySelected = onCanarySelected,
@@ -947,9 +956,11 @@ private fun UpdateDashboard(
             )
             UpdatePreferencesPanel(
                 enableUpdateNotification = enableUpdateNotification,
+                persistentUpdatePopup = persistentUpdatePopup,
                 updateChannel = updateChannel,
                 canaryUnlocked = canaryUnlocked,
                 onUpdateNotificationChange = onUpdateNotificationChange,
+                onPersistentUpdatePopupChange = onPersistentUpdatePopupChange,
                 onStableSelected = onStableSelected,
                 onNightlySelected = onNightlySelected,
                 onCanarySelected = onCanarySelected,
@@ -1123,10 +1134,12 @@ private fun UpdateStatusPanel(
 @Composable
 private fun UpdatePreferencesPanel(
     enableUpdateNotification: Boolean,
+    persistentUpdatePopup: Boolean,
     updateChannel: UpdateChannel,
     canaryUnlocked: Boolean,
     modifier: Modifier = Modifier,
     onUpdateNotificationChange: (Boolean) -> Unit,
+    onPersistentUpdatePopupChange: (Boolean) -> Unit,
     onStableSelected: () -> Unit,
     onNightlySelected: () -> Unit,
     onCanarySelected: () -> Unit,
@@ -1164,6 +1177,38 @@ private fun UpdatePreferencesPanel(
             },
             content = {
                 Text(text = stringResource(R.string.enable_update_notification))
+            },
+        )
+
+        SegmentedListItem(
+            onClick = { onPersistentUpdatePopupChange(!persistentUpdatePopup) },
+            shapes =
+                ListItemDefaults.shapes(
+                    shape = MaterialTheme.shapes.extraLarge,
+                ),
+            modifier = Modifier.fillMaxWidth(),
+            colors =
+                ListItemDefaults.segmentedColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+            leadingContent = {
+                FeatureIcon(
+                    iconRes = R.drawable.ic_repeat,
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            },
+            trailingContent = {
+                Switch(
+                    checked = persistentUpdatePopup,
+                    onCheckedChange = null,
+                )
+            },
+            supportingContent = {
+                Text(text = stringResource(R.string.persistent_update_popup_desc))
+            },
+            content = {
+                Text(text = stringResource(R.string.persistent_update_popup))
             },
         )
 

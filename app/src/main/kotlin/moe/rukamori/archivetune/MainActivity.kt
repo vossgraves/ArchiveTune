@@ -273,6 +273,7 @@ import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
 import moe.rukamori.archivetune.constants.LastShownUpdatePopupVersionKey
 import moe.rukamori.archivetune.constants.NeverShowUpdatePopupKey
+import moe.rukamori.archivetune.constants.PersistentUpdatePopupKey
 import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.SearchHistory
@@ -785,6 +786,7 @@ class MainActivity : ComponentActivity() {
             val neverShowUpdatePopup = neverShowUpdatePopupMarker == currentVersionMarker
             val (lastShownUpdatePopupVersion, onLastShownUpdatePopupVersionChange) =
                 rememberPreference(LastShownUpdatePopupVersionKey, defaultValue = "")
+            val persistentUpdatePopup by rememberPreference(PersistentUpdatePopupKey, defaultValue = false)
             val updateSheetContent: @Composable ColumnScope.() -> Unit = {
                 // receiver: ColumnScope
                 Text(
@@ -876,22 +878,23 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Show the sheet once per offered release. Without the lastShown gate the effect
-            // re-fires on every process start and re-opens the same sheet for a release the user
-            // already dismissed, which is a nag rather than a notification — a reader who tracks a
-            // pre-release channel sees it on every launch, and a stable reader pointed at one
-            // never converges to it at all.
+            // Show the sheet once per offered release unless the reader asked for the reminder.
+            // Without the lastShown gate the effect re-fires on every process start and re-opens
+            // the same sheet for a release already dismissed, which is a nag rather than a notice —
+            // a reader who tracks a pre-release channel sees it on every launch, and a stable
+            // reader pointed at one never converges to it at all.
             LaunchedEffect(
                 latestVersionName,
                 latestUpdateChannel,
                 effectiveUpdateChannel,
                 neverShowUpdatePopup,
                 lastShownUpdatePopupVersion,
+                persistentUpdatePopup,
             ) {
                 if (
                     BuildConfig.UPDATER_AVAILABLE &&
                     !neverShowUpdatePopup &&
-                    lastShownUpdatePopupVersion != latestVersionName &&
+                    (persistentUpdatePopup || lastShownUpdatePopupVersion != latestVersionName) &&
                     latestUpdateChannel == effectiveUpdateChannel &&
                     Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                 ) {

@@ -489,6 +489,10 @@ val NeverShowUpdatePopupKey = stringPreferencesKey("neverShowUpdatePopupVersion"
 // on the next launch. A genuinely newer release still gets one showing.
 val LastShownUpdatePopupVersionKey = stringPreferencesKey("lastShownUpdatePopupVersion")
 
+// Off: the update sheet appears once per release. On: it reappears every launch while an update is
+// outstanding, for readers who want the reminder rather than a single notice.
+val PersistentUpdatePopupKey = booleanPreferencesKey("persistentUpdatePopup")
+
 val HideLikedSongsCardKey = booleanPreferencesKey("hide_liked_songs_card")
 val HideOfflineCardKey = booleanPreferencesKey("hide_offline_card")
 val HideCachedCardKey = booleanPreferencesKey("hide_cached_card")

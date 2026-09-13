@@ -1251,6 +1251,8 @@
     <string name="updates_status_current">You are on the latest available release</string>
     <string name="enable_update_notification">Enable Update Notification</string>
     <string name="enable_update_notification_channel_desc">Get notified when a new release is available on the selected channel</string>
+    <string name="persistent_update_popup">Keep reminding me</string>
+    <string name="persistent_update_popup_desc">Show the update sheet on every launch while an update is available, instead of once per release</string>
     <string name="update_channel">Update Channel</string>
     <string name="update_channel_desc">Choose between tested releases and development snapshots.</string>
     <string name="channel_stable">Stable</string>
