@@ -556,6 +556,12 @@ class App :
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
+        // Coil builds this once and keeps it for the life of the process, so reading a preference
+        // here before the first DataStore snapshot has landed does not just miss once — it pins the
+        // image cache to the built-in defaults until the app is killed, silently ignoring the size
+        // the reader chose. Bounded, so a slow first read delays the first image rather than the app.
+        PreferenceStore.blockUntilLoaded()
+
         val smartTrimmer = dataStore[SmartTrimmerKey] ?: false
         val imageCacheConfig = resolveImageDiskCacheConfig(dataStore[MaxImageCacheSizeKey])
         val lowRam = isLowRamDevice()

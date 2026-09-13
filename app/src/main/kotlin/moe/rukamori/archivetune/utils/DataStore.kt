@@ -20,6 +20,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -144,6 +145,18 @@ object PreferenceStore {
 
     @Volatile private var started = false
 
+    /**
+     * Completes when the first snapshot has landed, so a caller that cannot tolerate a default can
+     * wait for the real value.
+     *
+     * [start] only *launches* the collection. Until its first emission arrives, [get] returns null
+     * and every caller silently takes its own default — and a caller that runs once at startup and
+     * caches the answer keeps that default for the life of the process. `newImageLoader` did
+     * exactly this: on a cold start it could read a null cache size and pin Coil to the built-in
+     * default, ignoring the size the reader had chosen, until the app was killed.
+     */
+    private val firstLoad = CompletableDeferred<Unit>()
+
     fun start(context: Context) {
         if (started) return
         synchronized(this) {
@@ -152,10 +165,30 @@ object PreferenceStore {
             scope.launch {
                 context.dataStore.data.collect { preferences ->
                     _prefs.value = preferences
+                    firstLoad.complete(Unit)
                 }
             }
         }
     }
+
+    /** Suspends until the first snapshot lands. Returns immediately once it has. */
+    suspend fun awaitFirstLoad() = firstLoad.await()
+
+    /**
+     * Blocks the caller until preferences are readable, for the handful of entry points that are
+     * not suspending and must not read a default — a factory whose result is cached for the whole
+     * process, chiefly.
+     *
+     * Bounded, because a preference read must never be the reason the app fails to start: if the
+     * snapshot has not arrived within [timeoutMs] the caller proceeds on defaults, which is the
+     * behaviour it had unconditionally before this existed.
+     */
+    fun blockUntilLoaded(timeoutMs: Long = FIRST_LOAD_TIMEOUT_MS) {
+        if (firstLoad.isCompleted) return
+        runBlocking { withTimeoutOrNull(timeoutMs) { firstLoad.await() } }
+    }
+
+    private const val FIRST_LOAD_TIMEOUT_MS = 1_500L
 
     fun <T> get(key: Preferences.Key<T>): T? = _prefs.value?.get(key)
 
