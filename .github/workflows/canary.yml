@@ -16,21 +16,24 @@ on:
         default: false
 
 concurrency:
-  # Serialised, and NOT cancelling the run in flight. With cancel-in-progress, any second push
-  # inside a build window (~18 minutes) killed the first one mid-build, so that commit produced no
-  # APK at all — runs 172-176, 179 and 180 all died that way, which is what made shipped fixes look
-  # unshipped. Queueing instead means the build already running finishes and its APK exists.
+  # Per-commit, and NOT cancelling the run in flight.
   #
-  # Deliberately NOT per-commit (group: ...-${{ github.sha }}), which would let every commit build
-  # in parallel: the release tag is C<yyyyMMddHHmm>, minute-granular, so two builds finishing in the
-  # same minute would collide on `gh release create`. Widening the tag is not an escape — the
-  # in-app updater matches it with Regex("""C\d{8}(?:\d{4})?""") and .matches(), a whole-string
-  # match, so a SHA suffix or a seconds field would make every canary release invisible to already
-  # installed apps. Serialised runs start >=1 build apart, so the timestamp cannot repeat.
+  # This was once a single branch-wide group, which serialised whole runs. That was aimed at a real
+  # problem — with cancel-in-progress, any second push inside a build window killed the first one
+  # mid-build, so that commit produced no APK at all — but it overshot. Serialising the *run* means
+  # a push waits out the entire build ahead of it before it starts compiling: run 17 sat pending for
+  # 11 minutes behind run 14, whose last three jobs were still going at 27. From a push to an
+  # installable APK that is ~25 minutes of build behind up to ~25 of queue, and GitHub keeps only
+  # the newest pending run per group, so the commits in between were dropped rather than delayed.
   #
-  # GitHub keeps only the newest PENDING run per group, so a burst still skips intermediate
-  # commits — but the newest commit always builds, and so does whatever was already running.
-  group: canary-canary
+  # Only the release step genuinely cannot overlap: the tag is C<yyyyMMddHHmm>, minute-granular, so
+  # two runs publishing in the same minute collide on `gh release create`. Widening the tag is not
+  # an escape — the in-app updater matches it with Regex("""C\d{8}(?:\d{4})?""") and .matches(), a
+  # whole-string match, so a SHA suffix or a seconds field would make every canary release invisible
+  # to already installed apps. So the lock moved to where the conflict is: `create-canary` carries
+  # its own serialised group, and builds run in parallel. cancel-in-progress stays false everywhere,
+  # which is what keeps the original failure from returning.
+  group: canary-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -332,6 +335,11 @@ jobs:
     needs: [check, build]
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    # The serialisation the run-level group used to provide, narrowed to the job that needs it. Two
+    # of these never run at once, so the tag-collision retry below faces one competitor at a time.
+    concurrency:
+      group: canary-release
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -406,6 +414,22 @@ jobs:
           MOBILE_UNIVERSAL_APK="$(find downloaded_artifacts/app-gms-mobile-universal-canary -name '*.apk' | head -n 1)"
           OTHER_APKS="$(find downloaded_artifacts -path '*/app-*-canary/*.apk' ! -path '*/app-gms-mobile-universal-canary/*')"
           test -n "$MOBILE_UNIVERSAL_APK" || { echo "::error::Missing GMS mobile universal Canary APK"; exit 1; }
+
+          # Builds run in parallel now, so two runs whose `check` steps landed in the same minute
+          # carry the same minute-granular tag. This job is serialised, so the second one arrives to
+          # find the tag already published: step forward a minute at a time until one is free.
+          #
+          # Advancing from the queue-time base, not from the clock, is deliberate. The updater picks
+          # the release with the highest tag, and queue time tracks commit order while finish time
+          # does not — a slow build for an older commit must never outrank a fast one for a newer
+          # commit, which re-reading the clock here would let it do.
+          BASE="${CANARY_TAG#C}"
+          BASE_STAMP="${BASE:0:4}-${BASE:4:2}-${BASE:6:2} ${BASE:8:2}:${BASE:10:2} UTC"
+          for bump in $(seq 0 19); do
+            [ "$bump" -gt 0 ] && CANARY_TAG="C$(date -u -d "$BASE_STAMP + $bump minutes" +'%Y%m%d%H%M')"
+            gh release view "$CANARY_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || break
+            echo "Tag $CANARY_TAG is already published; trying the next minute."
+          done
 
           gh release create "$CANARY_TAG" \
             --repo "$GITHUB_REPOSITORY" \

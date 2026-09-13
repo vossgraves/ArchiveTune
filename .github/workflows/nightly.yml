@@ -16,21 +16,18 @@ on:
         default: false
 
 concurrency:
-  # Serialised, and NOT cancelling the run in flight. With cancel-in-progress, any second push
-  # inside a build window (~18 minutes) killed the first one mid-build, so that commit produced no
-  # APK at all — runs 172-176, 179 and 180 all died that way, which is what made shipped fixes look
-  # unshipped. Queueing instead means the build already running finishes and its APK exists.
+  # Per-commit, and NOT cancelling the run in flight. See the matching block in canary.yml for the
+  # reasoning; nightly had the same branch-wide group and the same consequence, worse here because
+  # this matrix still builds x86 and x86_64 and so runs longer than canary does.
   #
-  # Deliberately NOT per-commit (group: ...-${{ github.sha }}), which would let every commit build
-  # in parallel: the release tag is N<yyyyMMddHHmm>, minute-granular, so two builds finishing in the
-  # same minute would collide on `gh release create`. Widening the tag is not an escape — the
-  # in-app updater matches it with Regex("""N\d{8}(?:\d{4})?""") and .matches(), a whole-string
-  # match, so a SHA suffix or a seconds field would make every canary release invisible to already
-  # installed apps. Serialised runs start >=1 build apart, so the timestamp cannot repeat.
-  #
-  # GitHub keeps only the newest PENDING run per group, so a burst still skips intermediate
-  # commits — but the newest commit always builds, and so does whatever was already running.
-  group: dev-canary
+  # In short: serialising whole runs made every push wait out the build ahead of it, and GitHub
+  # keeps only the newest pending run per group, so intermediate commits were dropped rather than
+  # delayed. Only publishing genuinely cannot overlap — the tag is N<yyyyMMddHHmm>, minute-granular,
+  # and the in-app updater matches it with Regex("""N\d{8}(?:\d{4})?""") and .matches(), a
+  # whole-string match, so the tag cannot be widened with a SHA or seconds. The lock therefore lives
+  # on `create-nightly`, and builds run in parallel. cancel-in-progress stays false everywhere,
+  # which is what keeps builds from being killed mid-flight.
+  group: nightly-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -334,6 +331,10 @@ jobs:
     needs: [check, build]
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    # The serialisation the run-level group used to provide, narrowed to the job that needs it.
+    concurrency:
+      group: nightly-release
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -407,6 +408,19 @@ jobs:
           set -euo pipefail
           MOBILE_UNIVERSAL_APK="$(find downloaded_artifacts/app-gms-mobile-universal-nightly -name '*.apk' | head -n 1)"
           OTHER_APKS="$(find downloaded_artifacts -path '*/app-*-nightly/*.apk' ! -path '*/app-gms-mobile-universal-nightly/*')"
+
+          # Builds run in parallel now, so two runs whose `check` steps landed in the same minute
+          # carry the same minute-granular tag. This job is serialised, so the second one arrives to
+          # find the tag already published: step forward a minute at a time until one is free.
+          # Advancing from the queue-time base rather than the clock keeps the updater's "highest tag
+          # wins" aligned with commit order — see canary.yml for the full reasoning.
+          BASE="${NIGHTLY_TAG#N}"
+          BASE_STAMP="${BASE:0:4}-${BASE:4:2}-${BASE:6:2} ${BASE:8:2}:${BASE:10:2} UTC"
+          for bump in $(seq 0 19); do
+            [ "$bump" -gt 0 ] && NIGHTLY_TAG="N$(date -u -d "$BASE_STAMP + $bump minutes" +'%Y%m%d%H%M')"
+            gh release view "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || break
+            echo "Tag $NIGHTLY_TAG is already published; trying the next minute."
+          done
 
           gh release create "$NIGHTLY_TAG" \
             --repo "$GITHUB_REPOSITORY" \
