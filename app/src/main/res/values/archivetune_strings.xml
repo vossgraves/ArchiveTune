@@ -662,8 +662,6 @@
     <string name="stats_metric_artists">Artists</string>
     <string name="stats_top_artists">Top artists</string>
     <string name="stats_top_tracks">Top tracks</string>
-    <string name="stats_history_sections">History sections</string>
-    <string name="stats_recent_section">Recent</string>
     <string name="stats_unknown_artist">Unknown artist</string>
     <string name="day_sun">Sun</string>
     <string name="day_mon">Mon</string>

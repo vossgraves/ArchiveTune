@@ -794,7 +794,11 @@ private data class RemoteStatsData(
     val totalDurationMillis: Long = 0,
     val tracks: List<RemoteStatsTrack> = emptyList(),
     val artists: List<RemoteStatsRank> = emptyList(),
-    val activity: List<RemoteStatsRank> = emptyList(),
+    // Fed to the same day/hour charts the local stats draw, so the three sources read as one screen
+    // rather than as three. Slot indexing matches the local SQL: %w for the day (0 = Sunday) and %H
+    // for the hour, with timeListened in milliseconds.
+    val daySlots: List<ListeningBySlot> = emptyList(),
+    val hourSlots: List<ListeningBySlot> = emptyList(),
 )
 
 private data class RemoteStatsTrack(
@@ -877,7 +881,6 @@ private fun RemoteStatsScreen(
     onRetry: () -> Unit,
 ) {
     var selectedRange by rememberSaveable { mutableStateOf(RemoteStatsRange.ALL) }
-    val untitledSectionLabel = stringResource(R.string.stats_recent_section)
     val unknownArtistLabel = stringResource(R.string.stats_unknown_artist)
     val data =
         when (source) {
@@ -891,7 +894,6 @@ private fun RemoteStatsScreen(
                         remoteHistoryStats(
                             page = remoteHistoryState.page,
                             range = selectedRange,
-                            untitledSectionLabel = untitledSectionLabel,
                             unknownArtistLabel = unknownArtistLabel,
                         )
                 }
@@ -1108,19 +1110,18 @@ private fun RemoteStatsDashboard(
                 gradient = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary),
             )
         }
-        if (data.activity.isNotEmpty()) {
+        if (data.daySlots.isNotEmpty() || data.hourSlots.isNotEmpty()) {
             item {
-                RemoteRankChart(
-                    title =
-                        stringResource(
-                            if (data.source == StatsSource.SPOTIFY) {
-                                R.string.stats_listening_by_hour
-                            } else {
-                                R.string.stats_history_sections
-                            },
-                        ),
-                    ranks = data.activity,
-                    gradient = listOf(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.primary),
+                // The same component the local stats use, so all three sources draw one chart rather
+                // than local getting real day/hour charts and the remote ones a generic bar list.
+                // Each chart omits itself when its slots are empty, which is how YouTube ends up
+                // with a day chart and no hour chart.
+                StatsListeningPatterns(
+                    daySlots = data.daySlots,
+                    hourSlots = data.hourSlots,
+                    currentDayOfWeek = remember { LocalDateTime.now().dayOfWeek.value % 7 },
+                    // The LazyColumn already insets this list; the section's own gutter would double it.
+                    horizontalPadding = 0.dp,
                 )
             }
         }
@@ -1203,7 +1204,6 @@ private fun RemoteTrackRow(track: RemoteStatsTrack) {
 private fun remoteHistoryStats(
     page: HistoryPage,
     range: RemoteStatsRange,
-    untitledSectionLabel: String,
     unknownArtistLabel: String,
 ): RemoteStatsData {
     val sections = page.sections.orEmpty().filter { it.isWithin(range) }
@@ -1217,14 +1217,19 @@ private fun remoteHistoryStats(
             )
         }
     }
+    // YouTube dates its history by section title ("Today", "Yesterday", a date) and never by clock
+    // time, so the day chart can be filled and the hour chart cannot. The hour chart is left empty
+    // rather than faked, and StatsListeningPatterns simply omits a chart with no slots.
+    val dayPlays =
+        sections.flatMap { section ->
+            val day = parseHistoryDate(section.title)?.dayOfWeek?.value?.rem(7)
+            section.songs.map { song -> day to (song.duration ?: 0).toLong() * 1_000 }
+        }
     return remoteStats(
         source = StatsSource.YOUTUBE,
         unknownArtistLabel = unknownArtistLabel,
         tracks = tracks,
-        activity =
-            sections
-                .map { RemoteStatsRank(it.title.ifBlank { untitledSectionLabel }, it.songs.size) }
-                .filter { it.count > 0 },
+        daySlots = slotsOf(dayPlays, slot = { it.first }, millis = { it.second }),
     )
 }
 
@@ -1244,20 +1249,21 @@ private fun spotifyHistoryStats(
             )
         }
     }
-    val activity =
+    // Spotify stamps every play with a wall-clock instant, so both charts can be filled honestly.
+    val playedPlays =
         filteredHistory.mapNotNull { play ->
-            play.playedAt
-                ?.let { runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()).hour }.getOrNull() }
-        }.groupingBy { it }
-            .eachCount()
-            .entries
-            .sortedBy { it.key }
-            .map { (hour, count) -> RemoteStatsRank("${hour.toString().padStart(2, '0')}:00", count) }
+            val at =
+                play.playedAt
+                    ?.let { runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()) }.getOrNull() }
+                    ?: return@mapNotNull null
+            at to (play.track?.durationMs?.toLong() ?: 0L)
+        }
     return remoteStats(
         source = StatsSource.SPOTIFY,
         unknownArtistLabel = unknownArtistLabel,
         tracks = tracks,
-        activity = activity,
+        daySlots = slotsOf(playedPlays, slot = { it.first.dayOfWeek.value % 7 }, millis = { it.second }),
+        hourSlots = slotsOf(playedPlays, slot = { it.first.hour }, millis = { it.second }),
     )
 }
 
@@ -1317,7 +1323,8 @@ private fun remoteStats(
     source: StatsSource,
     unknownArtistLabel: String,
     tracks: List<RemoteStatsTrack>,
-    activity: List<RemoteStatsRank>,
+    daySlots: List<ListeningBySlot> = emptyList(),
+    hourSlots: List<ListeningBySlot> = emptyList(),
 ): RemoteStatsData {
     val rankedTracks =
         tracks.groupBy { it.id }
@@ -1340,9 +1347,30 @@ private fun remoteStats(
         totalDurationMillis = tracks.sumOf(RemoteStatsTrack::durationMillis),
         tracks = rankedTracks,
         artists = artists,
-        activity = activity,
+        daySlots = daySlots,
+        hourSlots = hourSlots,
     )
 }
+
+/**
+ * Groups plays into the slot shape the local charts expect.
+ *
+ * Weighted by listening time rather than play count, because that is what the local charts measure:
+ * `SUM(playTime)` per slot. Counting plays instead would draw a bar of the same height for a
+ * thirty-second skip and a ten-minute track.
+ */
+private fun <T> slotsOf(
+    plays: List<T>,
+    slot: (T) -> Int?,
+    millis: (T) -> Long,
+): List<ListeningBySlot> =
+    plays
+        .mapNotNull { play -> slot(play)?.let { it to millis(play) } }
+        .groupingBy { it.first }
+        .fold(0L) { total, (_, ms) -> total + ms }
+        .entries
+        .sortedBy { it.key }
+        .map { (slot, total) -> ListeningBySlot(slot = slot, timeListened = total) }
 
 @Composable
 private fun StatsFilterPanel(
@@ -1416,6 +1444,7 @@ private fun StatsListeningPatterns(
     hourSlots: List<ListeningBySlot>,
     currentDayOfWeek: Int,
     modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 16.dp,
 ) {
     if (daySlots.isEmpty() && hourSlots.isEmpty()) return
 
@@ -1423,7 +1452,7 @@ private fun StatsListeningPatterns(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(horizontal = horizontalPadding, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
