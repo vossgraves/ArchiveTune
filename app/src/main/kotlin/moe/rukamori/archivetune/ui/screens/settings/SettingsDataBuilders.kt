@@ -382,6 +382,23 @@ fun buildSettingsGroups(
                 SettingsChild("JioSaavn credit", "jiosaavn_credit", listOf("jiosaavn credit", "vivimusic", "jiosaavn about")),
             ),
         )
+    // Sources → Amazon Music sub-page.
+    val amazon =
+        SettingsItem(
+            key = "amazon",
+            icon = painterResource(R.drawable.login),
+            title = "Amazon Music",
+            subtitle = "Amazon Music account (metadata only)",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("amazon", "amazon music", "amazon login", "amazon hd", "amazon ultra hd"),
+            onClick = { navController.navigate("settings/amazon") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Sign in to Amazon Music", "amazon_login", listOf("amazon login", "amazon sign in", "connect amazon")),
+                SettingsChild("Sign out of Amazon Music", "amazon_sign_out", listOf("amazon logout", "amazon sign out", "disconnect amazon")),
+                SettingsChild("Amazon audio quality", "amazon_audio_quality", listOf("amazon quality", "amazon hd", "amazon ultra hd")),
+            ),
+        )
     // Sources → Deezer sub-page.
     val deezer =
         SettingsItem(
@@ -1036,6 +1053,7 @@ fun buildSettingsGroups(
                     playback,
                     sources,
                     jioSaavn,
+                    amazon,
                     deezer,
                     lyrics,
                     lyricsProviders,

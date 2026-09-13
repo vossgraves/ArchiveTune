@@ -35,6 +35,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AmazonAccountNameKey
 import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
@@ -74,7 +75,9 @@ fun IntegrationScreen(
     val (deezerArl, _) = rememberPreference(DeezerArlKey, "")
     val (tidalAccessToken, _) = rememberPreference(TidalAccessTokenKey, "")
     val (qobuzTokens, _) = rememberPreference(QobuzTokensKey, "")
+    val (amazonAccountName, _) = rememberPreference(AmazonAccountNameKey, "")
     val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
+    val showAmazonRow = manualSourceLogin || amazonAccountName.isNotBlank()
     val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
     val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
 
@@ -217,6 +220,18 @@ fun IntegrationScreen(
                         icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
                         onClick = {
                             navController.navigate("settings/deezer")
+                        },
+                    )
+                }
+
+                item(visible = showAmazonRow) {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("amazon"),
+                        title = { Text(stringResource(R.string.source_amazon)) },
+                        description = stringResource(R.string.amazon_login_description),
+                        icon = { Icon(painterResource(R.drawable.login), null) },
+                        onClick = {
+                            navController.navigate("settings/amazon")
                         },
                     )
                 }
