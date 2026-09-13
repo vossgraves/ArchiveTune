@@ -484,6 +484,11 @@ val AiRomanizeExcludedLanguagesKey = stringSetPreferencesKey("aiRomanizeExcluded
 // Empty string means "not suppressed".
 val NeverShowUpdatePopupKey = stringPreferencesKey("neverShowUpdatePopupVersion")
 
+// The release the update sheet was last shown for. Keyed on the OFFERED release rather than the
+// installed one, so dismissing the sheet settles it for that release instead of letting it return
+// on the next launch. A genuinely newer release still gets one showing.
+val LastShownUpdatePopupVersionKey = stringPreferencesKey("lastShownUpdatePopupVersion")
+
 val HideLikedSongsCardKey = booleanPreferencesKey("hide_liked_songs_card")
 val HideOfflineCardKey = booleanPreferencesKey("hide_offline_card")
 val HideCachedCardKey = booleanPreferencesKey("hide_cached_card")

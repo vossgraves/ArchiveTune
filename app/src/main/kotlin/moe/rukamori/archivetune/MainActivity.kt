@@ -271,6 +271,7 @@ import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
+import moe.rukamori.archivetune.constants.LastShownUpdatePopupVersionKey
 import moe.rukamori.archivetune.constants.NeverShowUpdatePopupKey
 import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -782,6 +783,8 @@ class MainActivity : ComponentActivity() {
             val (neverShowUpdatePopupMarker, onNeverShowUpdatePopupMarkerChange) =
                 rememberPreference(NeverShowUpdatePopupKey, defaultValue = "")
             val neverShowUpdatePopup = neverShowUpdatePopupMarker == currentVersionMarker
+            val (lastShownUpdatePopupVersion, onLastShownUpdatePopupVersionChange) =
+                rememberPreference(LastShownUpdatePopupVersionKey, defaultValue = "")
             val updateSheetContent: @Composable ColumnScope.() -> Unit = {
                 // receiver: ColumnScope
                 Text(
@@ -873,11 +876,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // fetch release notes and show sheet when a new version is detected
-            LaunchedEffect(latestVersionName, latestUpdateChannel, effectiveUpdateChannel, neverShowUpdatePopup) {
+            // Show the sheet once per offered release. Without the lastShown gate the effect
+            // re-fires on every process start and re-opens the same sheet for a release the user
+            // already dismissed, which is a nag rather than a notification — a reader who tracks a
+            // pre-release channel sees it on every launch, and a stable reader pointed at one
+            // never converges to it at all.
+            LaunchedEffect(
+                latestVersionName,
+                latestUpdateChannel,
+                effectiveUpdateChannel,
+                neverShowUpdatePopup,
+                lastShownUpdatePopupVersion,
+            ) {
                 if (
                     BuildConfig.UPDATER_AVAILABLE &&
                     !neverShowUpdatePopup &&
+                    lastShownUpdatePopupVersion != latestVersionName &&
                     latestUpdateChannel == effectiveUpdateChannel &&
                     Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                 ) {
@@ -894,6 +908,7 @@ class MainActivity : ComponentActivity() {
                             releaseNotesState.value = null
                         }
 
+                    onLastShownUpdatePopupVersionChange(latestVersionName)
                     bottomSheetPageState.show(updateSheetContent)
                 }
             }

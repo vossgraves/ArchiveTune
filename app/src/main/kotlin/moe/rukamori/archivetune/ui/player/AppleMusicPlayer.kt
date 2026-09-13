@@ -73,6 +73,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -190,6 +191,13 @@ private const val AmLyricsBlurDriftScale = 2.4f
 // Scale of the blurred backdrop in the COVER/QUEUE states. The LYRICS state
 // zooms from here to [AmLyricsBlurDriftScale] over [AmLyricsBackdropMorphMs].
 private const val AmCoverBlurScale = 1.2f
+
+/**
+ * Blur radius for the live canvas backdrop. Smaller than the 72dp used on a still cover: that one
+ * is blurred into a bitmap once, this one is re-evaluated per decoded frame, and the cost of a
+ * RenderEffect blur climbs with the radius.
+ */
+private val AmCanvasBackdropBlurRadius = 32.dp
 
 // How long the backdrop takes to travel between the COVER look (no drift, 1.2x)
 // and the LYRICS look (drifting, 2.4x). Also the duration of the canvas →
@@ -831,6 +839,16 @@ fun AppleMusicPlayerContent(
                 // Canvas backdrop — the ExoPlayer is ALWAYS retained (never disposed across lyrics
                 // open/close) so the canvas resumes instantly when lyrics closes — no multi-second
                 // reload delay.
+                // A 72dp blur over a live video surface is re-evaluated on every frame the decoder
+                // produces, full screen, which is what makes animated artwork cost far more than a
+                // still cover — that one is pre-blurred into a bitmap once. Two things keep it off
+                // the frame budget: it is dropped entirely when animations are disabled (the
+                // low-RAM default), and it is skipped once the lyrics ramp has faded the backdrop
+                // out, since alpha is applied after the effect and a blur nobody can see still
+                // costs a full pass.
+                val canvasBackdropVisible by remember {
+                    derivedStateOf { lyricsBackdropProgress.value < 0.99f }
+                }
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
@@ -842,8 +860,13 @@ fun AppleMusicPlayerContent(
                             .matchParentSize()
                             // Outside the blur so the mask is applied to the blurred result.
                             .then(canvasSeamFade)
-                            .blur(72.dp)
-                            .graphicsLayer {
+                            .then(
+                                if (animationsDisabled || !canvasBackdropVisible) {
+                                    Modifier
+                                } else {
+                                    Modifier.blur(AmCanvasBackdropBlurRadius)
+                                },
+                            ).graphicsLayer {
                                 // Fixed scale (no drift) — the canvas is on its
                                 // way out by the time the drift matters.
                                 scaleX = AmCoverBlurScale

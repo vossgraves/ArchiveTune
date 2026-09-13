@@ -65,7 +65,7 @@ jobs:
           SHORT_SHA="$(git rev-parse --short HEAD)"
           COMMIT_COUNT="$(git rev-list --count HEAD)"
 
-          # Canary builds all share the fixed display versionName from build.gradle.kts (e.g.
+          # Nightly builds all share the fixed display versionName from build.gradle.kts (e.g.
           # "13.7.5"); they are told apart internally by the monotonic versionCode (the commit
           # count). The in-app updater embeds that versionCode in the release notes ("at-build:<n>")
           # and compares build numbers, so the fixed versionName never triggers a false "update
@@ -360,7 +360,7 @@ jobs:
           {
             echo "# Nightly build"
             echo ""
-            echo "Automated canary build from the dev branch. Not intended for production use."
+            echo "Automated Nightly build from the dev branch. Not intended for production use."
             echo ""
             # Machine-readable monotonic build number read by the in-app updater to compare canary
             # builds (the display versionName is fixed, so the updater compares this instead).
