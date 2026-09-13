@@ -50,6 +50,7 @@ object PoolAccountManager {
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
     private val CACHE_DEEZER_KEY = stringPreferencesKey("poolDeezerAccounts")
     private val CACHE_APPLE_KEY = stringPreferencesKey("poolAppleMusicAccounts")
+    private val CACHE_AMAZON_KEY = stringPreferencesKey("poolAmazonAccounts")
 
     /** Last resolved read key, so fire-and-forget /api/report calls use the same identity. */
     @Volatile
@@ -112,6 +113,21 @@ object PoolAccountManager {
         val premium: Boolean,
     )
 
+    /**
+     * A shared Amazon Music subscriber credential. Modeled on [DeezerPoolAccount] rather than
+     * Tidal/Qobuz: no self-hosted proxy-instance tier, just one opaque per-account [session] blob
+     * (an Amazon Music web-session artifact) plus a [premium] flag for HD/Ultra HD entitlement.
+     *
+     * Nothing resolves audio with this yet — Amazon serves CENC-protected streams and this fork
+     * ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt) — but the pool plumbing
+     * is in place so a future AudioProvider only has to consume [amazonAccounts].
+     */
+    data class AmazonPoolAccount(
+        val id: Long?,
+        val session: String,
+        val premium: Boolean,
+    )
+
     @Volatile
     private var tidalCache: List<TidalPoolAccount> = emptyList()
 
@@ -123,6 +139,9 @@ object PoolAccountManager {
 
     @Volatile
     private var appleMusicCache: List<AppleMusicPoolAccount> = emptyList()
+
+    @Volatile
+    private var amazonCache: List<AmazonPoolAccount> = emptyList()
 
     @Volatile
     private var lastRefreshAt = 0L
@@ -222,10 +241,23 @@ object PoolAccountManager {
 
     fun appleMusicAccounts(): List<AppleMusicPoolAccount> = appleMusicCache.sortedByDescending { it.premium }
 
-    fun hasAccounts(): Boolean =
-        tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() || appleMusicCache.isNotEmpty()
+    fun amazonAccounts(): List<AmazonPoolAccount> =
+        ordered("amazon-music", amazonCache, { it.id }, { it.premium })
 
-    /** True when every pooled service has at least one account, i.e. nothing is left to discover. */
+    fun hasAccounts(): Boolean =
+        tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() ||
+            appleMusicCache.isNotEmpty() || amazonCache.isNotEmpty()
+
+    /**
+     * True when every pooled service *that something can actually play* has at least one account.
+     *
+     * Deliberately excludes Amazon: no AudioProvider consumes [amazonCache] yet (this fork ships no
+     * CENC decryption step), so an empty Amazon cache is never "missing" anything a user can use.
+     * Folding it in here would mean any pool deployment slow to collect Amazon accounts — plausibly
+     * most of them, indefinitely — permanently downgrades every user from the 24h [refreshIntervalMs]
+     * to the 15-minute partial-pool one, hammering the server for a service nothing resolves through.
+     * Revisit this once an Amazon AudioProvider exists and eager discovery would actually help someone.
+     */
     private fun hasEveryService(): Boolean =
         tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
 
@@ -262,13 +294,17 @@ object PoolAccountManager {
                 cached(context, CACHE_APPLE_KEY)?.takeIf { it.isNotBlank() }?.let {
                     appleMusicCache = parseAppleMusic(JSONArray(it), passthrough)
                 }
+                cached(context, CACHE_AMAZON_KEY)?.takeIf { it.isNotBlank() }?.let {
+                    amazonCache = parseAmazon(JSONArray(it), passthrough)
+                }
                 loadedFromDisk = true
                 Timber.tag(TAG).d(
-                    "Loaded cached accounts: tidal=%d qobuz=%d deezer=%d apple=%d",
+                    "Loaded cached accounts: tidal=%d qobuz=%d deezer=%d apple=%d amazon=%d",
                     tidalCache.size,
                     qobuzCache.size,
                     deezerCache.size,
                     appleMusicCache.size,
+                    amazonCache.size,
                 )
             }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached pool accounts") }
         }
@@ -401,13 +437,14 @@ object PoolAccountManager {
                 val qobuz = parseQobuz(accountsArray(root, "qobuz"), decryptor)
                 val deezer = parseDeezer(accountsArray(root, "deezer"), decryptor)
                 val apple = parseAppleMusic(accountsArray(root, "apple-music"), decryptor)
+                val amazon = parseAmazon(accountsArray(root, "amazon-music"), decryptor)
                 // Don't overwrite the in-memory cache with an empty list when the pool returns a
                 // 200 with a partial/empty response (rate-limit, transient server bug, captive-portal
                 // interception, malformed JSON). The user symptom is "Qobuz and other source
                 // providers disappear all of a sudden while playing songs" — and the only way to
                 // recover was force-stop + re-open. Only update the cache when at least one list is
                 // non-empty. Otherwise keep the previous (non-empty) cache so playback keeps working.
-                val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty()
+                val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty() && amazon.isEmpty()
                 if (allEmpty && hasAccounts()) {
                     Timber
                         .tag(TAG)
@@ -417,15 +454,17 @@ object PoolAccountManager {
                     qobuzCache = qobuz
                     deezerCache = deezer
                     appleMusicCache = apple
+                    amazonCache = amazon
                     lastRefreshAt = System.currentTimeMillis()
-                    persist(context, tidal, qobuz, deezer, apple)
+                    persist(context, tidal, qobuz, deezer, apple, amazon)
                 }
                 Timber.tag(TAG).i(
-                    "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d apple=%d",
+                    "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d apple=%d amazon=%d",
                     tidal.size,
                     qobuz.size,
                     deezer.size,
                     apple.size,
+                    amazon.size,
                 )
                 FeedFetch(root, 200)
             }
@@ -441,6 +480,7 @@ object PoolAccountManager {
         qobuz: List<QobuzPoolAccount>,
         deezer: List<DeezerPoolAccount>,
         apple: List<AppleMusicPoolAccount>,
+        amazon: List<AmazonPoolAccount>,
     ) {
         val tidalJson =
             JSONArray().apply {
@@ -491,12 +531,24 @@ object PoolAccountManager {
                     )
                 }
             }.toString()
+        val amazonJson =
+            JSONArray().apply {
+                amazon.forEach {
+                    put(
+                        JSONObject()
+                            .put("id", it.id)
+                            .put("session", it.session)
+                            .put("premium", it.premium),
+                    )
+                }
+            }.toString()
         runCatching {
             context.dataStore.edit { prefs ->
                 prefs[CACHE_TIDAL_KEY] = PoolCacheCrypto.encrypt(tidalJson)
                 prefs[CACHE_QOBUZ_KEY] = PoolCacheCrypto.encrypt(qobuzJson)
                 prefs[CACHE_DEEZER_KEY] = PoolCacheCrypto.encrypt(deezerJson)
                 prefs[CACHE_APPLE_KEY] = PoolCacheCrypto.encrypt(appleJson)
+                prefs[CACHE_AMAZON_KEY] = PoolCacheCrypto.encrypt(amazonJson)
             }
         }.onFailure { Timber.tag(TAG).w(it, "Failed to persist pool accounts") }
     }
@@ -629,9 +681,10 @@ object PoolAccountManager {
                 "qobuz" -> qobuzCache = mergeList(qobuzCache, deadId, QobuzPoolAccount::id, replacementArr, ::parseQobuz, decryptor) ?: return@withLock
                 "deezer" -> deezerCache = mergeList(deezerCache, deadId, DeezerPoolAccount::id, replacementArr, ::parseDeezer, decryptor) ?: return@withLock
                 "apple-music" -> appleMusicCache = mergeList(appleMusicCache, deadId, AppleMusicPoolAccount::id, replacementArr, ::parseAppleMusic, decryptor) ?: return@withLock
+                "amazon-music" -> amazonCache = mergeList(amazonCache, deadId, AmazonPoolAccount::id, replacementArr, ::parseAmazon, decryptor) ?: return@withLock
                 else -> return@withLock
             }
-            persist(ctx, tidalCache, qobuzCache, deezerCache, appleMusicCache)
+            persist(ctx, tidalCache, qobuzCache, deezerCache, appleMusicCache, amazonCache)
         }
     }
 
@@ -727,6 +780,25 @@ object PoolAccountManager {
                     arl = arl,
                     premium = obj.optBoolean("premium", false),
                     masterSecret = field(obj, "masterSecret", decryptor),
+                )
+        }
+        return out
+    }
+
+    private fun parseAmazon(
+        arr: JSONArray?,
+        decryptor: (String) -> String?,
+    ): List<AmazonPoolAccount> {
+        if (arr == null) return emptyList()
+        val out = mutableListOf<AmazonPoolAccount>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val session = field(obj, "session", decryptor) ?: continue
+            out +=
+                AmazonPoolAccount(
+                    id = entryId(obj),
+                    session = session,
+                    premium = obj.optBoolean("premium", false),
                 )
         }
         return out

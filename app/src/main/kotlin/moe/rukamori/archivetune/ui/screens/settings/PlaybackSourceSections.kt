@@ -61,6 +61,7 @@ import moe.rukamori.archivetune.constants.AppleMusicQualityKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.AmazonEnabledKey
 import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
@@ -107,6 +108,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.APPLE -> context.getString(R.string.source_apple_music)
+        AudioSourceType.AMAZON -> context.getString(R.string.source_amazon)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
@@ -118,6 +120,9 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.ic_music
+        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same
+        // stand-in APPLE uses above for the same reason.
+        AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -136,6 +141,7 @@ internal fun PlaybackSourceSections(
     val (qobuzEnabled, onQobuzEnabledChangeRaw) = rememberPreference(QobuzEnabledKey, false)
     val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
     val (appleMusicEnabled, onAppleMusicEnabledChangeRaw) = rememberPreference(AppleMusicSourceEnabledKey, false)
+    val (amazonEnabled, onAmazonEnabledChangeRaw) = rememberPreference(AmazonEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
@@ -171,6 +177,14 @@ internal fun PlaybackSourceSections(
     }
     val onAppleMusicEnabledChange: (Boolean) -> Unit = { enabled ->
         onAppleMusicEnabledChangeRaw(enabled)
+        if (enabled && PoolAccountManager.isEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { PoolAccountManager.refresh(context, force = true) }
+            }
+        }
+    }
+    val onAmazonEnabledChange: (Boolean) -> Unit = { enabled ->
+        onAmazonEnabledChangeRaw(enabled)
         if (enabled && PoolAccountManager.isEnabled) {
             scope.launch(Dispatchers.IO) {
                 runCatching { PoolAccountManager.refresh(context, force = true) }
@@ -216,6 +230,7 @@ internal fun PlaybackSourceSections(
             AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
             AudioSourceType.DEEZER -> deezerEnabled
             AudioSourceType.APPLE -> appleMusicEnabled
+            AudioSourceType.AMAZON -> amazonEnabled
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
         }
@@ -234,6 +249,7 @@ internal fun PlaybackSourceSections(
                 AudioSourceType.QOBUZ_BACKUP -> if (!qobuzBackupEnabled) onQobuzBackupEnabledChange(true)
                 AudioSourceType.DEEZER -> if (!deezerEnabled) onDeezerEnabledChange(true)
                 AudioSourceType.APPLE -> if (!appleMusicEnabled) onAppleMusicEnabledChange(true)
+                AudioSourceType.AMAZON -> if (!amazonEnabled) onAmazonEnabledChange(true)
                 AudioSourceType.JIOSAAVN -> if (!jioSaavnEnabled) onJioSaavnEnabledChange(true)
                 AudioSourceType.YOUTUBE -> Unit
             }

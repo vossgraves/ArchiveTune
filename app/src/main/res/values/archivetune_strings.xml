@@ -888,4 +888,34 @@
     <string name="yt_oauth_scope_note">This signs playback in only. Library, playlists and browse still use the browser login.</string>
     <string name="spotify_load_timeout">Spotify took too long to respond. Check your connection and try again.</string>
     <string name="spotify_load_failed">Could not load this Spotify playlist. Try again in a moment.</string>
+
+    <!-- Amazon Music source label (PlayerMenu / PlaybackSourceSections source pickers) -->
+    <string name="source_amazon">Amazon Music</string>
+
+    <!-- Amazon Music sign-in (WebView) + settings. Shaped like Deezer's: account-based, no
+         self-hosted proxy tier. Playback itself is not shipped — Amazon serves CENC-protected
+         streams and this fork deliberately does not ship the decryption step, so signing in only
+         gets metadata and catalogue browsing; amazon_playback_notice_* says so on the screen. -->
+    <string name="amazon_login">Sign in to Amazon Music</string>
+    <string name="amazon_login_description">Use your own Amazon Music account for metadata and catalogue lookups</string>
+    <string name="amazon_login_success">Signed in to Amazon Music</string>
+    <string name="amazon_login_invalid_session">Not signed in yet — finish signing in on this page.</string>
+    <string name="auth_webview_amazon_subtitle">Sign in to Amazon Music below. The session is saved automatically once you\'re signed in.</string>
+    <string name="amazon_account_name_generic">Amazon Music account</string>
+    <string name="amazon_sign_out">Sign out of Amazon Music</string>
+    <string name="amazon_signed_in_as">Signed in as %1$s</string>
+    <string name="amazon_signed_out">Signed out of Amazon Music</string>
+    <string name="amazon_playback_notice_title">Playback isn\'t available yet</string>
+    <string name="amazon_playback_notice_description">Amazon Music serves DRM-protected (CENC) streams, and this fork deliberately does not ship the decryption step that would need. Signing in only gets you metadata and catalogue browsing — songs will not play from this source.</string>
+    <string name="amazon_settings_playback_group">Playback preferences</string>
+    <string name="amazon_premium_toggle">Lossless-capable plan</string>
+    <string name="amazon_premium_toggle_description">Turn on if your account has an Unlimited HD or Ultra HD plan. There is no way for the app to check this on its own, so it\'s reported by you; it only orders resolution attempts once playback support exists.</string>
+    <string name="amazon_audio_quality">Preferred audio quality</string>
+    <string name="amazon_quality_ultra_hd">Ultra HD (24-bit)</string>
+    <string name="amazon_quality_hd">HD (16-bit lossless)</string>
+    <string name="amazon_quality_standard">Standard</string>
+    <string name="amazon_instances">Metadata instances</string>
+    <string name="amazon_instances_hint">One URL per line</string>
+    <string name="amazon_instances_empty">None configured — metadata resolves through your signed-in account only</string>
+    <string name="amazon_instances_count">%1$d instance(s) configured</string>
 </resources>

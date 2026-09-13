@@ -8,7 +8,10 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.constants.AmazonAccountNameKey
+import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
@@ -18,6 +21,7 @@ import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.PoolAccountManager
+import moe.rukamori.archivetune.utils.dataStore
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -58,6 +62,7 @@ object SourceCheckService {
                 AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup()
                 AudioSourceType.DEEZER -> checkDeezer(context)
                 AudioSourceType.APPLE -> checkAppleMusic()
+                AudioSourceType.AMAZON -> checkAmazon(context)
                 AudioSourceType.JIOSAAVN -> checkJioSaavn()
                 AudioSourceType.YOUTUBE -> SourceCheckResult(
                     healthy = true,
@@ -394,6 +399,41 @@ object SourceCheckService {
                 summary = "Credentials: $origin. Verified as '${info.name}' — $tier. Deezer source is READY.",
             )
         }
+    }
+
+    private suspend fun checkAmazon(context: Context): SourceCheckResult {
+        // force = true, same reasoning as checkDeezer: this row exists to answer "can accounts be
+        // found right now", and a throttled refresh would just repeat advice this call declined.
+        PoolAccountManager.refresh(context, force = true)
+        val pooled = PoolAccountManager.amazonAccounts()
+        val prefs = context.dataStore.data.first()
+        val manualName = prefs[AmazonAccountNameKey]?.takeIf { it.isNotBlank() }
+        val manualPremium = prefs[AmazonAccountPremiumKey] == true
+        if (pooled.isEmpty() && manualName == null) {
+            return SourceCheckResult(
+                healthy = false,
+                summary = "No Amazon Music credentials available. Sign in via Integration → Amazon Music, " +
+                    "or tap 'Refresh source pool' at the top to pick up shared accounts.",
+            )
+        }
+        val origin =
+            buildList {
+                if (manualName != null) {
+                    add("your own account '$manualName'${if (manualPremium) " (HD/Ultra HD)" else ""}")
+                }
+                if (pooled.isNotEmpty()) {
+                    add("${pooled.size} pool account(s), ${pooled.count { it.premium }} HD/Ultra HD")
+                }
+            }.joinToString(" + ")
+        // There is no AmazonAudioProvider: Amazon serves CENC-protected fragmented MP4 and this
+        // fork ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt). Credentials
+        // being present is not the same as the source working, so this never reports healthy —
+        // doing so would tell users Amazon plays when it structurally cannot.
+        return SourceCheckResult(
+            healthy = false,
+            summary = "Credentials: $origin. Amazon Music is NOT ready: this build has no stream-decryption " +
+                "step for Amazon's protected audio, so this source can be signed into but will never play a track.",
+        )
     }
 
     private fun checkJioSaavn(): SourceCheckResult {

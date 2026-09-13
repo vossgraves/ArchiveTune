@@ -291,6 +291,10 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
+        // Registers the recurring source refresh. KEEP, so this is a no-op once scheduled rather
+        // than pushing the next run further out on every launch.
+        moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
+
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()

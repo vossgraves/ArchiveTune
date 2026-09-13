@@ -1548,6 +1548,7 @@ enum class AudioSourceType {
     QOBUZ_BACKUP,
     DEEZER,
     APPLE,
+    AMAZON,
     JIOSAAVN,
     YOUTUBE,
 }
@@ -1589,6 +1590,48 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 // Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
 // the provider still verifies the real tier per track.
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
+
+// ---------------------------------------------------------------------------
+// Amazon Music source
+// ---------------------------------------------------------------------------
+// Shaped like Deezer rather than Tidal/Qobuz: credentials come from a signed-in account or from
+// the pool, and the instance list below only locates the metadata/search tier.
+//
+// IMPORTANT — this source cannot play audio on its own. Amazon serves CENC-protected fragmented
+// MP4, and turning that into a decodable stream needs a decryption step this fork does not ship.
+// Everything here is the account, catalogue and ordering plumbing around that gap; leaving the
+// toggle on without it yields a source that resolves metadata and then fails to produce a stream,
+// which is why it defaults OFF and the settings row says so.
+val AmazonEnabledKey = booleanPreferencesKey("amazonEnabled")
+
+// A manually captured Amazon session, stored separately from the pool cache for the same reason
+// DeezerArlKey is: the pool is wiped and rewritten on every refresh.
+val AmazonSessionKey = stringPreferencesKey("amazonSession")
+
+// Display label for the manually signed-in account, so the settings row can name who is signed in
+// without the session token going near the UI.
+val AmazonAccountNameKey = stringPreferencesKey("amazonAccountName")
+
+// Whether the signed-in account reported a lossless-capable (HD/Ultra HD) plan. Orders resolution
+// attempts only; the provider still verifies the real tier per track.
+val AmazonAccountPremiumKey = booleanPreferencesKey("amazonAccountPremium")
+
+// Newline-separated instance URLs, same shape as TidalInstancesKey and QobuzInstancesKey so
+// parseInstances() in MusicService reads all three.
+val AmazonInstancesKey = stringPreferencesKey("amazonInstances")
+
+val AmazonAudioQualityKey = stringPreferencesKey("amazonAudioQuality")
+
+enum class AmazonAudioQuality {
+    ULTRA_HD,
+    HD,
+    STANDARD,
+    ;
+
+    companion object {
+        val Default = HD
+    }
+}
 
 // ---------------------------------------------------------------------------
 // JioSaavn source

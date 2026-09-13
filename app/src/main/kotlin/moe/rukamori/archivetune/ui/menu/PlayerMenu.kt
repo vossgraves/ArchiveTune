@@ -1846,6 +1846,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.APPLE -> R.string.source_apple_music
+        AudioSourceType.AMAZON -> R.string.source_amazon
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
@@ -1857,6 +1858,9 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.APPLE -> R.drawable.ic_music
+        // No dedicated Amazon Music mark ships in drawable/ yet; ic_music is the same
+        // stand-in APPLE uses above for the same reason.
+        AudioSourceType.AMAZON -> R.drawable.ic_music
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
