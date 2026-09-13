@@ -65,11 +65,20 @@ UI; minting is BotGuard/QuickJS inside the core. Tokens are video-scoped and fee
 the client selection above. `AutoChoosePlaybackClientKey` gates automatic client
 choice — manual selection must stay available.
 
-## The `echo/` resolver — landed, not wired
+## The `echo/` resolver — the fallback behind the shipped path
 
 18 files under `app/src/main/kotlin/moe/rukamori/archivetune/echo/` plus five assets, ported from
-4nx3b. They compile and their tests pass, but **nothing in this fork calls them yet** — the
-playback path still runs the resolver documented above.
+4nx3b. `MusicService.resolvePlaybackDataSpec` runs it as the **last resort**, never as the primary:
+the resolver documented above is tried first and echo is only reached once it has produced no
+stream, so the worst case echo can cause is the same failure a moment later.
+
+`EchoStreamResolver.playerResponseForPlayback` returns the same `YTPlayerUtils.PlaybackData` the
+shipped path returns, which is why it drops in as a `recoverCatching` arm with nothing downstream
+changing. Two exceptions bypass it entirely — `InvalidPlaybackLoginContextException` and
+`LoginRequiredForPlaybackException`. Both are actionable by the listener and neither is something a
+different extractor can fix, so echo would only replace a message that can be acted on with one
+that cannot. When echo does run and also fails, the *original* throwable is rethrown so the error
+mapping below it still produces the meaningful message.
 
 What it adds over the shipped path: the player script is parsed with a real JavaScript parser
 (`assets/solver/meriyah.js`) and regenerated with `astring.js`, so the n-parameter transform can be
@@ -85,6 +94,7 @@ the submodule along:
 | `AdaptiveFormat.isOriginal` marks the undubbed audio track | Field absent from this fork's `PlayerResponse`; every audio format stays a candidate |
 | `YouTube.getNewPipeStreamUrls(videoId)` lists every `(itag, url)` pair | `NewPipeUtils.getStreamUrl(format, videoId)` immediately above already resolves the same format through NewPipe, so the second pass had nothing to add |
 
-Wiring it means choosing where it sits relative to the existing resolver — replacement, or a
-fallback when the shipped path returns nothing — and that is a change to the playback path that
-should be made against a device, not blind.
+Downloads are not wired to it. `DownloadUtil` resolves through `YTPlayerUtils.playerResponseForDownload`,
+a separate entry point that selects for the best storable format rather than the best playable one,
+and echo only mirrors the playback entry point. Giving downloads the same fallback means porting
+that selection too, which is its own change.

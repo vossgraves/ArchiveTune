@@ -272,6 +272,7 @@ import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
+import moe.rukamori.archivetune.echo.EchoStreamResolver
 import moe.rukamori.archivetune.extensions.SilentHandler
 import moe.rukamori.archivetune.extensions.collect
 import moe.rukamori.archivetune.extensions.collectLatest
@@ -10488,6 +10489,36 @@ class MusicService :
                         mediaId,
                     )
                     throw youtubeFailure
+                }.recoverCatching { primaryFailure ->
+                    // Last resort: the echo resolver. It parses the player script with a real
+                    // JavaScript parser and regenerates the n-parameter transform, so it can still
+                    // produce a URL after a player change the shipped path was not written for.
+                    //
+                    // Only reached once the shipped path has already failed, so the worst case is
+                    // the same failure a moment later. A login or confirmation failure is skipped
+                    // outright: those are actionable, echo cannot fix them, and it would only
+                    // replace a message the reader can act on with one they cannot.
+                    if (primaryFailure is YTPlayerUtils.InvalidPlaybackLoginContextException ||
+                        primaryFailure is YTPlayerUtils.LoginRequiredForPlaybackException
+                    ) {
+                        throw primaryFailure
+                    }
+                    Timber.tag("MusicService").w(
+                        primaryFailure,
+                        "Shipped resolver produced no stream for %s; trying the echo resolver",
+                        mediaId,
+                    )
+                    runCatching {
+                        EchoStreamResolver.playerResponseForPlayback(
+                            videoId = mediaId,
+                            audioQuality = if (lowDataModeActive) AudioQuality.LOW else audioQuality,
+                            connectivityManager = connectivityManager,
+                        )
+                    }.getOrElse { echoFailure ->
+                        Timber.tag("MusicService").w(echoFailure, "Echo resolver also failed for %s", mediaId)
+                        // The original failure carries the message worth showing.
+                        throw primaryFailure
+                    }
                 }
             }.getOrElse { throwable ->
                 when {
