@@ -121,7 +121,7 @@ fun ShowMediaInfo(videoId: String) {
     val playerConnection = LocalPlayerConnection.current
     val song by database.song(videoId).collectAsStateWithLifecycle(initialValue = null)
     val currentFormat by database.format(videoId).collectAsStateWithLifecycle(initialValue = null)
-    var info by remember(videoId) { mutableStateOf<MediaInfo?>(null) }
+    val info = rememberMediaInfo(videoId)
     var selectedTab by rememberSaveable(videoId) { mutableStateOf(MediaInfoTab.Information) }
 
     val unknownText = stringResource(R.string.unknown)
@@ -145,10 +145,6 @@ fun ShowMediaInfo(videoId: String) {
     val informationLabel = stringResource(R.string.information)
 
     val mediaUrl = remember(videoId) { "https://music.youtube.com/watch?v=$videoId" }
-
-    LaunchedEffect(videoId) {
-        info = YouTube.getMediaInfo(videoId).getOrNull()
-    }
 
     val heroTitle = song?.title ?: info?.title ?: videoId
     val heroSubtitle =

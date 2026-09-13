@@ -155,6 +155,7 @@ import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.MediaInfo
+import moe.rukamori.archivetune.ui.utils.rememberMediaInfo
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -180,9 +181,6 @@ private val Backdrop = Color(0xFF121212)
 
 /** The artist card's panel, the one card SimpMusic keeps off the palette. */
 private val CardPanel = Color(0xFF212121)
-
-/** A YouTube video id: 11 chars of the URL-safe alphabet. Nothing else resolves in getMediaInfo. */
-private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
 
 /**
  * Ceiling on how light a palette colour may be before it is used as a surface under light text.
@@ -282,15 +280,9 @@ fun SimpMusicPlayerContent(
     // only after it is dark enough to carry that text — see asSurface().
     val startColor = remember(washColor) { washColor.asSurface() }
 
-    // The two lower cards are YouTube facts about the track, and only a YouTube id can produce
-    // them. Gated on the id SHAPE rather than fired blindly: a Tidal, Qobuz, Spotify or local id
-    // can never resolve here, so without this every skip on those sources spent a network
-    // round-trip to be told so. Each card still hides itself when the lookup returns nothing.
-    var mediaInfo by remember(mediaMetadata.id) { mutableStateOf<MediaInfo?>(null) }
-    LaunchedEffect(mediaMetadata.id) {
-        if (!YOUTUBE_ID.matches(mediaMetadata.id)) return@LaunchedEffect
-        mediaInfo = runCatching { YouTube.getMediaInfo(mediaMetadata.id).getOrNull() }.getOrNull()
-    }
+    // The two lower cards are YouTube facts about the track. Each hides itself when this is null,
+    // which covers a non-YouTube source as well as a lookup that came back empty.
+    val mediaInfo = rememberMediaInfo(mediaMetadata.id)
 
     // Hoisted out of SimpMusicLyricLine: the layout below has to know whether this track has synced
     // lyrics AT ALL before it can size the artwork, and parsing is cheap and keyed on the text.
