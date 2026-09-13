@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import android.graphics.Color as AndroidColor
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -15,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -40,8 +43,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -87,11 +88,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -112,6 +121,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
+import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.ui.component.ChoiceChipsRow
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
@@ -121,22 +131,17 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.menu.AlbumMenu
 import moe.rukamori.archivetune.ui.menu.ArtistMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
+import moe.rukamori.archivetune.ui.screens.settings.SettingsDimensions
+import moe.rukamori.archivetune.ui.theme.LocalYumaColors
+import moe.rukamori.archivetune.ui.theme.yumaClickable
+import moe.rukamori.archivetune.ui.theme.yumaGlassCard
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
-import moe.rukamori.archivetune.viewmodels.StatsScreenState
-import moe.rukamori.archivetune.viewmodels.StatsViewModel
 import moe.rukamori.archivetune.viewmodels.HistoryViewModel
 import moe.rukamori.archivetune.viewmodels.RemoteHistoryUiState
-import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
-import android.graphics.Color as AndroidColor
+import moe.rukamori.archivetune.viewmodels.StatsScreenState
+import moe.rukamori.archivetune.viewmodels.StatsViewModel
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -660,6 +665,33 @@ fun StatsScreen(
     }
 }
 
+/**
+ * One pane of glass for a stats card. Stats cards stand alone rather than stacking, so the stroke
+ * is the single-segment one; the corner radius varies by card size.
+ */
+@Composable
+private fun StatsGlassCard(
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = SettingsDimensions.GlassCornerRadius,
+    onClick: (() -> Unit)? = null,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val yuma = LocalYumaColors.current
+    val glass =
+        modifier
+            .fillMaxWidth()
+            .yumaGlassCard(
+                shape = RoundedCornerShape(cornerRadius),
+                backgroundColor = yuma.glassBackground,
+                borderColor = yuma.glassBorder,
+            )
+    if (onClick == null) {
+        Box(modifier = glass, content = content)
+    } else {
+        Box(modifier = glass.yumaClickable(onClick = onClick), content = content)
+    }
+}
+
 @Composable
 private fun StatsStatusScreen(
     navController: NavController,
@@ -736,21 +768,23 @@ private fun StatsStatusScreen(
     }
 }
 
-private enum class StatsSource(val label: String) {
-    LOCAL("Local"),
-    YOUTUBE("YouTube"),
-    SPOTIFY("Spotify"),
+private enum class StatsSource(
+    @StringRes val labelRes: Int,
+) {
+    LOCAL(R.string.stats_source_local),
+    YOUTUBE(R.string.stats_source_youtube),
+    SPOTIFY(R.string.stats_source_spotify),
 }
 
 private data class RemoteStatsData(
-    val sourceName: String,
-    val plays: Int,
-    val uniqueTracks: Int,
-    val uniqueArtists: Int,
-    val totalDurationMillis: Long,
-    val tracks: List<RemoteStatsTrack>,
-    val artists: List<RemoteStatsRank>,
-    val activity: List<RemoteStatsRank>,
+    val source: StatsSource,
+    val plays: Int = 0,
+    val uniqueTracks: Int = 0,
+    val uniqueArtists: Int = 0,
+    val totalDurationMillis: Long = 0,
+    val tracks: List<RemoteStatsTrack> = emptyList(),
+    val artists: List<RemoteStatsRank> = emptyList(),
+    val activity: List<RemoteStatsRank> = emptyList(),
 )
 
 private data class RemoteStatsTrack(
@@ -766,12 +800,14 @@ private data class RemoteStatsRank(
     val count: Int,
 )
 
-private enum class RemoteStatsRange(val label: String) {
-    DAYS_7("7D"),
-    DAYS_30("30D"),
-    DAYS_90("90D"),
-    YEAR_1("1Y"),
-    ALL("All"),
+private enum class RemoteStatsRange(
+    @StringRes val labelRes: Int,
+) {
+    DAYS_7(R.string.stats_range_7d),
+    DAYS_30(R.string.stats_range_30d),
+    DAYS_90(R.string.stats_range_90d),
+    YEAR_1(R.string.stats_range_1y),
+    ALL(R.string.stats_range_all),
 }
 
 @Composable
@@ -801,7 +837,7 @@ private fun StatsSourceSelector(
                     },
             ) {
                 Text(
-                    text = source.label,
+                    text = stringResource(source.labelRes),
                     modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -831,17 +867,32 @@ private fun RemoteStatsScreen(
     onRetry: () -> Unit,
 ) {
     var selectedRange by rememberSaveable { mutableStateOf(RemoteStatsRange.ALL) }
+    val untitledSectionLabel = stringResource(R.string.stats_recent_section)
+    val unknownArtistLabel = stringResource(R.string.stats_unknown_artist)
     val data =
         when (source) {
             StatsSource.LOCAL -> null
             StatsSource.YOUTUBE ->
                 when (remoteHistoryState) {
                     RemoteHistoryUiState.Loading -> null
-                    RemoteHistoryUiState.Empty -> RemoteStatsData("YouTube", 0, 0, 0, 0, emptyList(), emptyList(), emptyList())
+                    RemoteHistoryUiState.Empty -> RemoteStatsData(source = StatsSource.YOUTUBE)
                     RemoteHistoryUiState.Error -> null
-                    is RemoteHistoryUiState.Success -> remoteHistoryStats(remoteHistoryState.page, selectedRange)
+                    is RemoteHistoryUiState.Success ->
+                        remoteHistoryStats(
+                            page = remoteHistoryState.page,
+                            range = selectedRange,
+                            untitledSectionLabel = untitledSectionLabel,
+                            unknownArtistLabel = unknownArtistLabel,
+                        )
                 }
-            StatsSource.SPOTIFY -> spotifyHistory?.let { spotifyHistoryStats(it, selectedRange) }
+            StatsSource.SPOTIFY ->
+                spotifyHistory?.let {
+                    spotifyHistoryStats(
+                        history = it,
+                        range = selectedRange,
+                        unknownArtistLabel = unknownArtistLabel,
+                    )
+                }
         }
 
     Scaffold(
@@ -874,7 +925,10 @@ private fun RemoteStatsScreen(
                 }
 
                 source == StatsSource.YOUTUBE && remoteHistoryState == RemoteHistoryUiState.Error -> {
-                    RemoteStatsMessage(message = "Couldn't load your YouTube history.", onRetry = onRetry)
+                    RemoteStatsMessage(
+                        message = stringResource(R.string.stats_remote_load_failed),
+                        onRetry = onRetry,
+                    )
                 }
 
                 source == StatsSource.SPOTIFY && spotifyError != null -> {
@@ -882,7 +936,13 @@ private fun RemoteStatsScreen(
                 }
 
                 data == null || data.plays == 0 -> {
-                    RemoteStatsMessage(message = "No recent ${source.label} listening history is available.")
+                    RemoteStatsMessage(
+                        message =
+                            stringResource(
+                                R.string.stats_remote_empty,
+                                stringResource(source.labelRes),
+                            ),
+                    )
                 }
 
                 else -> RemoteStatsDashboard(data, modifier = Modifier.weight(1f))
@@ -917,7 +977,7 @@ private fun RemoteStatsRangeSelector(
                     },
             ) {
                 Text(
-                    text = range.label,
+                    text = stringResource(range.labelRes),
                     modifier = Modifier.padding(vertical = 8.dp),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelMedium,
@@ -970,16 +1030,14 @@ private fun RemoteStatsDashboard(
     data: RemoteStatsData,
     modifier: Modifier = Modifier,
 ) {
+    val sourceLabel = stringResource(data.source.labelRes)
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
+            StatsGlassCard(cornerRadius = 24.dp) {
                 Column(
                     modifier =
                         Modifier
@@ -995,12 +1053,12 @@ private fun RemoteStatsDashboard(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = "${data.sourceName} listening",
+                        text = stringResource(R.string.stats_remote_heading, sourceLabel),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "Recent history supplied by ${data.sourceName}",
+                        text = stringResource(R.string.stats_remote_subheading, sourceLabel),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1016,14 +1074,26 @@ private fun RemoteStatsDashboard(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RemoteMetricCard("Plays", data.plays.toString(), Modifier.weight(1f))
-                RemoteMetricCard("Tracks", data.uniqueTracks.toString(), Modifier.weight(1f))
-                RemoteMetricCard("Artists", data.uniqueArtists.toString(), Modifier.weight(1f))
+                RemoteMetricCard(
+                    stringResource(R.string.stats_metric_plays),
+                    data.plays.toString(),
+                    Modifier.weight(1f),
+                )
+                RemoteMetricCard(
+                    stringResource(R.string.stats_metric_tracks),
+                    data.uniqueTracks.toString(),
+                    Modifier.weight(1f),
+                )
+                RemoteMetricCard(
+                    stringResource(R.string.stats_metric_artists),
+                    data.uniqueArtists.toString(),
+                    Modifier.weight(1f),
+                )
             }
         }
         item {
             RemoteRankChart(
-                title = "Top artists",
+                title = stringResource(R.string.stats_top_artists),
                 ranks = data.artists,
                 gradient = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary),
             )
@@ -1031,13 +1101,25 @@ private fun RemoteStatsDashboard(
         if (data.activity.isNotEmpty()) {
             item {
                 RemoteRankChart(
-                    title = if (data.sourceName == "Spotify") "Listening by hour" else "History sections",
+                    title =
+                        stringResource(
+                            if (data.source == StatsSource.SPOTIFY) {
+                                R.string.stats_listening_by_hour
+                            } else {
+                                R.string.stats_history_sections
+                            },
+                        ),
                     ranks = data.activity,
                     gradient = listOf(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.primary),
                 )
             }
         }
-        item { StatsSectionHeader(title = "Top tracks", supportingText = data.tracks.size.toString()) }
+        item {
+            StatsSectionHeader(
+                title = stringResource(R.string.stats_top_tracks),
+                supportingText = data.tracks.size.toString(),
+            )
+        }
         items(data.tracks.take(10), key = { it.id }) { track ->
             RemoteTrackRow(track = track)
         }
@@ -1046,11 +1128,7 @@ private fun RemoteStatsDashboard(
 
 @Composable
 private fun RemoteMetricCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
+    StatsGlassCard(modifier = modifier, cornerRadius = 18.dp) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1061,7 +1139,7 @@ private fun RemoteMetricCard(label: String, value: String, modifier: Modifier = 
 @Composable
 private fun RemoteRankChart(title: String, ranks: List<RemoteStatsRank>, gradient: List<Color>) {
     if (ranks.isEmpty()) return
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    StatsGlassCard(cornerRadius = 22.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             val maximum = ranks.maxOf { it.count }.coerceAtLeast(1)
@@ -1090,7 +1168,7 @@ private fun RemoteRankChart(title: String, ranks: List<RemoteStatsRank>, gradien
 
 @Composable
 private fun RemoteTrackRow(track: RemoteStatsTrack) {
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    StatsGlassCard(cornerRadius = 16.dp) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1112,7 +1190,12 @@ private fun RemoteTrackRow(track: RemoteStatsTrack) {
     }
 }
 
-private fun remoteHistoryStats(page: HistoryPage, range: RemoteStatsRange): RemoteStatsData {
+private fun remoteHistoryStats(
+    page: HistoryPage,
+    range: RemoteStatsRange,
+    untitledSectionLabel: String,
+    unknownArtistLabel: String,
+): RemoteStatsData {
     val sections = page.sections.orEmpty().filter { it.isWithin(range) }
     val tracks = sections.flatMap { section ->
         section.songs.map { song ->
@@ -1125,16 +1208,21 @@ private fun remoteHistoryStats(page: HistoryPage, range: RemoteStatsRange): Remo
         }
     }
     return remoteStats(
-        sourceName = "YouTube",
+        source = StatsSource.YOUTUBE,
+        unknownArtistLabel = unknownArtistLabel,
         tracks = tracks,
         activity =
             sections
-                .map { RemoteStatsRank(it.title.ifBlank { "Recent" }, it.songs.size) }
+                .map { RemoteStatsRank(it.title.ifBlank { untitledSectionLabel }, it.songs.size) }
                 .filter { it.count > 0 },
     )
 }
 
-private fun spotifyHistoryStats(history: List<SpotifyPlayHistory>, range: RemoteStatsRange): RemoteStatsData {
+private fun spotifyHistoryStats(
+    history: List<SpotifyPlayHistory>,
+    range: RemoteStatsRange,
+    unknownArtistLabel: String,
+): RemoteStatsData {
     val filteredHistory = history.filter { it.isWithin(range) }
     val tracks = filteredHistory.mapNotNull { play ->
         play.track?.let { track ->
@@ -1155,7 +1243,12 @@ private fun spotifyHistoryStats(history: List<SpotifyPlayHistory>, range: Remote
             .entries
             .sortedBy { it.key }
             .map { (hour, count) -> RemoteStatsRank("${hour.toString().padStart(2, '0')}:00", count) }
-    return remoteStats(sourceName = "Spotify", tracks = tracks, activity = activity)
+    return remoteStats(
+        source = StatsSource.SPOTIFY,
+        unknownArtistLabel = unknownArtistLabel,
+        tracks = tracks,
+        activity = activity,
+    )
 }
 
 private fun SpotifyPlayHistory.isWithin(range: RemoteStatsRange): Boolean {
@@ -1211,7 +1304,8 @@ private val RemoteStatsRange.cutoffDays: Int
         }
 
 private fun remoteStats(
-    sourceName: String,
+    source: StatsSource,
+    unknownArtistLabel: String,
     tracks: List<RemoteStatsTrack>,
     activity: List<RemoteStatsRank>,
 ): RemoteStatsData {
@@ -1225,11 +1319,11 @@ private fun remoteStats(
             }
             .sortedByDescending(RemoteStatsTrack::playCount)
     val artists =
-        tracks.groupBy { it.artist.ifBlank { "Unknown artist" } }
+        tracks.groupBy { it.artist.ifBlank { unknownArtistLabel } }
             .map { (artist, plays) -> RemoteStatsRank(artist, plays.size) }
             .sortedByDescending(RemoteStatsRank::count)
     return RemoteStatsData(
-        sourceName = sourceName,
+        source = source,
         plays = tracks.size,
         uniqueTracks = rankedTracks.size,
         uniqueArtists = artists.size,
@@ -1245,13 +1339,9 @@ private fun StatsFilterPanel(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Surface(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    StatsGlassCard(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        cornerRadius = SettingsDimensions.SegmentedCornerLarge,
     ) {
         Column(
             modifier = Modifier.padding(vertical = 8.dp),
@@ -1536,13 +1626,9 @@ private fun StatsSummarySection(
 ) {
     if (summary.totalPlayCount == 0) return
 
-    Surface(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    StatsGlassCard(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        cornerRadius = 28.dp,
     ) {
         BoxWithConstraints(modifier = Modifier.padding(20.dp)) {
             val expanded = maxWidth >= 680.dp
@@ -1710,11 +1796,9 @@ private fun StatsHighlightCard(
     useCircleShape: Boolean,
     onClick: () -> Unit,
 ) {
-    ElevatedCard(
+    StatsGlassCard(
+        cornerRadius = SettingsDimensions.SegmentedCornerLarge,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(),
     ) {
         Row(
             modifier =
@@ -1816,11 +1900,7 @@ private fun SegmentedArtistChart(
             )
         }
 
-    ElevatedCard(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.elevatedCardColors(),
-    ) {
+    StatsGlassCard(modifier = modifier, cornerRadius = 28.dp) {
         Row(
             modifier =
                 Modifier
@@ -1950,11 +2030,7 @@ private fun ListeningByDayChart(
     val primaryColor = MaterialTheme.colorScheme.primary
     val containerColor = MaterialTheme.colorScheme.secondaryContainer
 
-    ElevatedCard(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.elevatedCardColors(),
-    ) {
+    StatsGlassCard(modifier = modifier, cornerRadius = 28.dp) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
                 text = stringResource(R.string.stats_listening_by_day),
@@ -2034,11 +2110,7 @@ private fun ListeningByHourChart(
             }
         }
 
-    ElevatedCard(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.elevatedCardColors(),
-    ) {
+    StatsGlassCard(modifier = modifier, cornerRadius = 28.dp) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
