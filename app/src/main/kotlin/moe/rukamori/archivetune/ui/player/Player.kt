@@ -30,17 +30,10 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import com.materialkolor.ktx.toHct
-import com.materialkolor.ktx.toColor
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -62,9 +55,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -75,8 +68,6 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -95,13 +86,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -112,8 +103,8 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -168,6 +159,17 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import com.materialkolor.ktx.toColor
+import com.materialkolor.ktx.toHct
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -182,8 +184,6 @@ import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
-import moe.rukamori.archivetune.constants.ShowCodecOnPlayerKey
-import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -206,14 +206,18 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PoTokenGvsKey
 import moe.rukamori.archivetune.constants.PoTokenPlayerKey
 import moe.rukamori.archivetune.constants.QueuePeekHeight
+import moe.rukamori.archivetune.constants.ShowCodecOnPlayerKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
+import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
+import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
@@ -221,14 +225,16 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.player.bitchord.BitChordPlayerContent
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
+import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowPlayerContent
+import moe.rukamori.archivetune.ui.player.tiktok.TikTokPlayerContent
 import moe.rukamori.archivetune.ui.screens.LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.settings.DarkMode
 import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
-import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
-import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
@@ -239,13 +245,6 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.ui.player.bitchord.BitChordPlayerContent
-import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
-import moe.rukamori.archivetune.ui.player.tiktok.TikTokPlayerContent
-import java.util.Locale
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
 private const val SeekbarSettleToleranceMs = 1_500L
 private const val V7BackdropMinArtworkSizePx = 1_024
@@ -981,7 +980,8 @@ fun BottomSheetPlayer(
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
-            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC
+            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
         ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
@@ -1588,7 +1588,8 @@ fun BottomSheetPlayer(
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
             playerDesignStyle != PlayerDesignStyle.BITCHORD &&
             playerDesignStyle != PlayerDesignStyle.TIKTOK &&
-            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC
+            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC &&
+            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -2010,6 +2011,38 @@ fun BottomSheetPlayer(
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                    // SpatialFlow: artwork pager, pill control row, wavy seek bar, sliding queue
+                    // drawer and a circular-reveal lyrics overlay. Like the styles above it fills
+                    // whatever box it is handed, so it is not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
@@ -2526,6 +2559,38 @@ fun BottomSheetPlayer(
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
+                } else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                    // SpatialFlow: artwork pager, pill control row, wavy seek bar, sliding queue
+                    // drawer and a circular-reveal lyrics overlay. Like the styles above it fills
+                    // whatever box it is handed, so it is not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
                 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
                     // SimpMusic's default now-playing screen: a diagonal wash pulled from the
                     // artwork palette, the sleeve on a pager backed by the real queue, then the
@@ -2697,6 +2762,7 @@ fun BottomSheetPlayer(
                 playerDesignStyle == PlayerDesignStyle.BITCHORD ||
                 playerDesignStyle == PlayerDesignStyle.TIKTOK ||
                 playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+                playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
                 useBlackBackground
             ) {
                 Color.White

@@ -120,6 +120,10 @@ jobs:
       IS_CANARY_BUILD: 'true'
     strategy:
       fail-fast: false
+      # No x86 or x86_64 here. They are emulator ABIs that no phone installs, and they were the two
+      # slowest jobs in the matrix — 36m39s and 34m45s against 23-28 for the rest — so they set the
+      # length of every Canary run while producing an APK nobody flashes. Nightly and release still
+      # build them, so nothing is lost where it is actually wanted.
       matrix:
         include:
           - device: mobile
@@ -132,16 +136,6 @@ jobs:
             distributionName: Gms
             deviceName: Mobile
             abi: armeabi
-          - device: mobile
-            distribution: gms
-            distributionName: Gms
-            deviceName: Mobile
-            abi: x86
-          - device: mobile
-            distribution: gms
-            distributionName: Gms
-            deviceName: Mobile
-            abi: x86_64
           - device: mobile
             distribution: gms
             distributionName: Gms
@@ -173,6 +167,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-cleanup: on-success
+          # setup-gradle only writes the cache from the default branch unless told otherwise, and
+          # canary is not it — so every canary job restored nothing and saved nothing, and compiled
+          # the app from cold. build.yml already grants this to main and dev.
+          cache-read-only: false
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

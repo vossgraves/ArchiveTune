@@ -72,6 +72,12 @@ fun CanvasArtworkPlayer(
     // re-created and the ExoPlayer attaches to it — no reload delay because
     // the player instance was retained.
     visible: Boolean = true,
+    /**
+     * Caps the decoded video edge, in pixels. A canvas loop is a backdrop — often blurred, always
+     * behind something — so decoding it at source resolution spends frame budget on detail nobody
+     * sees. Null keeps whatever the track selector would have picked.
+     */
+    maxVideoEdgePx: Int? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -157,13 +163,19 @@ fun CanvasArtworkPlayer(
             DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         }
     val trackSelector =
-        remember(context) {
+        remember(context, maxVideoEdgePx) {
             DefaultTrackSelector(context).apply {
                 setParameters(
                     buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                         .setForceHighestSupportedBitrate(true)
-                        .build(),
+                        .let { parameters ->
+                            if (maxVideoEdgePx != null) {
+                                parameters.setMaxVideoSize(maxVideoEdgePx, maxVideoEdgePx)
+                            } else {
+                                parameters
+                            }
+                        }.build(),
                 )
             }
         }

@@ -1067,6 +1067,14 @@ enum class PlayerDesignStyle(
     /** The vertical pager sits on top of the backdrop, so a different one would never be seen. */
     TIKTOK(nativeBackground = PlayerBackgroundStyle.GLOW_ANIMATED, supportsBackgroundChoice = false),
     SIMPMUSIC(nativeBackground = PlayerBackgroundStyle.GRADIENT),
+
+    /**
+     * The SpatialFlow player (github.com/MythicalSHUB/SpatialFlow, GPL-3.0) — artwork pager, pill
+     * control row, wavy seek bar, sliding queue drawer, circular-reveal lyrics and music haptics.
+     * Its backdrop is a blurred, expanded sleeve, so it declares BLUR rather than drawing something
+     * only it understands.
+     */
+    SPATIALFLOW(nativeBackground = PlayerBackgroundStyle.BLUR),
     ;
 
     /** What to actually render: the reader's pick where it is offered, the style's own otherwise. */
