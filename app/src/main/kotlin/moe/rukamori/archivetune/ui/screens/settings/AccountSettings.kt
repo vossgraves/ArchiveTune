@@ -9,7 +9,12 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -17,6 +22,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +32,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +46,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -65,6 +73,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,6 +86,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -92,17 +102,13 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import java.util.UUID
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.App.Companion.forgetAccount
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import moe.rukamori.archivetune.auth.YouTubeOAuthRepository
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.auth.YouTubeOAuthRepository
 import moe.rukamori.archivetune.constants.AccountChannelHandleKey
 import moe.rukamori.archivetune.constants.AccountEmailKey
 import moe.rukamori.archivetune.constants.AccountNameKey
@@ -117,11 +123,15 @@ import moe.rukamori.archivetune.constants.VisitorDataKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
-import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
+import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
+import moe.rukamori.archivetune.ui.theme.LocalYumaColors
+import moe.rukamori.archivetune.ui.theme.yumaClickable
+import moe.rukamori.archivetune.ui.theme.yumaGlassCard
+import moe.rukamori.archivetune.ui.theme.yumaSegmentPosition
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.PreferenceStore
@@ -135,8 +145,6 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AccountChannelUiModel
 import moe.rukamori.archivetune.viewmodels.AccountChannelsState
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
-import java.util.UUID
-import androidx.compose.foundation.layout.asPaddingValues
 
 private val AccountContentMaxWidth = 840.dp
 private val AvatarSize = 72.dp
@@ -628,10 +636,16 @@ private fun AccountSummaryCard(
     onSecondaryAction: () -> Unit,
     onOpenAccountSwitcher: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    val yuma = LocalYumaColors.current
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .yumaGlassCard(
+                    shape = RoundedCornerShape(SettingsDimensions.SegmentedCornerLarge),
+                    backgroundColor = yuma.glassBackground,
+                    borderColor = yuma.glassBorder,
+                ),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -1151,16 +1165,10 @@ private fun ExpressiveSectionCard(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp),
-        )
+    Column {
+        SettingsSectionLabel(text = title)
         Column(
-            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+            verticalArrangement = Arrangement.spacedBy(SettingsDimensions.SegmentedItemGap),
             content = content,
         )
     }
@@ -1176,44 +1184,25 @@ private fun ExpressiveActionRow(
     index: Int,
     count: Int,
 ) {
-    val tint = accent ?: MaterialTheme.colorScheme.primary
-    SegmentedListItem(
+    ExpressiveRow(
+        index = index,
+        count = count,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
-        colors =
-            ListItemDefaults.segmentedColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        leadingContent = {
-            ExpressiveRowIcon(icon = icon, tint = tint)
+        leading = {
+            ExpressiveRowIcon(icon = icon, accent = accent ?: MaterialTheme.colorScheme.primary)
         },
-        trailingContent = {
+        title = title,
+        subtitle = subtitle,
+        subtitleMaxLines = 2,
+        trailing = {
             Icon(
                 painter = painterResource(R.drawable.arrow_forward),
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(SettingsDimensions.ChevronSize),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        supportingContent =
-            subtitle?.let { supportingText ->
-                {
-                    Text(
-                        text = supportingText,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            },
-    ) {
-        // One line with an edge fade when it overflows — same treatment as every PreferenceEntry
-        // title, so the settings screens agree with each other.
-        MarqueeText(
-            text = title,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
+    )
 }
 
 @Composable
@@ -1226,72 +1215,120 @@ private fun ExpressiveSwitchRow(
     index: Int,
     count: Int,
 ) {
-    SegmentedListItem(
-        checked = checked,
-        onCheckedChange = onCheckedChange,
-        modifier = Modifier.fillMaxWidth(),
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
-        colors =
-            ListItemDefaults.segmentedColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        leadingContent = {
+    ExpressiveRow(
+        index = index,
+        count = count,
+        onClick = { onCheckedChange(!checked) },
+        leading = {
             ExpressiveRowIcon(
                 icon = icon,
-                tint = MaterialTheme.colorScheme.primary,
-                emphasized = checked,
+                accent = MaterialTheme.colorScheme.primary,
+                muted = !checked,
             )
         },
-        trailingContent = {
+        title = title,
+        subtitle = subtitle,
+        subtitleMaxLines = 3,
+        trailing = {
             Switch(
                 checked = checked,
                 onCheckedChange = null,
             )
         },
-        supportingContent =
-            subtitle?.let { supportingText ->
-                {
+    )
+}
+
+/**
+ * The glass segment shared by every account-settings row. Rows in one group agree on shape and
+ * stroke through [yumaSegmentPosition], so a stack reads as a single pane rather than as cards.
+ */
+@Composable
+private fun ExpressiveRow(
+    index: Int,
+    count: Int,
+    onClick: () -> Unit,
+    leading: @Composable () -> Unit,
+    title: String,
+    subtitle: String?,
+    subtitleMaxLines: Int,
+    trailing: @Composable () -> Unit,
+) {
+    val shape = remember(index, count) { segmentedSettingsItemShape(index, count) }
+    val yuma = LocalYumaColors.current
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .yumaGlassCard(
+                    shape = shape,
+                    backgroundColor = yuma.glassBackground,
+                    borderColor = yuma.glassBorder,
+                    position = yumaSegmentPosition(index, count),
+                ).yumaClickable(onClick = onClick),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SettingsDimensions.SegmentedItemMinHeight)
+                    .padding(
+                        horizontal = SettingsDimensions.SegmentedItemPaddingHorizontal,
+                        vertical = SettingsDimensions.SegmentedItemPaddingVertical,
+                    ),
+            horizontalArrangement = Arrangement.spacedBy(SettingsDimensions.SegmentedIconSpacing),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            leading()
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SettingsDimensions.RowTextSpacing),
+            ) {
+                MarqueeText(
+                    text = title,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                subtitle?.let { supportingText ->
                     Text(
                         text = supportingText,
-                        maxLines = 3,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = subtitleMaxLines,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            },
-    ) {
-        // One line with an edge fade when it overflows — same treatment as every PreferenceEntry
-        // title, so the settings screens agree with each other.
-        MarqueeText(
-            text = title,
-            fontWeight = FontWeight.SemiBold,
-        )
+            }
+            trailing()
+        }
     }
 }
 
 @Composable
 private fun ExpressiveRowIcon(
     icon: Painter,
-    tint: Color,
-    emphasized: Boolean = false,
+    accent: Color,
+    muted: Boolean = false,
 ) {
-    Surface(
-        modifier = Modifier.size(RowIconSize),
-        shape = MaterialTheme.shapes.medium,
-        color =
-            if (emphasized) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerHighest
-            },
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Icon(
-                painter = icon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = tint,
-            )
+    val container = if (muted) MaterialTheme.colorScheme.surfaceContainerHighest else accent
+    val tint =
+        if (muted) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            contentColorFor(accent).takeIf { it.isSpecified } ?: MaterialTheme.colorScheme.surface
         }
+    Box(
+        modifier =
+            Modifier
+                .size(SettingsDimensions.SegmentedIconBoxSize)
+                .clip(CircleShape)
+                .background(container),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = icon,
+            contentDescription = null,
+            modifier = Modifier.size(SettingsDimensions.SegmentedIconSize),
+            tint = tint,
+        )
     }
 }
 
