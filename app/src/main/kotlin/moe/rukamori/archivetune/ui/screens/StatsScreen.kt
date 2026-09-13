@@ -158,6 +158,7 @@ fun StatsScreen(
     val spotifyViewModel: SpotifyLibraryViewModel = hiltViewModel()
     val remoteHistoryState by historyViewModel.remoteHistoryState.collectAsStateWithLifecycle()
     val spotifyHistory by spotifyViewModel.recentlyPlayed.collectAsStateWithLifecycle()
+    val rateLimitedMessage = stringResource(R.string.stats_remote_rate_limited)
 
     LaunchedEffect(selectedSource) {
         when (selectedSource) {
@@ -176,7 +177,16 @@ fun StatsScreen(
             spotifyHistory = spotifyHistory.items,
             spotifyLoading = spotifyHistory.isLoading ||
                 (spotifyHistory.items == null && spotifyHistory.errorMessage == null),
-            spotifyError = spotifyHistory.errorMessage,
+            spotifyError =
+                spotifyHistory.errorMessage?.let { message ->
+                    // Spotify's raw 429 body is not something to put in front of a reader, and the
+                    // retry cooldown means waiting is the actual remedy.
+                    if (message.contains("429") || message.contains("Too Many Requests", ignoreCase = true)) {
+                        rateLimitedMessage
+                    } else {
+                        message
+                    }
+                },
             onRetry = {
                 when (selectedSource) {
                     StatsSource.YOUTUBE -> historyViewModel.fetchRemoteHistory()

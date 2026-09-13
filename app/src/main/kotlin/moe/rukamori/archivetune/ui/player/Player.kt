@@ -553,8 +553,10 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
-    // Track loading state: when buffering or when user is seeking
-    val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
+    // Buffering, or waiting for a committed seek to land. Deliberately not while a finger is still
+    // down: dragging is not loading, and treating it as such turned the transport into a spinner
+    // for the whole gesture.
+    val isLoading = playbackState == STATE_BUFFERING || (sliderPosition != null && !isUserSeeking)
 
     // Palette state. The previous valid palette stays visible while the next track's artwork
     // loads; it is only replaced by a successfully extracted palette (or kept on failure).
@@ -933,7 +935,15 @@ fun BottomSheetPlayer(
                         duration = if (metaDuration > 0) metaDuration else 0L
                     }
                 } else {
-                    position = currentPlayerPosition
+                    // Only while no scrub is outstanding. seekTo is asynchronous, so for the ticks
+                    // between lifting a finger and the player arriving, currentPosition still
+                    // reports where the song WAS — writing it here snapped the elapsed time (and
+                    // anything else reading position rather than the slider override) back to the
+                    // old spot before it jumped forward again. The other branch below already
+                    // guards this way.
+                    if (sliderPosition == null) {
+                        position = currentPlayerPosition
+                    }
                     if (currentPlayerDuration > 0L && currentPlayerDuration != C.TIME_UNSET) {
                         duration = currentPlayerDuration
                     } else if (duration <= 0L || duration == C.TIME_UNSET) {

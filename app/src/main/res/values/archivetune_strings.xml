@@ -361,6 +361,10 @@
     <string name="published_on">Published on %1$s</string>
     <string name="view_count_value">%1$s views</string>
     <string name="like_and_dislike">%1$s like(s), %2$s dislike(s)</string>
+    <string name="simpmusic_move_up">Move up</string>
+    <string name="search_apple_music">Search Apple Music</string>
+    <string name="apple_music_track_unavailable">Apple Music track could not be mapped to a playable source.</string>
+    <string name="simpmusic_move_down">Move down</string>
     <string name="simpmusic_lyrics">SimpMusic lyrics</string>
     <string name="simpmusic_lyrics_desc">Use SimpMusic’s lyrics view instead of Enhanced.</string>
     <string name="player_design_apple_music">Apple Music</string>
@@ -651,6 +655,7 @@
     <string name="stats_remote_subheading">Recent history supplied by %1$s</string>
     <string name="stats_remote_load_failed">Couldn\'t load your YouTube history.</string>
     <string name="stats_remote_empty">No recent %1$s listening history is available.</string>
+    <string name="stats_remote_rate_limited">Spotify is rate-limiting requests. Try again in a few minutes.</string>
     <string name="stats_metric_plays">Plays</string>
     <string name="stats_metric_tracks">Tracks</string>
     <string name="stats_metric_artists">Artists</string>

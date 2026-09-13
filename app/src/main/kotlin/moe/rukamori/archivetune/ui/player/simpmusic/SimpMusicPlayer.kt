@@ -167,7 +167,6 @@ import moe.rukamori.archivetune.ui.player.bitchord.toBitChordLyrics
 import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
-import moe.rukamori.archivetune.ui.player.AppleMusicQueueSheet
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
 import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -315,12 +314,19 @@ fun SimpMusicPlayerContent(
     var queueOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = queueOpen) { queueOpen = false }
 
+    // SimpMusic reads its lyrics on its own full-screen sheet rather than the shared LyricsScreen,
+    // so the style stays self-contained the way bitchord/ and tiktok/ do.
+    var lyricsFullscreenOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(mediaMetadata.id) { lyricsFullscreenOpen = false }
+    BackHandler(enabled = lyricsFullscreenOpen) { lyricsFullscreenOpen = false }
+
     // Measured, not guessed — see the file header. Held in dp so the gap survives a rotation.
     // Only the two rows whose height depends on their CONTENT are measured; the artwork is derived
     // from what is left, which is what keeps this from being a layout feedback loop.
     var topBarHeight by remember { mutableStateOf(0.dp) }
     var infoHeight by remember { mutableStateOf(0.dp) }
 
+    MaterialTheme(typography = SimpMusicTypography) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         // The viewport, captured OUTSIDE the scrolling Column: inside it the height constraint is
         // Infinity, so this is the only place the screen height can be read.
@@ -471,7 +477,7 @@ fun SimpMusicPlayerContent(
                     // visibility, so without this a karaoke loop ran permanently, from the moment
                     // the player opened, for a card nobody had scrolled to.
                     renderLyrics = hasScrolled,
-                    onShowLyrics = onShowLyrics,
+                    onShowLyrics = { lyricsFullscreenOpen = true },
                     modifier = Modifier.padding(top = 10.dp),
                 )
                 Spacer(Modifier.height(10.dp))
@@ -513,17 +519,24 @@ fun SimpMusicPlayerContent(
         }
 
         if (queueOpen) {
-            // Scrim first: the sheet's own rows are translucent, so without something behind them
-            // the player's artwork and controls read straight through the queue.
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))) {
-                AppleMusicQueueSheet(
-                    navController = navController,
-                    playerBottomSheetState = state,
-                    onClose = { queueOpen = false },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            SimpMusicQueueSheet(
+                playerConnection = playerConnection,
+                navController = navController,
+                onDismiss = { queueOpen = false },
+            )
         }
+
+        if (lyricsFullscreenOpen) {
+            SimpMusicFullscreenLyricsSheet(
+                mediaMetadata = mediaMetadata,
+                playerConnection = playerConnection,
+                navController = navController,
+                bottomSheetPageState = bottomSheetPageState,
+                color = startColor,
+                onDismiss = { lyricsFullscreenOpen = false },
+            )
+        }
+    }
     }
 }
 

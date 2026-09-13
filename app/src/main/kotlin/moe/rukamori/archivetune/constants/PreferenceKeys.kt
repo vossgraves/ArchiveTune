@@ -1212,6 +1212,7 @@ enum class MetadataSource {
 enum class SearchProvider {
     YOUTUBE,
     SPOTIFY,
+    APPLE_MUSIC,
 }
 
 enum class SearchSource {

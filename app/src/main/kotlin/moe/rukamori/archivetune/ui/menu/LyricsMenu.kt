@@ -12,7 +12,15 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -37,6 +46,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -50,6 +60,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -61,11 +72,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -75,20 +89,35 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.vibrancy
+import java.util.Locale
+import java.util.UUID
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -110,12 +139,14 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import moe.rukamori.archivetune.ui.component.MediaMetadataListItem
 import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.NewMenuItem
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.utils.TranslatorLang
 import moe.rukamori.archivetune.utils.TranslatorLanguages
@@ -124,9 +155,6 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.viewmodels.LyricsSearchResultUiModel
 import moe.rukamori.archivetune.viewmodels.LyricsSearchScreenState
-import java.util.Locale
-import java.util.UUID
-import kotlin.math.roundToInt
 
 private enum class LyricsTranslationSource {
     AI_TRANSLATION,
@@ -1661,6 +1689,191 @@ private fun LyricsSearchInputActions(
             )
             Spacer(Modifier.width(ButtonDefaults.IconSpacing))
             Text(stringResource(R.string.search))
+        }
+    }
+}
+
+@Composable
+fun AnchoredLyricsOverflowMenu(
+    iconBoundsInRoot: Rect,
+    lyricsProvider: () -> LyricsEntity?,
+    mediaMetadataProvider: () -> MediaMetadata,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    viewModel: LyricsMenuViewModel = hiltViewModel(),
+    backdrop: PlatformBackdrop? = null,
+
+) {
+
+    var dismissed by remember { mutableStateOf(false) }
+
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
+    val scaleAnim = remember { Animatable(0.3f) }
+    val alphaAnim = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+
+        if (dismissed) return@LaunchedEffect
+
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(
+                targetValue = 1f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+            )
+        }
+        val alphaJob = scope.launch {
+            alphaAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(180),
+            )
+        }
+        scaleJob.join()
+        alphaJob.join()
+    }
+
+    LaunchedEffect(dismissed) {
+        if (!dismissed) return@LaunchedEffect
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(
+                targetValue = 0.3f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+            )
+        }
+        val alphaJob = scope.launch {
+            alphaAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(180),
+            )
+        }
+        scaleJob.join()
+        alphaJob.join()
+
+        onDismiss()
+    }
+
+    val scale = scaleAnim.value
+    val alpha = alphaAnim.value
+
+    var anchorSpaceHeightPx by remember { mutableIntStateOf(0) }
+    var popupHeightPx by remember { mutableIntStateOf(0) }
+    val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
+
+    fun opensAboveAnchor(): Boolean {
+        val neededHeightPx =
+            if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()
+        return anchorSpaceHeightPx > 0 &&
+            iconBoundsInRoot.bottom + verticalOffsetPx + neededHeightPx > anchorSpaceHeightPx
+    }
+
+    val frostedBlurModifier = remember(backdrop) {
+        if (backdrop != null) {
+            Modifier.drawBackdrop(
+                backdrop = backdrop,
+                effects = {
+                    vibrancy()
+
+                    blur(32f.dp.toPx())
+                },
+                onDrawBackdrop = { drawBackdrop ->
+                    drawBackdrop()
+                },
+                shape = { RoundedCornerShape(16.dp) },
+            )
+        } else {
+            null
+        }
+    }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { anchorSpaceHeightPx = it.height }
+                .background(Color.Black.copy(alpha = 0.45f * alpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    if (!dismissed) dismissed = true
+                },
+    ) {
+
+        Box(
+            modifier =
+                Modifier
+                    .offset {
+                        val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
+                        val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
+                        val iconRight = iconBoundsInRoot.right.toInt()
+                        val iconBottom = iconBoundsInRoot.bottom.toInt()
+                        val x =
+                            (iconRight - popupWidthPx)
+                                .coerceAtLeast(horizontalMarginPx)
+                        val y =
+                            if (opensAboveAnchor()) {
+
+                                (iconBoundsInRoot.top - verticalOffsetPx -
+                                    (if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()))
+                                    .coerceAtLeast(0f)
+                                    .toInt()
+                            } else {
+                                iconBottom + verticalOffsetPx
+                            }
+                        IntOffset(x = x, y = y)
+                    }
+                    .widthIn(max = 220.dp)
+                    .heightIn(max = 520.dp)
+                    .onSizeChanged { popupHeightPx = it.height }
+                    .graphicsLayer {
+                        this.alpha = alpha
+                        this.scaleX = scale
+                        this.scaleY = scale
+
+                        this.transformOrigin =
+                            TransformOrigin(1f, if (opensAboveAnchor()) 1f else 0f)
+
+                        this.shadowElevation = with(density) { 16.dp.toPx() }
+                        this.shape = RoundedCornerShape(16.dp)
+                        this.clip = false
+                    }
+
+                    .then(
+                        frostedBlurModifier
+                            ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
+                    )
+
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+
+                    },
+        ) {
+
+            LyricsMenu(
+                lyricsProvider = lyricsProvider,
+                mediaMetadataProvider = mediaMetadataProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                onDismiss = {
+
+                    if (!dismissed) dismissed = true
+                },
+                viewModel = viewModel,
+            )
         }
     }
 }

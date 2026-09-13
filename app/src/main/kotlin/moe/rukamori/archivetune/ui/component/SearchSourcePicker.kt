@@ -84,6 +84,14 @@ fun SearchSourcePicker(
                 expanded = false
                 onSelection(SearchSource.ONLINE, SearchProvider.SPOTIFY)
             }
+            SearchSourceMenuItem(
+                label = stringResource(R.string.search_source_apple_music),
+                iconRes = R.drawable.apple_music_icon,
+                selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.APPLE_MUSIC,
+            ) {
+                expanded = false
+                onSelection(SearchSource.ONLINE, SearchProvider.APPLE_MUSIC)
+            }
         }
     }
 }
