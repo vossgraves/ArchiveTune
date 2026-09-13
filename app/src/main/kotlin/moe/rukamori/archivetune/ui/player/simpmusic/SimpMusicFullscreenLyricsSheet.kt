@@ -87,6 +87,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -243,6 +244,16 @@ internal fun SimpMusicFullscreenLyricsSheet(
             delay(200L)
         }
     }
+
+    // The unsung lines take the backdrop's own hue, lightened until they read against it, rather
+    // than a neutral grey. Grey on a coloured page looks like text that failed to be styled; this
+    // is what makes a green page read as green lyrics rather than as lyrics on green.
+    //
+    // Derived from the palette colour rather than fixed, so it follows the artwork the way the
+    // backdrop does. `color` has already been through asSurface(), so it is dark enough that
+    // lightening this far always clears it.
+    val unsungLineColor =
+        remember(color) { lerp(color, Color.White, UnsungLightenFraction).copy(alpha = UnsungAlpha) }
 
     val startColor by animateColorAsState(color, tween(1200, easing = FastOutSlowInEasing))
     val midColor1 by animateColorAsState(color.copy(alpha = 0.95f), tween(1200, easing = FastOutSlowInEasing))
@@ -500,9 +511,9 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     if (hasLyrics) {
 
                         SimpMusicLyrics(
-
                             sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
                             lyricsSyncOffset = 0,
+                            inactiveColorOverride = unsungLineColor,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
@@ -757,3 +768,9 @@ private fun clockTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0L)
     return String.format(Locale.getDefault(), "%02d:%02d", total / 60, total % 60)
 }
+
+/** How far the unsung lines travel toward white. Far enough to read, near enough to keep the hue. */
+private const val UnsungLightenFraction = 0.55f
+
+/** Holds them behind the sung line without letting them drop out of the page's colour. */
+private const val UnsungAlpha = 0.55f
