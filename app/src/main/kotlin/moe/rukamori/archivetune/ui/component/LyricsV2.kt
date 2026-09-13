@@ -141,6 +141,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
 import moe.rukamori.archivetune.lyrics.LyricsUtils.hasTrueWordSync
 import moe.rukamori.archivetune.lyrics.LyricsUtils.insertInstrumentalBreaks
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isRtlText
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
 import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
 import moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml
@@ -212,24 +213,6 @@ private class WordSyncCache {
 
 @Composable
 private fun rememberWordSyncCache(): WordSyncCache = remember { WordSyncCache() }
-
-private fun isRtlText(text: String): Boolean {
-    for (ch in text) {
-        when (Character.getDirectionality(ch)) {
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE,
-            -> return true
-
-            Character.DIRECTIONALITY_LEFT_TO_RIGHT,
-            Character.DIRECTIONALITY_LEFT_TO_RIGHT_EMBEDDING,
-            Character.DIRECTIONALITY_LEFT_TO_RIGHT_OVERRIDE,
-            -> return false
-        }
-    }
-    return false
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Main Composable

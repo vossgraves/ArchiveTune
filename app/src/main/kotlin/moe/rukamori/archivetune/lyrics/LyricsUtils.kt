@@ -391,6 +391,30 @@ object LyricsUtils {
                 ),
         )
 
+    /**
+     * Whether [text] should lay out right-to-left.
+     *
+     * Decided by the first character with a strong direction — an Arabic line that opens with a
+     * quote mark or a digit is still an Arabic line, and those carry no direction of their own.
+     */
+    fun isRtlText(text: String): Boolean {
+        for (ch in text) {
+            when (Character.getDirectionality(ch)) {
+                Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+                Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
+                Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
+                Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE,
+                -> return true
+
+                Character.DIRECTIONALITY_LEFT_TO_RIGHT,
+                Character.DIRECTIONALITY_LEFT_TO_RIGHT_EMBEDDING,
+                Character.DIRECTIONALITY_LEFT_TO_RIGHT_OVERRIDE,
+                -> return false
+            }
+        }
+        return false
+    }
+
     fun isTtml(lyrics: String): Boolean {
         val trimmed = normalizeLyricsText(lyrics)
         if (!trimmed.startsWith("<")) return false

@@ -155,6 +155,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils.isChinese
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isJapanese
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isKorean
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isRtlText
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
 import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
 import moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml
@@ -182,24 +183,6 @@ private const val ArchiveTune_FAST_SEEK_DURATION = 600L
 private const val LyricsWordSyncLeadMs = 300L
 
 val LyricsPreviewTime = 2.seconds
-
-private fun isRtlText(text: String): Boolean {
-    for (ch in text) {
-        when (Character.getDirectionality(ch)) {
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
-            Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE,
-            -> return true
-
-            Character.DIRECTIONALITY_LEFT_TO_RIGHT,
-            Character.DIRECTIONALITY_LEFT_TO_RIGHT_EMBEDDING,
-            Character.DIRECTIONALITY_LEFT_TO_RIGHT_OVERRIDE,
-            -> return false
-        }
-    }
-    return false
-}
 
 private fun rtlAwareHorizontalGradient(
     isRtl: Boolean,

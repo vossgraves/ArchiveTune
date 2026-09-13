@@ -1054,10 +1054,14 @@ val SpotifyHistorySyncEnabledKey = booleanPreferencesKey("spotifyHistorySyncEnab
  * @property supportsBackgroundChoice whether the picker is offered at all. False for styles whose
  *   backdrop is the look — Apple Music without its blurred cover is not Apple Music — and for
  *   TikTok, whose full-bleed pages cover the backdrop so completely that changing it does nothing.
+ * @property forcesMonochromeChrome whether the controls are pinned white-on-black instead of
+ *   following the theme. True for the styles that sit on a full-bleed black-backed sleeve, where
+ *   theme-coloured chrome would be illegible over the artwork half the time.
  */
 enum class PlayerDesignStyle(
     val nativeBackground: PlayerBackgroundStyle? = null,
     val supportsBackgroundChoice: Boolean = true,
+    val forcesMonochromeChrome: Boolean = false,
 ) {
     V1,
     V2,
@@ -1065,8 +1069,12 @@ enum class PlayerDesignStyle(
     V4,
     V5,
     V6,
-    V7,
-    V8(nativeBackground = PlayerBackgroundStyle.DEFAULT, supportsBackgroundChoice = false),
+    V7(forcesMonochromeChrome = true),
+    V8(
+        nativeBackground = PlayerBackgroundStyle.DEFAULT,
+        supportsBackgroundChoice = false,
+        forcesMonochromeChrome = true,
+    ),
     V9(nativeBackground = PlayerBackgroundStyle.DEFAULT, supportsBackgroundChoice = false),
 
     /** The blurred, expanded cover is the whole look. */

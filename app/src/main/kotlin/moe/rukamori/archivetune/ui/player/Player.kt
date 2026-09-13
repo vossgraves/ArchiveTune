@@ -752,7 +752,7 @@ fun BottomSheetPlayer(
     val TextBackgroundColor =
         if (playerDesignStyle == PlayerDesignStyle.V9) {
             dynamicTextColor
-        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        } else if (playerDesignStyle.forcesMonochromeChrome) {
             Color.White
         } else {
             when (playerBackground) {
@@ -770,7 +770,7 @@ fun BottomSheetPlayer(
     val icBackgroundColor =
         if (playerDesignStyle == PlayerDesignStyle.V9) {
             dynamicBgColor
-        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        } else if (playerDesignStyle.forcesMonochromeChrome) {
             Color.Black
         } else {
             when (playerBackground) {
@@ -798,7 +798,7 @@ fun BottomSheetPlayer(
                 )
             }
         }.let { (tb, ib) ->
-            if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+            if (playerDesignStyle.forcesMonochromeChrome) {
                 Pair(Color.White, Color.Black)
             } else if (playerDesignStyle == PlayerDesignStyle.V9) {
                 Pair(dynamicAccentColor, dynamicIconButtonColor)
@@ -1253,7 +1253,7 @@ fun BottomSheetPlayer(
                         0f
                     }
                 dynamicBgColor.copy(alpha = 1f - fadeProgress)
-            } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+            } else if (playerDesignStyle.forcesMonochromeChrome) {
                 val progress =
                     ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                         .coerceIn(0f, 1f)
