@@ -15,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.supervisorScope
 import moe.rukamori.archivetune.audiosource.DirectStream
+import moe.rukamori.archivetune.audiosource.TrackMatching
 import moe.rukamori.archivetune.constants.AudioSourceType
 import android.util.Base64
 import moe.rukamori.archivetune.constants.TidalAudioQuality
@@ -73,6 +74,33 @@ object TidalAudioProvider {
     private const val STRONG_MATCH_SCORE = 150
     private const val REJECT_SCORE = -1_000_000
     private val AMAZON_DATE = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'", Locale.US)
+
+    // Hoisted so title/artist normalization (run per candidate track during matching) does not
+    // recompile the same patterns on every call.
+    private val ISRC_STRIP_REGEX = Regex("[^A-Z0-9]")
+    private val ISRC_PATTERN_REGEX = Regex("[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
+    private val DIACRITIC_REGEX = Regex("\\p{Mn}+")
+    private val NON_ALPHANUMERIC_REGEX = Regex("[^a-z0-9]+")
+    private val WHITESPACE_REGEX = Regex("\\s+")
+    private val FEATURED_ARTIST_TITLE_SUFFIX_REGEX = Regex("""\b(feat|ft|featuring)\b.*$""")
+    private val EDITION_NOISE_WORD_REGEX = Regex("""\b(explicit|clean|remaster|remastered|version|audio|official)\b""")
+    private val FEATURED_ARTIST_BRACKET_REGEX =
+        Regex("""\s*[\[(]\s*(feat\.?|ft\.?|featuring)\b.*?[\])]""", RegexOption.IGNORE_CASE)
+    private val EDITION_SUFFIX_REGEX =
+        Regex("""\s*-\s*(explicit|clean|remaster(?:ed)?|audio|official)\b.*$""", RegexOption.IGNORE_CASE)
+    private val NUMERIC_ONLY_REGEX = Regex("\\d+")
+    private val TIDAL_URI_TRACK_ID_REGEX = Regex("""^tidal:track:(\d+)$""", RegexOption.IGNORE_CASE)
+    private val TIDAL_URL_TRACK_ID_REGEX = Regex("""tidal\.com/(?:browse/)?track/(\d+)""", RegexOption.IGNORE_CASE)
+    private val SPOTIFY_URI_TRACK_ID_REGEX = Regex("""spotify[:/](?:track[:/])?([A-Za-z0-9]{22})""", RegexOption.IGNORE_CASE)
+    private val SPOTIFY_ID_ONLY_REGEX = Regex("[A-Za-z0-9]{22}")
+    private val YOUTUBE_ID_ONLY_REGEX = Regex("[A-Za-z0-9_-]{11}")
+    private val HTTP_URL_REGEX = Regex("""https?://[^"'<>\s]+""")
+    private val DASH_SEGMENT_TIMELINE_REGEX =
+        Regex("""<S\s+[^>]*d="(\d+)"(?:\s+r="(-?\d+)")?[^>]*/?>""", RegexOption.IGNORE_CASE)
+    private val DASH_INITIALIZATION_URL_REGEX = Regex("<Initialization\\b[^>]*sourceURL=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+    private val DASH_SEGMENT_URL_REGEX = Regex("<SegmentURL\\b[^>]*media=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+    private val XML_UNESCAPED_AMPERSAND_REGEX = Regex("""&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)""")
+
     // No pre-built/bundled public instances are shipped anymore. The user must add their own
     // HiFi/QQDL instance(s) in Tidal settings; if they add none (or remove them all) the public
     // streaming path simply stays empty and playback falls through to the next audio source.
@@ -907,7 +935,14 @@ object TidalAudioProvider {
         query.mediaId.toTidalTrackIdOrNull()?.let { trackId ->
             resolveTrackById(trackId)?.let { track ->
                 val coverId = track.albumCoverId ?: return@let
-                val score = contentArtworkScore(track, query)
+                val score = contentArtworkScore(
+                    track,
+                    query.title.titleMatchNormalized(),
+                    query.artists.map { it.normalized() }.filter { it.isNotBlank() },
+                    query.album.normalized(),
+                    wantedIsrc,
+                    query.durationMs?.takeIf { it > 0L },
+                )
                 if (score >= MIN_MATCH_SCORE) {
                     return ArtworkSearchResult(
                         trackId = track.trackId,
@@ -932,22 +967,21 @@ object TidalAudioProvider {
 
     private fun contentArtworkScore(
         track: MatchedTrack,
-        query: Query,
+        wantedTitle: String,
+        wantedArtists: List<String>,
+        wantedAlbum: String,
+        wantedIsrc: String?,
+        wantedDurationMs: Long?,
     ): Int =
-        scoreTrack(
-            track,
-            query.title.titleMatchNormalized(),
-            query.artists.map { it.normalized() }.filter { it.isNotBlank() },
-            query.album.normalized(),
-            normalizeIsrc(query.isrc),
-            query.durationMs?.takeIf { it > 0L },
-        ) - track.qualityScoreBoost()
+        scoreTrack(track, wantedTitle, wantedArtists, wantedAlbum, wantedIsrc, wantedDurationMs) - track.qualityScoreBoost()
 
     private fun selectArtworkCandidates(
         results: JSONArray,
         query: Query,
         exactIsrcOnly: Boolean = false,
     ): List<ArtworkSearchResult> {
+        // Computed once per search rather than per candidate: these were previously recomputed
+        // (via contentArtworkScore) on every iteration below despite being constant for the call.
         val wantedTitle = query.title.titleMatchNormalized()
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         val wantedAlbum = query.album.normalized()
@@ -959,7 +993,7 @@ object TidalAudioProvider {
             val track = obj.toMatchedTrack() ?: continue
             if (exactIsrcOnly && normalizeIsrc(track.isrc) != wantedIsrc) continue
             val coverId = track.albumCoverId ?: continue
-            val score = contentArtworkScore(track, query)
+            val score = contentArtworkScore(track, wantedTitle, wantedArtists, wantedAlbum, wantedIsrc, wantedDurationMs)
             if (score < MIN_MATCH_SCORE) continue
             candidates +=
                 ArtworkSearchResult(
@@ -1006,9 +1040,9 @@ object TidalAudioProvider {
     fun normalizeIsrc(value: String?): String? {
         val compact = value
             ?.uppercase(Locale.US)
-            ?.replace(Regex("[^A-Z0-9]"), "")
+            ?.replace(ISRC_STRIP_REGEX, "")
             ?: return null
-        return Regex("[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
+        return ISRC_PATTERN_REGEX
             .find(compact)
             ?.value
     }
@@ -1020,7 +1054,7 @@ object TidalAudioProvider {
         val wantedAlbum = query.album.normalized()
         val wantedIsrc = normalizeIsrc(query.isrc)
         val wantedDurationMs = query.durationMs?.takeIf { it > 0L }
-        normalizeIsrc(query.isrc)?.let { isrc ->
+        wantedIsrc?.let { isrc ->
             searchTracks(isrc, exactIsrc = true)
                 ?.let { selectCandidateTracks(it, query, exactIsrcOnly = true) }
                 ?.losslessFirst()
@@ -1213,7 +1247,7 @@ object TidalAudioProvider {
 
         if (wantedTitle.isBlank() || candidateTitle.isBlank()) return REJECT_SCORE
         if (wantedIsrc != null && candidateIsrc == wantedIsrc) {
-            return if (durationMatches(wantedDurationMs, track.durationMs)) {
+            return if (TrackMatching.durationMatches(wantedDurationMs, track.durationMs)) {
                 220 + track.qualityScoreBoost()
             } else {
                 REJECT_SCORE
@@ -1564,11 +1598,9 @@ object TidalAudioProvider {
                 dataSampleRate = normalizeSampleRate(data.doubleOrNull("sampleRate"))
                 dataBitDepth = data.longOrNull("bitDepth")?.toInt()
             }
-            val manifestDeclaresFlac =
+            val manifestLooksFlac =
                 manifest.mimeType.contains("flac", ignoreCase = true) ||
                     manifest.codecs.contains("flac", ignoreCase = true)
-            val manifestLooksFlac =
-                manifestDeclaresFlac
             val isAtmosManifest =
                 isAtmosRequest ||
                     resolvedQuality.contains("ATMOS", ignoreCase = true) ||
@@ -1881,7 +1913,7 @@ object TidalAudioProvider {
         val sampleRate = firstXmlAttr(text, "audioSamplingRate").toIntOrNull()
         val bandwidth = xmlAttrValues(text, "bandwidth").maxOrNull()
         val segmentUrls = extractDashSegmentUrls(text)
-        val firstSegmentUrl = Regex("""https?://[^"'<>\s]+""")
+        val firstSegmentUrl = HTTP_URL_REGEX
             .find(text)
             ?.value
             ?.xmlUnescape()
@@ -1920,7 +1952,7 @@ object TidalAudioProvider {
         }
 
         var segmentCount = 0
-        Regex("""<S\s+[^>]*d="(\d+)"(?:\s+r="(-?\d+)")?[^>]*/?>""", RegexOption.IGNORE_CASE)
+        DASH_SEGMENT_TIMELINE_REGEX
             .findAll(text)
             .forEach { match ->
                 val repeat = match.groupValues.getOrNull(2)?.toIntOrNull()?.takeIf { it > 0 } ?: 0
@@ -1941,13 +1973,13 @@ object TidalAudioProvider {
     private fun extractSegmentListUrls(text: String): List<String> {
         val baseUrl = firstXmlTagValue(text, "BaseURL").xmlUnescape()
         val initialization =
-            Regex("<Initialization\\b[^>]*sourceURL=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+            DASH_INITIALIZATION_URL_REGEX
                 .find(text)
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.xmlUnescape()
         val mediaSegments =
-            Regex("<SegmentURL\\b[^>]*media=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+            DASH_SEGMENT_URL_REGEX
                 .findAll(text)
                 .mapNotNull { it.groupValues.getOrNull(1)?.xmlUnescape() }
                 .toList()
@@ -2208,46 +2240,18 @@ object TidalAudioProvider {
 
         val header = ByteArray(16)
         val bytesRead = file.inputStream().use { input -> input.read(header) }
-        val isFlac =
-            bytesRead >= 4 &&
-                header[0] == 'f'.code.toByte() &&
-                header[1] == 'L'.code.toByte() &&
-                header[2] == 'a'.code.toByte() &&
-                header[3] == 'C'.code.toByte()
-        val isMp4 =
-            bytesRead >= 12 &&
-                header[4] == 'f'.code.toByte() &&
-                header[5] == 't'.code.toByte() &&
-                header[6] == 'y'.code.toByte() &&
-                header[7] == 'p'.code.toByte()
-
-        if (isFlac) {
-            return PlaybackStreamInfo(
-                mimeType = AUDIO_FLAC_MIME_TYPE,
-                codecs = "flac",
+        return try {
+            inspectPlaybackHeader(
+                bytes = header,
+                bytesRead = bytesRead,
+                manifest = manifest,
                 contentLength = length,
+                label = "TIDAL temporary file",
             )
+        } catch (error: TidalAudioResolutionException) {
+            file.delete()
+            throw error
         }
-        if (isMp4) {
-            return PlaybackStreamInfo(
-                mimeType = AUDIO_MP4_MIME_TYPE,
-                codecs = manifest.codecs.takeIf { it.isNotBlank() } ?: "mp4a.40.2",
-                contentLength = length,
-            )
-        }
-
-        val headerText = header
-            .take(bytesRead.coerceAtLeast(0))
-            .map { byte ->
-                val value = byte.toInt() and 0xff
-                if (value in 32..126) value.toChar() else '.'
-            }
-            .joinToString("")
-            .trim()
-        file.delete()
-        throw TidalAudioResolutionException(
-            "TIDAL temporary file was not a playable FLAC/MP4 container (${headerText.ifBlank { "binary header" }})",
-        )
     }
 
     private fun inspectRemotePlaybackUrl(
@@ -2522,15 +2526,15 @@ object TidalAudioProvider {
             if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
                 add(trimmed)
             }
-            Regex("""spotify[:/](?:track[:/])?([A-Za-z0-9]{22})""", RegexOption.IGNORE_CASE)
+            SPOTIFY_URI_TRACK_ID_REGEX
                 .find(trimmed)
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.let { add("https://open.spotify.com/track/$it") }
-            if (trimmed.matches(Regex("[A-Za-z0-9]{22}"))) {
+            if (trimmed.matches(SPOTIFY_ID_ONLY_REGEX)) {
                 add("https://open.spotify.com/track/$trimmed")
             }
-            if (trimmed.matches(Regex("[A-Za-z0-9_-]{11}"))) {
+            if (trimmed.matches(YOUTUBE_ID_ONLY_REGEX)) {
                 add("https://music.youtube.com/watch?v=$trimmed")
             }
         }.distinct()
@@ -2645,13 +2649,13 @@ object TidalAudioProvider {
 
     private fun String.toTidalTrackIdOrNull(): String? {
         val trimmed = trim()
-        if (trimmed.matches(Regex("\\d+"))) return trimmed
-        Regex("""^tidal:track:(\d+)$""", RegexOption.IGNORE_CASE)
+        if (trimmed.matches(NUMERIC_ONLY_REGEX)) return trimmed
+        TIDAL_URI_TRACK_ID_REGEX
             .matchEntire(trimmed)
             ?.groupValues
             ?.getOrNull(1)
             ?.let { return it }
-        Regex("""tidal\.com/(?:browse/)?track/(\d+)""", RegexOption.IGNORE_CASE)
+        TIDAL_URL_TRACK_ID_REGEX
             .find(trimmed)
             ?.groupValues
             ?.getOrNull(1)
@@ -2675,29 +2679,29 @@ object TidalAudioProvider {
         this
             ?.lowercase(Locale.US)
             ?.let { Normalizer.normalize(it, Normalizer.Form.NFD) }
-            ?.replace(Regex("\\p{Mn}+"), "")
-            ?.replace(Regex("[^a-z0-9]+"), " ")
+            ?.replace(DIACRITIC_REGEX, "")
+            ?.replace(NON_ALPHANUMERIC_REGEX, " ")
             ?.trim()
             .orEmpty()
 
     private fun String.titleMatchNormalized(): String =
         normalized()
-            .replace(Regex("""\b(feat|ft|featuring)\b.*$"""), "")
-            .replace(Regex("""\b(explicit|clean|remaster|remastered|version|audio|official)\b"""), " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(FEATURED_ARTIST_TITLE_SUFFIX_REGEX, "")
+            .replace(EDITION_NOISE_WORD_REGEX, " ")
+            .replace(WHITESPACE_REGEX, " ")
             .trim()
 
     private fun String.searchQueryTitle(): String =
         trim()
-            .replace(Regex("""\s*[\[(]\s*(feat\.?|ft\.?|featuring)\b.*?[\])]""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\s*-\s*(explicit|clean|remaster(?:ed)?|audio|official)\b.*$""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\s+"), " ")
+            .replace(FEATURED_ARTIST_BRACKET_REGEX, "")
+            .replace(EDITION_SUFFIX_REGEX, "")
+            .replace(WHITESPACE_REGEX, " ")
             .trim()
 
     private fun String.searchQueryArtist(): String =
         trim()
             .substringBefore(',')
-            .replace(Regex("\\s+"), " ")
+            .replace(WHITESPACE_REGEX, " ")
             .trim()
 
     private fun significantTokens(value: String): Set<String> =
@@ -2714,14 +2718,6 @@ object TidalAudioProvider {
         if (wanted.isEmpty() || candidate.isEmpty()) return 0.0
         val shared = wanted.intersect(candidate).size
         return shared.toDouble() / wanted.size.coerceAtLeast(candidate.size).toDouble()
-    }
-
-    private fun durationMatches(
-        wantedDurationMs: Long?,
-        candidateDurationMs: Long?,
-    ): Boolean {
-        if (wantedDurationMs == null || candidateDurationMs == null) return true
-        return abs(wantedDurationMs - candidateDurationMs) <= 45_000L
     }
 
     private fun hasVersionMismatch(
@@ -2804,7 +2800,7 @@ object TidalAudioProvider {
             .replace("&gt;", ">")
 
     private fun String.sanitizeXmlEntities(): String =
-        replace(Regex("""&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)"""), "&amp;")
+        replace(XML_UNESCAPED_AMPERSAND_REGEX, "&amp;")
 
     private fun String.deleteIfLocalFileUri() {
         runCatching {
