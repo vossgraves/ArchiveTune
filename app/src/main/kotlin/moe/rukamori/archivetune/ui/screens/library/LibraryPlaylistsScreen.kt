@@ -103,6 +103,7 @@ import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.CreatePlaylistDialog
+import moe.rukamori.archivetune.ui.component.rememberAppleMusicExperience
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -171,6 +172,11 @@ fun LibraryPlaylistsScreen(
     // reverted to list view. Now the choice survives app restarts.
     var playlistViewType by rememberEnumPreference(PlaylistViewTypeKey, defaultValue = LibraryViewType.LIST)
     val isGridView = playlistViewType == LibraryViewType.GRID
+
+    // The Apple Music Experience restyles the list rows only. Grid stays the fork's grid: Apple
+    // Music's own library has no grid to copy, so inventing one here would be this fork's design
+    // wearing an Apple Music label.
+    val appleMusicRows = rememberAppleMusicExperience() && !isGridView
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
@@ -511,15 +517,22 @@ fun LibraryPlaylistsScreen(
                 val showDragHandles = sortType == PlaylistSortType.CUSTOM && !locked
                 LazyColumn(
                     state = lazyListState,
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding =
+                        PaddingValues(
+                            start = if (appleMusicRows) AppleMusicListSidePadding else 24.dp,
+                            end = if (appleMusicRows) AppleMusicListSidePadding else 24.dp,
+                            bottom = playerAwareBottomPadding,
+                        ),
+                    // Apple Music's rows carry their own divider and sit flush against each other;
+                    // the fork's cards need air between them to read as separate cards.
+                    verticalArrangement = Arrangement.spacedBy(if (appleMusicRows) 0.dp else 12.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     itemsIndexed(
                         items = listPlaylists,
                         key = { _, playlist -> playlist.id },
-                        contentType = { _, _ -> "playlist_list" },
-                    ) { _, playlist ->
+                        contentType = { _, _ -> if (appleMusicRows) "playlist_am_row" else "playlist_list" },
+                    ) { index, playlist ->
                         ReorderableItem(
                             state = reorderableState,
                             key = playlist.id,
@@ -528,6 +541,21 @@ fun LibraryPlaylistsScreen(
                                     compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
                                 },
                         ) {
+                            if (appleMusicRows) {
+                                AppleMusicPlaylistRow(
+                                    playlist = playlist,
+                                    onClick = { openPlaylist(navController, playlist) },
+                                    onMenuClick = {
+                                        menuState.show {
+                                            triggerPlaylistMenu(playlist, coroutineScope, menuState)
+                                        }
+                                    },
+                                    // No rule under the last row — Apple Music ends the list on the
+                                    // row itself, not on a line pointing at empty space.
+                                    showDivider = index < listPlaylists.lastIndex,
+                                )
+                                return@ReorderableItem
+                            }
                             PlaylistListCard(
                                 playlist = playlist,
                                 onClick = {
