@@ -36,6 +36,7 @@ into `dev` only after the device QA in [docs/claude/RELEASES.md](docs/claude/REL
 | [docs/lyrics.md](docs/lyrics.md) | The three renderers, the word sweep, which surface uses which |
 | [docs/sponsorblock.md](docs/sponsorblock.md) | Segment lookup and skipping |
 | [docs/tv.md](docs/tv.md) | Android TV / Fire TV: detection, focus, what is known to be missing |
+| [docs/fork-divergence.md](docs/fork-divergence.md) | What 4nx3b's fork has that we do not and the reverse, by tree comparison rather than commit count |
 | [docs/source-logins.md](docs/source-logins.md) | The four WebView sign-in screens: what each captures, why nothing saves unverified, the Qobuz app-secret search |
 | [docs/telegram-native.md](docs/telegram-native.md) | The TDLight engine: why the native library is downloaded, the digest pinning, schema drift from 1.8.56 |
 | [docs/spotify-native-playback.md](docs/spotify-native-playback.md) | Playing Spotify tracks with no YouTube release: shipped ISRC resolution, and the unshipped native-id design |
