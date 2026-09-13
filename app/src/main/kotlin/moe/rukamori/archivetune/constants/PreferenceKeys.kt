@@ -985,10 +985,21 @@ enum class PlayerButtonsStyle {
     SECONDARY,
 }
 
-/** Home screen layout style. DEFAULT = this fork's feed; RUKAMORI = upstream rukamori layout. */
+/**
+ * Home screen layout style. DEFAULT = this fork's feed; RUKAMORI = the upstream rukamori layout.
+ *
+ * The enum owns its own default. It used to be written out at each `rememberEnumPreference` call
+ * instead, which meant changing it was a hunt through every reader and a miss left two screens
+ * disagreeing about what a fresh install shows.
+ */
 enum class HomeScreenStyle {
     DEFAULT,
     RUKAMORI,
+    ;
+
+    companion object {
+        val Default = RUKAMORI
+    }
 }
 
 val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
@@ -1016,6 +1027,12 @@ enum class SpotifyHomeStyle {
     SPOTIFY,
     DEFAULT,
     RUKAMORI,
+    ;
+
+    companion object {
+        /** Spotify's own geometry, for the same reason [HomeScreenStyle.Default] lives on the enum. */
+        val Default = SPOTIFY
+    }
 }
 
 val SpotifyHomeStyleKey = stringPreferencesKey("spotifyHomeStyle")
@@ -1080,6 +1097,16 @@ enum class PlayerDesignStyle(
     /** What to actually render: the reader's pick where it is offered, the style's own otherwise. */
     fun resolveBackground(stored: PlayerBackgroundStyle): PlayerBackgroundStyle =
         if (supportsBackgroundChoice) stored else nativeBackground ?: stored
+
+    companion object {
+        /**
+         * What a fresh install opens with. Seven readers — the player, its thumbnail, the queue, the
+         * menu, the Apple Music experience toggle, MainActivity and the appearance screen — each
+         * wrote this out for themselves, so the default could only be changed by finding all seven,
+         * and any one missed would render a different style than the rest of the app believed.
+         */
+        val Default = V4
+    }
 }
 
 enum class PlayerBackgroundStyle {

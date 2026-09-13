@@ -247,7 +247,7 @@ fun AppearanceSectionSettings(
     val (playerDesignStyle, onPlayerDesignStyleChange) =
         rememberEnumPreference(
             PlayerDesignStyleKey,
-            defaultValue = PlayerDesignStyle.V4,
+            defaultValue = PlayerDesignStyle.Default,
         )
     val (appleMusicAnimatedArtwork, onAppleMusicAnimatedArtworkChange) =
         rememberPreference(
@@ -364,8 +364,8 @@ fun AppearanceSectionSettings(
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
     val (homeScreenStyle, onHomeScreenStyleChange) =
-        rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.DEFAULT)
-    var spotifyHomeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
+        rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.Default)
+    var spotifyHomeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.Default)
     val spotifySignedIn = rememberHomeSourceAvailable()
 
     val customFontPickerLauncher =

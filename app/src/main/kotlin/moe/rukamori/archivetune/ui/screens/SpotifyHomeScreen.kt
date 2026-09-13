@@ -126,7 +126,7 @@ data class SpotifyHomeMetrics(
 
 @Composable
 fun rememberSpotifyHomeMetrics(): SpotifyHomeMetrics {
-    val style by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
+    val style by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.Default)
     return remember(style) {
         when (style) {
             // Spotify's own proportions, and the values this screen shipped with.
@@ -213,7 +213,7 @@ fun SpotifyHomeScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val metrics = rememberSpotifyHomeMetrics()
-    val homeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
+    val homeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.Default)
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
     val onSwitchToYoutube = rememberSwitchToYouTube()

@@ -39,7 +39,7 @@ fun rememberAppleMusicExperience(): Boolean {
 @Composable
 fun rememberAppleMusicExperienceToggle(): (Boolean) -> Unit {
     val (_, setEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
-    val (style, setStyle) = rememberEnumPreference(PlayerDesignStyleKey, PlayerDesignStyle.V4)
+    val (style, setStyle) = rememberEnumPreference(PlayerDesignStyleKey, PlayerDesignStyle.Default)
     val (styleBefore, setStyleBefore) = rememberPreference(StyleBeforeAppleMusicKey, defaultValue = "")
 
     return { enabled ->
@@ -55,7 +55,7 @@ fun rememberAppleMusicExperienceToggle(): (Boolean) -> Unit {
         } else if (style == PlayerDesignStyle.APPLE_MUSIC) {
             // Only restore while the experience still owns the style. A style picked by hand in the
             // meantime is newer than ours and wins.
-            setStyle(styleBefore.toEnum(PlayerDesignStyle.V4))
+            setStyle(styleBefore.toEnum(PlayerDesignStyle.Default))
         }
     }
 }

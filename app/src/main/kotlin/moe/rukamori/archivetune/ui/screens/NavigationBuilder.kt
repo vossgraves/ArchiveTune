@@ -145,7 +145,7 @@ fun NavGraphBuilder.navigationBuilder(
             return@composable
         }
 
-        val homeScreenStyle by rememberEnumPreference(HomeScreenStyleKey, HomeScreenStyle.DEFAULT)
+        val homeScreenStyle by rememberEnumPreference(HomeScreenStyleKey, HomeScreenStyle.Default)
         when (homeScreenStyle) {
             HomeScreenStyle.RUKAMORI -> {
                 RukamoriHomeScreen(
