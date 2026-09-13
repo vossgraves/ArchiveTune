@@ -2,8 +2,14 @@
 
 Both forks descend from `646829cf` and have since taken the same features in different
 directions, so a commit count says nothing useful — the trees are what matter. This compares
-`vossgraves/canary` against `4nx3b/dev` at `9657966`, by file presence and then by what each
+`vossgraves/canary` against `4nx3b/dev` at `28e0eb37b`, by file presence and then by what each
 side's version of a shared subsystem actually does.
+
+At that point 68 source files exist only there and 50 only here. The gap was 71 when this was first
+written; the Apple Music catalog, SimpMusic's lyrics and queue sheets and the baseline profile have
+come across since, and they have taken this fork's SponsorBlock and haptics in the other direction.
+Regenerate the counts with `git ls-tree -r --name-only` on both trees and `comm` — the numbers age
+faster than the prose.
 
 Two file sets, deliberately left out of the tables below because they are noise: 33 drawables,
 2 fonts and 3 Lottie JSONs that belong to the player skins and Lottie work named under
@@ -30,17 +36,19 @@ This is the one item where their fork is ahead on capability rather than merely 
 
 ### The SpatialFlow player skin
 
-Ten files (`SpatialFlowPlayer`, `Components`, `Lyrics`, `QueueDrawer`, `SleepTimer`, `Typography`,
-`WavySlider`, `Haptics`) plus 17 drawables and a font. We ported only the haptics, as
+Seven files (`SpatialFlowPlayer`, `Components`, `Lyrics`, `QueueDrawer`, `SleepTimer`, `Typography`,
+`WavySlider`) plus 17 drawables and a font. We have only the haptics, as
 `playback/SpatialFlowHaptics.kt` — a PCM processor, not a skin. The whole player style is absent.
+They have since taken that haptics processor from here, so the skin is the only part still split.
 
-### Apple Music catalog
+### Apple Music catalog — ported
 
 `AppleMusicCatalog`, `AppleMusicModels`, `AppleMusicPlaybackResolver`, `AppleMusicSearchItem`,
-`AppleMusicOnlineSearchResult`, `AppleMusicSearchViewModel` — Apple Music as a *searchable
-catalog*. Our Apple Music is the other half: `AppleMusicAudioProvider`, `AppleMusicVirtualStream`,
-`AppleMusicPlayer`, `AppleMusicQueueSheet`, `AppleMusicSlider`, `AppleMusicLyricsPolicy`,
-`AppleMusicExperience`, `AppleMusicPlaylistHero`, plus a canvas provider. Neither fork has both.
+`AppleMusicOnlineSearchResult` and `AppleMusicSearchViewModel` are here now, and `APPLE_MUSIC`
+joins the `SearchProvider` enum, the source picker and the settings default. This fork already had
+the other half — `AppleMusicAudioProvider`, `AppleMusicVirtualStream`, `AppleMusicPlayer`,
+`AppleMusicQueueSheet`, `AppleMusicSlider`, `AppleMusicLyricsPolicy`, `AppleMusicExperience`,
+`AppleMusicPlaylistHero` and a canvas provider — so this is the only fork with both.
 
 ### Robustness the other fork has and we do not
 
@@ -60,9 +68,13 @@ catalog*. Our Apple Music is the other half: `AppleMusicAudioProvider`, `AppleMu
 ### Cosmetic
 
 `GlassScreenHeader`, `MuzoHomeSections`, `MuzoMenuComponents`, `LibraryChromeComponents`,
-`SpotifyPlaylistMenu`, `SimpMusicFullscreenLyricsSheet`, `SimpMusicQueueSheet`,
-`SimpMusicTypography`, `BitChordMeshGradient`, `TikTokMeshBackdrop`, `SfProFontCatalog` +
-`SfProFontPickerDialog`, `ui/lottie/ArchiveTuneLottie.kt` + 3 Lottie animations.
+`SpotifyPlaylistMenu`, `BitChordMeshGradient`, `TikTokMeshBackdrop`, `SfProFontCatalog` +
+`SfProFontPickerDialog`, `ui/lottie/ArchiveTuneLottie.kt` + 3 Lottie animations, and three player
+widgets they factored out that this fork still inlines: `ToggleSegmentButton`,
+`V9AnimatedPlaybackControls`, `WavySliderExpressive`.
+
+The SimpMusic full-screen lyrics sheet, queue sheet and typography were on this list and are now
+ported; SimpMusic's Show button opens its own lyrics rather than leaving for the shared screen.
 
 ## Telegram: the same engine, driven differently
 
@@ -85,7 +97,8 @@ That one is a real gap, and small.
   (Apple Music, Musixmatch, Netease, Spotify, YouTube, generic), plus
   `LyricsTranslationHelper` and `LyricsAnimationSettings`.
 - **SponsorBlock.** `SponsorBlockModels`, `SponsorBlockRepository`,
-  `SponsorBlockPlaybackController`.
+  `SponsorBlockPlaybackController` — since taken by their fork, which added a `SponsorBlockUseCases`
+  layer and a settings view model on top that this one does not have.
 - **Video playback.** `VideoSurfaceManager`, `VideoSurfacePolicy`.
 - **The Yuma design system.** `YumaTheme`, `YumaModifiers` — the glass the settings tree is
   built on.
@@ -93,7 +106,8 @@ That one is a real gap, and small.
   `LibrarySpotifySections`.
 - **Together's public protocol.** `TogetherPublicProto` (+ codec test); theirs has the online
   transport only.
-- **Haptics as a PCM processor.** `HapticsPcmProcessor` feeding `SpatialFlowHaptics`.
+- **Haptics as a PCM processor.** `HapticsPcmProcessor` feeding `SpatialFlowHaptics` — also since
+  taken by their fork.
 - **Qobuz app-secret verification.** `QobuzBundleSecrets` (+ test) — see
   [source-logins.md](source-logins.md).
 - **yt-dlp signature verification.** `assets/yt_dlp_public_key.asc`.
