@@ -1106,6 +1106,20 @@ enum class PlayerDesignStyle(
     fun resolveBackground(stored: PlayerBackgroundStyle): PlayerBackgroundStyle =
         if (supportsBackgroundChoice) stored else nativeBackground ?: stored
 
+    /**
+     * Whether the style paints its own artwork-driven backdrop rather than a neutral one.
+     *
+     * Derived from [nativeBackground] rather than listed, so a new style qualifies the moment it
+     * declares one — the call sites in Player.kt used to spell the same five entries out by hand,
+     * and a style added to one list but not the other read as a different look in each place.
+     *
+     * Note it is not a synonym for "hides the queue peek": V5 does that without painting a backdrop,
+     * so that call site names V5 separately. Deriving this from the declared backdrop keeps the two
+     * questions distinct instead of collapsing them into one list that answers neither exactly.
+     */
+    val hasCustomBackdrop: Boolean
+        get() = nativeBackground != null && nativeBackground != PlayerBackgroundStyle.DEFAULT
+
     companion object {
         /**
          * What a fresh install opens with. Seven readers — the player, its thumbnail, the queue, the

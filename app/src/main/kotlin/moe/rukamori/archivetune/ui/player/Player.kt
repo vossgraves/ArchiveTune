@@ -161,11 +161,6 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.materialkolor.ktx.toColor
 import com.materialkolor.ktx.toHct
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -976,13 +971,9 @@ fun BottomSheetPlayer(
     }
 
     val dynamicQueuePeekHeight =
-        if (playerDesignStyle == PlayerDesignStyle.V5 ||
-            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
-            playerDesignStyle == PlayerDesignStyle.BITCHORD ||
-            playerDesignStyle == PlayerDesignStyle.TIKTOK ||
-            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
-            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
-        ) {
+        // V5 is named on its own because it hides the peek without painting a backdrop of its own —
+        // it is the one style here that is not simply "has a custom backdrop".
+        if (playerDesignStyle == PlayerDesignStyle.V5 || playerDesignStyle.hasCustomBackdrop) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
             88.dp +
@@ -1556,23 +1547,6 @@ fun BottomSheetPlayer(
                 currentFormat = if (playerDesignStyle == PlayerDesignStyle.V7) currentFormat else null,
             )
         }
-
-        // Haze-driven frosted-glass blur behind the queue sheet.
-        val queueHazeAlpha = 0f
-
-        val queueArtHazeState = remember { HazeState() }
-        val queueArtContext = LocalContext.current
-        // Use the same swap-state logic as PlayerBackground so the queue's blur
-        // source matches the artwork the user actually sees (e.g., music-video
-        // thumbnail when isMusicVideo is true).
-        val queueArtSwapState =
-            rememberThumbnailSwapState(
-                videoId = mediaMetadata?.id,
-                ytmUrl = mediaMetadata?.thumbnailUrl,
-                lowDataMode = rememberLowDataModeActive(),
-                isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
-            )
-        val queueArtUrl = queueArtSwapState.displayUrl
 
         Box(
             modifier =
@@ -2694,59 +2668,6 @@ fun BottomSheetPlayer(
                 }
             }
         }
-        } // close player-content haze-source Box
-
-        // Dedicated album-art hazeSource for the queue sheet (Issue 5 fix).
-        // Rendered as a sibling Box BEHIND the player-content Box (drawn first,
-        // so the user never sees it directly — player-content draws on top).
-        // Haze samples this Box's OWN drawing (the album-art image), not the
-        // composited result, so it always has high-frequency content to blur
-        // regardless of playerBackground style. Only rendered while the queue
-        // is visible (progress > 0) to save GPU on idle frames.
-        if (queueHazeAlpha > 0f && queueArtUrl != null) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .hazeSource(state = queueArtHazeState),
-            ) {
-                AsyncImage(
-                    model =
-                        ImageRequest
-                            .Builder(queueArtContext)
-                            .data(queueArtUrl)
-                            .size(256, 256)
-                            .allowHardware(false)
-                            .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-
-        // Haze-effect overlay — renders the blurred album-art source (queueArtHazeState)
-        // as a frosted-glass layer that tracks the queue sheet's drag progress.
-        // Exact vivi-music parameters: blurRadius = 80.dp, tint = HazeTint(Black 0.30),
-        // noiseFactor = 0.15. The queue sheet (rendered next, with a transparent
-        // background) sits on top of this overlay so the frosted-glass effect shows
-        // through behind the queue list.
-        if (queueHazeAlpha > 0f) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = queueHazeAlpha }
-                        .hazeEffect(
-                            state = queueArtHazeState,
-                            style =
-                                HazeStyle(
-                                    blurRadius = 80.dp,
-                                    tint = HazeTint(Color.Black.copy(alpha = 0.30f)),
-                                    noiseFactor = 0.15f,
-                                ),
-                        ),
-            )
         }
 
         // Queue text color policy:
@@ -2758,13 +2679,7 @@ fun BottomSheetPlayer(
         //    (possibly light, dynamic-themed) surface. This mirrors upstream
         //    rukamori/ArchiveTune Player.kt.
         val queueOnBackgroundColor =
-            if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
-                playerDesignStyle == PlayerDesignStyle.BITCHORD ||
-                playerDesignStyle == PlayerDesignStyle.TIKTOK ||
-                playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
-                playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
-                useBlackBackground
-            ) {
+            if (playerDesignStyle.hasCustomBackdrop || useBlackBackground) {
                 Color.White
             } else {
                 MaterialTheme.colorScheme.onSurface
