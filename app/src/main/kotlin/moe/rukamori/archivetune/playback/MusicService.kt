@@ -28,7 +28,6 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaCodecList
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
@@ -854,8 +853,6 @@ class MusicService :
                 }
             }
         }
-
-    private var lastDiscordUpdateTime = 0L
 
     private var scrobbleManager: moe.rukamori.archivetune.utils.ScrobbleManager? = null
 
@@ -7586,14 +7583,6 @@ class MusicService :
 
         scrobbleManager?.onSongStop()
 
-        if (!timelineEmpty &&
-            dataStore.get(AutoLoadMoreKey, true) &&
-            reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
-            player.repeatMode == REPEAT_MODE_OFF
-        ) {
-            // No redundant seeding update check.
-        }
-
         // Auto-load more from queue if available
         if (!suppressAutoPlayback &&
             !timelineEmpty &&
@@ -8770,22 +8759,23 @@ class MusicService :
             .build()
     }
 
-    private fun parseTidalAudioQuality(): TidalAudioQuality {
-        val stored = dataStore.get(TidalAudioQualityKey, TidalAudioQuality.FLAC.name)
-        return runCatching { TidalAudioQuality.valueOf(stored) }.getOrDefault(TidalAudioQuality.FLAC)
-    }
+    private fun parseTidalAudioQuality(): TidalAudioQuality =
+        dataStore.get(TidalAudioQualityKey, TidalAudioQuality.FLAC.name).toEnum(TidalAudioQuality.FLAC)
 
     private fun parseAppleMusicQuality(): AppleMusicQuality {
         val stored = dataStore.get(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS.name)
         return runCatching { AppleMusicQuality.valueOf(stored) }.getOrDefault(AppleMusicQuality.LOSSLESS)
     }
 
-    private fun parseTidalInstances(): List<String> =
+    /** Instance lists are stored one URL per line, blank lines ignored. Shared by Tidal and Qobuz. */
+    private fun parseInstances(key: Preferences.Key<String>): List<String> =
         dataStore
-            .get(TidalInstancesKey, "")
+            .get(key, "")
             .split('\n')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+
+    private fun parseTidalInstances(): List<String> = parseInstances(TidalInstancesKey)
 
     /** Metadata used to look a track up across the configured audio sources. */
     private data class SourceQuery(
@@ -9754,13 +9744,14 @@ class MusicService :
 
     private fun resolveTidalStream(query: SourceQuery): DirectStream? {
         val quality = parseTidalAudioQuality()
-        Timber.tag("MusicService").d("Tidal resolve start | quality=%s accountFirst=%s", quality.name, dataStore.get(TidalAccountFirstKey, true))
+        val accountFirst = dataStore.get(TidalAccountFirstKey, true)
+        Timber.tag("MusicService").d("Tidal resolve start | quality=%s accountFirst=%s", quality.name, accountFirst)
 
         // Account-first: use a real Tidal subscriber token via the official API when available —
         // first the user's own signed-in account, then shared premium accounts from the community
         // Source Pool. Both paths yield full-quality FLAC directly, so a proxy instance is only a
         // last resort.
-        if (dataStore.get(TidalAccountFirstKey, true)) {
+        if (accountFirst) {
             val apiQuality =
                 when (quality) {
                     TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
@@ -10010,17 +10001,10 @@ class MusicService :
     }
 
 
-    private fun parseQobuzInstances(): List<String> =
-        dataStore
-            .get(QobuzInstancesKey, "")
-            .split('\n')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+    private fun parseQobuzInstances(): List<String> = parseInstances(QobuzInstancesKey)
 
-    private fun parseQobuzAudioQuality(): QobuzAudioQuality {
-        val stored = dataStore.get(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name)
-        return runCatching { QobuzAudioQuality.valueOf(stored) }.getOrDefault(QobuzAudioQuality.FLAC)
-    }
+    private fun parseQobuzAudioQuality(): QobuzAudioQuality =
+        dataStore.get(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name).toEnum(QobuzAudioQuality.FLAC)
 
     /**
      * Resolves a Deezer stream. Unlike Tidal/Qobuz there is no proxy-instance tier, so the pool is the
@@ -10870,14 +10854,6 @@ class MusicService :
             normalizedScheme == "android.resource" ||
             normalizedScheme == "telegram"
     }
-
-    private fun deviceSupportsMimeType(mimeType: String): Boolean =
-        runCatching {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) }
-            }
-        }.getOrDefault(false)
 
     private fun createMediaSourceFactory() =
         DefaultMediaSourceFactory(

@@ -37,7 +37,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
@@ -89,7 +88,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ButtonDefaults
@@ -169,10 +167,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAny
-import androidx.compose.ui.util.fastFirstOrNull
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
@@ -288,7 +284,6 @@ import moe.rukamori.archivetune.db.entities.SearchHistory
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
-import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.musicrecognition.ACTION_MUSIC_RECOGNITION
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
@@ -328,7 +323,6 @@ import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.TvNavigationRail
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
-import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.HomeSourceToggleButton
@@ -1190,7 +1184,6 @@ class MainActivity : ComponentActivity() {
                     // Hoisted profile-menu state.
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
                     val onlineSearchEncodedQuery =
                         navBackStackEntry
@@ -1792,8 +1785,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    var previousRoute by rememberSaveable { mutableStateOf<String?>(null) }
-
                     LaunchedEffect(navBackStackEntry) {
                         val currentRoute = navBackStackEntry?.destination?.route
 
@@ -1805,8 +1796,6 @@ class MainActivity : ComponentActivity() {
                             topAppBarScrollBehavior.state.heightOffset = 0f
                             topAppBarScrollBehavior.state.contentOffset = 0f
                         }
-
-                        previousRoute = currentRoute
 
                         if ((
                                 currentRoute?.startsWith("artist/") == true ||
@@ -1950,10 +1939,6 @@ class MainActivity : ComponentActivity() {
                         shouldShowTopBar =
                             !active && navBackStackEntry?.destination?.route in topLevelScreens &&
                             navBackStackEntry?.destination?.route != "settings"
-                    }
-
-                    var sharedSong: SongItem? by remember {
-                        mutableStateOf(null)
                     }
 
                     LaunchedEffect(Unit) {
@@ -2914,33 +2899,6 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                var transitionDirection =
-                                    AnimatedContentTransitionScope.SlideDirection.Left
-
-                                if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }) {
-                                    if (navigationItems.fastAny { it.route == previousTab }) {
-                                        val curIndex =
-                                            navigationItems.indexOf(
-                                                navigationItems.fastFirstOrNull {
-                                                    it.route == navBackStackEntry?.destination?.route
-                                                },
-                                            )
-
-                                        val prevIndex =
-                                            navigationItems.indexOf(
-                                                navigationItems.fastFirstOrNull {
-                                                    it.route == previousTab
-                                                },
-                                            )
-
-                                        if (prevIndex > curIndex) {
-                                            AnimatedContentTransitionScope.SlideDirection.Right.also {
-                                                transitionDirection = it
-                                            }
-                                        }
-                                    }
-                                }
-
                                 NavHost(
                                     navController = navController,
                                     startDestination =
@@ -3091,32 +3049,6 @@ class MainActivity : ComponentActivity() {
                             state = LocalBottomSheetPageState.current,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
-
-                        sharedSong?.let { song ->
-                            playerConnection?.let {
-                                Dialog(
-                                    onDismissRequest = { sharedSong = null },
-                                    properties = DialogProperties(usePlatformDefaultWidth = false),
-                                ) {
-                                    Surface(
-                                        modifier = Modifier.padding(24.dp),
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = AlertDialogDefaults.containerColor,
-                                        tonalElevation = AlertDialogDefaults.TonalElevation,
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                        ) {
-                                            YouTubeSongMenu(
-                                                song = song,
-                                                navController = navController,
-                                                onDismiss = { sharedSong = null },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
 
                         NetworkStatusBanner(
                             state = networkBannerState,
