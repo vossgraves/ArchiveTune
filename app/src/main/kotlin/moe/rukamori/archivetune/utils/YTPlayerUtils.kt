@@ -1534,7 +1534,7 @@ object YTPlayerUtils {
     ): List<PlayerResponse.StreamingData.Format> {
         Timber.tag(logTag).i("Finding format with audioQuality: $audioQuality, network metered: $networkMetered")
 
-        val audioFormats =
+        val allAudioFormats =
             playerResponse.streamingData
                 ?.adaptiveFormats
                 ?.asSequence()
@@ -1542,6 +1542,15 @@ object YTPlayerUtils {
                 ?.filter { it.url != null || it.signatureCipher != null || it.cipher != null }
                 ?.toList()
                 .orEmpty()
+
+        // A dubbed video lists every language as its own adaptive format, identical in every field
+        // the ranking below sorts on. Ranking them together means the winner is whichever language
+        // happened to be encoded best, so the same song came back in a different language whenever
+        // the chosen itag changed — switching source or quality was enough to do it. Confine the
+        // choice to the released track; the dubs are only considered if there is nothing else,
+        // which keeps a video whose default track is unplayable working as before.
+        val audioFormats =
+            allAudioFormats.filter { it.isDefaultAudioTrack }.ifEmpty { allAudioFormats }
 
         if (audioFormats.isEmpty()) return emptyList()
 
