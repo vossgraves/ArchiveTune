@@ -20,7 +20,6 @@ import androidx.room.Update
 import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.constants.AlbumSortType
 import moe.rukamori.archivetune.constants.ArtistSongSortType
@@ -41,7 +40,6 @@ import moe.rukamori.archivetune.db.entities.LibraryTopMixSongMap
 import moe.rukamori.archivetune.db.entities.ListeningBySlot
 import moe.rukamori.archivetune.db.entities.ListeningTotals
 import moe.rukamori.archivetune.db.entities.LyricsEntity
-import moe.rukamori.archivetune.db.entities.PlayCountEntity
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.db.entities.PlaylistPlayCount
@@ -1536,9 +1534,6 @@ interface DatabaseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(map: RelatedSongMap)
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    fun insert(playCountEntity: PlayCountEntity): Long
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(libraryTopMix: LibraryTopMixEntity)
 
@@ -1961,17 +1956,6 @@ interface DatabaseDao {
 
     @Query("DELETE FROM library_top_mix")
     fun deleteLibraryTopMixes()
-
-    @Transaction
-    @Query("SELECT * FROM playlist_song_map WHERE songId = :songId")
-    fun playlistSongMaps(songId: String): List<PlaylistSongMap>
-
-    @Transaction
-    @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId AND position >= :from ORDER BY position")
-    fun playlistSongMaps(
-        playlistId: String,
-        from: Int,
-    ): List<PlaylistSongMap>
 
     @Query("SELECT MAX(position) FROM playlist_song_map WHERE playlistId = :playlistId")
     fun maxPlaylistSongPosition(playlistId: String): Int?
