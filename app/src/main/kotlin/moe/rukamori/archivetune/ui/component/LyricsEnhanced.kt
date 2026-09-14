@@ -126,8 +126,6 @@ import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
-import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
-import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
@@ -148,7 +146,6 @@ import moe.rukamori.archivetune.lyrics.WordTimestamp
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.theme.rememberArchiveTuneLyricsFontFamily
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import kotlin.coroutines.cancellation.CancellationException
@@ -200,7 +197,6 @@ private const val LYRIC_FIRST_FOCUS_TIMEOUT_MS = 400L
 // buildWrappingKaraokeSyllables.
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 
-// ── Line-synced (LRC) focus windows ──
 // KaraokeLyricsView resolves the focused line as "the line whose [start, end) contains the
 // position", and falls back to the *next* line whenever the position lands between two windows.
 // These constants exist to make sure that fallback only ever fires on a genuine instrumental
@@ -221,7 +217,6 @@ private const val LINE_SYNCED_TRAILING_LINE_DURATION_MS = 4_000L
 // is typically a jump from near the end of the song back to 0, i.e. minutes).
 private const val POSITION_RESET_BACKWARD_THRESHOLD_MS = 1000L
 
-// ── Romanisation hand-off ──
 // How long the first build waits for the built-in romanisation pass before giving up and publishing
 // without it. Romanising every line is local work (ICU tables, or one Kuromoji tokenize per line)
 // and normally lands well inside this, so the very first build the karaoke view ever sees already
@@ -310,7 +305,6 @@ fun LyricsEnhanced(
 
     val lyricsFontFamily = rememberArchiveTuneLyricsFontFamily()
 
-    val playerBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
     // Apple Music style and all lyrics backgrounds always use white text so lyrics stay
     // readable on the dark blurred backdrop regardless of system theme.
     val textColor = textColorOverride ?: Color.White
@@ -411,7 +405,6 @@ fun LyricsEnhanced(
     // different romanisation; see KaraokeBuild for why the karaoke view has to be re-keyed on it.
     val karaokeGeneration = karaokeBuild.generation
 
-    // ── AI romanisation ──
     // Runs once per track instead of once per line (network + billed), so it can't hang off the
     // per-line pass below. Results arrive asynchronously through AiLyricsRomanization.results and are
     // folded into the same romanizationMap the built-in engines feed, which means everything
@@ -527,8 +520,7 @@ fun LyricsEnhanced(
                 jobs.awaitAll().toMap()
             }
 
-        // ── Why the un-romanised build is not published up front ──
-        // It used to be, unconditionally, and the romanised one replaced it a moment later. That
+        // Why the un-romanised build is not published up front: it used to be, unconditionally, and the romanised one replaced it a moment later. That
         // second build is exactly the case KaraokeBuild describes: the lines on screen when it
         // landed kept their phonetic-less layout for good. Waiting a beat for the local pass means
         // the first build the view ever sees already has the phonetics, so nothing has to be
@@ -667,7 +659,7 @@ fun LyricsEnhanced(
             lastRawPositionMs = rawPlayerPosition
             // effectivePositionMs is the synced position (offset + lead +
             // tuning) that we'd otherwise compute via playbackSyncPosition().
-                       // Computing it here inline avoids a redundant State read of
+            // Computing it here inline avoids a redundant State read of
             // playbackPositionMs.longValue (we already have the value in
             // `rawPosition` / `nextPosition`).
             val effectivePositionMs: Long
@@ -1856,8 +1848,7 @@ private fun buildWrappingKaraokeSyllables(
         }
     }
 
-    // ── Every unit shares one instant, deliberately ──
-    // These syllables exist only to hang a romanisation over the right glyphs. Staggering their
+    // Every unit shares one instant, deliberately: these syllables exist only to hang a romanisation over the right glyphs. Staggering their
     // windows across the line duration — which is what this used to do — invented per-word timing out
     // of the line's *length*, and `KaraokeLineText` faithfully animated it. So turning romanisation on
     // made plain LRC lyrics fill word by word, while the very same lines without romanisation just

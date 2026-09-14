@@ -574,13 +574,6 @@ interface DatabaseDao {
         previewSize: Int = 6,
     ): Flow<List<Album>>
 
-    @Query("SELECT count from playCount WHERE song = :songId AND year = :year AND month = :month")
-    fun getPlayCountByMonth(
-        songId: String?,
-        year: Int,
-        month: Int,
-    ): Flow<Int>
-
     @Transaction
     @Query(
         """
@@ -1428,33 +1421,6 @@ interface DatabaseDao {
     fun incrementTotalPlayTime(
         songId: String,
         playTime: Long,
-    )
-
-    @Query("UPDATE playCount SET count = count + 1 WHERE song = :songId AND year = :year AND month = :month")
-    suspend fun incrementPlayCount(
-        songId: String,
-        year: Int,
-        month: Int,
-    )
-
-    /**
-     * Increment by one the play count with today's year and month.
-     */
-    suspend fun incrementPlayCount(songId: String) {
-        val time = LocalDateTime.now().atOffset(ZoneOffset.UTC)
-        val oldCount = getPlayCountByMonth(songId, time.year, time.monthValue).first()
-
-        if (oldCount <= 0) {
-            insert(PlayCountEntity(songId, time.year, time.monthValue, 0))
-        }
-        incrementPlayCount(songId, time.year, time.monthValue)
-    }
-
-    @Transaction
-    @Query("UPDATE song SET inLibrary = :inLibrary WHERE id = :songId")
-    fun inLibrary(
-        songId: String,
-        inLibrary: LocalDateTime?,
     )
 
     @Transaction

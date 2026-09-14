@@ -33,7 +33,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -130,7 +129,6 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.LyricsAnimationStyle
 import moe.rukamori.archivetune.constants.LyricsAnimationStyleKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
@@ -144,8 +142,6 @@ import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsScrollKey
 import moe.rukamori.archivetune.constants.LyricsTextPositionKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
-import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
-import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
@@ -163,7 +159,6 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils.romanizeLyricsLine
 import moe.rukamori.archivetune.lyrics.LyricsUtils.shouldRomanizeLyricsLine
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
-import moe.rukamori.archivetune.ui.screens.settings.DarkMode
 import moe.rukamori.archivetune.ui.screens.settings.LyricsPosition
 import moe.rukamori.archivetune.ui.theme.rememberArchiveTuneLyricsFontFamily
 import moe.rukamori.archivetune.ui.utils.smoothFadingEdge
@@ -393,7 +388,6 @@ fun Lyrics(
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
-    val menuState = LocalMenuState.current
     val density = LocalDensity.current
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -452,18 +446,6 @@ fun Lyrics(
     val lyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics = remember(lyricsEntity) { lyricsEntity?.lyrics?.trim() }
     val lyricsProviderName = lyricsEntity?.providerName.orEmpty()
-
-    val playerBackground by rememberEnumPreference(
-        key = PlayerBackgroundStyleKey,
-        defaultValue = PlayerBackgroundStyle.DEFAULT,
-    )
-
-    val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
-    val isSystemInDarkTheme = isSystemInDarkTheme()
-    val useDarkTheme =
-        remember(darkTheme, isSystemInDarkTheme) {
-            if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
-        }
 
     val lines =
         remember(lyrics, mediaMetadata?.duration) {
@@ -1387,7 +1369,6 @@ fun Lyrics(
                                                                 else -> 0.35f
                                                             }
 
-                                                        // Apply background vocal styling
                                                         val effectiveAlpha = if (word.isBackground) wordAlpha * 0.6f else wordAlpha
                                                         val wordColor = lyricsBaseColor.copy(alpha = effectiveAlpha)
 
@@ -1471,7 +1452,6 @@ fun Lyrics(
                                                                 0.65f
                                                             }
 
-                                                        // Apply background vocal styling
                                                         val effectiveAlpha = if (word.isBackground) wordAlpha * 0.6f else wordAlpha
                                                         val wordColor = lyricsBaseColor.copy(alpha = effectiveAlpha)
 
@@ -1555,7 +1535,6 @@ fun Lyrics(
                                                                 else -> lyricsBaseColor.copy(alpha = 0.35f)
                                                             }
 
-                                                        // Apply background vocal styling
                                                         val wordColor =
                                                             if (word.isBackground) {
                                                                 baseWordColor.copy(alpha = baseWordColor.alpha * 0.6f)
@@ -2208,7 +2187,6 @@ fun Lyrics(
                                 isManualScrolling = false
                                 lastPreviewTime = 0L
 
-                                // Automatic scroll to current lyric
                                 if (currentLineIndex >= 0) {
                                     scope.launch {
                                         lazyListState.animateScrollToItem(

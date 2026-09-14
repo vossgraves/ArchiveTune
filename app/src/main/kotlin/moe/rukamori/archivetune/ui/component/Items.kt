@@ -344,6 +344,33 @@ fun GridItem(
     fillMaxWidth = fillMaxWidth,
 )
 
+// Shared by SongListItem and SongGridItem: showExplicitIcon defaults to the two call sites'
+// existing behavior (list shows it, grid did not have room for it) rather than changing either.
+@Composable
+private fun RowScope.SongBadges(
+    song: Song,
+    showLikedIcon: Boolean = true,
+    showInLibraryIcon: Boolean = false,
+    showDownloadIcon: Boolean = true,
+    showExplicitIcon: Boolean = true,
+) {
+    if (showLikedIcon && song.song.liked) {
+        Icon.Favorite()
+    }
+    if (showExplicitIcon && song.song.explicit) {
+        Icon.Explicit()
+    }
+    if (showInLibraryIcon && song.song.inLibrary != null) {
+        Icon.Library()
+    }
+    if (showDownloadIcon) {
+        val downloadUtil = LocalDownloadUtil.current
+        val downloadFlow = remember(downloadUtil, song.id) { downloadUtil.getDownload(song.id) }
+        val download by downloadFlow.collectAsStateWithLifecycle(initialValue = null)
+        Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
+    }
+}
+
 @Composable
 fun SongListItem(
     song: Song,
@@ -355,21 +382,12 @@ fun SongListItem(
     showDownloadIcon: Boolean = true,
     showSongIconPlaceholder: Boolean = false,
     badges: @Composable RowScope.() -> Unit = {
-        if (showLikedIcon && song.song.liked) {
-            Icon.Favorite()
-        }
-        if (song.song.explicit) {
-            Icon.Explicit()
-        }
-        if (showInLibraryIcon && song.song.inLibrary != null) {
-            Icon.Library()
-        }
-        if (showDownloadIcon) {
-            val downloadUtil = LocalDownloadUtil.current
-            val downloadFlow = remember(downloadUtil, song.id) { downloadUtil.getDownload(song.id) }
-            val download by downloadFlow.collectAsStateWithLifecycle(initialValue = null)
-            Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
-        }
+        SongBadges(
+            song = song,
+            showLikedIcon = showLikedIcon,
+            showInLibraryIcon = showInLibraryIcon,
+            showDownloadIcon = showDownloadIcon,
+        )
     },
     isSelected: Boolean = false,
     isActive: Boolean = false,
@@ -436,18 +454,13 @@ fun SongGridItem(
     showInLibraryIcon: Boolean = false,
     showDownloadIcon: Boolean = true,
     badges: @Composable RowScope.() -> Unit = {
-        if (showLikedIcon && song.song.liked) {
-            Icon.Favorite()
-        }
-        if (showInLibraryIcon && song.song.inLibrary != null) {
-            Icon.Library()
-        }
-        if (showDownloadIcon) {
-            val downloadUtil = LocalDownloadUtil.current
-            val downloadFlow = remember(downloadUtil, song.id) { downloadUtil.getDownload(song.id) }
-            val download by downloadFlow.collectAsStateWithLifecycle(initialValue = null)
-            Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
-        }
+        SongBadges(
+            song = song,
+            showLikedIcon = showLikedIcon,
+            showInLibraryIcon = showInLibraryIcon,
+            showDownloadIcon = showDownloadIcon,
+            showExplicitIcon = false,
+        )
     },
     isActive: Boolean = false,
     isPlaying: Boolean = false,
@@ -1016,176 +1029,6 @@ fun LibraryPlaylistFeatureCard(
 }
 
 @Composable
-fun LibraryAlbumSpotlightCard(
-    album: Album,
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(26.dp),
-    isActive: Boolean = false,
-    isPlaying: Boolean = false,
-    onPlay: (() -> Unit)? = null,
-    trailingContent: @Composable RowScope.() -> Unit = {},
-) {
-    val subtitle =
-        joinByBullet(
-            album.artists.joinToString { it.name },
-            pluralStringResource(R.plurals.n_song, album.album.songCount, album.album.songCount),
-        )
-    val glowColor = rememberGlowColor(thumbnailUrl = album.album.thumbnailUrl, label = "albumItemGlow")
-
-    Card(
-        shape = shape,
-        colors =
-            CardDefaults.cardColors(
-                containerColor =
-                    if (isActive) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerLow
-                    },
-            ),
-        modifier = modifier,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(LibraryCardThumbnailSize)
-                        .shadow(
-                            elevation = LibraryCardGlowElevation,
-                            shape = RoundedCornerShape(18.dp),
-                            clip = false,
-                            ambientColor = glowColor.copy(alpha = LibraryCardGlowAmbientAlpha),
-                            spotColor = glowColor.copy(alpha = LibraryCardGlowSpotAlpha),
-                        ),
-            ) {
-                LocalThumbnail(
-                    thumbnailUrl = album.album.thumbnailUrl,
-                    isActive = isActive,
-                    isPlaying = isPlaying,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxSize(),
-                )
-                if (onPlay != null) {
-                    AlbumPlayButton(
-                        visible = !isActive,
-                        onClick = onPlay,
-                    )
-                }
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(
-                    text = album.album.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color =
-                        if (isActive) {
-                            MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-                modifier = Modifier.padding(start = 12.dp),
-            ) {
-                trailingContent()
-            }
-        }
-    }
-}
-
-@Composable
-fun LibraryArtistSpotlightCard(
-    artist: Artist,
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(26.dp),
-    trailingContent: @Composable RowScope.() -> Unit = {},
-) {
-    val glowColor = rememberGlowColor(thumbnailUrl = artist.artist.thumbnailUrl, label = "artistItemGlow")
-    Card(
-        shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        modifier = modifier,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(LibraryCardThumbnailSize)
-                        .shadow(
-                            elevation = LibraryCardGlowElevation,
-                            shape = RoundedCornerShape(ThumbnailCornerRadius),
-                            clip = false,
-                            ambientColor = glowColor.copy(alpha = LibraryCardGlowAmbientAlpha),
-                            spotColor = glowColor.copy(alpha = LibraryCardGlowSpotAlpha),
-                        ),
-            ) {
-                LocalThumbnail(
-                    thumbnailUrl = artist.artist.thumbnailUrl,
-                    isActive = false,
-                    isPlaying = false,
-                    shape = RoundedCornerShape(ThumbnailCornerRadius),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(
-                    text = artist.artist.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-                modifier = Modifier.padding(start = 12.dp),
-            ) {
-                trailingContent()
-            }
-        }
-    }
-}
-
-@Composable
 fun MediaMetadataListItem(
     mediaMetadata: MediaMetadata,
     modifier: Modifier = Modifier,
@@ -1448,35 +1291,6 @@ fun YouTubeGridItem(
         modifier = modifier,
     )
 }
-
-@Composable
-fun LocalSongsGrid(
-    title: String,
-    subtitle: String,
-    badges: @Composable RowScope.() -> Unit = {},
-    thumbnailUrl: String?,
-    isActive: Boolean = false,
-    isPlaying: Boolean = false,
-    fillMaxWidth: Boolean = false,
-    modifier: Modifier = Modifier,
-) = GridItem(
-    title = title,
-    subtitle = subtitle,
-    badges = badges,
-    thumbnailContent = {
-        LocalThumbnail(
-            thumbnailUrl = thumbnailUrl,
-            isActive = isActive,
-            isPlaying = isPlaying,
-            shape = RoundedCornerShape(GridThumbnailCornerRadius),
-            modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
-            showCenterPlay = true,
-            playButtonVisible = false,
-        )
-    },
-    fillMaxWidth = fillMaxWidth,
-    modifier = modifier,
-)
 
 @Composable
 fun LocalArtistsGrid(
@@ -1837,6 +1651,14 @@ fun LocalThumbnail(
     }
 }
 
+private val PlaylistCollageAlignments =
+    listOf(
+        Alignment.TopStart,
+        Alignment.TopEnd,
+        Alignment.BottomStart,
+        Alignment.BottomEnd,
+    )
+
 @Composable
 fun PlaylistThumbnail(
     thumbnails: List<String>,
@@ -1895,12 +1717,7 @@ fun PlaylistThumbnail(
                         .size(size)
                         .clip(shape),
             ) {
-                listOf(
-                    Alignment.TopStart,
-                    Alignment.TopEnd,
-                    Alignment.BottomStart,
-                    Alignment.BottomEnd,
-                ).fastForEachIndexed { index, alignment ->
+                PlaylistCollageAlignments.fastForEachIndexed { index, alignment ->
                     val halfPx = (sizePx / 2).coerceAtLeast(1)
                     val url = thumbnails.getOrNull(index)
                     val request =

@@ -130,8 +130,6 @@ import moe.rukamori.archivetune.constants.LyricsV2BounceFactorKey
 import moe.rukamori.archivetune.constants.LyricsV2FillTransitionWidthKey
 import moe.rukamori.archivetune.constants.LyricsV2GlowFactorKey
 import moe.rukamori.archivetune.constants.LyricsV2LrcBounceEnabledKey
-import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
-import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
@@ -154,7 +152,6 @@ import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.theme.rememberArchiveTuneLyricsFontFamily
 import moe.rukamori.archivetune.ui.utils.smoothFadingEdge
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import kotlin.coroutines.cancellation.CancellationException
@@ -228,7 +225,6 @@ fun LyricsV2(
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
-    // ── Preferences ──
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsScroll) = rememberPreference(LyricsScrollKey, defaultValue = true)
     val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
@@ -273,9 +269,7 @@ fun LyricsV2(
             )
         }
     val lyricsFontFamily = rememberArchiveTuneLyricsFontFamily()
-    val playerBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
 
-    // ── Text colour derived from background style ──
     // Apple Music style and all lyrics backgrounds always use white text so that
     // lyrics remain readable on the dark blurred backdrop regardless of system theme.
     val textColor = textColorOverride ?: Color.White
@@ -283,7 +277,6 @@ fun LyricsV2(
 
     val inactiveAlpha = 0.35f
 
-    // ── Selection mode state ──
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
     val selectedIndices = remember { mutableStateListOf<Int>() }
     var showMaxSelectionToast by remember { mutableStateOf(false) }
@@ -292,7 +285,6 @@ fun LyricsV2(
     var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     var showShareImageDialog by remember { mutableStateOf(false) }
 
-    // ── Lyrics data ──
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics = currentLyrics?.lyrics
     val showTranslations =
@@ -300,7 +292,6 @@ fun LyricsV2(
             currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
         }
 
-    // ── Parse lyrics into entries ──
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }
     val isTtmlFormat = remember(lyrics) { lyrics != null && isTtml(lyrics!!) }
 
@@ -343,7 +334,6 @@ fun LyricsV2(
     // detection on every 16 ms position tick for every visible line.
     val wordSyncCache = rememberWordSyncCache()
 
-    // ── AI romanisation ──
     // One batched request per track (network + billed), so it cannot hang off the per-line pass
     // below. Results are pushed into the same `romanizedTextFlow` the built-in engines write to, so
     // the render path and the fade-in behaviour are identical whichever engine produced them.
@@ -380,7 +370,6 @@ fun LyricsV2(
         }
     }
 
-    // ── Romanization ──
     LaunchedEffect(entriesWithWords, romanizationPreferences) {
         if (!romanizationPreferences.isEnabled) {
             // Guard against clobbering AI results: when the AI engine owns romanisation the effect
@@ -428,7 +417,6 @@ fun LyricsV2(
         }
     }
 
-    // ── Playback position tracking ──
     val leadMs = if (isTtmlFormat) TTML_LEAD_MS else LRC_LEAD_MS
     // Hold the position in an explicit MutableState so we can expose a stable provider lambda
     // that reads the current value. The lambda identity is stable across position updates, so
@@ -500,7 +488,6 @@ fun LyricsV2(
         }
     }
 
-    // ── Scroll State ──
     // Recreated on a repeat/backward-seek for the same reason the item keys below include
     // [playbackResetTick]: that tick changes EVERY item key at once, so the LazyColumn's
     // bookkeeping (its remembered first-visible key, its item animations, the pending
@@ -640,7 +627,6 @@ fun LyricsV2(
         }
     }
 
-    // ── Keep screen alive ──
     val activity = context as? android.app.Activity
     DisposableEffect(Unit) {
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -649,7 +635,6 @@ fun LyricsV2(
         }
     }
 
-    // ── Render ──
     BoxWithConstraints(
         contentAlignment = Alignment.TopCenter,
         modifier =
@@ -739,7 +724,6 @@ fun LyricsV2(
                     return@itemsIndexed
                 }
 
-                // ── Instrumental break icon ──
                 if (item.isInstrumental && isSynced) {
                     InstrumentalBreakRow(
                         item = item,
@@ -758,7 +742,6 @@ fun LyricsV2(
                     return@itemsIndexed
                 }
 
-                // ── Agent-based positioning ──
                 // v1 or null -> Start, v2 -> End, others -> Center
                 val textAlign =
                     when (item.agent?.lowercase()) {
@@ -775,7 +758,6 @@ fun LyricsV2(
 
                 val isActive = isSynced && index == currentLineIndex
                 val isPast = isSynced && index < currentLineIndex
-                val isFuture = isSynced && index > currentLineIndex
                 val isSelected = selectedIndices.contains(index)
 
                 // Distance-based alpha for non-active lines
@@ -885,8 +867,6 @@ fun LyricsV2(
                         }
                     }
 
-                // Background vocal detection
-                val hasBackgroundWords = item.words?.any { it.isBackground } == true
                 val isAllBackground = item.words?.all { it.isBackground || it.text.isBlank() } == true
                 val baseLayoutDirection = LocalLayoutDirection.current
                 val lineText =
@@ -1105,7 +1085,6 @@ fun LyricsV2(
             }
         }
 
-        // ── Resume auto-scroll button ──
         if (isManualScrolling && isSynced) {
             androidx.compose.material3.FilledTonalButton(
                 onClick = {
@@ -1520,7 +1499,6 @@ private fun AnimatedWordV2(
     }
     val progress = if (isWordComplete) 1f else sweepAnimatable.value
 
-    // ── Bounce and Float animation ──
     // Subtle scale up peaking halfway through the word. Exact timing sync!
     val sinProgress = kotlin.math.sin(progress * kotlin.math.PI).toFloat()
     val wordScale = 1f + (0.015f * bounceFactor * sinProgress)
@@ -1539,7 +1517,6 @@ private fun AnimatedWordV2(
         label = "v2FloatOffset",
     )
 
-    // ── Glow intensity ──
     // "lines and words that are done animating shouldnt continue to glow"
     // Make glow build up faster: reach max intensity at 50% progress
     val glowProgress = (progress * 2f).coerceAtMost(1f)
@@ -1562,7 +1539,6 @@ private fun AnimatedWordV2(
             )
         }
 
-    // ── Cached gradient colors for the liquid-sweep mask ──
     // listOf(Color.Transparent, Color.Black) was being allocated every frame for every active
     // word inside drawWithContent. Precompute the two immutable color lists (LTR + RTL) once.
     val sweepColors =
@@ -1572,7 +1548,6 @@ private fun AnimatedWordV2(
             remember { listOf(Color.Black, Color.Transparent) }
         }
 
-    // ── Two-layer rendering: dim base + liquid fill overlay ──
     Box(
         modifier =
             Modifier

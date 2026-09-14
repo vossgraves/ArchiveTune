@@ -113,7 +113,6 @@ import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
-import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.pages.SearchResult
 import moe.rukamori.archivetune.lastfm.CatalogueCoverProvider
 import moe.rukamori.archivetune.lastfm.LastFM
@@ -141,15 +140,6 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
-
-/**
- * Backwards-compat accent color constant. New code should prefer
- * [DashboardTheme.accent] from [dashboardTheme], which switches between the
- * dark-mode muted rose/brown (0xFF9D6B63) and the light-mode dusty red
- * (0xFFBE123C). Kept here because external callers (e.g. the colored refresh
- * spinner) may still reference it.
- */
-private val DashboardAccentColor = Color(0xFFBE123C)
 
 /** Centralised color tokens for the Last.fm dashboard. */
 private data class DashboardTheme(
@@ -723,14 +713,11 @@ fun LastFmDashboardScreen(
 
             // Hide hero card while the scrobble-search overlay is open —
             // the user is searching, not browsing stats, so we collapse
-            // down to just the search field + filtered list (Task 6c).
+            // down to just the search field + filtered list.
             //
-            // (Round 13) The HeaderPillRow is removed entirely — the
-            // scrobbles count pill with the music-note icon duplicates the
-            // hero card's hero-inner scrobbles count, and the username pill
-            // is no longer needed at the top (the avatar in the hero card
-            // already identifies the user). The user explicitly asked to
-            // remove the "0 counter with the music icon" pill.
+            // No separate username/scrobbles pill row above this: the hero
+            // card's own avatar and scrobble count already show both, so a
+            // pill row here would just duplicate it.
             if (!searchVisible) {
                 HeroStatsCard(
                     userInfo = userInfo,
@@ -1105,71 +1092,6 @@ private fun LastFmDashboardHeader(
                         tint = theme.topAppBarIconTint,
                     )
                 }
-            }
-        }
-    }
-}
-
-// ── Header pill row ──────────────────────────────────────────────────────────
-
-/**
- * The free-floating row of pills below the header — three stat pills showing
- * the user's total scrobbles, artists, and albums. Replaces the previous
- * username + scrobble count pills (the username is no longer shown here per
- * user request — the stats are more useful in this compact area).
- */
-/**
- * Pills below the header — left shows username, right shows total scrobbles count.
- * Matches LastWave-native's HeaderRow layout.
- */
-@Composable
-private fun HeaderPillRow(
-    username: String,
-    scrobbles: Long,
-    theme: DashboardTheme,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        // Left pill: Username
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = theme.pillBackground,
-        ) {
-            Text(
-                text = username.ifBlank { "—" },
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = theme.textPrimary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-        // Right pill: Total scrobbles count
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = theme.pillBackground,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.solar_music_note_2_linear),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = theme.accent,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = formatCount(scrobbles),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.textPrimary,
-                )
             }
         }
     }
@@ -2368,43 +2290,6 @@ private object CachedArtworkStore {
     }
 }
 
-private const val LASTFM_ARTWORK_CONCURRENCY = 12
-// (Task 6a) The upfront batch-resolve helpers below are kept for future use
-// — the per-row lazy resolution in [DashboardTrackRow] replaces the previous
-// batch approach, but the chunked async pattern is still the right shape if
-// we ever need to pre-warm the cache (e.g. on a `loadMore` call). For now
-// they're unused; the per-row LaunchedEffect is sufficient because
-// [CachedArtworkStore] is process-scoped so a row that scrolls out and back
-// in re-reads the cached URL without re-resolving.
-
-private fun buildAllArtworkLookups(
-    recent: List<RecentTrack>,
-    top: List<TopTrack>,
-): List<ArtworkLookup> {
-    val keys = mutableSetOf<String>()
-    val combined = mutableListOf<ArtworkLookup>()
-    top.forEach { t ->
-        val k = t.trackArtworkKey()
-        if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
-    }
-    recent.forEach { t ->
-        val k = t.trackArtworkKey()
-        if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
-    }
-    return combined
-}
-
-private fun allTracksForArtworkSeedKey(
-    recent: List<RecentTrack>,
-    top: List<TopTrack>,
-): String {
-    val builder = StringBuilder()
-    top.forEach { builder.append(it.trackArtworkKey()).append('|') }
-    builder.append('#')
-    recent.forEach { builder.append(it.trackArtworkKey()).append('|') }
-    return builder.toString()
-}
-
 private suspend fun resolveCatalogueCover(lookup: ArtworkLookup): String? {
     if (lookup.title.isBlank()) return null
     val title = lookup.title
@@ -2436,14 +2321,6 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     }
 }
 
-/**
- * Resolves an artist's profile image via a YouTube artist-channel search.
- * Used as a fallback when [LastFmArtworkNormalizer.bestImageUrl] returns
- * null (Last.fm's artist image array is sparse for less-popular artists —
- * the placeholder hash gets rejected by the normalizer, so we round-trip
- * through YouTube's FILTER_ARTIST search and pick the first ArtistItem's
- * thumbnail). Mirrors the [resolveYtThumbnail] pattern for tracks.
- */
 /** Extracts the first ArtistItem from a SearchResult's items list. */
 private fun findFirstArtistItem(result: SearchResult): ArtistItem? {
     for (item in result.items) {
@@ -2452,6 +2329,14 @@ private fun findFirstArtistItem(result: SearchResult): ArtistItem? {
     return null
 }
 
+/**
+ * Resolves an artist's profile image via a YouTube artist-channel search.
+ * Used as a fallback when [LastFmArtworkNormalizer.bestImageUrl] returns
+ * null (Last.fm's artist image array is sparse for less-popular artists —
+ * the placeholder hash gets rejected by the normalizer, so we round-trip
+ * through YouTube's FILTER_ARTIST search and pick the first ArtistItem's
+ * thumbnail). Mirrors the [resolveYtThumbnail] pattern for tracks.
+ */
 private suspend fun resolveArtistImage(artistName: String): String? {
     if (artistName.isBlank()) return null
     val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
