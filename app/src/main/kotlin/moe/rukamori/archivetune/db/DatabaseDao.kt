@@ -73,6 +73,14 @@ import java.util.Locale
 // Hoisted so it isn't recompiled on every playlist sync (update(PlaylistEntity, PlaylistItem) below).
 private val remoteSongCountDigitsRegex = Regex("""\d+""")
 
+// Shared by every sort branch below that orders by a display name (song/album title, artist name
+// list): a fresh PRIMARY-strength Collator per branch was otherwise created from scratch each time.
+private fun <T> List<T>.sortedByCollated(keySelector: (T) -> String): List<T> {
+    val collator = Collator.getInstance(Locale.getDefault())
+    collator.strength = Collator.PRIMARY
+    return sortedWith(compareBy(collator, keySelector))
+}
+
 @Dao
 interface DatabaseDao {
     @Transaction
@@ -111,11 +119,7 @@ interface DatabaseDao {
                 } else {
                     songsByNameAsc()
                 }
-            ).map { songs ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                songs.sortedWith(compareBy(collator) { it.song.title })
-            }
+            ).map { songs -> songs.sortedByCollated { it.song.title } }
         }
 
         SongSortType.ARTIST -> {
@@ -125,15 +129,7 @@ interface DatabaseDao {
                 } else {
                     songsByRowIdAsc()
                 }
-            ).map { songs ->
-                val collator = Collator.getInstance(Locale.getDefault())
-                collator.strength = Collator.PRIMARY
-                songs.sortedWith(
-                    compareBy(collator) { song ->
-                        song.artists.joinToString("") { artist -> artist.name }
-                    },
-                )
-            }
+            ).map { songs -> songs.sortedByCollated { song -> song.artists.joinToString("") { artist -> artist.name } } }
         }
 
         SongSortType.PLAY_TIME -> {
