@@ -1129,7 +1129,7 @@ fun BitChordPlayerContent(
                             // collapsed to a thumbnail, leaving a
                             // thumbnail-sized bitmap to be blown back up when
                             // the queue closes.
-                            model = ImageRequest.Builder(LocalContext.current)
+                            model = ImageRequest.Builder(context)
                                 .data(artUrl)
                                 .size(ART_PX)
                                 .build(),
