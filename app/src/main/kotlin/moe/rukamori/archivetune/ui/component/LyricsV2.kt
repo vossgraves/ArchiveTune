@@ -160,10 +160,6 @@ import moe.rukamori.archivetune.utils.reportException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 
-// ──────────────────────────────────────────────────────────────────────
-// Constants
-// ──────────────────────────────────────────────────────────────────────
-
 /** Lead time offset for LRC-style line-synced lyrics (ms). */
 private const val LRC_LEAD_MS = 300L
 
@@ -213,10 +209,6 @@ private class WordSyncCache {
 
 @Composable
 private fun rememberWordSyncCache(): WordSyncCache = remember { WordSyncCache() }
-
-// ──────────────────────────────────────────────────────────────────────
-// Main Composable
-// ──────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -1334,10 +1326,6 @@ fun LyricsV2(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Line-level composable: renders words with fluid fill animation
-// ──────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricsLineV2(
@@ -1465,10 +1453,6 @@ private fun LyricsLineV2(
         }
     }
 }
-
-// ──────────────────────────────────────────────────────────────────────
-// Word-level composable: liquid fill sweep + glow + bounce
-// ──────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun AnimatedWordV2(
@@ -1681,13 +1665,8 @@ private fun AnimatedWordV2(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Spotify-style word rendering: a rounded background pill fills behind
-// each word of the active line in sync with its timing, over a
-// dim→bright text sweep. No glow/bounce — motion lives in the pill
-// sweep and the line rise/fade transitions.
-// ──────────────────────────────────────────────────────────────────────
-
+// Spotify style: no glow/bounce — motion lives in the pill fill sweep and the
+// line rise/fade transitions instead.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricsLineSpotify(
@@ -1958,10 +1937,6 @@ internal fun SpotifyWord(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// LRC bounce: word-by-word spring bounce for line-synced lyrics
-// ──────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricsLineLrcBounce(
@@ -2090,10 +2065,6 @@ private fun LrcBouncingWord(
             },
     )
 }
-
-// ──────────────────────────────────────────────────────────────────────
-// Instrumental break icon: music-note filled bottom-to-top over the gap
-// ──────────────────────────────────────────────────────────────────────
 
 /**
  * Extracted wrapper for the instrumental-break row.

@@ -365,9 +365,9 @@ fun SongListItem(
             Icon.Library()
         }
         if (showDownloadIcon) {
-            val download by LocalDownloadUtil.current
-                .getDownload(song.id)
-                .collectAsStateWithLifecycle(initialValue = null)
+            val downloadUtil = LocalDownloadUtil.current
+            val downloadFlow = remember(downloadUtil, song.id) { downloadUtil.getDownload(song.id) }
+            val download by downloadFlow.collectAsStateWithLifecycle(initialValue = null)
             Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
         }
     },
@@ -383,14 +383,17 @@ fun SongListItem(
     val resolvedSwipeContentBackgroundColor = swipeContentBackgroundColor ?: MaterialTheme.colorScheme.surface
 
     val content: @Composable () -> Unit = {
-        ListItem(
-            title = song.song.title,
-            subtitle =
+        val subtitle =
+            remember(song, viewCountText) {
                 joinByBullet(
                     song.artists.joinToString { it.name },
                     makeTimeString(song.song.duration * 1000L),
                     viewCountText,
-                ),
+                )
+            }
+        ListItem(
+            title = song.song.title,
+            subtitle = subtitle,
             badges = badges,
             thumbnailContent = {
                 ItemThumbnail(
@@ -440,7 +443,9 @@ fun SongGridItem(
             Icon.Library()
         }
         if (showDownloadIcon) {
-            val download by LocalDownloadUtil.current.getDownload(song.id).collectAsStateWithLifecycle(initialValue = null)
+            val downloadUtil = LocalDownloadUtil.current
+            val downloadFlow = remember(downloadUtil, song.id) { downloadUtil.getDownload(song.id) }
+            val download by downloadFlow.collectAsStateWithLifecycle(initialValue = null)
             Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
         }
     },
@@ -459,12 +464,15 @@ fun SongGridItem(
         )
     },
     subtitle = {
-        Text(
-            text =
+        val text =
+            remember(song) {
                 joinByBullet(
                     song.artists.joinToString { it.name },
                     makeTimeString(song.song.duration * 1000L),
-                ),
+                )
+            }
+        Text(
+            text = text,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
             maxLines = 2,
@@ -556,57 +564,67 @@ fun ArtistGridItem(
     modifier = modifier,
 )
 
+// Shared by AlbumListItem and AlbumGridItem: an album's download state has to be derived from
+// its songs' individual download states (there's no single row for it), so both collect the
+// album's songs once and then re-derive STATE_COMPLETED/STATE_DOWNLOADING/STATE_STOPPED whenever
+// the shared downloads map changes.
+@Composable
+private fun RowScope.AlbumDownloadBadges(
+    album: Album,
+    showLikedIcon: Boolean = true,
+) {
+    val database = LocalDatabase.current
+    val downloadUtil = LocalDownloadUtil.current
+    var songs by remember {
+        mutableStateOf(emptyList<Song>())
+    }
+
+    LaunchedEffect(Unit) {
+        database.albumSongs(album.id).collect {
+            songs = it
+        }
+    }
+
+    var downloadState by remember {
+        mutableStateOf(Download.STATE_STOPPED)
+    }
+
+    LaunchedEffect(songs) {
+        if (songs.isEmpty()) return@LaunchedEffect
+        downloadUtil.downloads.collect { downloads ->
+            downloadState =
+                when {
+                    songs.all { downloads[it.id]?.state == STATE_COMPLETED } -> STATE_COMPLETED
+
+                    songs.all {
+                        downloads[it.id]?.state in
+                            listOf(
+                                STATE_QUEUED,
+                                STATE_DOWNLOADING,
+                                STATE_COMPLETED,
+                            )
+                    } -> STATE_DOWNLOADING
+
+                    else -> Download.STATE_STOPPED
+                }
+        }
+    }
+
+    if (showLikedIcon && album.album.bookmarkedAt != null) {
+        Icon.Favorite()
+    }
+    if (album.album.explicit) {
+        Icon.Explicit()
+    }
+    Icon.Download(downloadState)
+}
+
 @Composable
 fun AlbumListItem(
     album: Album,
     modifier: Modifier = Modifier,
     showLikedIcon: Boolean = true,
-    badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val downloadUtil = LocalDownloadUtil.current
-        var songs by remember {
-            mutableStateOf(emptyList<Song>())
-        }
-
-        LaunchedEffect(Unit) {
-            database.albumSongs(album.id).collect {
-                songs = it
-            }
-        }
-
-        var downloadState by remember {
-            mutableStateOf(Download.STATE_STOPPED)
-        }
-
-        LaunchedEffect(songs) {
-            if (songs.isEmpty()) return@LaunchedEffect
-            downloadUtil.downloads.collect { downloads ->
-                downloadState =
-                    when {
-                        songs.all { downloads[it.id]?.state == STATE_COMPLETED } -> STATE_COMPLETED
-
-                        songs.all {
-                            downloads[it.id]?.state in
-                                listOf(
-                                    STATE_QUEUED,
-                                    STATE_DOWNLOADING,
-                                    STATE_COMPLETED,
-                                )
-                        } -> STATE_DOWNLOADING
-
-                        else -> Download.STATE_STOPPED
-                    }
-            }
-        }
-
-        if (showLikedIcon && album.album.bookmarkedAt != null) {
-            Icon.Favorite()
-        }
-        if (album.album.explicit) {
-            Icon.Explicit()
-        }
-        Icon.Download(downloadState)
-    },
+    badges: @Composable RowScope.() -> Unit = { AlbumDownloadBadges(album, showLikedIcon) },
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
@@ -638,46 +656,7 @@ fun AlbumGridItem(
     album: Album,
     modifier: Modifier = Modifier,
     coroutineScope: CoroutineScope,
-    badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val downloadUtil = LocalDownloadUtil.current
-        var songs by remember { mutableStateOf(emptyList<Song>()) }
-
-        LaunchedEffect(Unit) {
-            database.albumSongs(album.id).collect { songs = it }
-        }
-
-        var downloadState by remember { mutableStateOf(Download.STATE_STOPPED) }
-
-        LaunchedEffect(songs) {
-            if (songs.isEmpty()) return@LaunchedEffect
-            downloadUtil.downloads.collect { downloads ->
-                downloadState =
-                    when {
-                        songs.all { downloads[it.id]?.state == STATE_COMPLETED } -> STATE_COMPLETED
-
-                        songs.all {
-                            downloads[it.id]?.state in
-                                listOf(
-                                    STATE_QUEUED,
-                                    STATE_DOWNLOADING,
-                                    STATE_COMPLETED,
-                                )
-                        } -> STATE_DOWNLOADING
-
-                        else -> Download.STATE_STOPPED
-                    }
-            }
-        }
-
-        if (album.album.bookmarkedAt != null) {
-            Icon.Favorite()
-        }
-        if (album.album.explicit) {
-            Icon.Explicit()
-        }
-        Icon.Download(downloadState)
-    },
+    badges: @Composable RowScope.() -> Unit = { AlbumDownloadBadges(album) },
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
@@ -738,39 +717,15 @@ fun PlaylistListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) = ListItem(
     title = playlist.playlist.name,
-    subtitle =
-        if (autoPlaylist) {
-            ""
-        } else {
-            if (playlist.songCount == 0 && playlist.playlist.remoteSongCount != null) {
-                pluralStringResource(
-                    R.plurals.n_song,
-                    playlist.playlist.remoteSongCount,
-                    playlist.playlist.remoteSongCount,
-                )
-            } else {
-                pluralStringResource(
-                    R.plurals.n_song,
-                    playlist.songCount,
-                    playlist.songCount,
-                )
-            }
-        },
+    subtitle = playlistCountText(playlist = playlist, autoPlaylist = autoPlaylist),
     badges = badges,
     thumbnailContent = {
         PlaylistThumbnail(
             thumbnails = playlist.thumbnails,
             size = ListThumbnailSize,
             placeHolder = {
-                val painter =
-                    when (playlist.playlist.name) {
-                        stringResource(R.string.liked) -> R.drawable.favorite_border
-                        stringResource(R.string.offline) -> R.drawable.offline
-                        stringResource(R.string.cached_playlist) -> R.drawable.cached
-                        else -> if (autoPlaylist) R.drawable.trending_up else R.drawable.queue_music
-                    }
                 Icon(
-                    painter = painterResource(painter),
+                    painter = painterResource(playlistPlaceholderIcon(playlist, autoPlaylist)),
                     contentDescription = null,
                     tint = LocalContentColor.current.copy(alpha = 0.8f),
                     modifier = Modifier.size(ListThumbnailSize / 2),
@@ -802,26 +757,8 @@ fun PlaylistGridItem(
         )
     },
     subtitle = {
-        val subtitle =
-            if (autoPlaylist) {
-                ""
-            } else {
-                if (playlist.songCount == 0 && playlist.playlist.remoteSongCount != null) {
-                    pluralStringResource(
-                        R.plurals.n_song,
-                        playlist.playlist.remoteSongCount,
-                        playlist.playlist.remoteSongCount,
-                    )
-                } else {
-                    pluralStringResource(
-                        R.plurals.n_song,
-                        playlist.songCount,
-                        playlist.songCount,
-                    )
-                }
-            }
         Text(
-            text = subtitle,
+            text = playlistCountText(playlist = playlist, autoPlaylist = autoPlaylist),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
             maxLines = 2,
@@ -835,19 +772,12 @@ fun PlaylistGridItem(
             thumbnails = playlist.thumbnails,
             size = width,
             placeHolder = {
-                val painter =
-                    when (playlist.playlist.name) {
-                        stringResource(R.string.liked) -> R.drawable.favorite_border
-                        stringResource(R.string.offline) -> R.drawable.offline
-                        stringResource(R.string.cached_playlist) -> R.drawable.cached
-                        else -> if (autoPlaylist) R.drawable.trending_up else R.drawable.queue_music
-                    }
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     Icon(
-                        painter = painterResource(painter),
+                        painter = painterResource(playlistPlaceholderIcon(playlist, autoPlaylist)),
                         contentDescription = null,
                         tint = LocalContentColor.current.copy(alpha = 0.8f),
                         modifier = Modifier.size(width / 2),
@@ -968,6 +898,41 @@ private val LibraryCardGlowElevation = 34.dp
 private const val LibraryCardGlowAmbientAlpha = 0.82f
 private const val LibraryCardGlowSpotAlpha = 0.96f
 
+// Shared by the three Library*SpotlightCard/FeatureCard composables below: each extracts an
+// ambient glow color from its item's thumbnail, keyed on the thumbnail URL so it only re-runs
+// when the artwork actually changes.
+@Composable
+private fun rememberGlowColor(
+    thumbnailUrl: String?,
+    label: String,
+): Color {
+    val context = LocalContext.current
+    var extractedGlowColor by remember(thumbnailUrl) { mutableStateOf(Color.Transparent) }
+    val glowColor by animateColorAsState(
+        targetValue = extractedGlowColor,
+        animationSpec = tween(400),
+        label = label,
+    )
+    LaunchedEffect(thumbnailUrl) {
+        if (thumbnailUrl == null) return@LaunchedEffect
+        val bitmap =
+            runCatching {
+                context.imageLoader
+                    .execute(
+                        ImageRequest
+                            .Builder(context)
+                            .data(thumbnailUrl)
+                            .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
+                            .allowHardware(false)
+                            .build(),
+                    ).image
+                    ?.toBitmap()
+            }.getOrNull() ?: return@LaunchedEffect
+        extractedGlowColor = withContext(Dispatchers.Default) { bitmap.extractThemeColor() }
+    }
+    return glowColor
+}
+
 @Composable
 fun LibraryPlaylistFeatureCard(
     playlist: Playlist,
@@ -979,31 +944,8 @@ fun LibraryPlaylistFeatureCard(
     val subtitleText = playlistCountText(playlist = playlist, autoPlaylist = autoPlaylist)
     val thumbnailSize = LibraryCardThumbnailSize
     val thumbnailShape = RoundedCornerShape(18.dp)
-    val context = LocalContext.current
     val primaryThumbnailUrl = playlist.thumbnails.getOrNull(0)
-    var extractedGlowColor by remember(primaryThumbnailUrl) { mutableStateOf(Color.Transparent) }
-    val glowColor by animateColorAsState(
-        targetValue = extractedGlowColor,
-        animationSpec = tween(400),
-        label = "playlistItemGlow",
-    )
-    LaunchedEffect(primaryThumbnailUrl) {
-        if (primaryThumbnailUrl == null) return@LaunchedEffect
-        val bitmap =
-            runCatching {
-                context.imageLoader
-                    .execute(
-                        ImageRequest
-                            .Builder(context)
-                            .data(primaryThumbnailUrl)
-                            .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
-                            .allowHardware(false)
-                            .build(),
-                    ).image
-                    ?.toBitmap()
-            }.getOrNull() ?: return@LaunchedEffect
-        extractedGlowColor = withContext(Dispatchers.Default) { bitmap.extractThemeColor() }
-    }
+    val glowColor = rememberGlowColor(thumbnailUrl = primaryThumbnailUrl, label = "playlistItemGlow")
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         shape = shape,
@@ -1088,30 +1030,7 @@ fun LibraryAlbumSpotlightCard(
             album.artists.joinToString { it.name },
             pluralStringResource(R.plurals.n_song, album.album.songCount, album.album.songCount),
         )
-    val context = LocalContext.current
-    var extractedGlowColor by remember(album.album.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    val glowColor by animateColorAsState(
-        targetValue = extractedGlowColor,
-        animationSpec = tween(400),
-        label = "albumItemGlow",
-    )
-    LaunchedEffect(album.album.thumbnailUrl) {
-        val url = album.album.thumbnailUrl ?: return@LaunchedEffect
-        val bitmap =
-            runCatching {
-                context.imageLoader
-                    .execute(
-                        ImageRequest
-                            .Builder(context)
-                            .data(url)
-                            .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
-                            .allowHardware(false)
-                            .build(),
-                    ).image
-                    ?.toBitmap()
-            }.getOrNull() ?: return@LaunchedEffect
-        extractedGlowColor = withContext(Dispatchers.Default) { bitmap.extractThemeColor() }
-    }
+    val glowColor = rememberGlowColor(thumbnailUrl = album.album.thumbnailUrl, label = "albumItemGlow")
 
     Card(
         shape = shape,
@@ -1202,30 +1121,7 @@ fun LibraryArtistSpotlightCard(
     shape: Shape = RoundedCornerShape(26.dp),
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    val context = LocalContext.current
-    var extractedGlowColor by remember(artist.artist.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    val glowColor by animateColorAsState(
-        targetValue = extractedGlowColor,
-        animationSpec = tween(400),
-        label = "artistItemGlow",
-    )
-    LaunchedEffect(artist.artist.thumbnailUrl) {
-        val url = artist.artist.thumbnailUrl ?: return@LaunchedEffect
-        val bitmap =
-            runCatching {
-                context.imageLoader
-                    .execute(
-                        ImageRequest
-                            .Builder(context)
-                            .data(url)
-                            .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
-                            .allowHardware(false)
-                            .build(),
-                    ).image
-                    ?.toBitmap()
-            }.getOrNull() ?: return@LaunchedEffect
-        extractedGlowColor = withContext(Dispatchers.Default) { bitmap.extractThemeColor() }
-    }
+    val glowColor = rememberGlowColor(thumbnailUrl = artist.artist.thumbnailUrl, label = "artistItemGlow")
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -1308,12 +1204,15 @@ fun MediaMetadataListItem(
     ListItem(
         title = mediaMetadata.title,
         subtitle = {
-            Text(
-                text =
+            val text =
+                remember(mediaMetadata) {
                     joinByBullet(
                         mediaMetadata.artists.joinToString { it.name },
                         makeTimeString(mediaMetadata.duration * 1000L),
-                    ),
+                    )
+                }
+            Text(
+                text = text,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1339,6 +1238,33 @@ fun MediaMetadataListItem(
     )
 }
 
+// Shared by YouTubeListItem and YouTubeGridItem: keying the DB flows on item.id keeps
+// collectAsStateWithLifecycle from tearing down and resubscribing on every unrelated
+// recomposition of the row (e.g. isActive/isPlaying toggling on other items in the list).
+@Composable
+private fun RowScope.YTItemBadges(item: YTItem) {
+    val database = LocalDatabase.current
+    val songFlow = remember(item.id) { database.song(item.id) }
+    val albumFlow = remember(item.id) { database.album(item.id) }
+    val song by songFlow.collectAsStateWithLifecycle(initialValue = null)
+    val album by albumFlow.collectAsStateWithLifecycle(initialValue = null)
+
+    if ((item is SongItem && song?.song?.liked == true) ||
+        (item is AlbumItem && album?.album?.bookmarkedAt != null)
+    ) {
+        Icon.Favorite()
+    }
+    if (item.explicit) Icon.Explicit()
+    if (item is SongItem && song?.song?.inLibrary != null) {
+        Icon.Library()
+    }
+    if (item is SongItem) {
+        val downloads by LocalDownloadUtil.current.downloads.collectAsStateWithLifecycle()
+        val download = downloads[item.id]
+        Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YouTubeListItem(
@@ -1353,33 +1279,13 @@ fun YouTubeListItem(
     swipeContentBackgroundColor: Color? = null,
     showActiveContainer: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
-    badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val song by database.song(item.id).collectAsStateWithLifecycle(initialValue = null)
-        val album by database.album(item.id).collectAsStateWithLifecycle(initialValue = null)
-
-        if ((item is SongItem && song?.song?.liked == true) ||
-            (item is AlbumItem && album?.album?.bookmarkedAt != null)
-        ) {
-            Icon.Favorite()
-        }
-        if (item.explicit) Icon.Explicit()
-        if (item is SongItem && song?.song?.inLibrary != null) {
-            Icon.Library()
-        }
-        if (item is SongItem) {
-            val downloads by LocalDownloadUtil.current.downloads.collectAsStateWithLifecycle()
-            val download = downloads[item.id]
-            Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
-        }
-    },
+    badges: @Composable RowScope.() -> Unit = { YTItemBadges(item) },
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
 
     val content: @Composable () -> Unit = {
-        ListItem(
-            title = item.title,
-            subtitle =
+        val subtitle =
+            remember(item, viewCountText) {
                 when (item) {
                     is SongItem -> {
                         joinByBullet(
@@ -1400,7 +1306,11 @@ fun YouTubeListItem(
                     is PlaylistItem -> {
                         joinByBullet(item.author?.name, item.songCountText)
                     }
-                },
+                }
+            }
+        ListItem(
+            title = item.title,
+            subtitle = subtitle,
             badges = badges,
             thumbnailContent = {
                 ItemThumbnail(
@@ -1449,24 +1359,7 @@ fun YouTubeGridItem(
     item: YTItem,
     modifier: Modifier = Modifier,
     coroutineScope: CoroutineScope? = null,
-    badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val song by database.song(item.id).collectAsStateWithLifecycle(initialValue = null)
-        val album by database.album(item.id).collectAsStateWithLifecycle(initialValue = null)
-
-        if (item is SongItem && song?.song?.liked == true ||
-            item is AlbumItem && album?.album?.bookmarkedAt != null
-        ) {
-            Icon.Favorite()
-        }
-        if (item.explicit) Icon.Explicit()
-        if (item is SongItem && song?.song?.inLibrary != null) Icon.Library()
-        if (item is SongItem) {
-            val downloads by LocalDownloadUtil.current.downloads.collectAsStateWithLifecycle()
-            val download = downloads[item.id]
-            Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
-        }
-    },
+    badges: @Composable RowScope.() -> Unit = { YTItemBadges(item) },
     thumbnailRatio: Float? = null,
     isActive: Boolean = false,
     isPlaying: Boolean = false,
@@ -1489,11 +1382,13 @@ fun YouTubeGridItem(
         },
         subtitle = {
             val subtitle =
-                when (item) {
-                    is SongItem -> joinByBullet(item.artists.joinToString { it.name }, makeTimeString(item.duration?.times(1000L)))
-                    is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
-                    is ArtistItem -> null
-                    is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
+                remember(item) {
+                    when (item) {
+                        is SongItem -> joinByBullet(item.artists.joinToString { it.name }, makeTimeString(item.duration?.times(1000L)))
+                        is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
+                        is ArtistItem -> null
+                        is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
+                    }
                 }
             if (subtitle != null) {
                 Text(
@@ -2195,7 +2090,6 @@ fun SwipeToSongBox(
     }
 }
 
-// Helper to animate reset of swipe offset
 private fun reset(
     offset: MutableState<Float>,
     scope: CoroutineScope,
@@ -2209,7 +2103,6 @@ private fun reset(
     }
 }
 
-// Data holder for swipe visuals
 data class Quadruple<A, B, C, D>(
     val first: A,
     val second: B,

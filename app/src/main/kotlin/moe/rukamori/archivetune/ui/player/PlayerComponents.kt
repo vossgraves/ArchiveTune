@@ -31,7 +31,6 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -64,11 +63,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,7 +79,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
@@ -91,7 +86,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -149,6 +143,75 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 private const val PlayerBackgroundMaxBlurRadius = 64f
 private const val ExplicitBadgeInlineId = "explicitBadge"
+
+// From STATE_ENDED, togglePlayPause() alone won't restart playback -- it needs an explicit
+// seek back to the start first. Shared by every design style's play/pause control.
+private fun PlayerConnection.replayOrTogglePlayPause(playbackState: Int) {
+    if (playbackState == STATE_ENDED) {
+        player.seekTo(0, 0)
+        player.playWhenReady = true
+    } else {
+        player.togglePlayPause()
+    }
+}
+
+// Auto-disable repeat when turning shuffle on (mutually exclusive UX).
+private fun PlayerConnection.toggleShuffleMode(shuffleModeEnabled: Boolean) {
+    if (!shuffleModeEnabled) {
+        player.repeatMode = Player.REPEAT_MODE_OFF
+    }
+    player.shuffleModeEnabled = !shuffleModeEnabled
+}
+
+private fun performClickHaptic(
+    view: android.view.View,
+    enabled: Boolean,
+) {
+    if (enabled) {
+        view.performHapticFeedback(
+            android.view.HapticFeedbackConstants.CONTEXT_CLICK,
+            android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+        )
+    }
+}
+
+private fun shareYouTubeMusicLink(
+    context: Context,
+    videoId: String,
+) {
+    val intent =
+        Intent().apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+            putExtra(
+                Intent.EXTRA_TEXT,
+                "https://music.youtube.com/watch?v=$videoId",
+            )
+        }
+    context.startActivity(Intent.createChooser(intent, null))
+}
+
+private fun openPlayerMenu(
+    menuState: MenuState,
+    mediaMetadata: MediaMetadata,
+    navController: NavController,
+    state: BottomSheetState,
+    bottomSheetPageState: BottomSheetPageState,
+) {
+    menuState.show {
+        PlayerMenu(
+            mediaMetadata = mediaMetadata,
+            navController = navController,
+            playerBottomSheetState = state,
+            onShowDetailsDialog = {
+                bottomSheetPageState.show {
+                    ShowMediaInfo(mediaMetadata.id)
+                }
+            },
+            onDismiss = menuState::dismiss,
+        )
+    }
+}
 
 @Composable
 internal fun PlayerTitleText(
@@ -316,9 +379,6 @@ fun PlayerTopActions(
     context: Context,
     currentSongLiked: Boolean,
 ) {
-    val haptic = LocalHapticFeedback.current
-    val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
-
     when (playerDesignStyle) {
         PlayerDesignStyle.V2 -> {
             val shareShape =
@@ -348,16 +408,7 @@ fun PlayerTopActions(
                             .clip(shareShape)
                             .background(textButtonColor)
                             .clickable {
-                                val intent =
-                                    Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        type = "text/plain"
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "https://music.youtube.com/watch?v=${mediaMetadata.id}",
-                                        )
-                                    }
-                                context.startActivity(Intent.createChooser(intent, null))
+                                shareYouTubeMusicLink(context, mediaMetadata.id)
                             },
                 ) {
                     Image(
@@ -412,16 +463,7 @@ fun PlayerTopActions(
                             .size(36.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .clickable {
-                                val intent =
-                                    Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        type = "text/plain"
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "https://music.youtube.com/watch?v=${mediaMetadata.id}",
-                                        )
-                                    }
-                                context.startActivity(Intent.createChooser(intent, null))
+                                shareYouTubeMusicLink(context, mediaMetadata.id)
                             },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -469,16 +511,7 @@ fun PlayerTopActions(
             ) {
                 Surface(
                     onClick = {
-                        val intent =
-                            Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "https://music.youtube.com/watch?v=${mediaMetadata.id}",
-                                )
-                            }
-                        context.startActivity(Intent.createChooser(intent, null))
+                        shareYouTubeMusicLink(context, mediaMetadata.id)
                     },
                     shape = RoundedCornerShape(14.dp),
                     color = textBackgroundColor.copy(alpha = 0.12f),
@@ -533,24 +566,9 @@ fun PlayerTopActions(
                     }
                 }
 
-                // More menu button - cinematic glass card
                 Surface(
                     onClick = {
-                        menuState.show {
-                            PlayerMenu(
-                                mediaMetadata = mediaMetadata,
-                                navController = navController,
-                                playerBottomSheetState = state,
-                                onShowDetailsDialog = {
-                                    mediaMetadata.id.let {
-                                        bottomSheetPageState.show {
-                                            ShowMediaInfo(it)
-                                        }
-                                    }
-                                },
-                                onDismiss = menuState::dismiss,
-                            )
-                        }
+                        openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
                     },
                     shape = RoundedCornerShape(14.dp),
                     color = textBackgroundColor.copy(alpha = 0.12f),
@@ -579,16 +597,7 @@ fun PlayerTopActions(
                         .clip(RoundedCornerShape(24.dp))
                         .background(textButtonColor)
                         .clickable {
-                            val intent =
-                                Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    type = "text/plain"
-                                    putExtra(
-                                        Intent.EXTRA_TEXT,
-                                        "https://music.youtube.com/watch?v=${mediaMetadata.id}",
-                                    )
-                                }
-                            context.startActivity(Intent.createChooser(intent, null))
+                            shareYouTubeMusicLink(context, mediaMetadata.id)
                         },
             ) {
                 Image(
@@ -612,21 +621,7 @@ fun PlayerTopActions(
                         .clip(RoundedCornerShape(24.dp))
                         .background(textButtonColor)
                         .clickable {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = state,
-                                    onShowDetailsDialog = {
-                                        mediaMetadata.id.let {
-                                            bottomSheetPageState.show {
-                                                ShowMediaInfo(it)
-                                            }
-                                        }
-                                    },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
+                            openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
                         },
             ) {
                 Image(
@@ -644,16 +639,7 @@ fun PlayerTopActions(
             ) {
                 Surface(
                     onClick = {
-                        val intent =
-                            Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "https://music.youtube.com/watch?v=${mediaMetadata.id}",
-                                )
-                            }
-                        context.startActivity(Intent.createChooser(intent, null))
+                        shareYouTubeMusicLink(context, mediaMetadata.id)
                     },
                     shape =
                         RoundedCornerShape(
@@ -716,21 +702,7 @@ fun PlayerTopActions(
 
                 Surface(
                     onClick = {
-                        menuState.show {
-                            PlayerMenu(
-                                mediaMetadata = mediaMetadata,
-                                navController = navController,
-                                playerBottomSheetState = state,
-                                onShowDetailsDialog = {
-                                    mediaMetadata.id.let {
-                                        bottomSheetPageState.show {
-                                            ShowMediaInfo(it)
-                                        }
-                                    }
-                                },
-                                onDismiss = menuState::dismiss,
-                            )
-                        }
+                        openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
                     },
                     shape =
                         RoundedCornerShape(
@@ -809,6 +781,16 @@ fun StyledPlaybackSlider(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    // Shared by Wavy and Circular below; remembered so the position ticks driving `value`
+    // don't allocate a fresh SquigglesSpec on every recomposition.
+    val squigglesSpec =
+        remember(isPlaying) {
+            SquigglySlider.SquigglesSpec(
+                amplitude = if (isPlaying) 2.dp else 0.dp,
+                strokeWidth = 6.dp,
+            )
+        }
+
     when (sliderStyle) {
         SliderStyle.Standard -> {
             Slider(
@@ -829,11 +811,7 @@ fun StyledPlaybackSlider(
                 onValueChangeFinished = onValueChangeFinished,
                 colors = PlayerSliderColors.wavySliderColors(activeColor),
                 modifier = modifier,
-                squigglesSpec =
-                    SquigglySlider.SquigglesSpec(
-                        amplitude = if (isPlaying) 2.dp else 0.dp,
-                        strokeWidth = 6.dp,
-                    ),
+                squigglesSpec = squigglesSpec,
             )
         }
 
@@ -864,11 +842,7 @@ fun StyledPlaybackSlider(
                 onValueChangeFinished = onValueChangeFinished,
                 colors = PlayerSliderColors.circularSliderColors(activeColor),
                 modifier = modifier,
-                squigglesSpec =
-                    SquigglySlider.SquigglesSpec(
-                        amplitude = if (isPlaying) 2.dp else 0.dp,
-                        strokeWidth = 6.dp,
-                    ),
+                squigglesSpec = squigglesSpec,
             )
         }
 
@@ -1023,12 +997,7 @@ fun PlayerPlaybackControls(
                     FilledIconButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (playbackState == STATE_ENDED) {
-                                playerConnection.player.seekTo(0, 0)
-                                playerConnection.player.playWhenReady = true
-                            } else {
-                                playerConnection.player.togglePlayPause()
-                            }
+                            playerConnection.replayOrTogglePlayPause(playbackState)
                         },
                         colors =
                             IconButtonDefaults.filledIconButtonColors(
@@ -1109,11 +1078,7 @@ fun PlayerPlaybackControls(
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
-                                    if (!shuffleModeEnabled) {
-                                        playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
-                                    }
-                                    playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
+                                    playerConnection.toggleShuffleMode(shuffleModeEnabled)
                                 },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -1156,12 +1121,7 @@ fun PlayerPlaybackControls(
                                 .background(textBackgroundColor)
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (playbackState == STATE_ENDED) {
-                                        playerConnection.player.seekTo(0, 0)
-                                        playerConnection.player.playWhenReady = true
-                                    } else {
-                                        playerConnection.player.togglePlayPause()
-                                    }
+                                    playerConnection.replayOrTogglePlayPause(playbackState)
                                 },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -1213,12 +1173,7 @@ fun PlayerPlaybackControls(
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
-                                    if (enableHapticFeedback) {
-                                        view.performHapticFeedback(
-                                            android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                                            android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                                        )
-                                    }
+                                    performClickHaptic(view, enableHapticFeedback)
                                     playerConnection.player.toggleRepeatMode()
                                 },
                         contentAlignment = Alignment.Center,
@@ -1282,17 +1237,8 @@ fun PlayerPlaybackControls(
                     ) {
                         Surface(
                             onClick = {
-                                if (enableHapticFeedback) {
-                                    view.performHapticFeedback(
-                                        android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                                        android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                                    )
-                                }
-                                // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
-                                if (!shuffleModeEnabled) {
-                                    playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
-                                }
-                                playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
+                                performClickHaptic(view, enableHapticFeedback)
+                                playerConnection.toggleShuffleMode(shuffleModeEnabled)
                             },
                             shape = RoundedCornerShape(smallRadius),
                             color =
@@ -1349,12 +1295,7 @@ fun PlayerPlaybackControls(
                     Surface(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (playbackState == STATE_ENDED) {
-                                playerConnection.player.seekTo(0, 0)
-                                playerConnection.player.playWhenReady = true
-                            } else {
-                                playerConnection.player.togglePlayPause()
-                            }
+                            playerConnection.replayOrTogglePlayPause(playbackState)
                         },
                         shape = RoundedCornerShape(cinematicPlayPauseCorner),
                         color = textButtonColor,
@@ -1424,12 +1365,7 @@ fun PlayerPlaybackControls(
 
                         Surface(
                             onClick = {
-                                if (enableHapticFeedback) {
-                                    view.performHapticFeedback(
-                                        android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                                        android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                                    )
-                                }
+                                performClickHaptic(view, enableHapticFeedback)
                                 playerConnection.player.toggleRepeatMode()
                             },
                             shape = RoundedCornerShape(smallRadius),
@@ -1489,12 +1425,7 @@ fun PlayerPlaybackControls(
                                 .align(Alignment.Center)
                                 .alpha(if (repeatMode == Player.REPEAT_MODE_OFF) 0.5f else 1f),
                         onClick = {
-                            if (enableHapticFeedback) {
-                                view.performHapticFeedback(
-                                    android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                                    android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                                )
-                            }
+                            performClickHaptic(view, enableHapticFeedback)
                             playerConnection.player.toggleRepeatMode()
                         },
                     )
@@ -1526,12 +1457,7 @@ fun PlayerPlaybackControls(
                             .background(textButtonColor)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (playbackState == STATE_ENDED) {
-                                    playerConnection.player.seekTo(0, 0)
-                                    playerConnection.player.playWhenReady = true
-                                } else {
-                                    playerConnection.player.togglePlayPause()
-                                }
+                                playerConnection.replayOrTogglePlayPause(playbackState)
                             },
                 ) {
                     if (isLoading) {
@@ -1660,12 +1586,7 @@ fun PlayerPlaybackControls(
                         Surface(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (playbackState == STATE_ENDED) {
-                                    playerConnection.player.seekTo(0, 0)
-                                    playerConnection.player.playWhenReady = true
-                                } else {
-                                    playerConnection.player.togglePlayPause()
-                                }
+                                playerConnection.replayOrTogglePlayPause(playbackState)
                             },
                             shape = RoundedCornerShape(28.dp),
                             color = textButtonColor,
@@ -1748,17 +1669,8 @@ fun PlayerPlaybackControls(
                 ) {
                     Surface(
                         onClick = {
-                            if (enableHapticFeedback) {
-                                view.performHapticFeedback(
-                                    android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                                    android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                                )
-                            }
-                            // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
-                            if (!shuffleModeEnabled) {
-                                playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
-                            }
-                            playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
+                            performClickHaptic(view, enableHapticFeedback)
+                            playerConnection.toggleShuffleMode(shuffleModeEnabled)
                         },
                         shape = RoundedCornerShape(50),
                         color =
@@ -1791,12 +1703,7 @@ fun PlayerPlaybackControls(
 
                     Surface(
                         onClick = {
-                            if (enableHapticFeedback) {
-                                view.performHapticFeedback(
-                                    android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                                    android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                                )
-                            }
+                            performClickHaptic(view, enableHapticFeedback)
                             playerConnection.player.toggleRepeatMode()
                         },
                         shape = RoundedCornerShape(50),
@@ -2039,19 +1946,7 @@ fun V8PlayerControlsContent(
     val onMenuClick =
         remember(mediaMetadata, navController, state, menuState, bottomSheetPageState) {
             {
-                menuState.show {
-                    PlayerMenu(
-                        mediaMetadata = mediaMetadata,
-                        navController = navController,
-                        playerBottomSheetState = state,
-                        onShowDetailsDialog = {
-                            bottomSheetPageState.show {
-                                ShowMediaInfo(mediaMetadata.id)
-                            }
-                        },
-                        onDismiss = menuState::dismiss,
-                    )
-                }
+                openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
             }
         }
     val titleActions = rememberPlayerTitleActions(mediaMetadata, navController, state)
@@ -2059,14 +1954,7 @@ fun V8PlayerControlsContent(
     val onArtistClick = titleActions.onArtistClick
     val onPlayPauseClick =
         remember(playbackState, playerConnection) {
-            {
-                if (playbackState == STATE_ENDED) {
-                    playerConnection.player.seekTo(0, 0)
-                    playerConnection.player.playWhenReady = true
-                } else {
-                    playerConnection.player.togglePlayPause()
-                }
-            }
+            { playerConnection.replayOrTogglePlayPause(playbackState) }
         }
     val onToggleLike =
         remember(playerConnection) {
@@ -2213,19 +2101,7 @@ fun V8PlayerContent(
     val artworkUrl = thumbnailSwapState.displayUrl
     val subtitle = queueTitle ?: mediaMetadata.album?.title.orEmpty()
     val onMenuClick = {
-        menuState.show {
-            PlayerMenu(
-                mediaMetadata = mediaMetadata,
-                navController = navController,
-                playerBottomSheetState = state,
-                onShowDetailsDialog = {
-                    bottomSheetPageState.show {
-                        ShowMediaInfo(mediaMetadata.id)
-                    }
-                },
-                onDismiss = menuState::dismiss,
-            )
-        }
+        openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
     }
 
     val titleActions = rememberPlayerTitleActions(mediaMetadata, navController, state)
@@ -2261,12 +2137,7 @@ fun V8PlayerContent(
             onPreviousClick = playerConnection::seekToPrevious,
             onNextClick = playerConnection::seekToNext,
             onPlayPauseClick = {
-                if (playbackState == STATE_ENDED) {
-                    playerConnection.player.seekTo(0, 0)
-                    playerConnection.player.playWhenReady = true
-                } else {
-                    playerConnection.player.togglePlayPause()
-                }
+                playerConnection.replayOrTogglePlayPause(playbackState)
             },
             onSliderValueChange = onSliderValueChange,
             onSliderValueChangeFinished = onSliderValueChangeFinished,
@@ -2302,12 +2173,7 @@ fun V8PlayerContent(
             onPreviousClick = playerConnection::seekToPrevious,
             onNextClick = playerConnection::seekToNext,
             onPlayPauseClick = {
-                if (playbackState == STATE_ENDED) {
-                    playerConnection.player.seekTo(0, 0)
-                    playerConnection.player.playWhenReady = true
-                } else {
-                    playerConnection.player.togglePlayPause()
-                }
+                playerConnection.replayOrTogglePlayPause(playbackState)
             },
             onSliderValueChange = onSliderValueChange,
             onSliderValueChangeFinished = onSliderValueChangeFinished,
@@ -3158,12 +3024,7 @@ fun V9PlayerContent(
     val onTitleClick = titleActions.onTitleClick
     val onArtistClick = titleActions.onArtistClick
     val onPlayPauseClick = {
-        if (playbackState == STATE_ENDED) {
-            playerConnection.player.seekTo(0, 0)
-            playerConnection.player.playWhenReady = true
-        } else {
-            playerConnection.player.togglePlayPause()
-        }
+        playerConnection.replayOrTogglePlayPause(playbackState)
     }
 
     if (landscape) {
@@ -3929,7 +3790,6 @@ fun PlayerBackground(
     playerCustomBrightness: Float,
 ) {
     val effectiveBlurRadius = blurRadius.coerceIn(0f, PlayerBackgroundMaxBlurRadius)
-    val shouldApplyBlur = !disableBlur && effectiveBlurRadius > 0f
 
     val backgroundSwapState =
         rememberThumbnailSwapState(

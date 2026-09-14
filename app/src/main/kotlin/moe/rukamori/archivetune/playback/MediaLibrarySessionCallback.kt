@@ -233,23 +233,7 @@ class MediaLibrarySessionCallback
             browser: MediaSession.ControllerInfo,
             params: MediaLibraryService.LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> =
-            Futures.immediateFuture(
-                LibraryResult.ofItem(
-                    MediaItem
-                        .Builder()
-                        .setMediaId(MusicService.ROOT)
-                        .setMediaMetadata(
-                            MediaMetadata
-                                .Builder()
-                                .setIsPlayable(false)
-                                .setIsBrowsable(true)
-                                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                                .setExtras(browsableExtras())
-                                .build(),
-                        ).build(),
-                    params,
-                ),
-            )
+            Futures.immediateFuture(LibraryResult.ofItem(rootMediaItem(), params))
 
         override fun onSearch(
             session: MediaLibrarySession,
@@ -395,110 +379,26 @@ class MediaLibrarySessionCallback
                 val items =
                     when (parentId) {
                         MusicService.ROOT -> {
-                            listOf(
-                                browsableMediaItem(
-                                    MusicService.HOME,
-                                    context.getString(R.string.home),
-                                    null,
-                                    drawableUri(R.drawable.home_filled),
-                                    MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
-                                ),
-                                queueMediaItem(
-                                    MusicService.QUICK_PICKS,
-                                    context.getString(R.string.quick_picks),
-                                    null,
-                                    drawableUri(R.drawable.playlist_play),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                queueMediaItem(
-                                    MusicService.RECENT,
-                                    context.getString(R.string.history),
-                                    null,
-                                    drawableUri(R.drawable.history),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                queueMediaItem(
-                                    MusicService.LIKED,
-                                    context.getString(R.string.liked_songs),
-                                    null,
-                                    drawableUri(R.drawable.favorite),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                queueMediaItem(
-                                    MusicService.DOWNLOADED,
-                                    context.getString(R.string.downloaded_songs),
-                                    null,
-                                    drawableUri(R.drawable.download),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                browsableMediaItem(
-                                    MusicService.SONG,
-                                    context.getString(R.string.songs),
-                                    null,
-                                    drawableUri(R.drawable.music_note),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                browsableMediaItem(
-                                    MusicService.ARTIST,
-                                    context.getString(R.string.artists),
-                                    null,
-                                    drawableUri(R.drawable.artist),
-                                    MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS,
-                                ),
-                                browsableMediaItem(
-                                    MusicService.ALBUM,
-                                    context.getString(R.string.albums),
-                                    null,
-                                    drawableUri(R.drawable.album),
-                                    MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS,
-                                ),
-                                browsableMediaItem(
-                                    MusicService.PLAYLIST,
-                                    context.getString(R.string.playlists),
-                                    null,
-                                    drawableUri(R.drawable.queue_music),
-                                    MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                                ),
+                            listOfNotNull(
+                                staticFolderItem(MusicService.HOME),
+                                staticFolderItem(MusicService.QUICK_PICKS),
+                                staticFolderItem(MusicService.RECENT),
+                                staticFolderItem(MusicService.LIKED),
+                                staticFolderItem(MusicService.DOWNLOADED),
+                                staticFolderItem(MusicService.SONG),
+                                staticFolderItem(MusicService.ARTIST),
+                                staticFolderItem(MusicService.ALBUM),
+                                staticFolderItem(MusicService.PLAYLIST),
                             )
                         }
 
                         MusicService.HOME -> {
-                            listOf(
-                                queueMediaItem(
-                                    MusicService.HOME_QUICK_PICKS,
-                                    context.getString(R.string.quick_picks),
-                                    null,
-                                    drawableUri(R.drawable.playlist_play),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                queueMediaItem(
-                                    MusicService.HOME_FORGOTTEN_FAVORITES,
-                                    context.getString(R.string.forgotten_favorites),
-                                    null,
-                                    drawableUri(R.drawable.favorite),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                queueMediaItem(
-                                    MusicService.HOME_KEEP_LISTENING,
-                                    context.getString(R.string.keep_listening),
-                                    null,
-                                    drawableUri(R.drawable.history),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                queueMediaItem(
-                                    MusicService.HOME_SUGGESTED_SONGS,
-                                    context.getString(R.string.android_auto_suggested_songs),
-                                    null,
-                                    drawableUri(R.drawable.music_note),
-                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                                ),
-                                browsableMediaItem(
-                                    MusicService.HOME_MIXES_AND_RADIOS,
-                                    context.getString(R.string.android_auto_mixes_and_radios),
-                                    null,
-                                    drawableUri(R.drawable.radio),
-                                    MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                                ),
+                            listOfNotNull(
+                                staticFolderItem(MusicService.HOME_QUICK_PICKS),
+                                staticFolderItem(MusicService.HOME_FORGOTTEN_FAVORITES),
+                                staticFolderItem(MusicService.HOME_KEEP_LISTENING),
+                                staticFolderItem(MusicService.HOME_SUGGESTED_SONGS),
+                                staticFolderItem(MusicService.HOME_MIXES_AND_RADIOS),
                             )
                         }
 
@@ -603,6 +503,10 @@ class MediaLibrarySessionCallback
                         MusicService.PLAYLIST -> {
                             val likedSongCount = database.likedSongsCount().first()
                             val downloadedSongCount = downloadUtil.downloads.value.size
+                            // Read once — spotifyLikedFolder() and spotifyPlaylistFolder() below
+                            // each default to this same dataStore read, which duplicated it every
+                            // time this list was built.
+                            val showSpotifyPlaylists = context.dataStore.get(ShowSpotifyPlaylistsKey, false)
                             listOf(
                                 queueMediaItem(
                                     "${MusicService.PLAYLIST}/${PlaylistEntity.LIKED_PLAYLIST_ID}",
@@ -626,7 +530,7 @@ class MediaLibrarySessionCallback
                                     drawableUri(R.drawable.download),
                                     MediaMetadata.MEDIA_TYPE_PLAYLIST,
                                 ),
-                            ) + spotifyLikedFolder() + spotifyPlaylistFolder() +
+                            ) + spotifyLikedFolder(showSpotifyPlaylists) + spotifyPlaylistFolder(showSpotifyPlaylists) +
                                 database.playlists(PlaylistSortType.CUSTOM, descending = false).first().map { playlist ->
                                     queueMediaItem(
                                         "${MusicService.PLAYLIST}/${playlist.id}",
@@ -726,205 +630,17 @@ class MediaLibrarySessionCallback
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> =
             scope.future(Dispatchers.IO) {
+                // The fixed top-level and Home folders are identical whether reached as a child
+                // in onGetChildren or looked up directly here; staticFolderItem is the one place
+                // that builds them, instead of duplicating each item's title/icon/type twice.
+                val staticItem = staticFolderItem(mediaId)
                 when {
                     mediaId == MusicService.ROOT -> {
-                        LibraryResult.ofItem(
-                            MediaItem
-                                .Builder()
-                                .setMediaId(MusicService.ROOT)
-                                .setMediaMetadata(
-                                    MediaMetadata
-                                        .Builder()
-                                        .setIsPlayable(false)
-                                        .setIsBrowsable(true)
-                                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                                        .setExtras(browsableExtras())
-                                        .build(),
-                                ).build(),
-                            null,
-                        )
+                        LibraryResult.ofItem(rootMediaItem(), null)
                     }
 
-                    mediaId == MusicService.HOME -> {
-                        LibraryResult.ofItem(
-                            browsableMediaItem(
-                                MusicService.HOME,
-                                context.getString(R.string.home),
-                                null,
-                                drawableUri(R.drawable.home_filled),
-                                MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.HOME_QUICK_PICKS -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.HOME_QUICK_PICKS,
-                                context.getString(R.string.quick_picks),
-                                null,
-                                drawableUri(R.drawable.playlist_play),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.HOME_FORGOTTEN_FAVORITES -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.HOME_FORGOTTEN_FAVORITES,
-                                context.getString(R.string.forgotten_favorites),
-                                null,
-                                drawableUri(R.drawable.favorite),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.HOME_KEEP_LISTENING -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.HOME_KEEP_LISTENING,
-                                context.getString(R.string.keep_listening),
-                                null,
-                                drawableUri(R.drawable.history),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.HOME_SUGGESTED_SONGS -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.HOME_SUGGESTED_SONGS,
-                                context.getString(R.string.android_auto_suggested_songs),
-                                null,
-                                drawableUri(R.drawable.music_note),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.HOME_MIXES_AND_RADIOS -> {
-                        LibraryResult.ofItem(
-                            browsableMediaItem(
-                                MusicService.HOME_MIXES_AND_RADIOS,
-                                context.getString(R.string.android_auto_mixes_and_radios),
-                                null,
-                                drawableUri(R.drawable.radio),
-                                MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.SONG -> {
-                        LibraryResult.ofItem(
-                            browsableMediaItem(
-                                MusicService.SONG,
-                                context.getString(R.string.songs),
-                                null,
-                                drawableUri(R.drawable.music_note),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.QUICK_PICKS -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.QUICK_PICKS,
-                                context.getString(R.string.quick_picks),
-                                null,
-                                drawableUri(R.drawable.playlist_play),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.RECENT -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.RECENT,
-                                context.getString(R.string.history),
-                                null,
-                                drawableUri(R.drawable.history),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.LIKED -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.LIKED,
-                                context.getString(R.string.liked_songs),
-                                null,
-                                drawableUri(R.drawable.favorite),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.DOWNLOADED -> {
-                        LibraryResult.ofItem(
-                            queueMediaItem(
-                                MusicService.DOWNLOADED,
-                                context.getString(R.string.downloaded_songs),
-                                null,
-                                drawableUri(R.drawable.download),
-                                MediaMetadata.MEDIA_TYPE_PLAYLIST,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.ARTIST -> {
-                        LibraryResult.ofItem(
-                            browsableMediaItem(
-                                MusicService.ARTIST,
-                                context.getString(R.string.artists),
-                                null,
-                                drawableUri(R.drawable.artist),
-                                MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.ALBUM -> {
-                        LibraryResult.ofItem(
-                            browsableMediaItem(
-                                MusicService.ALBUM,
-                                context.getString(R.string.albums),
-                                null,
-                                drawableUri(R.drawable.album),
-                                MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS,
-                            ),
-                            null,
-                        )
-                    }
-
-                    mediaId == MusicService.PLAYLIST -> {
-                        LibraryResult.ofItem(
-                            browsableMediaItem(
-                                MusicService.PLAYLIST,
-                                context.getString(R.string.playlists),
-                                null,
-                                drawableUri(R.drawable.queue_music),
-                                MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                            ),
-                            null,
-                        )
+                    staticItem != null -> {
+                        LibraryResult.ofItem(staticItem, null)
                     }
 
                     mediaId == MusicService.SPOTIFY_LIKED -> {
@@ -1314,8 +1030,10 @@ class MediaLibrarySessionCallback
         }
 
         /** The "Liked Songs" folder for the Auto browse tree. */
-        private suspend fun spotifyLikedFolder(): List<MediaItem> {
-            if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
+        private suspend fun spotifyLikedFolder(
+            showSpotifyPlaylists: Boolean = context.dataStore.get(ShowSpotifyPlaylistsKey, false),
+        ): List<MediaItem> {
+            if (!showSpotifyPlaylists) return emptyList()
             return listOf(
                 browsableMediaItem(
                     MusicService.SPOTIFY_LIKED,
@@ -1361,8 +1079,10 @@ class MediaLibrarySessionCallback
         }
 
         /** The Spotify playlists folder, drawn from cache only. */
-        private suspend fun spotifyPlaylistFolder(): List<MediaItem> {
-            if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
+        private suspend fun spotifyPlaylistFolder(
+            showSpotifyPlaylists: Boolean = context.dataStore.get(ShowSpotifyPlaylistsKey, false),
+        ): List<MediaItem> {
+            if (!showSpotifyPlaylists) return emptyList()
             spotifyLibraryRepository.restoreCachedPlaylists()
             val cached = spotifyLibraryRepository.playlists.value
             return listOf(
@@ -2095,6 +1815,157 @@ class MediaLibrarySessionCallback
                     .setExtras(browsableExtras())
                     .build(),
             ).build()
+
+        /** The manually-built root folder item shared by [onGetLibraryRoot] and [onGetItem]. */
+        private fun rootMediaItem(): MediaItem =
+            MediaItem
+                .Builder()
+                .setMediaId(MusicService.ROOT)
+                .setMediaMetadata(
+                    MediaMetadata
+                        .Builder()
+                        .setIsPlayable(false)
+                        .setIsBrowsable(true)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                        .setExtras(browsableExtras())
+                        .build(),
+                ).build()
+
+        /**
+         * The fixed top-level and Home folder items — identical whether reached as a child of
+         * [MusicService.ROOT]/[MusicService.HOME] in [onGetChildren] or looked up directly by id
+         * in [onGetItem]. Returns null for any other id.
+         */
+        private fun staticFolderItem(id: String): MediaItem? =
+            when (id) {
+                MusicService.HOME ->
+                    browsableMediaItem(
+                        MusicService.HOME,
+                        context.getString(R.string.home),
+                        null,
+                        drawableUri(R.drawable.home_filled),
+                        MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
+                    )
+
+                MusicService.HOME_QUICK_PICKS ->
+                    queueMediaItem(
+                        MusicService.HOME_QUICK_PICKS,
+                        context.getString(R.string.quick_picks),
+                        null,
+                        drawableUri(R.drawable.playlist_play),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.HOME_FORGOTTEN_FAVORITES ->
+                    queueMediaItem(
+                        MusicService.HOME_FORGOTTEN_FAVORITES,
+                        context.getString(R.string.forgotten_favorites),
+                        null,
+                        drawableUri(R.drawable.favorite),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.HOME_KEEP_LISTENING ->
+                    queueMediaItem(
+                        MusicService.HOME_KEEP_LISTENING,
+                        context.getString(R.string.keep_listening),
+                        null,
+                        drawableUri(R.drawable.history),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.HOME_SUGGESTED_SONGS ->
+                    queueMediaItem(
+                        MusicService.HOME_SUGGESTED_SONGS,
+                        context.getString(R.string.android_auto_suggested_songs),
+                        null,
+                        drawableUri(R.drawable.music_note),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.HOME_MIXES_AND_RADIOS ->
+                    browsableMediaItem(
+                        MusicService.HOME_MIXES_AND_RADIOS,
+                        context.getString(R.string.android_auto_mixes_and_radios),
+                        null,
+                        drawableUri(R.drawable.radio),
+                        MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
+                    )
+
+                MusicService.QUICK_PICKS ->
+                    queueMediaItem(
+                        MusicService.QUICK_PICKS,
+                        context.getString(R.string.quick_picks),
+                        null,
+                        drawableUri(R.drawable.playlist_play),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.RECENT ->
+                    queueMediaItem(
+                        MusicService.RECENT,
+                        context.getString(R.string.history),
+                        null,
+                        drawableUri(R.drawable.history),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.LIKED ->
+                    queueMediaItem(
+                        MusicService.LIKED,
+                        context.getString(R.string.liked_songs),
+                        null,
+                        drawableUri(R.drawable.favorite),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.DOWNLOADED ->
+                    queueMediaItem(
+                        MusicService.DOWNLOADED,
+                        context.getString(R.string.downloaded_songs),
+                        null,
+                        drawableUri(R.drawable.download),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.SONG ->
+                    browsableMediaItem(
+                        MusicService.SONG,
+                        context.getString(R.string.songs),
+                        null,
+                        drawableUri(R.drawable.music_note),
+                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                    )
+
+                MusicService.ARTIST ->
+                    browsableMediaItem(
+                        MusicService.ARTIST,
+                        context.getString(R.string.artists),
+                        null,
+                        drawableUri(R.drawable.artist),
+                        MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS,
+                    )
+
+                MusicService.ALBUM ->
+                    browsableMediaItem(
+                        MusicService.ALBUM,
+                        context.getString(R.string.albums),
+                        null,
+                        drawableUri(R.drawable.album),
+                        MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS,
+                    )
+
+                MusicService.PLAYLIST ->
+                    browsableMediaItem(
+                        MusicService.PLAYLIST,
+                        context.getString(R.string.playlists),
+                        null,
+                        drawableUri(R.drawable.queue_music),
+                        MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
+                    )
+
+                else -> null
+            }
 
         private fun Song.toMediaItem(path: String) =
             MediaItem

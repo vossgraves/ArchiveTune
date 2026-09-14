@@ -72,6 +72,9 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
 
+// Hoisted so it isn't recompiled on every playlist sync (update(PlaylistEntity, PlaylistItem) below).
+private val remoteSongCountDigitsRegex = Regex("""\d+""")
+
 @Dao
 interface DatabaseDao {
     @Transaction
@@ -354,15 +357,6 @@ interface DatabaseDao {
 
     @Transaction
     @Query(
-        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND inLibrary IS NOT NULL LIMIT :previewSize",
-    )
-    fun artistSongsPreview(
-        artistId: String,
-        previewSize: Int = 3,
-    ): Flow<List<Song>>
-
-    @Transaction
-    @Query(
         """
         SELECT song.*
         FROM (SELECT *, COUNT(1) AS referredCount
@@ -393,34 +387,6 @@ interface DatabaseDao {
     """,
     )
     fun quickPicks(now: Long = System.currentTimeMillis()): Flow<List<Song>>
-
-    @Transaction
-    @Query(
-        """
-        SELECT
-            song.*
-        FROM
-            event
-        JOIN
-            song ON event.songId = song.id
-        WHERE
-            event.timestamp > (:now - 86400000 * 7 * 2)
-        GROUP BY
-            song.albumId
-        HAVING
-            song.albumId IS NOT NULL
-        ORDER BY
-            sum(event.playTime) DESC
-        LIMIT :limit
-        OFFSET :offset
-        
-        """,
-    )
-    fun getRecommendationAlbum(
-        now: Long = System.currentTimeMillis(),
-        limit: Int = 5,
-        offset: Int = 0,
-    ): Flow<List<Song>>
 
     @Transaction
     @Query(
@@ -608,15 +574,6 @@ interface DatabaseDao {
         previewSize: Int = 6,
     ): Flow<List<Album>>
 
-    @Query("SELECT sum(count) from playCount WHERE song = :songId")
-    fun getLifetimePlayCount(songId: String?): Flow<Int>
-
-    @Query("SELECT sum(count) from playCount WHERE song = :songId AND year = :year")
-    fun getPlayCountByYear(
-        songId: String?,
-        year: Int,
-    ): Flow<Int>
-
     @Query("SELECT count from playCount WHERE song = :songId AND year = :year AND month = :month")
     fun getPlayCountByMonth(
         songId: String?,
@@ -648,27 +605,6 @@ interface DatabaseDao {
     """,
     )
     fun forgottenFavorites(now: Long = System.currentTimeMillis()): Flow<List<Song>>
-
-    @Transaction
-    @Query(
-        """
-        SELECT song.*
-        FROM event
-                 JOIN
-             song ON event.songId = song.id
-        WHERE event.timestamp > (:now - 86400000 * 7 * 2)
-        GROUP BY song.albumId
-        HAVING song.albumId IS NOT NULL
-        ORDER BY sum(event.playTime) DESC
-        LIMIT :limit
-        OFFSET :offset
-        """,
-    )
-    fun recommendedAlbum(
-        now: Long = System.currentTimeMillis(),
-        limit: Int = 5,
-        offset: Int = 0,
-    ): Flow<List<Song>>
 
     @Transaction
     @Query("SELECT * FROM song WHERE id = :songId")
@@ -750,9 +686,6 @@ interface DatabaseDao {
     """,
     )
     fun allArtistsByPlayTime(): Flow<List<Artist>>
-
-    @Query("SELECT * FROM set_video_id WHERE videoId = :videoId")
-    suspend fun getSetVideoId(videoId: String): SetVideoIdEntity?
 
     @Transaction
     @Query("SELECT * FROM format WHERE id = :id")
@@ -1244,9 +1177,6 @@ interface DatabaseDao {
         descending: Boolean?,
     )
 
-    @Query("SELECT MAX(customOrder) FROM playlist WHERE bookmarkedAt IS NOT NULL")
-    fun maxPlaylistCustomOrder(): Int?
-
     @Transaction
     @Query(
         "SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE id = :playlistId",
@@ -1486,23 +1416,6 @@ interface DatabaseDao {
     @Query("DELETE FROM event WHERE id IN (:eventIds)")
     fun deleteEventsByIds(eventIds: List<Long>)
 
-    /**
-     * Deletes the most recent Event row for [songId]. Used when the user
-     * switches the source of a song via the "Play from" search popup —
-     * the old mediaId's most recent history entry is removed so the user
-     * doesn't see a duplicate in "recently listened" (the new source's
-     * track entry takes its place at the top).
-     */
-    @Query("DELETE FROM event WHERE songId = :songId AND id = (SELECT MAX(id) FROM event WHERE songId = :songId)")
-    suspend fun deleteMostRecentEventForSong(songId: String)
-
-    /** Deletes ALL Event rows for [songId] and the song row itself. */
-    @Query("DELETE FROM event WHERE songId = :songId")
-    suspend fun deleteAllEventsForSong(songId: String)
-
-    @Query("DELETE FROM song WHERE id = :songId")
-    suspend fun deleteSongById(songId: String)
-
     @Transaction
     @Query("SELECT * FROM search_history WHERE `query` LIKE :query || '%' ORDER BY id DESC")
     fun searchHistory(query: String = ""): Flow<List<SearchHistory>>
@@ -1531,7 +1444,6 @@ interface DatabaseDao {
         val time = LocalDateTime.now().atOffset(ZoneOffset.UTC)
         val oldCount = getPlayCountByMonth(songId, time.year, time.monthValue).first()
 
-        // add new
         if (oldCount <= 0) {
             insert(PlayCountEntity(songId, time.year, time.monthValue, 0))
         }
@@ -1864,7 +1776,6 @@ interface DatabaseDao {
             }.forEach(::upsert)
 
         albumPage.album.artists?.let { artists ->
-            // Recreate album artists
             albumArtistMaps(album.id).forEach(::delete)
             artists
                 .map { artist ->
@@ -1901,7 +1812,7 @@ interface DatabaseDao {
                         playlistItem.thumbnail
                     },
                 isEditable = playlistItem.isEditable,
-                remoteSongCount = playlistItem.songCountText?.let { Regex("""\d+""").find(it)?.value?.toIntOrNull() },
+                remoteSongCount = playlistItem.songCountText?.let { remoteSongCountDigitsRegex.find(it)?.value?.toIntOrNull() },
                 playEndpointParams = playlistItem.playEndpoint?.params,
                 shuffleEndpointParams = playlistItem.shuffleEndpoint?.params,
                 radioEndpointParams = playlistItem.radioEndpoint?.params,
@@ -1917,25 +1828,6 @@ interface DatabaseDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(lyrics: LyricsEntity): Long
-
-    @Transaction
-    fun insertLyricsIfAbsent(
-        id: String,
-        lyrics: String,
-        source: String = LyricsEntity.Source.REMOTE.value,
-        providerName: String = "",
-        updatedAt: Long = System.currentTimeMillis(),
-    ) {
-        insert(
-            LyricsEntity(
-                id = id,
-                lyrics = lyrics,
-                source = source,
-                providerName = providerName,
-                updatedAt = updatedAt,
-            ),
-        )
-    }
 
     @Query(
         """
@@ -2092,9 +1984,6 @@ interface DatabaseDao {
     @Delete
     fun delete(playlistSongMap: PlaylistSongMap)
 
-    @Query("DELETE FROM playlist WHERE browseId = :browseId")
-    fun deletePlaylistById(browseId: String)
-
     @Delete
     fun delete(lyrics: LyricsEntity)
 
@@ -2143,13 +2032,6 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT DISTINCT playlistId FROM playlist_tag_map WHERE tagId IN (:tagIds)")
     fun playlistIdsByTags(tagIds: List<String>): Flow<List<String>>
-
-    @Transaction
-    @Query("SELECT COUNT(*) FROM playlist_tag_map WHERE playlistId = :playlistId AND tagId = :tagId")
-    fun isPlaylistTagged(
-        playlistId: String,
-        tagId: String,
-    ): Flow<Int>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(tag: TagEntity)
@@ -2208,18 +2090,5 @@ interface DatabaseDao {
                 }
             }
         insertAllPlaylistTagMaps(maps)
-    }
-
-    @Transaction
-    suspend fun togglePlaylistTag(
-        playlistId: String,
-        tagId: String,
-    ) {
-        val isTagged = isPlaylistTagged(playlistId, tagId).first()
-        if (isTagged > 0) {
-            removePlaylistTag(playlistId, tagId)
-        } else {
-            addTagToPlaylist(playlistId, tagId)
-        }
     }
 }

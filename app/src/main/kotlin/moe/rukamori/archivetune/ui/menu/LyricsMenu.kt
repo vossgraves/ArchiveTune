@@ -18,7 +18,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -60,7 +59,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -69,14 +67,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -100,14 +94,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -139,13 +131,11 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
-import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import moe.rukamori.archivetune.ui.component.MediaMetadataListItem
 import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
-import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.utils.TranslatorLang
@@ -170,8 +160,6 @@ fun LyricsMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
-    // The control preferences are optional because the standalone lyrics screen owns their state;
-    // callers that do not provide callbacks keep the menu focused on lyric actions only.
 ) {
     val context = LocalContext.current
 
@@ -258,7 +246,6 @@ fun LyricsMenu(
     var isStandardTranslating by remember { mutableStateOf(false) }
     var isDialogAiTranslationRunning by rememberSaveable { mutableStateOf(false) }
 
-    // ── AI romanisation ──
     // The manual counterpart to the "Auto AI Romanisation" setting: with auto off the renderers never
     // send a request on their own, so without this the master switch would silently disable the
     // built-in romanisers and offer nothing in their place. Requesting is idempotent per track — the
@@ -1767,11 +1754,15 @@ fun AnchoredLyricsOverflowMenu(
 
     var anchorSpaceHeightPx by remember { mutableIntStateOf(0) }
     var popupHeightPx by remember { mutableIntStateOf(0) }
-    val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
+    // Hoisted out of the offset/opensAboveAnchor layout-phase calls below, which otherwise redo
+    // these dp-to-px conversions on every layout pass of the enter/exit animation.
+    val verticalOffsetPx = remember(density) { with(density) { 4.dp.toPx() }.toInt() }
+    val popupWidthPx = remember(density) { with(density) { 220.dp.toPx() }.toInt() }
+    val horizontalMarginPx = remember(density) { with(density) { 16.dp.toPx() }.toInt() }
+    val fallbackPopupHeightPx = remember(density) { with(density) { 360.dp.toPx() }.toInt() }
 
     fun opensAboveAnchor(): Boolean {
-        val neededHeightPx =
-            if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()
+        val neededHeightPx = if (popupHeightPx > 0) popupHeightPx else fallbackPopupHeightPx
         return anchorSpaceHeightPx > 0 &&
             iconBoundsInRoot.bottom + verticalOffsetPx + neededHeightPx > anchorSpaceHeightPx
     }
@@ -1813,8 +1804,6 @@ fun AnchoredLyricsOverflowMenu(
             modifier =
                 Modifier
                     .offset {
-                        val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
-                        val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
                         val iconBottom = iconBoundsInRoot.bottom.toInt()
                         val x =
@@ -1824,7 +1813,7 @@ fun AnchoredLyricsOverflowMenu(
                             if (opensAboveAnchor()) {
 
                                 (iconBoundsInRoot.top - verticalOffsetPx -
-                                    (if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()))
+                                    (if (popupHeightPx > 0) popupHeightPx else fallbackPopupHeightPx))
                                     .coerceAtLeast(0f)
                                     .toInt()
                             } else {
