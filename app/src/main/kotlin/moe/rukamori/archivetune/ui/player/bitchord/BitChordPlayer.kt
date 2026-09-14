@@ -108,6 +108,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -452,7 +453,16 @@ fun BitChordPlayerContent(
     isLoading: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    position: Long,
+    /**
+     * Read as late as possible, never in this composable's own body.
+     *
+     * Taking the position as a plain `Long` meant this whole scope was invalidated by every tick of
+     * the ~100ms poll, for the sake of three leaves that actually use it. Each of those now reads
+     * through the provider inside its own composable, so a tick invalidates the scrubber, the lyric
+     * line and the previous button rather than the entire player. The same shape AppleMusicPlayer
+     * already uses, fed by the same remembered lambda in Player.kt.
+     */
+    positionProvider: () -> Long,
     duration: Long,
     playerConnection: PlayerConnection,
     navController: NavController,
@@ -578,8 +588,6 @@ fun BitChordPlayerContent(
     var lyricsSyncOffset by rememberSaveable(mediaMetadata.id) {
         mutableIntStateOf(0)
     }
-    // The position the lyrics follow: the player's own, nudged by the offset.
-    val lyricsPosition = (position + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
 
     // Not [isPlaying]: that one is true through a buffer and through a suppressed
     // (focus-lost) stretch, and the lyric clock free-runs on it while the track is
@@ -637,19 +645,30 @@ fun BitChordPlayerContent(
     // handle doesn't snap back and then jump forward once loading finishes.
     var pendingSeek by remember { mutableStateOf<Float?>(null) }
 
-    val fraction = if (duration > 0) position.toFloat() / duration else 0f
-    val shown = when {
-        scrubbing -> scrubValue
-        pendingSeek != null -> pendingSeek!!
-        else -> fraction.coerceIn(0f, 1f)
+    // A lambda, not a value: each consumer below invokes it inside its own scope (the slider inside
+    // draw), so a position tick lands there instead of invalidating this whole composable.
+    val shownFraction: () -> Float = {
+        when {
+            scrubbing -> scrubValue
+            pendingSeek != null -> pendingSeek!!
+            duration > 0 -> (positionProvider().toFloat() / duration).coerceIn(0f, 1f)
+            else -> 0f
+        }
     }
 
     // Released as soon as the player's own position agrees with where the
     // handle was dropped — and unconditionally a few seconds later.
-    LaunchedEffect(position, duration, pendingSeek) {
-        val target = pendingSeek ?: return@LaunchedEffect
-        if (duration > 0 && abs(position - (target * duration).toLong()) < SEEK_SETTLE_TOLERANCE_MS) {
-            pendingSeek = null
+    //
+    // Collected rather than keyed on the position: keying restarted this effect on every tick of
+    // the poll, so a coroutine was cancelled and relaunched ten times a second for as long as the
+    // player was open, to check a condition that is only ever true just after a scrub.
+    LaunchedEffect(duration, pendingSeek) {
+        if (pendingSeek == null) return@LaunchedEffect
+        snapshotFlow { positionProvider() }.collect { position ->
+            val target = pendingSeek ?: return@collect
+            if (duration > 0 && abs(position - (target * duration).toLong()) < SEEK_SETTLE_TOLERANCE_MS) {
+                pendingSeek = null
+            }
         }
     }
     LaunchedEffect(pendingSeek) {
@@ -1360,10 +1379,11 @@ fun BitChordPlayerContent(
                     .offset(y = 6.dp),
             ) {
                 if (!lyrics.isNullOrEmpty()) {
-                    CurrentLyricLine(
+                    BitChordCurrentLyric(
                         lines = lyrics,
                         trackKey = mediaMetadata.id,
-                        positionMs = lyricsPosition,
+                        positionProvider = positionProvider,
+                        lyricsSyncOffset = lyricsSyncOffset,
                         isPlaying = audioAdvancing,
                         durationMs = duration,
                         // Still visible over the queue, so still a valid way
@@ -1398,7 +1418,7 @@ fun BitChordPlayerContent(
                 }
             }
             ThinSlider(
-                value = shown,
+                valueProvider = shownFraction,
                 onValueChange = {
                     scrubbing = true
                     scrubValue = it
@@ -1420,21 +1440,7 @@ fun BitChordPlayerContent(
                     // bar, so pull the labels back up under it.
                     .offset(y = (-9).dp),
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = formatTime((shown * duration).toLong()),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.55f),
-                    )
-                    Text(
-                        text = "-" + formatTime(duration - (shown * duration).toLong()),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.55f),
-                    )
-                }
+                BitChordScrubTimes(shownFraction = shownFraction, duration = duration)
                 // Pinned to the box's own center rather than squeezed into the
                 // gap between the two timestamps: that gap's width changes by a
                 // digit's worth every time a minute rolls over.
@@ -1545,15 +1551,10 @@ fun BitChordPlayerContent(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TransportGlyph(
-                    icon = Icons.Rounded.FastRewind,
-                    contentDescription = "Previous",
-                    size = 46.dp,
+                BitChordPreviousGlyph(
+                    positionProvider = positionProvider,
+                    canSkipPrevious = canSkipPrevious,
                     onClick = { playerConnection.seekToPrevious() },
-                    // Lit whenever back has something to do — either a track to
-                    // step to, or enough elapsed for it to restart this one.
-                    enabled = canSkipPrevious || position > BACK_RESTARTS_AFTER_MS,
-                    haptic = Haptic.SkipPrevious,
                 )
                 // While the stream URL resolves and buffers, the play glyph
                 // would be a lie — show progress instead.
@@ -1601,7 +1602,7 @@ fun BitChordPlayerContent(
                 )
                 Spacer(Modifier.width(10.dp))
                 ThinSlider(
-                    value = volume.value,
+                    valueProvider = { volume.value },
                     onValueChange = {
                         volumeDragging = true
                         // Follow the finger exactly; only external changes tween.
@@ -1914,4 +1915,88 @@ private object OverlayBack {
         if (callback !is OnBackInvokedCallback) return
         view.findOnBackInvokedDispatcher()?.unregisterOnBackInvokedCallback(callback)
     }
+}
+
+/**
+ * The elapsed/remaining pair under the scrubber.
+ *
+ * Its own composable purely so the position read is scoped here: these two labels change once a
+ * second, and reading the position for them in the player's body invalidated the entire player ten
+ * times a second instead.
+ */
+@Composable
+private fun BitChordScrubTimes(
+    shownFraction: () -> Float,
+    duration: Long,
+) {
+    val shown = shownFraction()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = formatTime((shown * duration).toLong()),
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.55f),
+        )
+        Text(
+            text = "-" + formatTime(duration - (shown * duration).toLong()),
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.55f),
+        )
+    }
+}
+
+/**
+ * The back glyph, in its own composable so its position read is scoped here.
+ *
+ * A value-returning @Composable would not have done: Compose does not make those restartable, so
+ * the read would have landed in the caller and invalidated the whole player anyway.
+ */
+@Composable
+private fun BitChordPreviousGlyph(
+    positionProvider: () -> Long,
+    canSkipPrevious: Boolean,
+    onClick: () -> Unit,
+) {
+    TransportGlyph(
+        icon = Icons.Rounded.FastRewind,
+        contentDescription = "Previous",
+        size = 46.dp,
+        onClick = onClick,
+        // Lit whenever back has something to do — either a track to step to, or enough elapsed for
+        // it to restart this one.
+        enabled = canSkipPrevious || positionProvider() > BACK_RESTARTS_AFTER_MS,
+        haptic = Haptic.SkipPrevious,
+    )
+}
+
+/**
+ * The one-line lyric strip, wrapped so the position read is scoped here rather than in the player.
+ *
+ * The nudge by the sync offset happens inside for the same reason: computing it in the caller would
+ * have put the read straight back where it was.
+ */
+@Composable
+private fun BitChordCurrentLyric(
+    lines: List<LyricLine>,
+    trackKey: Any,
+    positionProvider: () -> Long,
+    lyricsSyncOffset: Int,
+    isPlaying: Boolean,
+    durationMs: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    synced: Boolean = true,
+) {
+    CurrentLyricLine(
+        lines = lines,
+        trackKey = trackKey,
+        positionMs = (positionProvider() + lyricsSyncOffset.toLong()).coerceAtLeast(0L),
+        isPlaying = isPlaying,
+        durationMs = durationMs,
+        onClick = onClick,
+        modifier = modifier,
+        synced = synced,
+    )
 }

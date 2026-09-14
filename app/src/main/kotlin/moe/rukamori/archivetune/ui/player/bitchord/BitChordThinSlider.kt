@@ -64,7 +64,11 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun ThinSlider(
-    value: Float,
+    /**
+     * Called from the draw scope, never read during composition. The played width is the only thing
+     * the position affects here, so a tick repaints this slider instead of recomposing it.
+     */
+    valueProvider: () -> Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     onValueChangeFinished: (() -> Unit)? = null,
@@ -153,7 +157,7 @@ fun ThinSlider(
                     )
                 }
             }
-            val filled = size.width * value.coerceIn(0f, 1f)
+            val filled = size.width * valueProvider().coerceIn(0f, 1f)
             if (filled > 0f && !mixing) {
                 drawRoundRect(
                     color = activeColor,
