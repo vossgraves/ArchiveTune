@@ -911,9 +911,8 @@ private val LibraryCardGlowElevation = 34.dp
 private const val LibraryCardGlowAmbientAlpha = 0.82f
 private const val LibraryCardGlowSpotAlpha = 0.96f
 
-// Shared by the three Library*SpotlightCard/FeatureCard composables below: each extracts an
-// ambient glow color from its item's thumbnail, keyed on the thumbnail URL so it only re-runs
-// when the artwork actually changes.
+// Extracts an ambient glow color from a thumbnail for LibraryPlaylistFeatureCard's shadow,
+// keyed on the thumbnail URL so it only re-runs when the artwork actually changes.
 @Composable
 private fun rememberGlowColor(
     thumbnailUrl: String?,
