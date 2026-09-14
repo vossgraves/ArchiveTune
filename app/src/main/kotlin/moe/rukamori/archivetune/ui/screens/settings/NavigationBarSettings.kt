@@ -38,7 +38,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -153,7 +153,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
+            SettingsTopAppBar(
                 title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
                 navigationIcon = {
                     IconButton(

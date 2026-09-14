@@ -64,7 +64,7 @@ import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -769,7 +769,7 @@ fun AiIntegrationSettings(
         }
     }
 
-    TopAppBar(
+    SettingsTopAppBar(
         title = { Text(stringResource(R.string.ai_integration)) },
         navigationIcon = {
             IconButton(

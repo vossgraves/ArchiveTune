@@ -27,7 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -457,7 +457,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
+            SettingsTopAppBar(
                 title = { Text(stringResource(R.string.tidal_integration)) },
                 navigationIcon = {
                     IconButton(

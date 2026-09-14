@@ -346,23 +346,42 @@ fun SpotifyHomeScreen(
                             }
                             item(key = "spotify_quick_picks", contentType = "quick_picks") {
                                 val quickPicksTitle = resolveSpotifySectionTitle(quickPicks)
-                                SpotifyQuickPicksCarousel(
-                                    tracks = quickPicks.tracks,
-                                    activeTrackId = mediaMetadata?.spotifyTrackId,
-                                    isPlaying = isPlaying,
-                                    resolvingItemKey = resolvingItemKey,
-                                    onTrackClick = { track ->
-                                        if (mediaMetadata?.spotifyTrackId == track.id) {
-                                            viewModel.cancelSelection()
-                                            playerConnection.player.togglePlayPause()
-                                        } else {
-                                            viewModel.onAction(
-                                                SpotifyHomeAction.TrackClick(track, quickPicks.tracks, quickPicksTitle),
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier.animateItem(),
-                                )
+                                val onQuickPickClick: (SpotifyTrack) -> Unit = { track ->
+                                    if (mediaMetadata?.spotifyTrackId == track.id) {
+                                        viewModel.cancelSelection()
+                                        playerConnection.player.togglePlayPause()
+                                    } else {
+                                        viewModel.onAction(
+                                            SpotifyHomeAction.TrackClick(track, quickPicks.tracks, quickPicksTitle),
+                                        )
+                                    }
+                                }
+                                // The swipeable hero belongs to the Rukamori look — it is the thing
+                                // that makes that home recognisable, the same way it does on the
+                                // YouTube side. Drawing it under all three styles was why switching
+                                // them only ever looked like the artwork changing size: the one
+                                // structural difference between them was rendered identically
+                                // everywhere, leaving nothing but dp values to tell them apart.
+                                if (homeStyle == SpotifyHomeStyle.RUKAMORI) {
+                                    SpotifyQuickPicksCarousel(
+                                        tracks = quickPicks.tracks,
+                                        activeTrackId = mediaMetadata?.spotifyTrackId,
+                                        isPlaying = isPlaying,
+                                        resolvingItemKey = resolvingItemKey,
+                                        onTrackClick = onQuickPickClick,
+                                        modifier = Modifier.animateItem(),
+                                    )
+                                } else {
+                                    SpotifyTrackSectionRow(
+                                        tracks = quickPicks.tracks,
+                                        metrics = metrics,
+                                        onTrackClick = onQuickPickClick,
+                                        modifier = Modifier.animateItem(),
+                                        activeTrackId = mediaMetadata?.spotifyTrackId,
+                                        isPlaying = isPlaying,
+                                        resolvingItemKey = resolvingItemKey,
+                                    )
+                                }
                             }
                         }
 

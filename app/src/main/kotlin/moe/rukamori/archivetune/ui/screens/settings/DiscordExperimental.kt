@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
+import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -101,7 +102,7 @@ fun DiscordExperimental(
 
     Scaffold { inner ->
         Column(Modifier.fillMaxSize()) {
-            TopAppBar(
+            SettingsTopAppBar(
                 title = { Text(stringResource(R.string.experiment_settings)) },
                 navigationIcon = {
                     IconButton(onClick = navController::navigateUp) {

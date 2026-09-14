@@ -35,7 +35,7 @@ import moe.rukamori.archivetune.constants.HideOfflineCardKey
 import moe.rukamori.archivetune.constants.HideTop50CardKey
 import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
 import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
-import androidx.compose.material3.TopAppBar
+import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -66,7 +66,7 @@ fun AppearanceExtrasSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
+            SettingsTopAppBar(
                 title = { Text(stringResource(R.string.extras)) },
                 navigationIcon = {
                     IconButton(
