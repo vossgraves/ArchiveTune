@@ -408,7 +408,10 @@ object QobuzBackupProvider {
 
                 val streamInfo = headerBytes?.let(FlacStreamInfo::parse)
 
-                val isFlac = streamInfo != null || contentType.contains("flac")
+                val isFlac =
+                    streamInfo != null ||
+                        contentType.contains("flac") ||
+                        url.contains("/lossless/", ignoreCase = true)
                 ResolvedStream(
                     uri = url,
                     mimeType = if (isFlac) "audio/flac" else "audio/mp4",
