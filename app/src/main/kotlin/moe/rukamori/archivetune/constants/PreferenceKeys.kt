@@ -46,6 +46,9 @@ val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
 val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
+
+/** How the library tab presents itself: the fork's stock layout or the Apple Music take. */
+val LibraryStyleKey = stringPreferencesKey("libraryStyle")
 /**
  * Whether the Apple Music player style plays moving artwork — a Spotify Canvas loop, or the music
  * video when the song has one — in place of the still cover. Default true: that is how the style
@@ -720,6 +723,11 @@ val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
 // (DebugSettings) and read by the player + queue overlays — a shared constant keeps the three
 // call sites from drifting on the raw string.
 val ShowCodecOnPlayerKey = booleanPreferencesKey("show_codec_on_player")
+
+enum class LibraryStyle {
+    DEFAULT,
+    APPLE_MUSIC,
+}
 
 enum class LibraryViewType {
     LIST,

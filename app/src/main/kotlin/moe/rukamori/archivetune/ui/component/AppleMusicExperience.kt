@@ -9,6 +9,8 @@ package moe.rukamori.archivetune.ui.component
 
 import androidx.compose.runtime.Composable
 import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
+import moe.rukamori.archivetune.constants.LibraryStyle
+import moe.rukamori.archivetune.constants.LibraryStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.StyleBeforeAppleMusicKey
@@ -23,10 +25,42 @@ import moe.rukamori.archivetune.utils.rememberPreference
  * the default.
  */
 @Composable
-fun rememberAppleMusicExperience(): Boolean {
-    val (enabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
-    return enabled
+fun rememberLibraryStyle(): Pair<LibraryStyle, (LibraryStyle) -> Unit> {
+    // The experience started life as a boolean (AppleMusicExperienceKey). That key still exists
+    // for anyone whose data predates the style, so it seeds the default and is kept in sync on
+    // every write; the style is what everything reads from here on.
+    val (legacyEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
+    val (style, setStyleValue) =
+        rememberEnumPreference(
+            LibraryStyleKey,
+            defaultValue = if (legacyEnabled) LibraryStyle.APPLE_MUSIC else LibraryStyle.DEFAULT,
+        )
+    val (_, setLegacyEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
+    val (playerStyle, setPlayerStyle) = rememberEnumPreference(PlayerDesignStyleKey, PlayerDesignStyle.Default)
+    val (styleBefore, setStyleBefore) = rememberPreference(StyleBeforeAppleMusicKey, defaultValue = "")
+
+    val setStyle: (LibraryStyle) -> Unit = { newStyle ->
+        setStyleValue(newStyle)
+        setLegacyEnabled(newStyle == LibraryStyle.APPLE_MUSIC)
+        if (newStyle == LibraryStyle.APPLE_MUSIC) {
+            // Only record a style we could actually give back. Switching on while already on the
+            // Apple Music style would otherwise store APPLE_MUSIC as the thing to restore, and
+            // switching off would then "restore" the style the user was trying to leave.
+            if (playerStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                setStyleBefore(playerStyle.name)
+            }
+            setPlayerStyle(PlayerDesignStyle.APPLE_MUSIC)
+        } else if (playerStyle == PlayerDesignStyle.APPLE_MUSIC) {
+            // Only restore while the experience still owns the style. A style picked by hand in
+            // the meantime is newer than ours and wins.
+            setPlayerStyle(styleBefore.toEnum(PlayerDesignStyle.Default))
+        }
+    }
+    return style to setStyle
 }
+
+@Composable
+fun rememberAppleMusicExperience(): Boolean = rememberLibraryStyle().first == LibraryStyle.APPLE_MUSIC
 
 /**
  * Sets the Apple Music Experience, and moves the player design style with it.
@@ -38,24 +72,6 @@ fun rememberAppleMusicExperience(): Boolean {
  */
 @Composable
 fun rememberAppleMusicExperienceToggle(): (Boolean) -> Unit {
-    val (_, setEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
-    val (style, setStyle) = rememberEnumPreference(PlayerDesignStyleKey, PlayerDesignStyle.Default)
-    val (styleBefore, setStyleBefore) = rememberPreference(StyleBeforeAppleMusicKey, defaultValue = "")
-
-    return { enabled ->
-        setEnabled(enabled)
-        if (enabled) {
-            // Only record a style we could actually give back. Switching on while already on the
-            // Apple Music style would otherwise store APPLE_MUSIC as the thing to restore, and
-            // switching off would then "restore" the style the user was trying to leave.
-            if (style != PlayerDesignStyle.APPLE_MUSIC) {
-                setStyleBefore(style.name)
-            }
-            setStyle(PlayerDesignStyle.APPLE_MUSIC)
-        } else if (style == PlayerDesignStyle.APPLE_MUSIC) {
-            // Only restore while the experience still owns the style. A style picked by hand in the
-            // meantime is newer than ours and wins.
-            setStyle(styleBefore.toEnum(PlayerDesignStyle.Default))
-        }
-    }
+    val (_, setStyle) = rememberLibraryStyle()
+    return { enabled -> setStyle(if (enabled) LibraryStyle.APPLE_MUSIC else LibraryStyle.DEFAULT) }
 }
