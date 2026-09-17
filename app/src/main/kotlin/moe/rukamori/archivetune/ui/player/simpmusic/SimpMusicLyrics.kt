@@ -26,10 +26,14 @@
 
 package moe.rukamori.archivetune.ui.player.simpmusic
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.animateFloatAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,9 +55,11 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,11 +71,20 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.constants.LyricsClickKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
+import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
+import moe.rukamori.archivetune.lyrics.LyricsUtils.providedRomanizedTextForEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils.providedTranslationTextForEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils.hasTrueWordSync
 import moe.rukamori.archivetune.lyrics.LyricsUtils.insertInstrumentalBreaks
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
@@ -116,6 +132,26 @@ fun SimpMusicLyrics(
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsTextSizePreference) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val lyricsTextSize = textSizeSp ?: lyricsTextSizePreference
+
+    // The same romanization switches Enhanced and V2 honour. Without these the style ignored
+    // every lyrics-related setting beyond text size and tap-to-seek.
+    val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
+    val (romanizeJapanese) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
+    val (romanizeKorean) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
+    val (romanizeChinese) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
+    val (romanizeHindi) = rememberPreference(LyricsRomanizeHindiKey, defaultValue = true)
+    val (romanizeOther) = rememberPreference(LyricsRomanizeOtherLanguagesKey, defaultValue = true)
+    val romanizationPreferences =
+        remember(romanizeJapanese, romanizeKorean, romanizeChinese, romanizeHindi, romanizeOther, aiRomanizationSettings.active) {
+            LyricsRomanizationPreferences(
+                romanizeJapanese = romanizeJapanese,
+                romanizeKorean = romanizeKorean,
+                romanizeChinese = romanizeChinese,
+                romanizeHindi = romanizeHindi,
+                romanizeOther = romanizeOther,
+                aiHandled = aiRomanizationSettings.active,
+            )
+        }
 
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics = currentLyrics?.lyrics
@@ -203,17 +239,34 @@ fun SimpMusicLyrics(
         val bottomPad = maxHeight * 0.5f
 
         var placed by remember(entries) { mutableStateOf(false) }
-        LaunchedEffect(currentLineIndex, entries.size) {
-            if (currentLineIndex !in entries.indices) return@LaunchedEffect
-            if (System.currentTimeMillis() < manualUntilMs) return@LaunchedEffect
-            if (placed) {
-                listState.animateScrollToItem(currentLineIndex)
-            } else {
-                // Opening mid-song, the active line can be fifty items down; animating there
-                // scrolls the whole song past the reader before settling. The first placement is
-                // instant, every one after it follows the song.
-                listState.scrollToItem(currentLineIndex)
-                placed = true
+        // One long-lived collector instead of an effect per line change: animateScrollToItem's
+        // default tween throws itself across the whole list and the effect restart killed it
+        // mid-flight, which is what read as choppiness. A relative animateScrollBy moves one
+        // line height per step; a jump too far to animate is taken instantly, so no frame ever
+        // scrolls the whole song past the reader.
+        LaunchedEffect(entries) {
+            snapshotFlow { currentLineIndex }.collect { target ->
+                if (target !in entries.indices) return@collect
+                if (System.currentTimeMillis() < manualUntilMs) return@collect
+                if (!placed) {
+                    listState.scrollToItem(target)
+                    placed = true
+                    return@collect
+                }
+                val visible = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
+                if (visible == null) {
+                    listState.scrollToItem(target)
+                } else {
+                    // scrollToItem anchors the line at the content padding (the "a third down"
+                    // position), so the relative scroll must converge on that same anchor.
+                    val anchorPx = with(LocalDensity.current) { topPad.roundToPx() }
+                    val delta = visible.offset - anchorPx
+                    if (delta == 0) return@collect
+                    listState.animateScrollBy(
+                        delta.toFloat(),
+                        tween((120 + kotlin.math.abs(delta)).coerceAtMost(350), easing = FastOutSlowInEasing),
+                    )
+                }
             }
         }
 
@@ -230,6 +283,7 @@ fun SimpMusicLyrics(
                     currentColor = currentColor,
                     inactiveColor = inactiveColor,
                     positionProvider = positionProvider,
+                    romanizationPreferences = romanizationPreferences,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -257,26 +311,59 @@ private fun SimpMusicLyricsLine(
     currentColor: Color,
     inactiveColor: Color,
     positionProvider: () -> Long,
+    romanizationPreferences: LyricsRomanizationPreferences,
     modifier: Modifier = Modifier,
 ) {
-    val text = if (entry.isInstrumental) "♪" else entry.text
-    if (text.isBlank()) return
+    val original = if (entry.isInstrumental) "♪" else entry.text
+    if (original.isBlank()) return
+
+    // Provider romanization under the same per-language switches Enhanced uses; when the line
+    // has one it is displayed in place of the original, which is how SimpMusic Classic treats it.
+    val romanized =
+        remember(entry, romanizationPreferences) {
+            providedRomanizedTextForEntry(entry, romanizationPreferences)
+        }
+    val displayText = romanized ?: original
+
+    // Step-up between lines eases instead of snapping; the abrupt reflow was half of the
+    // "choppy" feel, and SimpMusic animates both of these too.
+    val sizeFraction by animateFloatAsState(
+        targetValue = if (isCurrent) 1f else 0.82f,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "simpMusicLineSize",
+    )
+    val lineColor by animateColorAsState(
+        targetValue = if (isCurrent) currentColor else inactiveColor,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "simpMusicLineColor",
+    )
 
     val style =
         MaterialTheme.typography.headlineMedium.copy(
-            fontSize = (if (isCurrent) baseSizeSp else baseSizeSp * 0.82f).sp,
-            lineHeight = (if (isCurrent) baseSizeSp else baseSizeSp * 0.82f).sp * 1.25f,
+            fontSize = (baseSizeSp * sizeFraction).sp,
+            lineHeight = (baseSizeSp * sizeFraction).sp * 1.25f,
             fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
         )
 
+    val translation = if (isCurrent) providedTranslationTextForEntry(entry) else null
+
     val wordSynced = remember(entry) { hasTrueWordSync(entry) }
     if (!isCurrent || !wordSynced) {
-        Text(
-            text = text,
-            style = style,
-            color = if (isCurrent) currentColor else inactiveColor,
-            modifier = modifier,
-        )
+        Column(modifier = modifier) {
+            Text(
+                text = displayText,
+                style = style,
+                color = lineColor,
+            )
+            if (translation != null) {
+                Text(
+                    text = translation,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = lineColor.copy(alpha = 0.72f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
         return
     }
 

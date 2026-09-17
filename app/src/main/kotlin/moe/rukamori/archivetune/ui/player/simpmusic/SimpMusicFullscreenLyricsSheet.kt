@@ -79,6 +79,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -232,6 +233,9 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     var sliderPosition by remember { mutableLongStateOf(-1L) }
+    // Per-song sync offset, adjustable from the lyrics overflow menu. The menu previously got a
+    // hard-coded 0 with a no-op setter, so the adjustment it offered never did anything.
+    var lyricsSyncOffset by rememberSaveable(mediaMetadata?.id) { mutableIntStateOf(0) }
     var isScrubbing by remember { mutableStateOf(false) }
     var duration by remember { mutableLongStateOf(-1L) }
     LaunchedEffect(mediaMetadata.id, isPlaying) {
@@ -512,7 +516,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
 
                         SimpMusicLyrics(
                             sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
-                            lyricsSyncOffset = 0,
+                            lyricsSyncOffset = lyricsSyncOffset,
                             inactiveColorOverride = unsungLineColor,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -725,8 +729,8 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     iconBoundsInRoot = moreIconBounds,
                     lyricsProvider = { currentLyricsEntity },
                     mediaMetadataProvider = { mediaMetadata },
-                    lyricsSyncOffset = 0,
-                    onLyricsSyncOffsetChange = {},
+                    lyricsSyncOffset = lyricsSyncOffset,
+                    onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                     onDismiss = { showAnchoredLyricsMenu = false },
                     backdrop = popupBackdrop,
                 )
