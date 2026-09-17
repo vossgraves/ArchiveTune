@@ -29,13 +29,13 @@ fun rememberLibraryStyle(): Pair<LibraryStyle, (LibraryStyle) -> Unit> {
     // The experience started life as a boolean (AppleMusicExperienceKey). That key still exists
     // for anyone whose data predates the style, so it seeds the default and is kept in sync on
     // every write; the style is what everything reads from here on.
-    val (legacyEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
+    val (legacyEnabled, setLegacyEnabled) =
+        rememberPreference(AppleMusicExperienceKey, defaultValue = false)
     val (style, setStyleValue) =
         rememberEnumPreference(
             LibraryStyleKey,
             defaultValue = if (legacyEnabled) LibraryStyle.APPLE_MUSIC else LibraryStyle.DEFAULT,
         )
-    val (_, setLegacyEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
     val (playerStyle, setPlayerStyle) = rememberEnumPreference(PlayerDesignStyleKey, PlayerDesignStyle.Default)
     val (styleBefore, setStyleBefore) = rememberPreference(StyleBeforeAppleMusicKey, defaultValue = "")
 

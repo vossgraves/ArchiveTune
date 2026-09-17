@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
 import moe.rukamori.archivetune.lyrics.LyricsUtils.providedRomanizedTextForEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils.providedRomanizedWordsForEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils.providedTranslationTextForEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils.hasTrueWordSync
 import moe.rukamori.archivetune.lyrics.LyricsUtils.insertInstrumentalBreaks
@@ -237,6 +238,7 @@ fun SimpMusicLyrics(
         // keeps the first and last lines reachable.
         val topPad = maxHeight * 0.32f
         val bottomPad = maxHeight * 0.5f
+        val density = LocalDensity.current
 
         var placed by remember(entries) { mutableStateOf(false) }
         // One long-lived collector instead of an effect per line change: animateScrollToItem's
@@ -259,7 +261,7 @@ fun SimpMusicLyrics(
                 } else {
                     // scrollToItem anchors the line at the content padding (the "a third down"
                     // position), so the relative scroll must converge on that same anchor.
-                    val anchorPx = with(LocalDensity.current) { topPad.roundToPx() }
+                    val anchorPx = with(density) { topPad.roundToPx() }
                     val delta = visible.offset - anchorPx
                     if (delta == 0) return@collect
                     listState.animateScrollBy(
@@ -367,11 +369,14 @@ private fun SimpMusicLyricsLine(
         return
     }
 
-    // The words that carry timings, in order. Blank spans are dropped: they hold no glyphs and
-    // would otherwise take a slot in the index the playhead resolves to.
     val words = remember(entry) { entry.words.orEmpty().filter { it.text.isNotBlank() } }
-    // derivedStateOf so a position tick that does not cross a word boundary — most of them —
-    // invalidates nothing at all.
+    val romanizedWords =
+        remember(entry, words, romanizationPreferences) {
+            providedRomanizedWordsForEntry(entry, words.size, romanizationPreferences)
+        }
+    val displayedWords =
+        romanizedWords?.mapIndexed { index, word -> word ?: words[index].text }
+            ?: words.map { it.text }
     val sungThrough by remember(words) {
         derivedStateOf {
             val now = positionProvider()
@@ -379,13 +384,23 @@ private fun SimpMusicLyricsLine(
         }
     }
 
-    FlowRowWords(
-        words = words.map { it.text },
-        sungThrough = sungThrough,
-        style = style,
-        sungColor = currentColor,
-        modifier = modifier,
-    )
+    Column(modifier = modifier) {
+        FlowRowWords(
+            words = displayedWords,
+            sungThrough = sungThrough,
+            style = style,
+            sungColor = currentColor,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (translation != null) {
+            Text(
+                text = translation,
+                style = MaterialTheme.typography.bodyMedium,
+                color = lineColor.copy(alpha = 0.72f),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
 }
 
 /**
