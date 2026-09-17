@@ -553,7 +553,13 @@ internal fun SimpMusicFullscreenLyricsSheet(
                                     SliderDefaults.colors().copy(
                                         thumbColor = Color.White,
                                         activeTrackColor = Color.White,
-                                        inactiveTrackColor = Color.Transparent,
+                                        // A transparent unplayed portion made the whole seekbar
+                                        // read as invisible: at 0:00 only the thumb dot rendered
+                                        // (and that is exactly what the user saw). Spotify's
+                                        // lyrics page keeps a faint full-width track under the
+                                        // played part - a translucent white does the same here
+                                        // without fighting the palette backdrop.
+                                        inactiveTrackColor = Color.White.copy(alpha = 0.30f),
                                     ),
                                 thumbTrackGapSize = 0.dp,
                                 drawTick = { _, _ -> },
