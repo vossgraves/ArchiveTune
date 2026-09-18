@@ -67,8 +67,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import moe.rukamori.archivetune.ui.component.rememberAppleMusicExperience
-import moe.rukamori.archivetune.ui.component.rememberAppleMusicExperienceToggle
+import moe.rukamori.archivetune.constants.LibraryStyle
+import moe.rukamori.archivetune.ui.component.rememberLibraryStyle
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
@@ -295,11 +295,10 @@ fun AppearanceSectionSettings(
             LiquidGlassEnabledKey,
             defaultValue = false,
         )
-    val appleMusicExperience = rememberAppleMusicExperience()
+    val (libraryStyle, setLibraryStyle) = rememberLibraryStyle()
     // The experience owns the player style while it is on, and the coupling lives with the setting
     // rather than here — the settings-search switch sets the same thing and has to move the style
     // with it too.
-    val setAppleMusicExperience = rememberAppleMusicExperienceToggle()
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
     val (disableAnimations, onDisableAnimationsChange) =
@@ -896,14 +895,22 @@ fun AppearanceSectionSettings(
                     title = playerTitle,
                 ) {
                     item {
-                        SwitchPreference(
-                            modifier = positions.modifierFor("apple_music_experience"),
-                            title = { Text(stringResource(R.string.apple_music_experience)) },
-                            description = stringResource(R.string.apple_music_experience_desc),
-                            icon = { Icon(painterResource(R.drawable.music_note), null) },
-                            checked = appleMusicExperience,
-                            onCheckedChange = setAppleMusicExperience,
-                        )
+                        Column(modifier = positions.modifierFor("apple_music_experience")) {
+                            EnumListPreference(
+                                title = { Text(stringResource(R.string.library_style)) },
+                                description = stringResource(R.string.library_style_desc),
+                                icon = { Icon(painterResource(R.drawable.music_note), null) },
+                                selectedValue = libraryStyle,
+                                onValueSelected = setLibraryStyle,
+                                valueText = {
+                                    when (it) {
+                                        LibraryStyle.DEFAULT -> stringResource(R.string.library_style_default)
+                                        LibraryStyle.APPLE_MUSIC ->
+                                            stringResource(R.string.library_style_apple_music)
+                                    }
+                                },
+                            )
+                        }
                     }
 
                     item {

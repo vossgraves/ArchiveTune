@@ -1738,6 +1738,10 @@
     <string name="history_spotify_summary">The last 50 tracks played on your Spotify account. Spotify does not offer any further back.</string>
     <string name="lyrics_mode_simpmusic">SimpMusic</string>
     <string name="apple_music_experience">Apple Music Experience</string>
+    <string name="library_style">Library style</string>
+    <string name="library_style_desc">How the Library tab and playlist pages present themselves: the stock layout or the Apple Music take. Switching to Apple Music also moves the player style; switching back restores what you had.</string>
+    <string name="library_style_default">Default</string>
+    <string name="library_style_apple_music">Apple Music</string>
     <string name="sponsor_block">SponsorBlock</string>
     <string name="sponsor_block_description">Skip stretches the SponsorBlock community has marked on YouTube tracks. Lookups are sent by hashed ID, so the server is never told which track is playing.</string>
     <string name="sponsor_block_categories">Segments to skip</string>
