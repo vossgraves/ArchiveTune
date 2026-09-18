@@ -103,8 +103,8 @@ class SpotifyLibraryViewModel
 
         fun loadAlbums(force: Boolean = false) = load(force, _albums) { repository.libraryAlbums() }
 
-        fun loadRecentlyPlayed(force: Boolean = false) =
-            load(force, _recentlyPlayed) { repository.recentlyPlayed() }
+    fun loadRecentlyPlayed(force: Boolean = false) =
+        load(force, _recentlyPlayed) { repository.recentlyPlayed(force) }
 
         private fun <T> load(
             force: Boolean,

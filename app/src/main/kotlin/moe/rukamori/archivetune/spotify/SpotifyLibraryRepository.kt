@@ -84,6 +84,11 @@ class SpotifyLibraryRepository
             val expiresAtMs: Long,
         )
 
+        private data class CachedRecentlyPlayed(
+            val items: List<SpotifyPlayHistory>,
+            val expiresAtMs: Long,
+        )
+
         private val searchCache =
             object : LinkedHashMap<String, CachedSearch>(SEARCH_CACHE_MAX_SIZE, 0.75f, true) {
                 override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedSearch>?): Boolean =
@@ -94,6 +99,9 @@ class SpotifyLibraryRepository
                 override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedMetadata>?): Boolean =
                     size > METADATA_CACHE_MAX_SIZE
             }
+
+        @Volatile
+        private var recentlyPlayedCache: CachedRecentlyPlayed? = null
 
 
         suspend fun restoreCachedPlaylists() {
@@ -321,10 +329,21 @@ class SpotifyLibraryRepository
          * The user's play history, most recent first. Not paged: Spotify caps this endpoint at the
          * last 50 plays and offers no way further back, so [collectPages] would spin on one page.
          */
-        suspend fun recentlyPlayed(): List<SpotifyPlayHistory> =
+        suspend fun recentlyPlayed(force: Boolean = false): List<SpotifyPlayHistory> =
             withContext(Dispatchers.IO) {
+                val now = System.currentTimeMillis()
+                recentlyPlayedCache
+                    ?.takeIf { !force && it.expiresAtMs > now }
+                    ?.let { return@withContext it.items }
                 ensureAuthenticated()
                 spotifyCallWithTokenRetry { Spotify.recentlyPlayed().getOrThrow() }.items
+                    .also { items ->
+                        recentlyPlayedCache =
+                            CachedRecentlyPlayed(
+                                items = items,
+                                expiresAtMs = System.currentTimeMillis() + RECENTLY_PLAYED_CACHE_TTL_MS,
+                            )
+                    }
             }
 
         /** Every album the user has saved. Backs the Library's Albums section on the Spotify source. */
@@ -656,6 +675,7 @@ class SpotifyLibraryRepository
             private const val METADATA_CACHE_MAX_SIZE = 128
             private const val SEARCH_CACHE_TTL_MS = 5 * 60 * 1000L
             private const val METADATA_CACHE_TTL_MS = 15 * 60 * 1000L
+            private const val RECENTLY_PLAYED_CACHE_TTL_MS = 5 * 60 * 1000L
             private const val METADATA_MATCH_THRESHOLD = 0.58
 
             /**
