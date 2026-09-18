@@ -17,7 +17,7 @@
  *
  * The full-screen LyricsPanel that used to live here is gone: the lyrics window now opens the
  * app's own LyricsV2 / LyricsEnhanced, so the style follows the Lyrics settings like every other
- * surface. What remains is the one-line strip on the collapsed player, which has no list around
+ * surface. What remains is the short wrapped strip on the collapsed player, which has no list around
  * it and is what BitChord's character sweep was actually for.
  *
  * Adaptations for ArchiveTune (documented inline):
@@ -265,6 +265,7 @@ private const val GLOW_RELEASE = 0.38f
  * simply leave it empty.
  */
 private const val STRIP_LINES = 2
+private const val STRIP_MAX_LINES = 3
 
 // ── Mapper from ArchiveTune's parsed lyrics ───────────────────────────────────
 
@@ -608,7 +609,7 @@ internal fun CurrentLyricLine(
     val intro = instrumental && firstSung >= 0 && index < firstSung
     // The intro gets one of the slang lines; mid-song breaks stay plain.
     val introLine = remember(trackKey) { INTRO_LINES.random() }
-    // The strip is one line and switches the moment the next one is due, so
+    // The strip is a couple of wrapped lines and switches the moment the next one is due, so
     // the answering vocal — where there is one — has nowhere to go: showing
     // it would mean either cutting it short when the next line arrives or
     // holding the strip back and leaving a gap before the next line's own
@@ -660,7 +661,7 @@ internal fun CurrentLyricLine(
                 style = MaterialTheme.typography.titleMedium,
                 dimAlpha = UNSUNG_ALPHA_STRIP,
                 minLines = STRIP_LINES,
-                maxLines = STRIP_LINES,
+                maxLines = STRIP_MAX_LINES,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
@@ -670,7 +671,7 @@ internal fun CurrentLyricLine(
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 minLines = STRIP_LINES,
-                maxLines = STRIP_LINES,
+                maxLines = STRIP_MAX_LINES,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )

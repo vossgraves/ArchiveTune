@@ -141,7 +141,10 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.DateAgo
 import moe.rukamori.archivetune.viewmodels.HistoryViewModel
 import moe.rukamori.archivetune.viewmodels.RemoteHistoryUiState
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 
 @Composable
@@ -254,15 +257,49 @@ fun HistoryScreen(
     val spotifyAccountRevision by spotifyViewModel.accountRevision.collectAsStateWithLifecycle()
     val spotifyHistoryLoading = spotifyHistory.isLoading ||
         (spotifyHistory.items == null && spotifyHistory.errorMessage == null)
-    val spotifyHistoryItems =
+    val spotifyHistorySections =
         remember(spotifyHistory.items, searchQuery) {
+            val today = LocalDate.now()
+            val thisMonday = today.with(DayOfWeek.MONDAY)
+            val lastMonday = thisMonday.minusDays(7)
             spotifyHistory.items.orEmpty()
-                .mapNotNull { it.track }
-                .filter { track ->
+                .mapNotNull { history -> history.track?.let { it to (history.playedAt ?: "") } }
+                .filter { (track, _) ->
                     searchQuery.isBlank() ||
                         track.name.contains(searchQuery, ignoreCase = true) ||
                         track.artists.any { it.name.contains(searchQuery, ignoreCase = true) }
-                }.map(SpotifySearchItem::Track)
+                }
+                .groupBy { (_, playedAt) ->
+                    val date =
+                        playedAt
+                            .take(10)
+                            .let { prefix -> runCatching { LocalDate.parse(prefix) }.getOrNull() }
+                            ?: today
+                    val daysAgo = ChronoUnit.DAYS.between(date, today).toInt()
+                    when {
+                        daysAgo <= 0 -> DateAgo.Today
+                        daysAgo == 1 -> DateAgo.Yesterday
+                        date >= thisMonday -> DateAgo.ThisWeek
+                        date >= lastMonday -> DateAgo.LastWeek
+                        else -> DateAgo.Other(date.withDayOfMonth(1))
+                    }
+                }
+                .toSortedMap(
+                    compareBy { dateAgo ->
+                        when (dateAgo) {
+                            DateAgo.Today -> 0L
+                            DateAgo.Yesterday -> 1L
+                            DateAgo.ThisWeek -> 2L
+                            DateAgo.LastWeek -> 3L
+                            is DateAgo.Other -> ChronoUnit.DAYS.between(dateAgo.date, today)
+                        }
+                    },
+                )
+                .mapValues { (_, plays) ->
+                    plays
+                        .map { (track, _) -> SpotifySearchItem.Track(track) }
+                        .distinctBy { it.id }
+                }
         }
 
     val availableSources =
@@ -305,7 +342,7 @@ fun HistoryScreen(
     val currentVisibleCount =
         when (historySource) {
             HistorySource.REMOTE -> remoteVisibleSongs.size
-            HistorySource.SPOTIFY -> spotifyHistoryItems.size
+            HistorySource.SPOTIFY -> spotifyHistorySections.values.sumOf { it.size }
             HistorySource.LOCAL -> localVisibleEvents.size
         }
 
@@ -387,10 +424,11 @@ fun HistoryScreen(
                         listState = if (searchMode) spotifySearchListState else spotifyListState,
                         topPadding = topPadding,
                         headerContent = historySourceDock,
-                    items = spotifyHistoryItems,
-                    isLoading = spotifyHistoryLoading,
-                    errorMessage = spotifyHistory.errorMessage,
-                    onRefresh = { spotifyViewModel.loadRecentlyPlayed(force = true) },
+                        sections = spotifyHistorySections,
+                        isLoading = spotifyHistoryLoading,
+                        errorMessage = spotifyHistory.errorMessage,
+                        dateAgoToString = dateAgoToString,
+                        onRefresh = { spotifyViewModel.loadRecentlyPlayed(force = true) },
                     )
                 }
 
@@ -1432,9 +1470,10 @@ private fun SpotifyHistoryFeed(
     listState: LazyListState,
     topPadding: Dp,
     headerContent: @Composable () -> Unit,
-    items: List<SpotifySearchItem>,
+    sections: Map<DateAgo, List<SpotifySearchItem.Track>>,
     isLoading: Boolean,
     errorMessage: String?,
+    dateAgoToString: (DateAgo) -> String,
     onRefresh: () -> Unit,
 ) {
     ExpressivePullToRefreshBox(
@@ -1444,36 +1483,63 @@ private fun SpotifyHistoryFeed(
     ) {
         LazyColumn(
             state = listState,
-            contentPadding =
-                PaddingValues(
-                    top = topPadding,
-                    bottom =
-                        LocalPlayerAwareWindowInsets.current
-                            .only(WindowInsetsSides.Bottom)
-                            .asPaddingValues()
-                            .calculateBottomPadding(),
-                ),
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .wrapContentWidth(Alignment.CenterHorizontally)
+                    .widthIn(max = 840.dp)
+                    .padding(top = topPadding)
+                    .windowInsetsPadding(
+                        LocalPlayerAwareWindowInsets.current.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        ),
+                    ),
+            contentPadding = PaddingValues(bottom = 112.dp),
         ) {
             item(key = "history_source_dock", contentType = "dock") { headerContent() }
 
-            if (errorMessage != null || (items.isEmpty() && !isLoading)) {
+            if (errorMessage != null || (sections.isEmpty() && !isLoading)) {
                 item(key = "spotify_history_status", contentType = "status") {
+                    val rateLimited =
+                        errorMessage != null && (
+                            errorMessage.contains("429") ||
+                                errorMessage.contains("Rate limit", ignoreCase = true)
+                            )
                     HistoryStateCard(
                         title = stringResource(R.string.spotify_history),
-                        description = errorMessage ?: stringResource(R.string.no_results_found),
+                        description =
+                            when {
+                                errorMessage == null -> stringResource(R.string.no_results_found)
+                                rateLimited -> stringResource(R.string.history_spotify_rate_limited)
+                                else -> errorMessage
+                            },
                         actionLabel = if (errorMessage != null) stringResource(R.string.retry) else null,
                         onActionClick = onRefresh,
                     )
                 }
             }
 
-            itemsIndexed(
-                items = items,
-                key = { index, item -> "spotify_history_${item.key}_$index" },
-                contentType = { _, _ -> "spotify_history_row" },
-            ) { _, item ->
-                SpotifyPlayableRow(item)
+            sections.forEach { (dateAgo, tracks) ->
+                stickyHeader(key = "spotify_header_$dateAgo") {
+                    HistorySectionHeader(
+                        title = dateAgoToString(dateAgo),
+                        songCount = tracks.size,
+                    )
+                }
+
+                itemsIndexed(
+                    items = tracks,
+                    key = { _, track -> "spotify_history_${dateAgo}_${track.id}" },
+                    contentType = { _, _ -> "spotify_history_row" },
+                ) { index, track ->
+                    HistorySongGroupItem(
+                        index = index,
+                        lastIndex = tracks.lastIndex,
+                        modifier = Modifier.animateItem(),
+                    ) { _ ->
+                        SpotifyPlayableRow(item = track)
+                    }
+                }
             }
         }
     }

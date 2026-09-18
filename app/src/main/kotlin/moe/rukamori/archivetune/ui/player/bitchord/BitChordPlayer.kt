@@ -1972,7 +1972,7 @@ private fun BitChordPreviousGlyph(
 }
 
 /**
- * The one-line lyric strip, wrapped so the position read is scoped here rather than in the player.
+ * The lyric strip, wrapped so the position read is scoped here rather than in the player.
  *
  * The nudge by the sync offset happens inside for the same reason: computing it in the caller would
  * have put the read straight back where it was.
