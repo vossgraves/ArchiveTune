@@ -943,7 +943,7 @@ private fun RemoteStatsScreen(
                     )
                 }
 
-                source == StatsSource.SPOTIFY && spotifyError != null -> {
+                source == StatsSource.SPOTIFY && spotifyError != null && data == null -> {
                     RemoteStatsMessage(message = spotifyError, onRetry = onRetry)
                 }
 
@@ -957,7 +957,19 @@ private fun RemoteStatsScreen(
                     )
                 }
 
-                else -> RemoteStatsDashboard(data, modifier = Modifier.weight(1f))
+                else -> {
+                    Column(modifier = Modifier.weight(1f)) {
+                        if (source == StatsSource.SPOTIFY && spotifyError != null) {
+                            Text(
+                                text = spotifyError,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        RemoteStatsDashboard(data, modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
     }
