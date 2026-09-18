@@ -36,6 +36,7 @@ import moe.rukamori.archivetune.constants.SpotifyAccessTokenKey
 import moe.rukamori.archivetune.constants.SpotifyAccountAvatarUrlKey
 import moe.rukamori.archivetune.constants.SpotifyAccountNameKey
 import moe.rukamori.archivetune.constants.SpotifyLibraryPlaylistsCacheKey
+import moe.rukamori.archivetune.constants.SpotifyRecentlyPlayedCacheKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
 import moe.rukamori.archivetune.spotify.models.SpotifyPaging
@@ -128,6 +129,18 @@ class SpotifyLibraryRepository
             }
         }
 
+        suspend fun restoreCachedRecentlyPlayed(): List<SpotifyPlayHistory>? =
+            withContext(Dispatchers.IO) {
+                val cached = context.dataStore.data.first()[SpotifyRecentlyPlayedCacheKey].orEmpty()
+                if (cached.isBlank()) return@withContext null
+                runCatching {
+                    spotifyCacheJson.decodeFromString(
+                        ListSerializer(SpotifyPlayHistory.serializer()),
+                        cached,
+                    )
+                }.onFailure(::reportException).getOrNull()
+            }
+
         suspend fun restoreSession(): SpotifyAccountSession =
             withContext(Dispatchers.IO) {
                 val prefs = context.dataStore.data.first()
@@ -177,6 +190,9 @@ class SpotifyLibraryRepository
                         prefs[SpotifySpDcKey] != spDc || prefs[SpotifySpKeyKey].orEmpty() != spKey
                     prefs[SpotifySpDcKey] = spDc
                     prefs.remove(SpotifyLibraryPlaylistsCacheKey)
+                    if (credentialsChanged) {
+                        prefs.remove(SpotifyRecentlyPlayedCacheKey)
+                    }
                     if (spKey.isNotBlank()) {
                         prefs[SpotifySpKeyKey] = spKey
                     } else {
@@ -190,6 +206,7 @@ class SpotifyLibraryRepository
                 if (credentialsChanged) {
                     Spotify.accessToken = null
                     clearCatalogCaches()
+                    recentlyPlayedCache = null
                 }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
@@ -212,11 +229,13 @@ class SpotifyLibraryRepository
                     prefs.remove(SpotifyAccountNameKey)
                     prefs.remove(SpotifyAccountAvatarUrlKey)
                     prefs.remove(SpotifyLibraryPlaylistsCacheKey)
+                    prefs.remove(SpotifyRecentlyPlayedCacheKey)
                 }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
                 Spotify.accessToken = null
                 clearCatalogCaches()
+                recentlyPlayedCache = null
                 runCatching { clearWebAuthSession(context) }
                     .onFailure(::reportException)
             }
@@ -343,6 +362,13 @@ class SpotifyLibraryRepository
                                 items = items,
                                 expiresAtMs = System.currentTimeMillis() + RECENTLY_PLAYED_CACHE_TTL_MS,
                             )
+                        context.dataStore.edit { prefs ->
+                            prefs[SpotifyRecentlyPlayedCacheKey] =
+                                spotifyCacheJson.encodeToString(
+                                    ListSerializer(SpotifyPlayHistory.serializer()),
+                                    items,
+                                )
+                        }
                     }
             }
 

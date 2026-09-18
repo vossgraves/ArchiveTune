@@ -29,6 +29,7 @@ package moe.rukamori.archivetune.ui.player.simpmusic
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -71,6 +72,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
@@ -81,7 +83,6 @@ import moe.rukamori.archivetune.constants.LyricsTextSizeKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
-import moe.rukamori.archivetune.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
 import moe.rukamori.archivetune.lyrics.LyricsUtils.providedRomanizedTextForEntry
@@ -133,6 +134,7 @@ fun SimpMusicLyrics(
 
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsTextSizePreference) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
+    val (disableAnimations) = rememberPreference(DisableAnimationsKey, defaultValue = false)
     val lyricsTextSize = textSizeSp ?: lyricsTextSizePreference
 
     // The same romanization switches Enhanced and V2 honour. Without these the style ignored
@@ -184,14 +186,7 @@ fun SimpMusicLyrics(
                                 .filter { it.isNotBlank() }
                                 .map { LyricsEntry(time = -1L, text = it.trim()) }
                     }
-                // findCurrentLineIndex clamps to 0, so without an empty entry in front of the
-                // first real one the opening line reads as "being sung" from 0:00 until the song
-                // actually reaches it. Both other renderers prepend the same head entry.
-                if (lines.isNotEmpty() && lines.first().time >= 0L) {
-                    listOf(HEAD_LYRICS_ENTRY) + lines
-                } else {
-                    lines
-                }
+                lines
             }
     }
     val entries = parsed.orEmpty()
@@ -203,7 +198,7 @@ fun SimpMusicLyrics(
     var currentLineIndex by remember(lyrics) { mutableIntStateOf(-1) }
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
 
-    LaunchedEffect(entries, isSynced, isTtmlFormat, lyricsSyncOffset) {
+    LaunchedEffect(entries, isSynced, isTtmlFormat, lyricsSyncOffset, disableAnimations) {
         if (!isSynced || entries.isEmpty()) return@LaunchedEffect
         val leadMs = if (isTtmlFormat) TTML_LEAD_MS else LRC_LEAD_MS
         // A word-timed line needs a fine tick to light one word at a time; a line-synced one
@@ -257,7 +252,7 @@ fun SimpMusicLyrics(
                     return@collect
                 }
                 val visible = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
-                if (visible == null) {
+                if (visible == null || disableAnimations) {
                     listState.scrollToItem(target)
                 } else {
                     // scrollToItem anchors the line at the content padding (the "a third down"
@@ -285,6 +280,7 @@ fun SimpMusicLyrics(
                     baseSizeSp = lyricsTextSize,
                     currentColor = currentColor,
                     inactiveColor = inactiveColor,
+                    disableAnimations = disableAnimations,
                     positionProvider = positionProvider,
                     romanizationPreferences = romanizationPreferences,
                     modifier =
@@ -313,6 +309,7 @@ private fun SimpMusicLyricsLine(
     baseSizeSp: Float,
     currentColor: Color,
     inactiveColor: Color,
+    disableAnimations: Boolean,
     positionProvider: () -> Long,
     romanizationPreferences: LyricsRomanizationPreferences,
     modifier: Modifier = Modifier,
@@ -332,12 +329,16 @@ private fun SimpMusicLyricsLine(
     // "choppy" feel, and SimpMusic animates both of these too.
     val sizeFraction by animateFloatAsState(
         targetValue = if (isCurrent) 1f else 0.82f,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        animationSpec =
+            if (disableAnimations) snap()
+            else tween(220, easing = FastOutSlowInEasing),
         label = "simpMusicLineSize",
     )
     val lineColor by animateColorAsState(
         targetValue = if (isCurrent) currentColor else inactiveColor,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        animationSpec =
+            if (disableAnimations) snap()
+            else tween(220, easing = FastOutSlowInEasing),
         label = "simpMusicLineColor",
     )
 

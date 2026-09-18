@@ -103,8 +103,21 @@ class SpotifyLibraryViewModel
 
         fun loadAlbums(force: Boolean = false) = load(force, _albums) { repository.libraryAlbums() }
 
-    fun loadRecentlyPlayed(force: Boolean = false) =
-        load(force, _recentlyPlayed) { repository.recentlyPlayed(force) }
+        fun loadRecentlyPlayed(force: Boolean = false) {
+            sectionScope.launch {
+                var restored = false
+                if (_recentlyPlayed.value.items == null) {
+                    repository.restoreCachedRecentlyPlayed()?.let { cached ->
+                        _recentlyPlayed.value = SpotifyLibrarySectionState(items = cached)
+                        restored = true
+                    }
+                }
+                loadSpotifySection(
+                    target = _recentlyPlayed,
+                    force = force || restored,
+                ) { repository.recentlyPlayed(force = force || restored) }
+            }
+        }
 
         private fun <T> load(
             force: Boolean,
