@@ -34,12 +34,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -248,6 +250,7 @@ fun LyricsEnhanced(
     modifier: Modifier = Modifier,
     textColorOverride: Color? = null,
     lyricsLineBlurOverride: Boolean? = null,
+    spotifyStyle: Boolean = false,
     // Non-null when the caller is not a full screen. The SimpMusic style embeds this in a 300dp
     // card, where the user's full-screen size fits about four words in the box.
     textSizeOverride: Float? = null,
@@ -804,7 +807,13 @@ fun LyricsEnhanced(
     // re-keyed at the same time, and the fresh collector resets its focus state before it
     // observes the first new active line. Keeping listState stable means the collector
     // always targets the list currently on screen.
-    LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter, karaokeGeneration) {
+    LaunchedEffect(
+        lyricsSessionKey,
+        isSynced,
+        positionResetCounter,
+        karaokeGeneration,
+        animationsDisabled,
+    ) {
         if (!isSynced) {
             awaitingFirstFocus = false
             return@LaunchedEffect
@@ -851,6 +860,7 @@ fun LyricsEnhanced(
                     animateToNearbyItem = !forceNextScroll,
                     force = forceNextScroll,
                     snap = isFirstFocus,
+                    animationsDisabled = animationsDisabled,
                 )
                 forceNextScroll = false
                 if (isFirstFocus) awaitingFirstFocus = false
@@ -1079,27 +1089,36 @@ fun LyricsEnhanced(
             }
 
             !isSynced -> {
-                PlainLyricsView(
-                    lines = plainLyrics,
-                    listState = listState,
-                    selectedLineKeys = selectedLineKeySet,
-                    textColor = textColor,
-                    textStyle = normalTextStyle,
-                    onLineClicked = { lineKey ->
-                        if (isSelectionModeActive) toggleSelectedLine(lineKey)
-                    },
-                    onLinePressed = { lineKey ->
-                        if (!isSelectionModeActive) {
-                            isSelectionModeActive = true
-                            if (!selectedLineKeys.contains(lineKey)) {
-                                selectedLineKeys.add(lineKey)
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val lyricsContentWidth =
+                        minOf(maxWidth, if (spotifyStyle) 760.dp else 860.dp)
+                    PlainLyricsView(
+                        lines = plainLyrics,
+                        listState = listState,
+                        selectedLineKeys = selectedLineKeySet,
+                        textColor = textColor,
+                        textStyle = normalTextStyle,
+                        onLineClicked = { lineKey ->
+                            if (isSelectionModeActive) toggleSelectedLine(lineKey)
+                        },
+                        onLinePressed = { lineKey ->
+                            if (!isSelectionModeActive) {
+                                isSelectionModeActive = true
+                                if (!selectedLineKeys.contains(lineKey)) {
+                                    selectedLineKeys.add(lineKey)
+                                }
+                            } else if (!selectedLineKeys.contains(lineKey)) {
+                                toggleSelectedLine(lineKey)
                             }
-                        } else if (!selectedLineKeys.contains(lineKey)) {
-                            toggleSelectedLine(lineKey)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                        },
+                        modifier =
+                            Modifier
+                                .widthIn(max = lyricsContentWidth)
+                                .fillMaxWidth()
+                                .fillMaxHeight()
+                                .align(Alignment.TopCenter),
+                    )
+                }
             }
 
             else -> {
@@ -1110,6 +1129,8 @@ fun LyricsEnhanced(
                             .nestedScroll(nestedScrollConnection),
                 ) {
                     val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
+                    val lyricsContentWidth =
+                        minOf(maxWidth, if (spotifyStyle) 760.dp else 860.dp)
 
                     // Keyed on the session + a position-reset counter so that when the song repeats
                     // (REPEAT_MODE_ONE wraps position to 0) or the user seeks backward by more than
@@ -1153,7 +1174,12 @@ fun LyricsEnhanced(
                             offset = lyricsViewportOffset,
                             // Reduced from 36.dp → 20.dp → 8.dp.
                             keepAliveZone = 8.dp,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier =
+                                Modifier
+                                    .widthIn(max = lyricsContentWidth)
+                                    .fillMaxWidth()
+                                    .fillMaxHeight()
+                                    .align(Alignment.TopCenter),
                         )
                     }
                 }
@@ -1534,6 +1560,7 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     // Placement for a view that isn't visible yet: skip both animations so the
     // active line is already in place on the frame the lyrics fade in.
     snap: Boolean = false,
+    animationsDisabled: Boolean,
 ) {
     val itemCount = layoutInfo.totalItemsCount
     if (itemCount == 0) return
@@ -1542,7 +1569,7 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     var itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == targetIndex }
     if (itemInfo == null) {
         val distance = abs(targetIndex - firstVisibleItemIndex)
-        if (!snap && animateToNearbyItem && distance <= LYRIC_FOCUS_ANIMATED_DISTANCE) {
+        if (!snap && animateToNearbyItem && !animationsDisabled && distance <= LYRIC_FOCUS_ANIMATED_DISTANCE) {
             animateScrollToItem(targetIndex)
         } else {
             scrollToItem(targetIndex)
@@ -1566,17 +1593,13 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
     val scrollDelta = itemFocusPoint - targetFocusPoint
     if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
-        // For deltas up to 40% of the viewport (which covers ALL normal
-        // line-advance scrolls — they're typically ~22% of viewport), snap
-        // instantly instead of running a 280ms tween. The tween triggers a
-        // LazyColumn re-layout every frame for its entire duration, which
-        // steals frame budget from the 60Hz karaoke syllable sweep — the
-        // root cause of "auto-scroll lag". The snap is imperceptible because
-        // the karaoke fill animation already provides visual continuity.
-        // Larger deltas (return from manual scroll, large seeks) still
-        // animate so the motion stays smooth over long distances.
         val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
-        if (snap || (abs(scrollDelta) <= instantThreshold && !force)) {
+        if (
+            snap ||
+                !animateToNearbyItem ||
+                animationsDisabled ||
+                abs(scrollDelta) > instantThreshold
+        ) {
             scrollBy(scrollDelta.toFloat())
         } else {
             animateScrollBy(
