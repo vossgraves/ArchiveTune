@@ -92,7 +92,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.CompositingStrategy
 import kotlin.math.abs
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
