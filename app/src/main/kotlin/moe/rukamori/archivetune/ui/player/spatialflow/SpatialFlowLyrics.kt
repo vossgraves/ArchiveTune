@@ -35,12 +35,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -90,6 +92,8 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.CompositingStrategy
+import kotlin.math.abs
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -599,17 +603,47 @@ private fun SpatialFlowSyncedLyrics(
     }
 
     LaunchedEffect(activeIndex) {
-        if (activeIndex >= 0 && !listState.isScrollInProgress) {
-            listState.animateScrollToItem(
-                index = activeIndex,
-                scrollOffset = -200,
-            )
+        if (activeIndex < 0 || listState.isScrollInProgress) return@LaunchedEffect
+        val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == activeIndex }
+        if (itemInfo != null) {
+            val viewportHeight =
+                listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
+            val center = listState.layoutInfo.viewportStartOffset + (viewportHeight / 2)
+            val itemCenter = itemInfo.offset + itemInfo.size / 2
+            val offset = itemCenter - center
+            if (abs(offset) > 5) {
+                listState.animateScrollBy(
+                    value = offset.toFloat(),
+                    animationSpec =
+                        spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessLow,
+                        ),
+                )
+            }
+        } else {
+            listState.scrollToItem(activeIndex)
         }
     }
 
     LazyColumn(
         state = listState,
-        modifier = modifier,
+        modifier =
+            modifier
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush =
+                            Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                0.08f to Color.Black,
+                                0.86f to Color.Black,
+                                1f to Color.Transparent,
+                            ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
         contentPadding =
             androidx.compose.foundation.layout.PaddingValues(
                 start = 32.dp,
