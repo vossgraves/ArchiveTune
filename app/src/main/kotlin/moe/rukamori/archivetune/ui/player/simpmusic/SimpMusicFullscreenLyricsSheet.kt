@@ -41,6 +41,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.MarqueeAnimationMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -70,6 +71,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -338,7 +340,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     interactionSource = remember { MutableInteractionSource() },
                 ) {
 
-                    showControlButtons = true
+                    showControlButtons = !showControlButtons
                 },
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
@@ -535,7 +537,27 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     }
                 }
 
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp)) {
+                AnimatedVisibility(
+                    visible = showControlButtons,
+                    enter = expandVertically(tween(300)),
+                    exit = shrinkVertically(tween(300)),
+                ) {
+                    Surface(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(28.dp),
+                        color = Color.Black.copy(alpha = 0.30f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                    ) {
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                        ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     val safeDuration = if (duration > 0) duration else 1L
                     val shown = sliderPosition.coerceIn(0L, safeDuration)
                     Slider(
@@ -687,7 +709,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             Modifier
                                 .height(32.dp)
                                 .fillMaxWidth()
-                                .padding(horizontal = 40.dp),
+                                .padding(horizontal = 16.dp),
                     ) {
                         IconButton(
                             modifier = Modifier.size(24.dp).align(Alignment.CenterStart),
@@ -711,6 +733,9 @@ internal fun SimpMusicFullscreenLyricsSheet(
                         }
                     }
                     Spacer(modifier = Modifier.height(20.dp))
+                }
+                        }
+                    }
                 }
                 if (!showControlButtons) {
                     Spacer(modifier = Modifier.height(20.dp))
