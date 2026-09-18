@@ -1095,11 +1095,11 @@ enum class PlayerDesignStyle(
      * ones under another name — BitChord and TikTok both draw MeshBackdrop, which is the animated
      * glow, and SimpMusic draws a diagonal palette wash, which is the gradient.
      */
-    BITCHORD(nativeBackground = PlayerBackgroundStyle.GLOW_ANIMATED),
+    BITCHORD(nativeBackground = PlayerBackgroundStyle.GLOW_ANIMATED, supportsBackgroundChoice = false),
 
     /** The vertical pager sits on top of the backdrop, so a different one would never be seen. */
     TIKTOK(nativeBackground = PlayerBackgroundStyle.GLOW_ANIMATED, supportsBackgroundChoice = false),
-    SIMPMUSIC(nativeBackground = PlayerBackgroundStyle.GRADIENT),
+    SIMPMUSIC(nativeBackground = PlayerBackgroundStyle.GRADIENT, supportsBackgroundChoice = false),
 
     /**
      * The SpatialFlow player (github.com/MythicalSHUB/SpatialFlow, GPL-3.0) — artwork pager, pill
@@ -1107,7 +1107,7 @@ enum class PlayerDesignStyle(
      * Its backdrop is a blurred, expanded sleeve, so it declares BLUR rather than drawing something
      * only it understands.
      */
-    SPATIALFLOW(nativeBackground = PlayerBackgroundStyle.BLUR),
+    SPATIALFLOW(nativeBackground = PlayerBackgroundStyle.BLUR, supportsBackgroundChoice = false),
     ;
 
     /** What to actually render: the reader's pick where it is offered, the style's own otherwise. */
