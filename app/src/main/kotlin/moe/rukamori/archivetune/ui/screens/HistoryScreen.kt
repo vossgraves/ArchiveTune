@@ -109,6 +109,7 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyPlayableRow
 import moe.rukamori.archivetune.spotify.SpotifySearchItem
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
+import moe.rukamori.archivetune.spotify.isSpotifyRateLimitMessage
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -1500,11 +1501,7 @@ private fun SpotifyHistoryFeed(
 
             if (errorMessage != null || (sections.isEmpty() && !isLoading)) {
                 item(key = "spotify_history_status", contentType = "status") {
-                    val rateLimited =
-                        errorMessage != null && (
-                            errorMessage.contains("429") ||
-                                errorMessage.contains("Rate limit", ignoreCase = true)
-                            )
+                    val rateLimited = isSpotifyRateLimitMessage(errorMessage)
                     HistoryStateCard(
                         title = stringResource(R.string.spotify_history),
                         description =

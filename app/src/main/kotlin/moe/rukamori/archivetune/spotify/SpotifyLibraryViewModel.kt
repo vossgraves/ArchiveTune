@@ -148,9 +148,22 @@ data class SpotifyLibrarySectionState<T>(
  */
 private const val SpotifyRetryCooldownMs = 60_000L
 
-/** Spotify answers an exhausted rate limit with 429; the client surfaces it in the message. */
-private fun isRateLimited(message: String?): Boolean =
-    message?.contains("429") == true || message?.contains("Too Many Requests", ignoreCase = true) == true
+/**
+ * Whether a Spotify error message means the rate limit was hit.
+ *
+ * The client has three shapes for this: the REST client throws the literal "Rate limited"
+ * (`spotifycore` Spotify.kt), the auth layer surfaces "Request failed with HTTP 429", and a raw
+ * response body can carry "Too Many Requests". Matching only the status code left the retry
+ * cooldown and the friendly stats message dead for the common case, so every reader now goes
+ * through here.
+ */
+internal fun isSpotifyRateLimitMessage(message: String?): Boolean =
+    message != null &&
+        (
+            message.contains("429") ||
+                message.contains("Too Many Requests", ignoreCase = true) ||
+                message.contains("Rate limit", ignoreCase = true)
+        )
 
 @androidx.annotation.MainThread
 internal suspend fun <T> loadSpotifySection(
@@ -163,7 +176,7 @@ internal suspend fun <T> loadSpotifySection(
     if (previous.isLoading || (!force && previous.items != null)) return
     if (!force) {
         val failedAt = previous.failedAtMillis
-        val cooldown = if (isRateLimited(previous.errorMessage)) SpotifyRetryCooldownMs * 5 else SpotifyRetryCooldownMs
+        val cooldown = if (isSpotifyRateLimitMessage(previous.errorMessage)) SpotifyRetryCooldownMs * 5 else SpotifyRetryCooldownMs
         if (failedAt != null && SystemClock.elapsedRealtime() - failedAt < cooldown) return
     }
     val loading = previous.copy(isLoading = true, errorMessage = null, failedAtMillis = null)

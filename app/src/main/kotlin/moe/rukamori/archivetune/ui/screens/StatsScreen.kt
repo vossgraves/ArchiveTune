@@ -121,6 +121,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
+import moe.rukamori.archivetune.spotify.isSpotifyRateLimitMessage
 import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.ui.component.ChoiceChipsRow
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -181,7 +182,7 @@ fun StatsScreen(
                 spotifyHistory.errorMessage?.let { message ->
                     // Spotify's raw 429 body is not something to put in front of a reader, and the
                     // retry cooldown means waiting is the actual remedy.
-                    if (message.contains("429") || message.contains("Too Many Requests", ignoreCase = true)) {
+                    if (isSpotifyRateLimitMessage(message)) {
                         rateLimitedMessage
                     } else {
                         message
@@ -435,7 +436,7 @@ fun StatsScreen(
                                 supportingText = mostPlayedArtists.take(5).size.toString(),
                             )
                             SegmentedArtistChart(
-                                artists = mostPlayedArtists.take(5),
+                                slices = mostPlayedArtists.take(5).map(Artist::toArtistSlice),
                                 totalTimeListened = listeningSummary.totalTimeListened,
                                 modifier =
                                     Modifier
@@ -812,6 +813,9 @@ private data class RemoteStatsTrack(
 private data class RemoteStatsRank(
     val label: String,
     val count: Int,
+    // Summed from the plays' own durations, the same quantity the local chart measures. Play
+    // counts alone would draw a skip and a full listen as the same slice.
+    val timeListenedMs: Long = 0,
 )
 
 private enum class RemoteStatsRange(
@@ -1122,6 +1126,33 @@ private fun RemoteStatsDashboard(
                 gradient = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary),
             )
         }
+        if (data.artists.any { it.timeListenedMs > 0L }) {
+            item {
+                Column {
+                    StatsSectionHeader(
+                        title = stringResource(R.string.stats_artist_breakdown),
+                        supportingText = data.artists.take(5).size.toString(),
+                    )
+                    SegmentedArtistChart(
+                        slices =
+                            data.artists.take(5).map { rank ->
+                                ArtistSlice(
+                                    id = rank.label,
+                                    name = rank.label,
+                                    timeListenedMs = rank.timeListenedMs,
+                                )
+                            },
+                        totalTimeListened = data.totalDurationMillis,
+                    )
+                }
+            }
+        }
+        item {
+            RemoteStatsHighlights(
+                topArtist = data.artists.firstOrNull(),
+                topTrack = data.tracks.firstOrNull(),
+            )
+        }
         if (data.daySlots.isNotEmpty() || data.hourSlots.isNotEmpty()) {
             item {
                 // The same component the local stats use, so all three sources draw one chart rather
@@ -1145,6 +1176,59 @@ private fun RemoteStatsDashboard(
         }
         items(data.tracks.take(10), key = { it.id }) { track ->
             RemoteTrackRow(track = track)
+        }
+    }
+}
+
+/**
+ * The remote sources' version of the local "spotlights" pair.
+ *
+ * The local cards open the library entity behind them; a history feed carries no such entity, so
+ * these are informational and deliberately not clickable rather than navigating to a row that does
+ * not exist for this source.
+ */
+@Composable
+private fun RemoteStatsHighlights(
+    topArtist: RemoteStatsRank?,
+    topTrack: RemoteStatsTrack?,
+    modifier: Modifier = Modifier,
+) {
+    if (topArtist == null && topTrack == null) return
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (topArtist != null) {
+            StatsHighlightCard(
+                title = stringResource(R.string.stats_favourite_artist),
+                mainText = topArtist.label,
+                subText = "${topArtist.count} ${
+                    stringResource(R.string.stats_metric_plays)
+                } • ${makeTimeString(topArtist.timeListenedMs) ?: "-"}",
+                imageUrl = null,
+                useCircleShape = true,
+                onClick = {},
+            )
+        }
+        if (topTrack != null) {
+            StatsHighlightCard(
+                title = stringResource(R.string.stats_favourite_song),
+                mainText = topTrack.title,
+                subText = "${
+                    pluralStringResource(
+                        R.plurals.n_time,
+                        topTrack.playCount,
+                        topTrack.playCount,
+                    )
+                } • ${makeTimeString(topTrack.durationMillis) ?: "-"}",
+                imageUrl = null,
+                useCircleShape = false,
+                onClick = {},
+            )
         }
     }
 }
@@ -1349,7 +1433,13 @@ private fun remoteStats(
             .sortedByDescending(RemoteStatsTrack::playCount)
     val artists =
         tracks.groupBy { it.artist.ifBlank { unknownArtistLabel } }
-            .map { (artist, plays) -> RemoteStatsRank(artist, plays.size) }
+            .map { (artist, plays) ->
+                RemoteStatsRank(
+                    label = artist,
+                    count = plays.size,
+                    timeListenedMs = plays.sumOf(RemoteStatsTrack::durationMillis),
+                )
+            }
             .sortedByDescending(RemoteStatsRank::count)
     return RemoteStatsData(
         source = source,
@@ -1891,13 +1981,33 @@ private fun StatsHighlightCard(
     }
 }
 
+/**
+ * One slice of the artist breakdown.
+ *
+ * The chart reads only an id, a name and a listening time, so it takes this rather than the Room
+ * [Artist] entity. That is what lets the remote sources — whose artists are plain names carried by
+ * the history feed — draw the same chart as the local ones instead of a second, worse one.
+ */
+private data class ArtistSlice(
+    val id: String,
+    val name: String,
+    val timeListenedMs: Long,
+)
+
+private fun Artist.toArtistSlice(): ArtistSlice =
+    ArtistSlice(
+        id = id,
+        name = artist.name,
+        timeListenedMs = timeListened?.toLong() ?: 0L,
+    )
+
 @Composable
 private fun SegmentedArtistChart(
-    artists: List<Artist>,
+    slices: List<ArtistSlice>,
     totalTimeListened: Long,
     modifier: Modifier = Modifier,
 ) {
-    val visibleArtistTime = remember(artists) { artists.sumOf { it.timeListened?.toLong() ?: 0L } }
+    val visibleArtistTime = remember(slices) { slices.sumOf(ArtistSlice::timeListenedMs) }
     val displayTotalTime =
         remember(totalTimeListened, visibleArtistTime) {
             totalTimeListened.takeIf { it > 0L } ?: visibleArtistTime
@@ -1905,12 +2015,12 @@ private fun SegmentedArtistChart(
     if (visibleArtistTime == 0L) return
 
     val segmentData =
-        remember(artists, visibleArtistTime) {
+        remember(slices, visibleArtistTime) {
             val rawSegments =
-                artists.mapNotNull { artist ->
-                    val time = artist.timeListened?.toLong() ?: 0L
+                slices.mapNotNull { slice ->
+                    val time = slice.timeListenedMs
                     if (time <= 0L) return@mapNotNull null
-                    artist to (time.toFloat() / visibleArtistTime) * 360f
+                    slice to (time.toFloat() / visibleArtistTime) * 360f
                 }
 
             if (rawSegments.isEmpty()) {
@@ -1924,9 +2034,9 @@ private fun SegmentedArtistChart(
                 val retainedSweep = retainedSegments.sumOf { it.second.toDouble() }.toFloat()
                 val remainderSweep = (360f - retainedSweep).coerceAtLeast(0f)
                 val completedSegments =
-                    retainedSegments.map { (artist, sweep) ->
-                        artist to
-                            if (artist.id == topArtistId) {
+                    retainedSegments.map { (slice, sweep) ->
+                        slice to
+                            if (slice.id == topArtistId) {
                                 sweep + remainderSweep
                             } else {
                                 sweep
@@ -1934,8 +2044,8 @@ private fun SegmentedArtistChart(
                     }
 
                 var startAngle = -90f
-                completedSegments.map { (artist, sweep) ->
-                    Triple(artist, startAngle, sweep).also {
+                completedSegments.map { (slice, sweep) ->
+                    Triple(slice, startAngle, sweep).also {
                         startAngle += sweep
                     }
                 }
@@ -1995,7 +2105,7 @@ private fun SegmentedArtistChart(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                segmentData.forEachIndexed { i, (artist, _, sweep) ->
+                segmentData.forEachIndexed { i, (slice, _, sweep) ->
                     val percentage = (sweep / 360f * 100).toInt()
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -2009,7 +2119,7 @@ private fun SegmentedArtistChart(
                                     .background(segmentColors[i % segmentColors.size]),
                         )
                         Text(
-                            text = artist.artist.name,
+                            text = slice.name,
                             style = MaterialTheme.typography.labelMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
