@@ -17,6 +17,7 @@ import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -76,6 +77,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -207,6 +209,9 @@ fun FloatingNavigationToolbar(
     onSearchItemDoubleClick: (() -> Unit)? = null,
 ) {
     val isFloating = style == NavigationBarStyle.FLOATING
+    // Apple Music's tab bar is flat and edge-to-edge, always shows its labels, and draws no
+    // selection pill — the style is expressed entirely by those four facts below.
+    val isAppleMusic = style == NavigationBarStyle.APPLE_MUSIC
     // Navigation bar customization. Read directly here so the toolbar picks up the user's
     // tuning without the call site needing to thread 6 extra params.
     val (navBarWidthFraction) =
@@ -244,8 +249,10 @@ fun FloatingNavigationToolbar(
         if (canLiquidGlass) {
             RoundedCornerShape(percent = 50)
         } else {
-            remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
+            remember(isPairedWithMiniPlayer, isFloating, isAppleMusic, navBarCornerRadius) {
                 when {
+                    // The Apple Music tab bar runs edge to edge with no rounding at all.
+                    isAppleMusic -> RectangleShape
                     // A detached pill keeps the user-configurable corner radius (default 28 dp).
                     isFloating -> RoundedCornerShape(navBarCornerRadius.dp)
                     isPairedWithMiniPlayer ->
@@ -277,6 +284,10 @@ fun FloatingNavigationToolbar(
             }
         } else if (pureBlack) {
             Color.Black
+        } else if (isAppleMusic) {
+            // Apple Music's tab bar is a translucent material over the content rather than an
+            // opaque slab, which is what keeps the mini player above it reading as one surface.
+            MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
         } else {
             // Apply user-configured opacity (always) and transparency (only when no frosted
             // variant is active — when frosted blur is on, the frost overlay already provides
@@ -288,7 +299,11 @@ fun FloatingNavigationToolbar(
         }
     val motionScheme = MaterialTheme.motionScheme
     val (disableAnimations) = rememberPreference(DisableAnimationsKey, defaultValue = false)
-    val (hideNavigationLabels) = rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
+    val (hideNavigationBarLabelsPreference) =
+        rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
+    // Apple Music's tab bar is icon + label by definition, so the style wins over the global
+    // "hide labels" preference rather than silently losing its own look to it.
+    val hideNavigationLabels = hideNavigationBarLabelsPreference && !isAppleMusic
     val density = LocalDensity.current
 
     val indicatorColor =
@@ -297,6 +312,8 @@ fun FloatingNavigationToolbar(
             // indicator. Setting this to transparent avoids a theme-tinted blob
             // behind the active item.
             canLiquidGlass -> Color.Transparent
+            // Apple Music marks the active tab with its tint alone — no pill behind it.
+            isAppleMusic -> Color.Transparent
             // Tint-frosted: the bar is now a DARK tinted glass (Color.Black at
             // 55% alpha), so the pill uses a translucent white blob — the
             // selected icon stands out against the dark bar without being a
@@ -332,6 +349,14 @@ fun FloatingNavigationToolbar(
                         if (pureBlack) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor =
                         if (pureBlack) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            isAppleMusic ->
+                ShortNavigationBarItemDefaults.colors(
+                    selectedIndicatorColor = Color.Transparent,
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             pureBlack ->
                 ShortNavigationBarItemDefaults.colors(
@@ -561,6 +586,9 @@ fun FloatingNavigationToolbar(
                     ),
             shape = navigationShape,
             color = navigationContainerColor,
+            // The Apple Music bar separates itself from the content with a hairline rather than
+            // elevation; with a full-width rectangle the other three sides sit off-screen.
+            border = if (isAppleMusic) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
             tonalElevation = if (canLiquidGlass) 0.dp else NavigationBarDefaults.Elevation,
             shadowElevation = if (canLiquidGlass) 0.dp else if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
         ) {
@@ -636,7 +664,7 @@ fun FloatingNavigationToolbar(
                             .onGloballyPositioned { containerPos = it.positionInRoot() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (selectedIndex >= 0 && indicatorPlaced && !canLiquidGlass) {
+                    if (selectedIndex >= 0 && indicatorPlaced && !canLiquidGlass && !isAppleMusic) {
                         val pillWidth = indicatorWidth
                         val pillHeight = indicatorHeight
                         if (pillWidth > 0.dp && pillHeight > 0.dp) {

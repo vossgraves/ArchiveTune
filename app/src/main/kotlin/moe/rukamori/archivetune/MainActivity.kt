@@ -322,6 +322,7 @@ import moe.rukamori.archivetune.ui.component.StarDialog
 import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.TvNavigationRail
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
+import moe.rukamori.archivetune.ui.component.rememberForcedAppleMusicExperience
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
@@ -937,10 +938,19 @@ class MainActivity : ComponentActivity() {
             val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
             val pureBlack = pureBlackEnabled && useDarkTheme
             val hideStatusBar by rememberPreference(HideStatusBarKey, defaultValue = false)
-            val navigationBarStyle by rememberEnumPreference(
+            val navigationBarStyleStored by rememberEnumPreference(
                 NavigationBarStyleKey,
                 defaultValue = NavigationBarStyle.DEFAULT,
             )
+            // The Apple Music Experience carries the tab bar with it, the same way it carries the
+            // iOS page headers. Written as a read-side override so turning the switch back off
+            // restores whichever bar the user had chosen instead of overwriting that choice.
+            val navigationBarStyle =
+                if (rememberForcedAppleMusicExperience()) {
+                    NavigationBarStyle.APPLE_MUSIC
+                } else {
+                    navigationBarStyleStored
+                }
             val navigationBarFrostedBlur by rememberPreference(
                 NavigationBarFrostedBlurKey,
                 defaultValue = false,

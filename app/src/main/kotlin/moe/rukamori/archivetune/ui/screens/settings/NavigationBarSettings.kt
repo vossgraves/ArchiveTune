@@ -207,6 +207,8 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                         stringResource(R.string.navigation_bar_style_default)
                                     NavigationBarStyle.FLOATING ->
                                         stringResource(R.string.navigation_bar_style_floating)
+                                    NavigationBarStyle.APPLE_MUSIC ->
+                                        stringResource(R.string.navigation_bar_style_apple_music)
                                 }
                             },
                         )

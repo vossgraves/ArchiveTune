@@ -26,9 +26,10 @@ import moe.rukamori.archivetune.utils.rememberPreference
  */
 @Composable
 fun rememberLibraryStyle(): Pair<LibraryStyle, (LibraryStyle) -> Unit> {
-    // The experience started life as a boolean (AppleMusicExperienceKey). That key still exists
-    // for anyone whose data predates the style, so it seeds the default and is kept in sync on
-    // every write; the style is what everything reads from here on.
+    // The experience switch is [AppleMusicExperienceKey]; the style is the library-screen half of
+    // it. Both turn the Apple Music surfaces on, so the two are kept in sync on every write: anyone
+    // whose data predates the style seeds from the switch below, and the switch stays authoritative
+    // when the style is what moved.
     val (legacyEnabled, setLegacyEnabled) =
         rememberPreference(AppleMusicExperienceKey, defaultValue = false)
     val (style, setStyleValue) =
@@ -59,8 +60,23 @@ fun rememberLibraryStyle(): Pair<LibraryStyle, (LibraryStyle) -> Unit> {
     return style to setStyle
 }
 
+/** The master Apple Music Experience switch, without the library style folded in. */
 @Composable
-fun rememberAppleMusicExperience(): Boolean = rememberLibraryStyle().first == LibraryStyle.APPLE_MUSIC
+fun rememberForcedAppleMusicExperience(): Boolean {
+    val (enabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
+    return enabled
+}
+
+/**
+ * True when the Apple Music Experience is on.
+ *
+ * Either entry point counts: the switch, or a library style that was set to Apple Music on its own.
+ * Reading only the style is what made the switch appear dead — turning it on moved nothing, because
+ * everything downstream asked the style instead.
+ */
+@Composable
+fun rememberAppleMusicExperience(): Boolean =
+    rememberForcedAppleMusicExperience() || rememberLibraryStyle().first == LibraryStyle.APPLE_MUSIC
 
 /**
  * Sets the Apple Music Experience, and moves the player design style with it.

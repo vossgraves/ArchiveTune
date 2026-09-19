@@ -69,6 +69,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.constants.LibraryStyle
 import moe.rukamori.archivetune.ui.component.rememberLibraryStyle
+import moe.rukamori.archivetune.ui.component.rememberAppleMusicExperience
+import moe.rukamori.archivetune.ui.component.rememberAppleMusicExperienceToggle
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
@@ -296,6 +298,8 @@ fun AppearanceSectionSettings(
             defaultValue = false,
         )
     val (libraryStyle, setLibraryStyle) = rememberLibraryStyle()
+    val appleMusicExperience = rememberAppleMusicExperience()
+    val setAppleMusicExperience = rememberAppleMusicExperienceToggle()
     // The experience owns the player style while it is on, and the coupling lives with the setting
     // rather than here — the settings-search switch sets the same thing and has to move the style
     // with it too.
@@ -896,6 +900,18 @@ fun AppearanceSectionSettings(
                 ) {
                     item {
                         Column(modifier = positions.modifierFor("apple_music_experience")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.apple_music_experience)) },
+                                description = stringResource(R.string.apple_music_experience_desc),
+                                icon = { Icon(painterResource(R.drawable.music_note), null) },
+                                checked = appleMusicExperience,
+                                onCheckedChange = setAppleMusicExperience,
+                            )
+                        }
+                    }
+
+                    item {
+                        Column(modifier = positions.modifierFor("library_style")) {
                             EnumListPreference(
                                 title = { Text(stringResource(R.string.library_style)) },
                                 description = stringResource(R.string.library_style_desc),

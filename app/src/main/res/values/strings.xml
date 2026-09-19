@@ -568,6 +568,7 @@
     <string name="navigation_bar_style">Navigation bar style</string>
     <string name="navigation_bar_style_default">Default</string>
     <string name="navigation_bar_style_floating">Floating</string>
+    <string name="navigation_bar_style_apple_music">Apple Music</string>
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
     <string name="navigation_bar_frosted_blur_unsupported">Frosted navigation bar is not supported on Android versions below 12</string>
@@ -1754,7 +1755,7 @@
     <string name="sponsor_block_category_preview">Preview or recap</string>
     <string name="sponsor_block_category_music_offtopic">Non-music section</string>
     <string name="sponsor_block_category_filler">Filler tangent</string>
-    <string name="apple_music_experience_desc">Replaces the artwork header on playlist, album and library pages with Apple Music\u2019s: a large title over the page, pink accent pills, no backdrop. Turning it on also switches the player to the Apple Music style.</string>
+    <string name="apple_music_experience_desc">Replaces the artwork header on playlist, album and library pages with Apple Music\u2019s: a large title over the page, pink accent pills, no backdrop. Turning it on also switches the player to the Apple Music style and the bottom bar to the Apple Music tab bar.</string>
     <string name="spotify_home_style">Spotify home style</string>
     <string name="spotify_home_style_desc">Layout of the Spotify home page</string>
 </resources>

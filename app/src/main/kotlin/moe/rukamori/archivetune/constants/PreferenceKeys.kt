@@ -1178,6 +1178,13 @@ enum class MiniPlayerBackgroundStyle {
 enum class NavigationBarStyle {
     DEFAULT,
     FLOATING,
+
+    /**
+     * The Apple Music tab bar: edge-to-edge and flat, labels always shown, no selection pill.
+     *
+     * Forced by the Apple Music Experience switch, and selectable on its own here.
+     */
+    APPLE_MUSIC,
 }
 
 val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
