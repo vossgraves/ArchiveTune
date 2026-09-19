@@ -1217,6 +1217,7 @@ private fun SimpMusicLyricsCard(
                         modifier = Modifier.fillMaxSize(),
                         textColorOverride = Color.White,
                         textSizeOverride = CARD_LYRICS_SIZE_SP,
+                        spotifyStyle = lyricsMode == LyricsMode.SPOTIFY,
                     )
                 }
             }

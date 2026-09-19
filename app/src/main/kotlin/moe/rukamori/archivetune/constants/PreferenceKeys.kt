@@ -1381,6 +1381,7 @@ val SponsorBlockApiUrlKey = stringPreferencesKey("sponsor_block_api_url")
 /** The player design style [AppleMusicExperienceKey] displaced, so switching it off can restore it. */
 val StyleBeforeAppleMusicKey = stringPreferencesKey("style_before_apple_music")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
+val SpotifyRecentlyPlayedCacheKey = stringPreferencesKey("spotify_recently_played_cache")
 
 /**
  * Set of item IDs (song/album/artist) that the user has hidden from the

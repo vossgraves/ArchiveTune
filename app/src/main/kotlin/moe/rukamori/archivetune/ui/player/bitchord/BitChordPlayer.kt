@@ -1296,7 +1296,7 @@ fun BitChordPlayerContent(
                             )
 
                         LyricsMode.SPOTIFY ->
-                            LyricsV2(
+                            LyricsEnhanced(
                                 sliderPositionProvider = lyricsPositionProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = panelModifier,

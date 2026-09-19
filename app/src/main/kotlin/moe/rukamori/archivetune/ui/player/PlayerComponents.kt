@@ -566,26 +566,6 @@ fun PlayerTopActions(
                     }
                 }
 
-                Surface(
-                    onClick = {
-                        openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    color = textBackgroundColor.copy(alpha = 0.12f),
-                    modifier =
-                        Modifier
-                            .height(44.dp)
-                            .width(44.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            painter = painterResource(R.drawable.player_more_horiz),
-                            contentDescription = null,
-                            tint = textBackgroundColor,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                }
             }
         }
 
@@ -1933,8 +1913,6 @@ fun V8PlayerControlsContent(
     playerConnection: PlayerConnection,
     navController: NavController,
     state: BottomSheetState,
-    menuState: MenuState,
-    bottomSheetPageState: BottomSheetPageState,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     onVolumeChange: (Float) -> Unit,
@@ -1943,12 +1921,6 @@ fun V8PlayerControlsContent(
 ) {
     val foreground = Color.White
     val secondaryForeground = foreground.copy(alpha = 0.72f)
-    val onMenuClick =
-        remember(mediaMetadata, navController, state, menuState, bottomSheetPageState) {
-            {
-                openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
-            }
-        }
     val titleActions = rememberPlayerTitleActions(mediaMetadata, navController, state)
     val onTitleClick = titleActions.onTitleClick
     val onArtistClick = titleActions.onArtistClick
@@ -2013,7 +1985,6 @@ fun V8PlayerControlsContent(
                 artists = mediaMetadata.artists,
                 liked = currentSongLiked,
                 foreground = foreground,
-                onMenuClick = onMenuClick,
                 onToggleLike = onToggleLike,
                 onTitleClick = onTitleClick,
                 onArtistClick = onArtistClick,
@@ -2077,8 +2048,6 @@ fun V8PlayerContent(
     playerConnection: PlayerConnection,
     navController: NavController,
     state: BottomSheetState,
-    menuState: MenuState,
-    bottomSheetPageState: BottomSheetPageState,
     currentFormat: FormatEntity?,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
@@ -2100,9 +2069,6 @@ fun V8PlayerContent(
         )
     val artworkUrl = thumbnailSwapState.displayUrl
     val subtitle = queueTitle ?: mediaMetadata.album?.title.orEmpty()
-    val onMenuClick = {
-        openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
-    }
 
     val titleActions = rememberPlayerTitleActions(mediaMetadata, navController, state)
     val onTitleClick = titleActions.onTitleClick
@@ -2130,7 +2096,6 @@ fun V8PlayerContent(
             currentFormat = currentFormat,
             foreground = foreground,
             secondaryForeground = secondaryForeground,
-            onMenuClick = onMenuClick,
             onToggleLike = playerConnection::toggleLike,
             onTitleClick = onTitleClick,
             onArtistClick = onArtistClick,
@@ -2166,7 +2131,6 @@ fun V8PlayerContent(
             currentFormat = currentFormat,
             foreground = foreground,
             secondaryForeground = secondaryForeground,
-            onMenuClick = onMenuClick,
             onToggleLike = playerConnection::toggleLike,
             onTitleClick = onTitleClick,
             onArtistClick = onArtistClick,
@@ -2205,7 +2169,6 @@ private fun V8PortraitContent(
     currentFormat: FormatEntity?,
     foreground: Color,
     secondaryForeground: Color,
-    onMenuClick: () -> Unit,
     onToggleLike: () -> Unit,
     onPreviousClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -2305,7 +2268,6 @@ private fun V8PortraitContent(
                 artists = artists,
                 liked = currentSongLiked,
                 foreground = foreground,
-                onMenuClick = onMenuClick,
                 onToggleLike = onToggleLike,
                 onTitleClick = onTitleClick,
                 onArtistClick = onArtistClick,
@@ -2375,7 +2337,6 @@ private fun V8LandscapeContent(
     currentFormat: FormatEntity?,
     foreground: Color,
     secondaryForeground: Color,
-    onMenuClick: () -> Unit,
     onToggleLike: () -> Unit,
     onPreviousClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -2436,7 +2397,6 @@ private fun V8LandscapeContent(
                     artists = artists,
                     liked = currentSongLiked,
                     foreground = foreground,
-                    onMenuClick = onMenuClick,
                     onToggleLike = onToggleLike,
                     onTitleClick = onTitleClick,
                     onArtistClick = onArtistClick,
@@ -2582,7 +2542,6 @@ private fun V8MetadataActions(
     artists: List<MediaMetadata.Artist>,
     liked: Boolean,
     foreground: Color,
-    onMenuClick: () -> Unit,
     onToggleLike: () -> Unit,
     onTitleClick: () -> Unit,
     onArtistClick: (artistId: String) -> Unit,
@@ -2632,14 +2591,6 @@ private fun V8MetadataActions(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            V8ActionButton(
-                iconRes = R.drawable.player_more_vert,
-                contentDescription = stringResource(R.string.more_options),
-                foreground = foreground,
-                containerColor = foreground.copy(alpha = 0.16f),
-                iconSize = 24.dp,
-                onClick = onMenuClick,
-            )
             V8ActionButton(
                 iconRes = if (liked) R.drawable.player_favorite else R.drawable.player_favorite_border,
                 contentDescription = stringResource(R.string.action_like),
