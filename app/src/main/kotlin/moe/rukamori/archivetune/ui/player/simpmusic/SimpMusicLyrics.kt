@@ -74,6 +74,8 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
+import moe.rukamori.archivetune.constants.LyricsLineSpacingKey
+import moe.rukamori.archivetune.constants.LyricsScrollKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
@@ -112,6 +114,14 @@ private const val VISUAL_TUNING_OFFSET_MS = 150L
 private const val MANUAL_SCROLL_HOLD_MS = 4_000L
 
 /**
+ * The default of the shared line-spacing preference, as both other renderers declare it.
+ *
+ * This style's own spacing is 12dp, so the setting scales *around that* rather than replacing it —
+ * at the default the screen looks exactly as it always has, and moving the slider still works.
+ */
+private const val DEFAULT_LINE_SPACING = 1.3f
+
+/**
  * SimpMusic's lyrics. Signature matches [moe.rukamori.archivetune.ui.component.LyricsEnhanced] and
  * [moe.rukamori.archivetune.ui.component.LyricsV2] so a caller can swap between the three.
  */
@@ -131,11 +141,19 @@ fun SimpMusicLyrics(
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
     val currentColor = textColorOverride ?: Color.White
-    val inactiveColor = inactiveColorOverride ?: DimLine
+    // The fixed grey is this style's own dark-backdrop look. Everywhere the caller supplies its own
+    // foreground — the shared lyrics screen, the Apple Music player — the dim tone comes from that
+    // colour instead, because a fixed light grey at 35% disappears on a light surface.
+    val inactiveColor = inactiveColorOverride ?: textColorOverride?.copy(alpha = 0.45f) ?: DimLine
 
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsTextSizePreference) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (disableAnimations) = rememberPreference(DisableAnimationsKey, defaultValue = false)
+    // The two controls Lyrics.kt and LyricsV2.kt have always honoured and this renderer missed:
+    // without them, turning auto-scroll off (or asking for tighter lines) worked everywhere except
+    // the SimpMusic style.
+    val (lyricsScroll) = rememberPreference(LyricsScrollKey, defaultValue = true)
+    val (lyricsLineSpacing) = rememberPreference(LyricsLineSpacingKey, defaultValue = DEFAULT_LINE_SPACING)
     val lyricsTextSize = textSizeSp ?: lyricsTextSizePreference
 
     // The same romanization switches Enhanced and V2 honour. Without these the style ignored
@@ -252,8 +270,11 @@ fun SimpMusicLyrics(
         // mid-flight, which is what read as choppiness. A relative animateScrollBy moves one
         // line height per step; a jump too far to animate is taken instantly, so no frame ever
         // scrolls the whole song past the reader.
-        LaunchedEffect(entries) {
+        LaunchedEffect(entries, lyricsScroll) {
             snapshotFlow { currentLineIndex }.collect { target ->
+                // Auto-scroll off means the list stays where the reader put it, which is what the
+                // setting promises in the other two renderers.
+                if (!lyricsScroll) return@collect
                 if (target !in entries.indices) return@collect
                 if (System.currentTimeMillis() < manualUntilMs) return@collect
                 if (!placed) {
@@ -298,7 +319,7 @@ fun SimpMusicLyrics(
                             .fillMaxWidth()
                             .clickable(enabled = lyricsClick && entry.time >= 0L) {
                                 player.seekTo(entry.time)
-                            }.padding(vertical = 12.dp),
+                            }.padding(vertical = (lyricsLineSpacing / DEFAULT_LINE_SPACING * 12f).dp),
                 )
             }
         }
