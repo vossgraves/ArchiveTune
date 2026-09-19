@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AmazonAccountNameKey
 import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
+import moe.rukamori.archivetune.amazon.AmazonMusicProvider
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
@@ -409,6 +410,17 @@ object SourceCheckService {
         val prefs = context.dataStore.data.first()
         val manualName = prefs[AmazonAccountNameKey]?.takeIf { it.isNotBlank() }
         val manualPremium = prefs[AmazonAccountPremiumKey] == true
+        // The Web API is approval-gated: without the security profile this build cannot talk to
+        // Amazon at all, so credentials alone would not make the source work and reporting them as
+        // healthy would promise playback that cannot happen.
+        if (!AmazonMusicProvider.isConfigured()) {
+            return SourceCheckResult(
+                healthy = false,
+                summary = "Amazon Music needs an approved Web API security profile (AMAZON_LWA_CLIENT_ID) " +
+                    "in this build. Until the maintainer provisions one the source stays inert and " +
+                    "playback falls through to the next source.",
+            )
+        }
         if (pooled.isEmpty() && manualName == null) {
             return SourceCheckResult(
                 healthy = false,
@@ -425,14 +437,11 @@ object SourceCheckService {
                     add("${pooled.size} pool account(s), ${pooled.count { it.premium }} HD/Ultra HD")
                 }
             }.joinToString(" + ")
-        // There is no AmazonAudioProvider: Amazon serves CENC-protected fragmented MP4 and this
-        // fork ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt). Credentials
-        // being present is not the same as the source working, so this never reports healthy —
-        // doing so would tell users Amazon plays when it structurally cannot.
         return SourceCheckResult(
-            healthy = false,
-            summary = "Credentials: $origin. Amazon Music is NOT ready: this build has no stream-decryption " +
-                "step for Amazon's protected audio, so this source can be signed into but will never play a track.",
+            healthy = true,
+            summary = "Credentials: $origin. Playback resolves through Amazon's Web API and is licensed " +
+                "by Amazon's own server for the signed-in account; the quality tier the account is " +
+                "entitled to is the tier it gets.",
         )
     }
 

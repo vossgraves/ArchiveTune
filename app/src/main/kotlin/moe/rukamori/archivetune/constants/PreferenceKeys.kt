@@ -1627,11 +1627,12 @@ val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 // Shaped like Deezer rather than Tidal/Qobuz: credentials come from a signed-in account or from
 // the pool, and the instance list below only locates the metadata/search tier.
 //
-// IMPORTANT — this source cannot play audio on its own. Amazon serves CENC-protected fragmented
-// MP4, and turning that into a decodable stream needs a decryption step this fork does not ship.
-// Everything here is the account, catalogue and ordering plumbing around that gap; leaving the
-// toggle on without it yields a source that resolves metadata and then fails to produce a stream,
-// which is why it defaults OFF and the settings row says so.
+// IMPORTANT — this source stays inert until the build carries an approved Amazon Music Web API
+// security profile (BuildConfig.AMAZON_LWA_CLIENT_ID; see AmazonMusicProvider). Without one the
+// resolver declines every track and playback falls through to the next source, which is why the
+// toggle defaults OFF and the source-check row names what has to be provisioned. With one, playback
+// goes through Amazon's own playback-session endpoint and is licensed by Amazon's own Widevine
+// server for the signed-in account — no instance, proxy or key service is involved at any point.
 val AmazonEnabledKey = booleanPreferencesKey("amazonEnabled")
 
 // A manually captured Amazon session, stored separately from the pool cache for the same reason

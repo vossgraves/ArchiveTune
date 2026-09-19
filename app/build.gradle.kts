@@ -196,6 +196,28 @@ android {
                 ).trim()
         buildConfigField("String", "POOL_CLIENT_KEY", "\"$poolClientKey\"")
 
+        // Amazon Music Web API. Access is approval-gated — Amazon issues a Login with Amazon
+        // security profile (client id) to approved partners only — so the client id defaults to
+        // blank and the source stays inert until it is set: a blank client id makes
+        // AmazonMusicProvider refuse every resolve, and playback falls through to the next source
+        // exactly as it did before this existed. Never commit a real value; local.properties or CI
+        // secrets only.
+        val amazonApiBase =
+            (
+                localProperties.getProperty("AMAZON_API_BASE")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("AMAZON_API_BASE")?.takeIf { it.isNotBlank() }
+                    ?: "https://api.music.amazon.dev"
+                ).trim().trimEnd('/')
+        buildConfigField("String", "AMAZON_API_BASE", "\"$amazonApiBase\"")
+
+        val amazonLwaClientId =
+            (
+                localProperties.getProperty("AMAZON_LWA_CLIENT_ID")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("AMAZON_LWA_CLIENT_ID")?.takeIf { it.isNotBlank() }
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "AMAZON_LWA_CLIENT_ID", "\"$amazonLwaClientId\"")
+
         val nightlyBuildHash =
             (
                 localProperties.getProperty("NIGHTLY_BUILD_HASH")
