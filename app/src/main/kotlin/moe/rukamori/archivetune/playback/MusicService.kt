@@ -222,6 +222,10 @@ import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
 import moe.rukamori.archivetune.constants.AmazonSessionKey
 import moe.rukamori.archivetune.constants.AmazonAudioQuality
 import moe.rukamori.archivetune.constants.AmazonAudioQualityKey
+import moe.rukamori.archivetune.constants.QqMusicEnabledKey
+import moe.rukamori.archivetune.constants.QqAudioQuality
+import moe.rukamori.archivetune.constants.QqMusicAudioQualityKey
+import moe.rukamori.archivetune.qqmusic.QqMusicProvider
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
@@ -8858,6 +8862,7 @@ class MusicService :
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
             AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, false)
             AudioSourceType.AMAZON -> dataStore.get(AmazonEnabledKey, false)
+            AudioSourceType.QQ -> dataStore.get(QqMusicEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
@@ -9411,6 +9416,11 @@ class MusicService :
                             trusted = overrideIsSourceOverride && override == AudioSourceType.AMAZON,
                         )
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
+                    AudioSourceType.QQ ->
+                        resolveQqStream(
+                            query,
+                            trusted = overrideIsSourceOverride && override == AudioSourceType.QQ,
+                        )
                     AudioSourceType.YOUTUBE -> null
                 }
             if (stream == null) {
@@ -9823,6 +9833,83 @@ class MusicService :
         }
         return null
     }
+
+    /**
+     * QQ Music — Tencent's partner API only.
+     *
+     * Declines (null) whenever the build has no partnership credentials, the catalogue has no hit,
+     * the track is offered only in an encrypted container, or the match gate will not accept the
+     * candidate. There is no vkey construction and no `u.y.qq.com` call anywhere behind this: the
+     * provider builds requests with the partner's own app id and signature, and a track it cannot
+     * get a plain URL for is reported unavailable rather than worked around.
+     */
+    private suspend fun resolveQqStream(
+        query: SourceQuery,
+        trusted: Boolean,
+    ): DirectStream? {
+        if (!QqMusicProvider.isConfigured()) {
+            if (!qqInertLogged) {
+                qqInertLogged = true
+                Timber
+                    .tag("MusicService")
+                    .i("QQ Music: no partner credentials in this build — the source stays inert")
+            }
+            return null
+        }
+
+        val quality =
+            runCatching {
+                QqAudioQuality.valueOf(
+                    dataStore.get(QqMusicAudioQualityKey, QqAudioQuality.Default.name),
+                )
+            }.getOrDefault(QqAudioQuality.Default)
+
+        val searchQuery =
+            listOfNotNull(query.title, query.artists.firstOrNull())
+                .joinToString(" ")
+                .trim()
+        if (searchQuery.isEmpty()) return null
+
+        val candidates = QqMusicProvider.searchCandidates(searchQuery, quality)
+        for (candidate in candidates) {
+            val url = QqMusicProvider.resolveStream(candidate.mid, quality) ?: continue
+            val placeholder =
+                DirectStream(
+                    uri = url,
+                    mimeType = "audio/mp4",
+                    codecs = null,
+                    contentLength = null,
+                    label = "QQ Music ${quality.name}",
+                    source = AudioSourceType.QQ,
+                    matchedTitle = candidate.title,
+                    matchedArtist = candidate.artist,
+                    matchedAlbum = candidate.album,
+                    matchedDurationMs = candidate.durationMs,
+                    trustedDirectId = trusted,
+                )
+            val match =
+                if (trusted) {
+                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
+                } else {
+                    TitleMatch.evaluate(
+                        wantedTitle = query.title,
+                        wantedArtists = query.artists,
+                        wantedAlbum = query.album,
+                        wantedDurationMs = query.durationMs,
+                        stream = placeholder,
+                    )
+                }
+            if (!match.accepted) continue
+            Timber
+                .tag("MusicService")
+                .i("QQ Music resolved \"%s\" as %s", query.title, candidate.mid)
+            return placeholder
+        }
+        return null
+    }
+
+    @Volatile
+    private var qqInertLogged = false
 
     @Volatile
     private var amazonInertLogged = false

@@ -891,6 +891,20 @@
 
     <!-- Amazon Music source label (PlayerMenu / PlaybackSourceSections source pickers) -->
     <string name="source_amazon">Amazon Music</string>
+    <string name="source_qq_music">QQ Music</string>
+
+    <!-- QQ Music settings. Playback exists through Tencent's partner programme only, so the screen
+         leads with what the maintainer has to provision; see QqMusicProvider for the boundaries. -->
+    <string name="qq_music_enabled">Enable QQ Music</string>
+    <string name="qq_music_enabled_desc">Try QQ Music for a track before falling through to the sources below it.</string>
+    <string name="qq_music_quality">Preferred audio quality</string>
+    <string name="qq_quality_lossless">Lossless (FLAC)</string>
+    <string name="qq_quality_high">High (320 kbps)</string>
+    <string name="qq_quality_standard">Standard (128 kbps)</string>
+    <string name="qq_music_notice_title">Needs Tencent Music partnership</string>
+    <string name="qq_music_notice_description">QQ Music has no public personal-developer playback API. This source talks to the partner API only, with the credentials a partnership issues, so a build without them resolves nothing and playback falls through. It never scrapes the web endpoints, mints vkeys, decrypts encrypted containers, or unlocks a quality the account is not entitled to.</string>
+    <string name="qq_music_credentials_ready">Partner credentials are present in this build</string>
+    <string name="qq_music_credentials_missing">No partner credentials in this build</string>
 
     <!-- Amazon Music sign-in (WebView) + settings. Shaped like Deezer's: account-based, no
          self-hosted proxy tier. Playback goes through Amazon's own Web API, which is approval-gated:

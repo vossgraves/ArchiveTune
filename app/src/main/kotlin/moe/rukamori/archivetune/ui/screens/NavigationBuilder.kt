@@ -77,6 +77,7 @@ import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalSettings
 import moe.rukamori.archivetune.ui.screens.settings.QobuzSettings
 import moe.rukamori.archivetune.ui.screens.settings.AmazonSettings
+import moe.rukamori.archivetune.ui.screens.settings.QqMusicSettings
 import moe.rukamori.archivetune.ui.screens.settings.DeezerSettings
 import moe.rukamori.archivetune.ui.screens.settings.JioSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
@@ -630,6 +631,12 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         JioSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
+    }
+    composable(
+        route = "settings/qqmusic?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        QqMusicSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(TIDAL_LOGIN_ROUTE) {
         TidalLoginScreen(navController)

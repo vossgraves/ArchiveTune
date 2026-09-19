@@ -40,6 +40,9 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AmazonAccountNameKey
 import moe.rukamori.archivetune.constants.AmazonEnabledKey
 import moe.rukamori.archivetune.constants.AmazonSessionKey
+import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.AudioSourceOrderKey
+import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
@@ -113,6 +116,12 @@ fun AmazonLoginScreen(navController: NavController) {
                 // would make a successful login look like it did nothing. This does not turn on
                 // playback — see AmazonSettings' notice — only metadata/catalogue resolution.
                 prefs[AmazonEnabledKey] = true
+                // Switching the source on is not enough by itself: Amazon is deliberately absent
+                // from AudioSourceConfig.DEFAULT_ORDER, so the picker can never offer it and the
+                // resolver reads the stored order. Without this write the toggle would change a
+                // preference nothing consults and playback would stay on YouTube.
+                prefs[AudioSourceOrderKey] =
+                    AudioSourceConfig.withSourceAdded(prefs[AudioSourceOrderKey], AudioSourceType.AMAZON)
             }
             toast(context.getString(R.string.amazon_login_success))
             navController.navigateUp()

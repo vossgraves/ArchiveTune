@@ -402,6 +402,28 @@ object AudioSourceConfig {
         parseOrder(rawOrder).filter { source ->
             isEnabled(source, enabledSet, defaults[source] ?: false)
         }
+
+    /**
+     * The stored order with [source] present, sitting just above YouTube.
+     *
+     * Sources outside [DEFAULT_ORDER] — Amazon and QQ, which join the chain only after the user asks
+     * for them — can never enter the order any other way: the picked order is authoritative, and the
+     * picker can only reorder what it was given. Without this, switching such a source on would
+     * change a preference the resolver never consults, and the source would stay unreachable while
+     * its toggle claimed otherwise.
+     *
+     * Placed above YouTube because that is the only position where a source acts as a lossless
+     * override; below it, the chain has already fallen through to YouTube.
+     */
+    fun withSourceAdded(
+        rawOrder: String?,
+        source: AudioSourceType,
+    ): String {
+        val parsed = parseOrder(rawOrder)
+        if (source in parsed) return parsed.joinToString(",") { it.name }
+        val above = parsed.filterNot { it == AudioSourceType.YOUTUBE }
+        return (above + source + AudioSourceType.YOUTUBE).joinToString(",") { it.name }
+    }
 }
 
 /**

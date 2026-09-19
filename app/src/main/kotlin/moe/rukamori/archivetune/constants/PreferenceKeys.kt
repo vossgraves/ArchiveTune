@@ -1579,8 +1579,35 @@ enum class AudioSourceType {
     DEEZER,
     APPLE,
     AMAZON,
+    QQ,
     JIOSAAVN,
     YOUTUBE,
+}
+
+// ---------------------------------------------------------------------------
+// QQ Music source
+// ---------------------------------------------------------------------------
+// QQ Music's catalogue and playback exist through Tencent's partner program only (TME OpenAPI /
+// QPlay). There is no public personal-developer playback API, so this source ships compiled but
+// unreachable: it declines every track until the build carries partner credentials
+// (BuildConfig.QQ_PARTNER_APP_ID) and the user turns the source on. It is deliberately not in
+// DEFAULT_ORDER — like Amazon, it joins the order by hand, after the maintainer has a partnership.
+//
+// The web endpoints (u.y.qq.com musicu.fcg) and the leaked vkey signing scheme are not used here
+// and must not be added: building against them is what the boundaries for this source forbid.
+val QqMusicEnabledKey = booleanPreferencesKey("qqMusicEnabled")
+
+val QqMusicAudioQualityKey = stringPreferencesKey("qqMusicAudioQuality")
+
+enum class QqAudioQuality {
+    LOSSLESS,
+    HIGH,
+    STANDARD,
+    ;
+
+    companion object {
+        val Default = HIGH
+    }
 }
 
 // CSV of AudioSourceType names, highest priority first. Empty = built-in default order.

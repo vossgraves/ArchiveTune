@@ -236,6 +236,22 @@ fun IntegrationScreen(
                     )
                 }
 
+                // QQ Music's settings screen is its only entry point: the source is not part of the
+                // shipped order, so there is no row for it in the playback-sources list to reach it
+                // from. Always visible, because the screen itself is where the partnership
+                // requirement is explained.
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("qqmusic"),
+                        title = { Text(stringResource(R.string.source_qq_music)) },
+                        description = stringResource(R.string.qq_music_enabled_desc),
+                        icon = { Icon(painterResource(R.drawable.ic_music), null) },
+                        onClick = {
+                            navController.navigate("settings/qqmusic")
+                        },
+                    )
+                }
+
                 item {
                     PreferenceEntry(
                         modifier = positions.modifierFor("telegram"),
