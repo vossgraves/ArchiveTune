@@ -9747,7 +9747,7 @@ class MusicService :
      * the normal state of a build without Amazon's approval, so declining is a path rather than an
      * error, and this never throws.
      */
-    private suspend fun resolveAmazonStream(
+    private fun resolveAmazonStream(
         query: SourceQuery,
         trusted: Boolean,
     ): DirectStream? {
@@ -9790,9 +9790,12 @@ class MusicService :
                 }.getOrNull().orEmpty(),
             )
 
-        val candidates = AmazonMusicProvider.searchCandidates(searchQuery, credentials)
+        val candidates = runBlocking(Dispatchers.IO) { AmazonMusicProvider.searchCandidates(searchQuery, credentials) }
         for (candidate in candidates) {
-            val stream = AmazonMusicProvider.resolveStream(candidate.id, quality, credentials, deviceId) ?: continue
+            val stream =
+                runBlocking(Dispatchers.IO) {
+                    AmazonMusicProvider.resolveStream(candidate.id, quality, credentials, deviceId)
+                } ?: continue
             val placeholder =
                 DirectStream(
                     uri = stream.manifestUrl,
@@ -9800,7 +9803,7 @@ class MusicService :
                     // manifest's own extension, and the DRM provider below attaches the licence
                     // session for this media id.
                     mimeType = "audio/mp4",
-                    codecs = null,
+                    codecs = "",
                     contentLength = null,
                     label = "Amazon Music ${quality.name}",
                     source = AudioSourceType.AMAZON,
@@ -9843,7 +9846,7 @@ class MusicService :
      * provider builds requests with the partner's own app id and signature, and a track it cannot
      * get a plain URL for is reported unavailable rather than worked around.
      */
-    private suspend fun resolveQqStream(
+    private fun resolveQqStream(
         query: SourceQuery,
         trusted: Boolean,
     ): DirectStream? {
@@ -9870,14 +9873,14 @@ class MusicService :
                 .trim()
         if (searchQuery.isEmpty()) return null
 
-        val candidates = QqMusicProvider.searchCandidates(searchQuery, quality)
+        val candidates = runBlocking(Dispatchers.IO) { QqMusicProvider.searchCandidates(searchQuery, quality) }
         for (candidate in candidates) {
-            val url = QqMusicProvider.resolveStream(candidate.mid, quality) ?: continue
+            val url = runBlocking(Dispatchers.IO) { QqMusicProvider.resolveStream(candidate.mid, quality) } ?: continue
             val placeholder =
                 DirectStream(
                     uri = url,
                     mimeType = "audio/mp4",
-                    codecs = null,
+                    codecs = "",
                     contentLength = null,
                     label = "QQ Music ${quality.name}",
                     source = AudioSourceType.QQ,
@@ -11168,7 +11171,7 @@ class MusicService :
                     .header("Content-Type", "application/octet-stream")
                     .post(request.data.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
             mediaOkHttpClient.newCall(builder.build()).execute().use { response ->
-                val bytes = response.body?.bytes().orEmpty()
+                val bytes = response.body?.bytes() ?: ByteArray(0)
                 if (!response.isSuccessful) {
                     Timber.tag("MusicService").w("Amazon licence exchange failed: HTTP ${response.code}")
                     throw MediaDrmCallbackException(
