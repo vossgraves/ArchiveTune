@@ -566,6 +566,26 @@ fun PlayerTopActions(
                     }
                 }
 
+                Surface(
+                    onClick = {
+                        openPlayerMenu(menuState, mediaMetadata, navController, state, bottomSheetPageState)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    color = textBackgroundColor.copy(alpha = 0.12f),
+                    modifier =
+                        Modifier
+                            .height(44.dp)
+                            .width(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            painter = painterResource(R.drawable.player_more_horiz),
+                            contentDescription = null,
+                            tint = textBackgroundColor,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
             }
         }
 

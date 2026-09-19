@@ -618,6 +618,7 @@ fun LyricsScreen(
                 AppleMusicTrackHeader(
                     mediaMetadata = mediaMetadata,
                     foregroundColor = foregroundColor,
+                    onMoreClick = showLyricsMenu,
                     onDismissClick = onBackClick,
                     isLiked = currentSongLiked,
                     onToggleLike = playerConnection::toggleLike,
@@ -1171,6 +1172,7 @@ private fun AppleMusicGrabber(
 private fun AppleMusicTrackHeader(
     mediaMetadata: MediaMetadata,
     foregroundColor: Color,
+    onMoreClick: () -> Unit,
     onDismissClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     isLiked: Boolean = false,
@@ -1258,6 +1260,14 @@ private fun AppleMusicTrackHeader(
             onClick = onToggleLike,
         )
 
+        Spacer(modifier = Modifier.width(4.dp))
+
+        AppleMusicHeaderIconButton(
+            iconRes = R.drawable.player_more_horiz,
+            contentDescription = stringResource(R.string.more_options),
+            foregroundColor = foregroundColor,
+            onClick = onMoreClick,
+        )
     }
 }
 

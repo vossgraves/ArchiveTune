@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.constants.LyricsTextSizeKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
+import moe.rukamori.archivetune.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
 import moe.rukamori.archivetune.lyrics.LyricsUtils.providedRomanizedTextForEntry
@@ -186,7 +187,14 @@ fun SimpMusicLyrics(
                                 .filter { it.isNotBlank() }
                                 .map { LyricsEntry(time = -1L, text = it.trim()) }
                     }
-                lines
+                // findCurrentLineIndex clamps to 0, so without an empty entry in front of the
+                // first real one the opening line reads as "being sung" from 0:00 until the song
+                // actually reaches it. Both other renderers prepend the same head entry.
+                if (lines.isNotEmpty() && lines.first().time >= 0L) {
+                    listOf(HEAD_LYRICS_ENTRY) + lines
+                } else {
+                    lines
+                }
             }
     }
     val entries = parsed.orEmpty()
@@ -194,7 +202,9 @@ fun SimpMusicLyrics(
     // The playhead lives in explicit state read through a stable provider, so a position tick
     // invalidates only the line that reads it — not this composable and not the list.
     val positionState = remember(lyrics) { mutableLongStateOf(0L) }
-    val positionProvider: () -> Long = remember { { positionState.longValue } }
+    // Keyed on the state object: an unkeyed remember would keep the provider built for the first
+    // track and hand every later track the previous track's clock, freezing the word sweep.
+    val positionProvider: () -> Long = remember(positionState) { { positionState.longValue } }
     var currentLineIndex by remember(lyrics) { mutableIntStateOf(-1) }
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
 

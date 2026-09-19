@@ -1593,13 +1593,17 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
     val scrollDelta = itemFocusPoint - targetFocusPoint
     if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
+        // For deltas up to 40% of the viewport (which covers ALL normal
+        // line-advance scrolls — they're typically ~22% of viewport), snap
+        // instantly instead of running a 280ms tween. The tween triggers a
+        // LazyColumn re-layout every frame for its entire duration, which
+        // steals frame budget from the 60Hz karaoke syllable sweep — the
+        // root cause of "auto-scroll lag". The snap is imperceptible because
+        // the karaoke fill animation already provides visual continuity.
+        // Larger deltas (return from manual scroll, large seeks) still
+        // animate so the motion stays smooth over long distances.
         val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
-        if (
-            snap ||
-                !animateToNearbyItem ||
-                animationsDisabled ||
-                abs(scrollDelta) > instantThreshold
-        ) {
+        if (snap || animationsDisabled || (abs(scrollDelta) <= instantThreshold && !force)) {
             scrollBy(scrollDelta.toFloat())
         } else {
             animateScrollBy(

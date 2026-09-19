@@ -153,12 +153,15 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.ui.menu.LyricsMenu
+import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
@@ -486,6 +489,7 @@ fun AppleMusicPlayerContent(
     val artworkUrl = thumbnailSwapState.displayUrl
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
     val titleActions = rememberPlayerTitleActions(mediaMetadata, navController, state)
+    val menuState = LocalMenuState.current
     val context = LocalContext.current
 
     // Current lyrics for the LyricsMenu (shown when lyrics is open and the
@@ -568,6 +572,36 @@ fun AppleMusicPlayerContent(
             playerConnection.player.playWhenReady = true
         } else {
             playerConnection.player.togglePlayPause()
+        }
+    }
+    val onMoreClick = {
+        if (lyricsOpen) {
+            // When lyrics is open, the overflow menu shows lyric actions.
+            menuState.show {
+                LyricsMenu(
+                    lyricsProvider = { currentLyrics },
+                    mediaMetadataProvider = { mediaMetadata },
+                    lyricsSyncOffset = lyricsSyncOffset,
+                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    onDismiss = menuState::dismiss,
+                )
+            }
+        } else {
+            menuState.show {
+                PlayerMenu(
+                    mediaMetadata = mediaMetadata,
+                    navController = navController,
+                    playerBottomSheetState = state,
+                    onShowDetailsDialog = {
+                        mediaMetadata.id.let {
+                            bottomSheetPageState.show {
+                                ShowMediaInfo(it)
+                            }
+                        }
+                    },
+                    onDismiss = menuState::dismiss,
+                )
+            }
         }
     }
     // The "AirPlay" slot opens the Cast route picker on flavors that ship Cast (gms). This also
@@ -900,6 +934,7 @@ fun AppleMusicPlayerContent(
                         onVolumeChange = onVolumeChange,
                         titleActions = titleActions,
                         onPlayPauseClick = onPlayPauseClick,
+                        onMoreClick = onMoreClick,
                         onOutputClick = onOutputClick,
                         onQueueClick = onQueueClick,
                         onLyricsClick = onLyricsClick,
@@ -1032,6 +1067,7 @@ fun AppleMusicPlayerContent(
                                         currentSongLiked = currentSongLiked,
                                         titleActions = titleActions,
                                         onToggleLike = playerConnection::toggleLike,
+                                        onMoreClick = onMoreClick,
                                         onArtworkClick = restoreCover,
                                         onCloseClick = if (targetState == AppleMusicPlayerState.LYRICS) restoreCover else null,
                                         animatedVisibilityScope = this@AnimatedContent,
@@ -1197,6 +1233,7 @@ fun AppleMusicPlayerContent(
                         onVolumeChange = onVolumeChange,
                         titleActions = titleActions,
                         onPlayPauseClick = onPlayPauseClick,
+                        onMoreClick = onMoreClick,
                         onOutputClick = onOutputClick,
                         onQueueClick = toggleQueue,
                         onLyricsClick = toggleLyrics,
@@ -1426,6 +1463,7 @@ private fun AppleMusicControlsColumn(
     onVolumeChange: (Float) -> Unit,
     titleActions: PlayerTitleActions,
     onPlayPauseClick: () -> Unit,
+    onMoreClick: () -> Unit,
     onOutputClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
@@ -1550,6 +1588,12 @@ private fun AppleMusicControlsColumn(
                 onClick = playerConnection::toggleLike,
             )
             Spacer(Modifier.width(10.dp))
+            AppleMusicChip(
+                iconRes = R.drawable.player_more_horiz,
+                tint = Color.White,
+                contentDescription = null,
+                onClick = onMoreClick,
+            )
         }
     }
 
@@ -1833,6 +1877,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     currentSongLiked: Boolean,
     titleActions: PlayerTitleActions,
     onToggleLike: () -> Unit,
+    onMoreClick: () -> Unit,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onArtworkClick: () -> Unit = {},
     onCloseClick: (() -> Unit)? = null,
@@ -1924,6 +1969,12 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             onClick = onToggleLike,
         )
         Spacer(Modifier.width(8.dp))
+        AppleMusicChip(
+            iconRes = R.drawable.player_more_horiz,
+            tint = Color.White,
+            contentDescription = null,
+            onClick = onMoreClick,
+        )
         onCloseClick?.let { closeClick ->
             Spacer(Modifier.width(8.dp))
             AppleMusicChip(
