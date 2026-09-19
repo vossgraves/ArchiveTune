@@ -389,7 +389,7 @@ fun buildSettingsGroups(
             key = "amazon",
             icon = painterResource(R.drawable.login),
             title = "Amazon Music",
-            subtitle = "Amazon Music account (metadata only)",
+            subtitle = "Amazon Music account and audio source",
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("amazon", "amazon music", "amazon login", "amazon hd", "amazon ultra hd"),
             onClick = { navController.navigate("settings/amazon") },
@@ -398,6 +398,23 @@ fun buildSettingsGroups(
                 SettingsChild("Sign in to Amazon Music", "amazon_login", listOf("amazon login", "amazon sign in", "connect amazon")),
                 SettingsChild("Sign out of Amazon Music", "amazon_sign_out", listOf("amazon logout", "amazon sign out", "disconnect amazon")),
                 SettingsChild("Amazon audio quality", "amazon_audio_quality", listOf("amazon quality", "amazon hd", "amazon ultra hd")),
+            ),
+        )
+    // Sources → QQ Music sub-page. The screen is the source's only entry point, so the search
+    // entry is the only other way to reach the partnership requirement it explains.
+    val qqMusic =
+        SettingsItem(
+            key = "qqmusic",
+            icon = painterResource(R.drawable.ic_music),
+            title = "QQ Music",
+            subtitle = "QQ Music audio source (partner programme)",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("qq", "qq music", "qqmusic", "tencent", "tme", "qplay", "partner"),
+            onClick = { navController.navigate("settings/qqmusic") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Enable QQ Music", "qq_music_enabled", listOf("qq music enable", "turn on qq music")),
+                SettingsChild("QQ Music quality", "qq_music_quality", listOf("qq quality", "qq lossless", "qq flac")),
             ),
         )
     // Sources → Deezer sub-page.
@@ -1055,6 +1072,7 @@ fun buildSettingsGroups(
                     sources,
                     jioSaavn,
                     amazon,
+                    qqMusic,
                     deezer,
                     lyrics,
                     lyricsProviders,
