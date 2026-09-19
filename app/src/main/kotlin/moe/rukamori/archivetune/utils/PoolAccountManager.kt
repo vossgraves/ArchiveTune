@@ -44,7 +44,14 @@ object PoolAccountManager {
     // served Tidal accounts locked Deezer and Qobuz out for a full day, and "Check source" (which
     // refreshes without `force`) could never discover them however many times it was tapped. When
     // any service is still empty, retry on this much shorter interval instead.
-    private const val MIN_PARTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000L
+    //
+    // Five hours, not fifteen minutes. A pool that is legitimately missing a service (Apple Music
+    // accounts are contributor-submitted, so most deployments never have one) would otherwise poll
+    // forever, and every poll wakes the pool's database: the compute stays up for five minutes
+    // after the last query, which on Neon's Free plan is what decides whether a project fits its
+    // 100 CU-hour month or gets suspended in it. `force = true` still bypasses this, so the manual
+    // refresh and "Check source" answer immediately.
+    private const val MIN_PARTIAL_REFRESH_INTERVAL_MS = 5 * 60 * 60 * 1000L
 
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
