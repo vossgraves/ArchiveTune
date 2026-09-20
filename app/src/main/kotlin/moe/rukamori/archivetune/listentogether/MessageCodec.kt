@@ -558,14 +558,14 @@ class MessageCodec(
                     when (val field = reader.nextField()) {
                         -1 -> break
                         PLAYBACK_ACTION -> action = reader.readString()
-                        PLAYBACK_TRACK_ID -> trackId = reader.readString().ifEmpty { null }
-                        PLAYBACK_POSITION -> position = reader.readInt64().let { if (it <= 0) null else it }
+                        PLAYBACK_TRACK_ID -> trackId = reader.readString()
+                        PLAYBACK_POSITION -> position = reader.readInt64()
                         PLAYBACK_TRACK_INFO -> trackInfo = protoToTrackInfo(reader.readMessage())
                         PLAYBACK_INSERT_NEXT -> insertNext = reader.readBool()
                         PLAYBACK_QUEUE -> queue += protoToTrackInfo(reader.readMessage())
-                        PLAYBACK_QUEUE_TITLE -> queueTitle = reader.readString().ifEmpty { null }
-                        PLAYBACK_VOLUME -> volume = reader.readFloat().let { if (it <= 0) null else it }
-                        PLAYBACK_SERVER_TIME -> serverTime = reader.readInt64().let { if (it <= 0) null else it }
+                        PLAYBACK_QUEUE_TITLE -> queueTitle = reader.readString()
+                        PLAYBACK_VOLUME -> volume = reader.readFloat()
+                        PLAYBACK_SERVER_TIME -> serverTime = reader.readInt64()
                         else -> reader.skip()
                     }
                 }
@@ -663,7 +663,7 @@ class MessageCodec(
                         SYNC_STATE_POSITION -> position = reader.readInt64()
                         SYNC_STATE_LAST_UPDATE -> lastUpdate = reader.readInt64()
                         SYNC_STATE_QUEUE -> queue += protoToTrackInfo(reader.readMessage())
-                        SYNC_STATE_VOLUME -> volume = reader.readFloat().let { if (it <= 0) null else it }
+                        SYNC_STATE_VOLUME -> volume = reader.readFloat()
                         else -> reader.skip()
                     }
                 }
@@ -762,7 +762,7 @@ class MessageCodec(
                     when (val field = reader.nextField()) {
                         -1 -> break
                         SUGGESTION_REJECTED_ID -> suggestionId = reader.readString()
-                        SUGGESTION_REJECTED_REASON -> reason = reader.readString().ifEmpty { null }
+                        SUGGESTION_REJECTED_REASON -> reason = reader.readString()
                         else -> reader.skip()
                     }
                 }
@@ -818,7 +818,7 @@ class MessageCodec(
                     when (val field = reader.nextField()) {
                         -1 -> break
                         FIELD_REJECT_JOIN_USER_ID -> userId = reader.readString()
-                        FIELD_REJECT_JOIN_REASON -> reason = reader.readString().ifEmpty { null }
+                        FIELD_REJECT_JOIN_REASON -> reason = reader.readString()
                         else -> reader.skip()
                     }
                 }
@@ -839,14 +839,14 @@ class MessageCodec(
                     when (val field = reader.nextField()) {
                         -1 -> break
                         PLAYBACK_ACTION -> action = reader.readString()
-                        PLAYBACK_TRACK_ID -> trackId = reader.readString().ifEmpty { null }
-                        PLAYBACK_POSITION -> position = reader.readInt64().let { if (it <= 0) null else it }
+                        PLAYBACK_TRACK_ID -> trackId = reader.readString()
+                        PLAYBACK_POSITION -> position = reader.readInt64()
                         PLAYBACK_TRACK_INFO -> trackInfo = protoToTrackInfo(reader.readMessage())
                         PLAYBACK_INSERT_NEXT -> insertNext = reader.readBool()
                         PLAYBACK_QUEUE -> queue += protoToTrackInfo(reader.readMessage())
-                        PLAYBACK_QUEUE_TITLE -> queueTitle = reader.readString().ifEmpty { null }
-                        PLAYBACK_VOLUME -> volume = reader.readFloat().let { if (it <= 0) null else it }
-                        PLAYBACK_SERVER_TIME -> serverTime = reader.readInt64().let { if (it <= 0) null else it }
+                        PLAYBACK_QUEUE_TITLE -> queueTitle = reader.readString()
+                        PLAYBACK_VOLUME -> volume = reader.readFloat()
+                        PLAYBACK_SERVER_TIME -> serverTime = reader.readInt64()
                         else -> reader.skip()
                     }
                 }
@@ -882,7 +882,7 @@ class MessageCodec(
                     when (val field = reader.nextField()) {
                         -1 -> break
                         FIELD_KICK_USER_ID -> userId = reader.readString()
-                        FIELD_KICK_REASON -> reason = reader.readString().ifEmpty { null }
+                        FIELD_KICK_REASON -> reason = reader.readString()
                         else -> reader.skip()
                     }
                 }
@@ -920,7 +920,7 @@ class MessageCodec(
                     when (val field = reader.nextField()) {
                         -1 -> break
                         FIELD_REJECT_SUGGESTION_ID -> suggestionId = reader.readString()
-                        FIELD_REJECT_SUGGESTION_REASON -> reason = reader.readString().ifEmpty { null }
+                        FIELD_REJECT_SUGGESTION_REASON -> reason = reader.readString()
                         else -> reader.skip()
                     }
                 }
@@ -1002,10 +1002,10 @@ class MessageCodec(
                 TRACK_INFO_ID -> id = reader.readString()
                 TRACK_INFO_TITLE -> title = reader.readString()
                 TRACK_INFO_ARTIST -> artist = reader.readString()
-                TRACK_INFO_ALBUM -> album = reader.readString().ifEmpty { null }
+                TRACK_INFO_ALBUM -> album = reader.readString()
                 TRACK_INFO_DURATION -> duration = reader.readInt64()
-                TRACK_INFO_THUMBNAIL -> thumbnail = reader.readString().ifEmpty { null }
-                TRACK_INFO_SUGGESTED_BY -> suggestedBy = reader.readString().ifEmpty { null }
+                TRACK_INFO_THUMBNAIL -> thumbnail = reader.readString()
+                TRACK_INFO_SUGGESTED_BY -> suggestedBy = reader.readString()
                 else -> reader.skip()
             }
         }
