@@ -24,10 +24,14 @@ import androidx.annotation.RequiresPermission
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
+import androidx.core.app.RemoteInput
 import androidx.core.content.getSystemService
 import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
+import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
+import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.constants.ListenTogetherBlockedUsersKey
 import moe.rukamori.archivetune.constants.ListenTogetherIsHostKey
@@ -144,8 +148,10 @@ sealed class ListenTogetherEvent {
     // Chat events
     data class ChatMessageReceived(val payload: ChatMessagePayload) : ListenTogetherEvent()
 
-    // Internal state actions
-    data class LocalSuggestionApproved(val payload: SuggestionReceivedPayload) : ListenTogetherEvent()
+    data class LocalSuggestionApproved(
+        val payload: SuggestionReceivedPayload,
+        val playImmediately: Boolean = false,
+    ) : ListenTogetherEvent()
 }
 
 /**
@@ -165,6 +171,12 @@ class ListenTogetherClient @Inject constructor(
         private const val MAX_LOG_ENTRIES = 500
         private const val SESSION_GRACE_PERIOD_MS = 10 * 60 * 1000L  // 10 minutes
 
+        // How long after sending a create/join an invalid_message reply is still
+        // considered a rejection of that action (and worth a protobuf retry), and
+        // how long to wait before re-sending it.
+        private const val ROOM_ACTION_RETRY_WINDOW_MS = 10_000L
+        private const val ROOM_ACTION_RETRY_DELAY_MS = 250L
+
         // Notification constants
         private const val NOTIFICATION_CHANNEL_ID = "listen_together_channel"
         // PORT-NOTE: action strings renamed from vivi's package to ArchiveTune's
@@ -174,9 +186,19 @@ class ListenTogetherClient @Inject constructor(
         const val ACTION_REJECT_JOIN = "moe.rukamori.archivetune.LISTEN_TOGETHER_REJECT_JOIN"
         const val ACTION_APPROVE_SUGGESTION = "moe.rukamori.archivetune.LISTEN_TOGETHER_APPROVE_SUGGESTION"
         const val ACTION_REJECT_SUGGESTION = "moe.rukamori.archivetune.LISTEN_TOGETHER_REJECT_SUGGESTION"
+        const val ACTION_REPLY_CHAT = "moe.rukamori.archivetune.LISTEN_TOGETHER_REPLY_CHAT"
+        const val KEY_TEXT_REPLY = "key_text_reply"
         const val EXTRA_USER_ID = "extra_user_id"
         const val EXTRA_SUGGESTION_ID = "extra_suggestion_id"
         const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
+
+        // Stable id for the chat conversation notification so each new message
+        // updates the same shade entry (and its RemoteInput history) instead of
+        // stacking separate notifications.
+        private const val CHAT_NOTIFICATION_ID = 40001
+
+        // Conversation depth kept for the MessagingStyle in the shade.
+        private const val MAX_CHAT_NOTIFICATION_HISTORY = 25
 
         @Volatile
         private var instance: ListenTogetherClient? = null
@@ -387,6 +409,10 @@ class ListenTogetherClient @Inject constructor(
     // Pending actions to execute when connected
     private var pendingAction: PendingAction? = null
 
+    private var lastRoomAction: PendingAction? = null
+    private var lastRoomActionFormat: MessageFormat? = null
+    private var lastRoomActionSentAtMs: Long = 0
+
     // Wake lock to keep connection alive when in a room
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -395,6 +421,21 @@ class ListenTogetherClient @Inject constructor(
 
     // Track notification IDs for suggestions to dismiss them similarly
     private val suggestionNotifications = mutableMapOf<String, Int>()
+
+    /** Recent chat messages backing the conversation notification (MessagingStyle). */
+    private val chatNotificationHistory = ArrayDeque<ChatMessagePayload>()
+
+    private val chatHistoryLock = Any()
+
+    @Volatile
+    private var chatNotificationActive = false
+
+    private val _chatScreenVisible = MutableStateFlow(false)
+
+    /** Set by the chat screen so incoming messages don't notify while it is open. */
+    fun setChatScreenVisible(visible: Boolean) {
+        _chatScreenVisible.value = visible
+    }
 
     // Network connectivity monitoring - use lazy to avoid initialization order issues
     private val connectivityObserver: NetworkConnectivityObserver? by lazy {
@@ -489,9 +530,13 @@ class ListenTogetherClient @Inject constructor(
         val serverUrl = getServerUrl()
         log(LogLevel.INFO, "Connecting to server", serverUrl)
 
-        // Custom Node.js servers expect JSON without compression
-        codec.format = MessageFormat.JSON
-        codec.compressionEnabled = false
+        // metroserver (The Meowery) is protobuf-only and answers JSON frames with
+        // an invalid_message error, so start the codec in the server's own protocol.
+        val serverProtocol = ListenTogetherServers.findByUrl(serverUrl)?.protocol ?: ListenTogetherProtocol.JSON
+        codec.format =
+            if (serverProtocol == ListenTogetherProtocol.PROTOBUF) MessageFormat.PROTOBUF else MessageFormat.JSON
+        codec.compressionEnabled = serverProtocol == ListenTogetherProtocol.PROTOBUF
+        log(LogLevel.INFO, "Codec configured", "${codec.format.name}, compression=${codec.compressionEnabled}")
 
         val request = Request.Builder()
             .url(serverUrl)
@@ -544,17 +589,48 @@ class ListenTogetherClient @Inject constructor(
     private fun executePendingAction() {
         val action = pendingAction ?: return
         pendingAction = null
+        executeRoomAction(action)
+    }
 
+    private fun executeRoomAction(action: PendingAction) {
         val avatarIndex = context.dataStore.get(ListenTogetherAvatarIndexKey, 0)
         when (action) {
             is PendingAction.CreateRoom -> {
                 log(LogLevel.INFO, "Executing pending create room", action.username)
+                lastRoomAction = action
+                lastRoomActionFormat = codec.format
+                lastRoomActionSentAtMs = System.currentTimeMillis()
                 sendMessage(MessageTypes.CREATE_ROOM, CreateRoomPayload(action.username, avatarIndex))
             }
             is PendingAction.JoinRoom -> {
                 log(LogLevel.INFO, "Executing pending join room", "${action.roomCode} as ${action.username}")
+                lastRoomAction = action
+                lastRoomActionFormat = codec.format
+                lastRoomActionSentAtMs = System.currentTimeMillis()
                 sendMessage(MessageTypes.JOIN_ROOM, JoinRoomPayload(action.roomCode.uppercase(), action.username, avatarIndex))
             }
+        }
+    }
+
+    /**
+     * Safety net for servers whose protocol was misconfigured or unknown: if the
+     * create/join was sent as JSON but the server answered in protobuf (the
+     * reactive upgrade in [handleMessage] already flipped the codec), re-send the
+     * same action once in protobuf so the room code still arrives.
+     */
+    private fun maybeRetryRoomActionAfterProtocolUpgrade() {
+        val action = lastRoomAction ?: return
+        lastRoomAction = null
+
+        val sentAsJson = lastRoomActionFormat == MessageFormat.JSON
+        val nowUpgraded = codec.format == MessageFormat.PROTOBUF
+        val recent = System.currentTimeMillis() - lastRoomActionSentAtMs < ROOM_ACTION_RETRY_WINDOW_MS
+        if (!sentAsJson || !nowUpgraded || !recent) return
+
+        log(LogLevel.WARNING, "Create/join was rejected as JSON after a protobuf upgrade", "Retrying in protobuf")
+        scope.launch {
+            delay(ROOM_ACTION_RETRY_DELAY_MS)
+            executeRoomAction(action)
         }
     }
 
@@ -676,6 +752,176 @@ class ListenTogetherClient @Inject constructor(
 
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(context).notify(notifId, builder.build())
+        }
+    }
+
+    private fun appendChatNotificationHistory(payload: ChatMessagePayload) {
+        synchronized(chatHistoryLock) {
+            chatNotificationHistory.addLast(payload)
+            while (chatNotificationHistory.size > MAX_CHAT_NOTIFICATION_HISTORY) {
+                chatNotificationHistory.removeFirst()
+            }
+        }
+    }
+
+    /**
+     * The vivi-style server echoes a sender's own message back to them, so a
+     * locally-appended copy (for instant shade feedback) and the echo would both
+     * land in the history. The echo is skipped when the last entry is the same
+     * self-sent text from within a few seconds.
+     */
+    private fun isSelfEchoAlreadyInHistory(payload: ChatMessagePayload): Boolean {
+        val selfId = _userId.value ?: return false
+        synchronized(chatHistoryLock) {
+            val last = chatNotificationHistory.lastOrNull() ?: return false
+            return last.userId == selfId &&
+                last.message == payload.message &&
+                kotlin.math.abs(last.timestamp - payload.timestamp) < 5000L
+        }
+    }
+
+    // Internally guarded by a POST_NOTIFICATIONS check — no annotation so that
+    // unguarded internal callers (message handler, reply receiver) stay lint-clean.
+    private fun postChatNotification(alert: Boolean) {
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        val history = synchronized(chatHistoryLock) { chatNotificationHistory.toList() }
+        if (history.isEmpty()) return
+
+        val selfId = _userId.value
+        val me = Person.Builder()
+            .setName(storedUsername ?: context.getString(R.string.listen_together_chat_you))
+            .setKey("self:$selfId")
+            .build()
+        val style = NotificationCompat.MessagingStyle(me)
+        history.takeLast(8).forEach { msg ->
+            val sender = if (msg.userId == selfId) {
+                me
+            } else {
+                Person.Builder()
+                    .setName(msg.username)
+                    .setKey(msg.userId.ifBlank { msg.username })
+                    .build()
+            }
+            style.addMessage(
+                NotificationCompat.MessagingStyle.Message(msg.message.take(300), msg.timestamp, sender)
+            )
+        }
+
+        val replyRemoteInput = RemoteInput.Builder(KEY_TEXT_REPLY)
+            .setLabel(context.getString(R.string.listen_together_chat_reply_label))
+            .build()
+        val replyIntent = Intent(context, ListenTogetherActionReceiver::class.java).apply {
+            action = ACTION_REPLY_CHAT
+            putExtra(EXTRA_NOTIFICATION_ID, CHAT_NOTIFICATION_ID)
+        }
+        // FLAG_MUTABLE is required: the system attaches the RemoteInput results.
+        val replyPendingIntent = PendingIntent.getBroadcast(
+            context,
+            CHAT_NOTIFICATION_ID,
+            replyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+
+        val contentIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            putExtra("navigate_to", "listen_together/chat")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val contentPendingIntent = contentIntent?.let {
+            PendingIntent.getActivity(
+                context,
+                CHAT_NOTIFICATION_ID + 1,
+                it,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.share)
+            .setContentTitle(context.getString(R.string.listen_together))
+            .setStyle(style)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(!alert)
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    0,
+                    context.getString(R.string.listen_together_chat_reply_label),
+                    replyPendingIntent
+                ).addRemoteInput(replyRemoteInput).build()
+            )
+        contentPendingIntent?.let { builder.setContentIntent(it) }
+
+        NotificationManagerCompat.from(context).notify(CHAT_NOTIFICATION_ID, builder.build())
+        chatNotificationActive = true
+    }
+
+    private fun maybeNotifyChatMessage(payload: ChatMessagePayload) {
+        try {
+            val selfId = _userId.value
+            if (payload.userId == selfId) {
+                // Own echo — keep the shade conversation current without alerting.
+                if (chatNotificationActive) postChatNotification(alert = false)
+                return
+            }
+            if (!isInRoom) return
+            if (payload.username in _blockedUsernames.value) return
+            if (_chatScreenVisible.value) return
+            if (!context.dataStore.get(ListenTogetherChatNotificationsKey, true)) return
+            postChatNotification(alert = true)
+        } catch (e: Exception) {
+            log(LogLevel.WARNING, "Failed to show chat notification", e.message)
+        }
+    }
+
+    /** Cancels the conversation notification (chat opened / room left). */
+    fun cancelChatNotification() {
+        chatNotificationActive = false
+        try {
+            NotificationManagerCompat.from(context).cancel(CHAT_NOTIFICATION_ID)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun clearChatNotificationState() {
+        synchronized(chatHistoryLock) { chatNotificationHistory.clear() }
+        cancelChatNotification()
+    }
+
+    /**
+     * Routes a reply typed directly into the notification shade into the room's
+     * chat. Called from ListenTogetherActionReceiver on the main thread.
+     */
+    fun handleChatReplyFromNotification(rawText: CharSequence?) {
+        val text = rawText?.toString()?.trim().orEmpty()
+        if (text.isEmpty()) {
+            // Consume the empty RemoteInput so the shade doesn't keep the
+            // "reply" spinner; re-post the current conversation state.
+            if (chatNotificationActive) postChatNotification(alert = false)
+            return
+        }
+        if (!isInRoom || codec.format == MessageFormat.PROTOBUF) {
+            postChatReplyFailedNotification()
+            return
+        }
+        sendChatMessage(text)
+    }
+
+    private fun postChatReplyFailedNotification() {
+        try {
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+            val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.drawable.share)
+                .setContentTitle(context.getString(R.string.listen_together))
+                .setContentText(context.getString(R.string.listen_together_chat_reply_failed))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+            NotificationManagerCompat.from(context).notify(CHAT_NOTIFICATION_ID, builder.build())
+        } catch (_: Exception) {
         }
     }
 
@@ -814,6 +1060,7 @@ class ListenTogetherClient @Inject constructor(
             when (msgType) {
                 MessageTypes.ROOM_CREATED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? RoomCreatedPayload ?: return
+                    lastRoomAction = null
                     _userId.value = payload.userId
                     _role.value = RoomRole.HOST
                     sessionToken = payload.sessionToken
@@ -882,6 +1129,7 @@ class ListenTogetherClient @Inject constructor(
 
                 MessageTypes.JOIN_APPROVED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? JoinApprovedPayload ?: return
+                    lastRoomAction = null
                     _userId.value = payload.userId
                     _role.value = RoomRole.GUEST
                     sessionToken = payload.sessionToken
@@ -955,6 +1203,7 @@ class ListenTogetherClient @Inject constructor(
                     sessionToken = null
                     _roomState.value = null
                     _role.value = RoomRole.NONE
+                    clearChatNotificationState()
                     scope.launch { _events.emit(ListenTogetherEvent.Kicked(payload.reason)) }
                 }
 
@@ -1050,6 +1299,20 @@ class ListenTogetherClient @Inject constructor(
                             return
                         }
 
+                        // Auto-approved suggestions take effect right away (the suggesting
+                        // guest has usually already changed their local track), while
+                        // manually approved ones are enqueued for the host to time.
+                        val suggestionAutoApprove =
+                            context.dataStore.get(ListenTogetherSuggestionAutoApproveKey, true)
+                        if (suggestionAutoApprove) {
+                            log(LogLevel.INFO, "Auto-approving suggestion", "${payload.fromUsername}: ${payload.trackInfo.title}")
+                            sendMessage(MessageTypes.APPROVE_SUGGESTION, ApproveSuggestionPayload(payload.suggestionId))
+                            scope.launch {
+                                _events.emit(ListenTogetherEvent.LocalSuggestionApproved(payload, playImmediately = true))
+                            }
+                            return
+                        }
+
                         _pendingSuggestions.value += payload
                         log(LogLevel.INFO, "Suggestion received", "${payload.fromUsername}: ${payload.trackInfo.title}")
                         // Show immediate in-app Toast so the host always sees it
@@ -1097,6 +1360,11 @@ class ListenTogetherClient @Inject constructor(
 
                     // Handle specific error cases
                     when (payload.code) {
+                        "invalid_message" -> {
+                            // The server could not parse our frame — typically a JSON
+                            // create/join sent to a protobuf-only server.
+                            maybeRetryRoomActionAfterProtocolUpgrade()
+                        }
                         "session_not_found" -> {
                             // Session expired on server, try to rejoin the room
                             if (storedRoomCode != null && storedUsername != null && !wasHost) {
@@ -1175,7 +1443,13 @@ class ListenTogetherClient @Inject constructor(
                 MessageTypes.CHAT -> {
                     var payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? ChatMessagePayload ?: return
 
-                    // Universal Fix: Extract embedded reply if present
+                    // Custom profile pictures piggyback on the chat relay: a
+                    // magic-prefixed base64 payload that never renders as a chat bubble.
+                    ListenTogetherAvatar.decodeAvatarBroadcast(payload.message)?.let { avatarBytes ->
+                        _customAvatars.value = _customAvatars.value + (payload.userId to avatarBytes)
+                        log(LogLevel.INFO, "Custom avatar received", "From: ${payload.username} (${avatarBytes.size} bytes)")
+                        return
+                    }
                     if (payload.message.startsWith("\u200B[RPLY:")) {
                         try {
                             val endIdx = payload.message.indexOf("]\u200B")
@@ -1195,6 +1469,13 @@ class ListenTogetherClient @Inject constructor(
                     }
 
                     log(LogLevel.INFO, "Chat message received", "From: ${payload.username}")
+
+                    val isSelfEcho = payload.userId == _userId.value
+                    if (!isSelfEcho || !isSelfEchoAlreadyInHistory(payload)) {
+                        appendChatNotificationHistory(payload)
+                    }
+                    maybeNotifyChatMessage(payload)
+
                     scope.launch { _events.emit(ListenTogetherEvent.ChatMessageReceived(payload)) }
                 }
 
@@ -1298,6 +1579,8 @@ class ListenTogetherClient @Inject constructor(
         _pendingJoinRequests.value = emptyList()
         _bufferingUsers.value = emptyList()
 
+        clearChatNotificationState()
+
         // Clear from persistent storage
         clearPersistedSession()
 
@@ -1391,6 +1674,13 @@ class ListenTogetherClient @Inject constructor(
             return
         }
 
+        // metroserver (The Meowery) has no chat relay; its codec is protobuf-only
+        // and ChatPayload has no protobuf mapping, so say so instead of throwing.
+        if (codec.format == MessageFormat.PROTOBUF) {
+            log(LogLevel.WARNING, "Chat is not supported by this server", null)
+            return
+        }
+
         // Universal Fix: Embed reply metadata into message string
         val finalMessage = if (replyTo != null) {
             val metadata = "${replyTo.username}|${replyTo.message}"
@@ -1401,11 +1691,41 @@ class ListenTogetherClient @Inject constructor(
         }
 
         sendMessage(MessageTypes.CHAT, ChatPayload(finalMessage, replyTo))
+
+        // Local echo for the notification shade's conversation (the server's own
+        // echo is deduped in the CHAT branch); re-post silently so a reply sent
+        // straight from the shade appears there immediately.
+        appendChatNotificationHistory(
+            ChatMessagePayload(
+                userId = _userId.value ?: "",
+                username = storedUsername ?: context.getString(R.string.listen_together_chat_you),
+                message = message,
+                timestamp = System.currentTimeMillis(),
+                replyTo = replyTo,
+            )
+        )
+        if (chatNotificationActive) postChatNotification(alert = false)
     }
 
-    /**
-     * Signal that buffering is complete for the current track
-     */
+    private val _customAvatars = kotlinx.coroutines.flow.MutableStateFlow<Map<String, ByteArray>>(emptyMap())
+
+    /** Custom profile pictures received from other room members, keyed by user id. */
+    val customAvatars: kotlinx.coroutines.flow.StateFlow<Map<String, ByteArray>> = _customAvatars.asStateFlow()
+
+    fun sendCustomAvatar(bytes: ByteArray) {
+        if (!isInRoom) {
+            log(LogLevel.ERROR, "Cannot broadcast custom avatar", "Not in room")
+            return
+        }
+        if (codec.format == MessageFormat.PROTOBUF) {
+            log(LogLevel.WARNING, "Custom avatars are not supported by this server", null)
+            return
+        }
+        sendMessage(
+            MessageTypes.CHAT,
+            ChatPayload(ListenTogetherAvatar.encodeAvatarBroadcast(bytes), null),
+        )
+    }
     fun sendBufferReady(trackId: String) {
         sendMessage(MessageTypes.BUFFER_READY, BufferReadyPayload(trackId))
     }
@@ -1431,7 +1751,7 @@ class ListenTogetherClient @Inject constructor(
     /**
      * Approve a suggestion (host only)
      */
-    fun approveSuggestion(suggestionId: String) {
+    fun approveSuggestion(suggestionId: String, playImmediately: Boolean = false) {
         if (_role.value != RoomRole.HOST) {
             log(LogLevel.ERROR, "Cannot approve suggestion", "Not host")
             return
@@ -1444,7 +1764,7 @@ class ListenTogetherClient @Inject constructor(
 
         // Emit internal event so manager can update local player
         if (suggestion != null) {
-            scope.launch { _events.emit(ListenTogetherEvent.LocalSuggestionApproved(suggestion)) }
+            scope.launch { _events.emit(ListenTogetherEvent.LocalSuggestionApproved(suggestion, playImmediately)) }
         }
 
         // Remove locally from pending list

@@ -25,6 +25,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
+import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.extensions.currentMetadata
@@ -37,6 +38,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -149,6 +151,12 @@ class ListenTogetherManager @Inject constructor(
 
     fun markChatAsRead() {
         _unreadMessageCount.value = 0
+        client.cancelChatNotification()
+    }
+
+    /** Tells the client whether the chat screen is on top (suppresses its chat notifications). */
+    fun setChatScreenVisible(visible: Boolean) {
+        client.setChatScreenVisible(visible)
     }
 
     // PORT-NOTE: vivi's PlayerConnection exposed play()/pause() wrappers that routed
@@ -221,13 +229,22 @@ class ListenTogetherManager @Inject constructor(
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             try {
-                if (isSyncing || !isHost || !isInRoom) return
+                if (isSyncing || !isInRoom) return
                 if (mediaItem == null) return
 
                 val connection = playerConnection ?: return
                 val player = connection.player
 
                 val trackId = mediaItem.mediaId
+
+                if (!isHost) {
+                    // Guests cannot broadcast playback actions — their local track
+                    // change travels to the room as a suggestion instead, so the host
+                    // (auto-)approves it and everyone, including the guest, syncs to it.
+                    suggestLocalTrackChange(trackId, player)
+                    return
+                }
+
                 if (trackId == lastSyncedTrackId) return
 
                 lastSyncedTrackId = trackId
@@ -466,6 +483,7 @@ class ListenTogetherManager @Inject constructor(
                     startQueueSyncObservation()
                     startHeartbeat()
                     startVolumeSyncObservation()
+                    broadcastCustomAvatar()
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error handling RoomCreated event")
                 }
@@ -475,6 +493,7 @@ class ListenTogetherManager @Inject constructor(
                 Timber.tag(TAG).d("Join approved for room: ${event.roomCode}")
                 // Save current mute state before joining as guest so we can restore it on leave
                 saveMuteStateOnJoin()
+                broadcastCustomAvatar()
                 // Apply the full initial state including queue
                 applyPlaybackState(
                     currentTrack = event.state.currentTrack,
@@ -502,6 +521,9 @@ class ListenTogetherManager @Inject constructor(
             is ListenTogetherEvent.UserJoined -> {
                 Timber.tag(TAG).d("[SYNC] User joined: ${event.username}")
                 // When a new user joins, host should send current track immediately
+
+                // Re-share our custom avatar so the newcomer can see it too.
+                broadcastCustomAvatar()
                 if (isHost) {
                     try {
                         val connection = playerConnection
@@ -707,7 +729,12 @@ class ListenTogetherManager @Inject constructor(
                     val mediaMetadata = event.payload.trackInfo.toMediaMetadata()
                     val mediaItem = mediaMetadata.toMediaItem()
                     playerConnection?.playNext(mediaItem)
-                    Timber.tag(TAG).d("Approved suggestion added to queue: ${mediaMetadata.title}")
+                    if (event.playImmediately) {
+                        // The suggesting guest has usually already moved on locally —
+                        // jump to the approved track so the room catches up with them.
+                        playerConnection?.player?.seekToNextMediaItem()
+                    }
+                    Timber.tag(TAG).d("Approved suggestion added to queue: ${mediaMetadata.title} (playImmediately=${event.playImmediately})")
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error adding approved suggestion to queue")
                 }
@@ -1615,6 +1642,64 @@ class ListenTogetherManager @Inject constructor(
         volumeObserverJob?.cancel()
         volumeObserverJob = null
         lastSyncedVolume = null
+    }
+
+    private var lastSuggestedTrackId: String? = null
+
+    /**
+     * Shares the locally picked custom profile picture with the room (only when the
+     * avatar index says we actually use one). Piggybacks on the chat relay.
+     */
+    fun broadcastCustomAvatar() {
+        try {
+            if (!isInRoom) return
+            if (context.dataStore.get(ListenTogetherAvatarIndexKey, 0) != ListenTogetherAvatar.CUSTOM_AVATAR_INDEX) return
+            val bytes = ListenTogetherAvatar.loadCustomAvatarBytes(context) ?: return
+            scope.launch(Dispatchers.IO) {
+                client.sendCustomAvatar(bytes)
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error broadcasting custom avatar")
+        }
+    }
+
+    /** Custom profile pictures received from room members, keyed by user id. */
+    val customAvatars: kotlinx.coroutines.flow.StateFlow<Map<String, ByteArray>> get() = client.customAvatars
+
+    /** Custom profile picture for a member: our own file for ourselves, the received broadcast otherwise. */
+    fun customAvatarFor(userId: String?): ByteArray? {
+        val selfId = this.userId.value
+        val isSelf = userId == null || userId == selfId
+        if (isSelf) {
+            if (context.dataStore.get(ListenTogetherAvatarIndexKey, 0) != ListenTogetherAvatar.CUSTOM_AVATAR_INDEX) return null
+            return ListenTogetherAvatar.loadCustomAvatarBytes(context)
+        }
+        return client.customAvatars.value[userId]
+    }
+
+    private fun suggestLocalTrackChange(trackId: String, player: Player) {
+        try {
+            if (trackId == lastSuggestedTrackId) return
+            val roomTrackId = roomState.value?.currentTrack?.id
+            if (trackId == roomTrackId) return
+
+            val metadata = player.currentMetadata ?: return
+            lastSuggestedTrackId = trackId
+            val durationMs = if (metadata.duration > 0) metadata.duration.toLong() * 1000 else 180000L
+            val trackInfo =
+                TrackInfo(
+                    id = metadata.id,
+                    title = metadata.title,
+                    artist = metadata.artists.joinToString(", ") { it.name },
+                    album = metadata.album?.title,
+                    duration = durationMs,
+                    thumbnail = metadata.thumbnailUrl,
+                )
+            Timber.tag(TAG).d("Guest track change sent as suggestion: ${metadata.title}")
+            client.suggestTrack(trackInfo)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error suggesting local track change")
+        }
     }
 
     private fun androidx.media3.common.Timeline.Window.toTrackInfo(): TrackInfo {

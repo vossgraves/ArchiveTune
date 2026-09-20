@@ -65,6 +65,13 @@ fun CommentTogetherScreen(navController: NavController) {
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
 
+    // While the chat screen is on top, the client suppresses chat-message
+    // notifications (and the shade conversation is cancelled via markChatAsRead).
+    DisposableEffect(Unit) {
+        manager.setChatScreenVisible(true)
+        onDispose { manager.setChatScreenVisible(false) }
+    }
+
     // Auto-scroll to bottom when new messages arrive and clear unread badge
     LaunchedEffect(messages.size) {
         manager.markChatAsRead()
@@ -108,6 +115,13 @@ fun CommentTogetherScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding()
+                    // Keep the composer clear of both the gesture nav bar and the
+                    // mini player, which draws over NavHost content otherwise.
+                    .windowInsetsPadding(
+                        windowInsets.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        ),
+                    )
                     .padding(16.dp)
             ) {
                 // Reply Preview

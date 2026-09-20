@@ -194,7 +194,25 @@ class CreatePlaylistViewModel
             loadJob?.cancel()
             loadJob = null
             if (createJob?.isActive != true) {
-                mutableScreenState.value = CreatePlaylistScreenState.Loading
+                // Reset the per-open fields but KEEP the resolved
+                // sign-in / sync-enabled flags: the next open() seeds its
+                // optimistic state from the current one, so the sync
+                // section renders the right description from the first
+                // frame instead of flashing "not logged in" and swapping
+                // text once the options load.
+                val retained =
+                    (
+                        currentData()
+                            ?: CreatePlaylistUiData(
+                                name = "",
+                                allowSyncing = true,
+                                isSignedIn = false,
+                                isSyncEnabled = false,
+                                syncRequested = false,
+                                isSubmitting = false,
+                            )
+                    ).copy(name = "", syncRequested = false, isSubmitting = false)
+                mutableScreenState.value = CreatePlaylistScreenState.Success(retained)
             }
         }
 

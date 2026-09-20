@@ -769,6 +769,188 @@ class MessageCodec(
                 SuggestionRejectedPayload(suggestionId, reason)
             }
 
+            // Client -> server messages. The client encodes these and never reads them back off the
+            // wire, but the codec is the bidirectional mirror of listentogether.proto and the
+            // round-trip tests pin the wire format through this path, so every payload the encoder
+            // can produce must decode back to the value it was built from.
+            MessageTypes.CREATE_ROOM -> {
+                var username = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_CREATE_ROOM_USERNAME -> username = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                CreateRoomPayload(username)
+            }
+
+            MessageTypes.JOIN_ROOM -> {
+                var roomCode = ""
+                var username = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_JOIN_ROOM_CODE -> roomCode = reader.readString()
+                        FIELD_JOIN_ROOM_USERNAME -> username = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                JoinRoomPayload(roomCode, username)
+            }
+
+            MessageTypes.APPROVE_JOIN -> {
+                var userId = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_APPROVE_JOIN_USER_ID -> userId = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                ApproveJoinPayload(userId)
+            }
+
+            MessageTypes.REJECT_JOIN -> {
+                var userId = ""
+                var reason: String? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_REJECT_JOIN_USER_ID -> userId = reader.readString()
+                        FIELD_REJECT_JOIN_REASON -> reason = reader.readString().ifEmpty { null }
+                        else -> reader.skip()
+                    }
+                }
+                RejectJoinPayload(userId, reason)
+            }
+
+            MessageTypes.PLAYBACK_ACTION -> {
+                var action = ""
+                var trackId: String? = null
+                var position: Long? = null
+                var trackInfo: TrackInfo? = null
+                var insertNext: Boolean? = null
+                val queue = mutableListOf<TrackInfo>()
+                var queueTitle: String? = null
+                var volume: Float? = null
+                var serverTime: Long? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        PLAYBACK_ACTION -> action = reader.readString()
+                        PLAYBACK_TRACK_ID -> trackId = reader.readString().ifEmpty { null }
+                        PLAYBACK_POSITION -> position = reader.readInt64().let { if (it <= 0) null else it }
+                        PLAYBACK_TRACK_INFO -> trackInfo = protoToTrackInfo(reader.readMessage())
+                        PLAYBACK_INSERT_NEXT -> insertNext = reader.readBool()
+                        PLAYBACK_QUEUE -> queue += protoToTrackInfo(reader.readMessage())
+                        PLAYBACK_QUEUE_TITLE -> queueTitle = reader.readString().ifEmpty { null }
+                        PLAYBACK_VOLUME -> volume = reader.readFloat().let { if (it <= 0) null else it }
+                        PLAYBACK_SERVER_TIME -> serverTime = reader.readInt64().let { if (it <= 0) null else it }
+                        else -> reader.skip()
+                    }
+                }
+                PlaybackActionPayload(
+                    action = action,
+                    trackId = trackId,
+                    position = position,
+                    trackInfo = trackInfo,
+                    insertNext = insertNext,
+                    queue = queue,
+                    queueTitle = queueTitle,
+                    volume = volume,
+                    serverTime = serverTime
+                )
+            }
+
+            MessageTypes.BUFFER_READY -> {
+                var trackId = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_BUFFER_READY_TRACK_ID -> trackId = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                BufferReadyPayload(trackId)
+            }
+
+            MessageTypes.KICK_USER -> {
+                var userId = ""
+                var reason: String? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_KICK_USER_ID -> userId = reader.readString()
+                        FIELD_KICK_REASON -> reason = reader.readString().ifEmpty { null }
+                        else -> reader.skip()
+                    }
+                }
+                KickUserPayload(userId, reason)
+            }
+
+            MessageTypes.SUGGEST_TRACK -> {
+                var trackInfo: TrackInfo? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_SUGGEST_TRACK_INFO -> trackInfo = protoToTrackInfo(reader.readMessage())
+                        else -> reader.skip()
+                    }
+                }
+                SuggestTrackPayload(trackInfo ?: emptyTrackInfo())
+            }
+
+            MessageTypes.APPROVE_SUGGESTION -> {
+                var suggestionId = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_APPROVE_SUGGESTION_ID -> suggestionId = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                ApproveSuggestionPayload(suggestionId)
+            }
+
+            MessageTypes.REJECT_SUGGESTION -> {
+                var suggestionId = ""
+                var reason: String? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_REJECT_SUGGESTION_ID -> suggestionId = reader.readString()
+                        FIELD_REJECT_SUGGESTION_REASON -> reason = reader.readString().ifEmpty { null }
+                        else -> reader.skip()
+                    }
+                }
+                RejectSuggestionPayload(suggestionId, reason)
+            }
+
+            MessageTypes.RECONNECT -> {
+                var sessionToken = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_RECONNECT_SESSION_TOKEN -> sessionToken = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                ReconnectPayload(sessionToken)
+            }
+
+            MessageTypes.TRANSFER_HOST -> {
+                var newHostId = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        FIELD_TRANSFER_HOST_NEW_HOST_ID -> newHostId = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                TransferHostPayload(newHostId)
+            }
+
             else -> null
         }
     }

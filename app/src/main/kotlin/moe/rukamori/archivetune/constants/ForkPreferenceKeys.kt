@@ -50,10 +50,13 @@ val ListenTogetherSessionTimestampKey = longPreferencesKey("listenTogetherSessio
 val ListenTogetherIsHostKey = booleanPreferencesKey("listenTogetherIsHost")
 val ListenTogetherAvatarIndexKey = intPreferencesKey("listenTogetherAvatarIndex")
 val ListenTogetherAutoApprovalKey = booleanPreferencesKey("listenTogetherAutoApproval")
+val ListenTogetherSuggestionAutoApproveKey = booleanPreferencesKey("listenTogetherSuggestionAutoApprove")
+val ListenTogetherCustomAvatarUriKey = stringPreferencesKey("listenTogetherCustomAvatarUri")
 val ListenTogetherSmartResyncKey = booleanPreferencesKey("listenTogetherSmartResync")
 val ListenTogetherSyncVolumeKey = booleanPreferencesKey("listenTogetherSyncVolume")
 val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedUsers")
 // UI-side keys (T1-C): same names/types as vivi's PreferenceKeys.kt
 // (stringPreferencesKey "listenTogetherUsername", booleanPreferencesKey "listenTogetherInTopBar").
+val ListenTogetherChatNotificationsKey = booleanPreferencesKey("listenTogetherChatNotifications")
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")

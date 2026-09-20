@@ -201,3 +201,20 @@
 # TDLib (Telegram) — JNI bridges into these classes by reflection; must not be renamed/stripped
 -keep class org.drinkless.tdlib.** { *; }
 -dontwarn org.drinkless.tdlib.**
+
+## Listen Together — protobuf-javalite wire protocol
+# javalite 4.x generated code passes the message field NAMES as strings
+# ("username_", "room_code_", ...) into RawMessageInfo, and the
+# com.google.protobuf.MessageSchema runtime resolves each of them through
+# Class.getDeclaredField() + Unsafe.objectFieldOffset() when the message class
+# is first used. If R8 renames those fields, every protobuf encode fails with
+#   Error encoding message -- create_room: Field username_ for r8.ox5 not found.
+#   Known fields are [public static final r8.ox5 r8.ox5.c, ...]
+# (r8.ox5 = CreateRoomPayload after -repackageclasses). The JSON codec is
+# unaffected because kotlinx.serialization resolves fields at compile time,
+# and debug builds are not minified — so this only reproduced in release/nightly
+# APKs, where create_room/join_room could never be encoded and no room code
+# ever arrived. Mirrors vivi-music's listentogether keep rules (proven against
+# the metroserver / The Meowery instance).
+-keep class moe.rukamori.archivetune.listentogether.** { *; }
+-keepclassmembers class moe.rukamori.archivetune.listentogether.** { *; }
