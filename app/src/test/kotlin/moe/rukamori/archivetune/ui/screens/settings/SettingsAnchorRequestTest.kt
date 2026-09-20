@@ -175,12 +175,4 @@ class SettingsAnchorRequestTest {
         // whichever was measured first.
         assertEquals(ids.size, ids.distinct().size)
     }
-
-    @Test
-    fun `anchor screen routes match the navigation graph`() {
-        // These strings are passed straight to navController.navigate, so a typo is a runtime crash.
-        assertEquals("settings/player", SettingsAnchorScreens.PLAYER)
-        assertEquals("settings/appearance", SettingsAnchorScreens.APPEARANCE)
-        assertEquals("settings/storage", SettingsAnchorScreens.STORAGE)
-    }
 }

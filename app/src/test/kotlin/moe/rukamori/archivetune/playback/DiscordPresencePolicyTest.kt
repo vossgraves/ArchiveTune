@@ -11,7 +11,6 @@ import androidx.media3.common.Player
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.db.entities.SongEntity
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Test
 
 class DiscordPresencePolicyTest {
@@ -412,7 +411,7 @@ class DiscordPresencePolicyTest {
     }
 
     @Test
-    fun resolution_reusesSameHoldStateWhenEquivalentHoldContinuesWithoutTimeout() {
+    fun resolution_doesNotRestartAnActiveHoldWhoseDeadlineHasNotPassed() {
         val existingHold =
             ActiveHoldState(
                 reason = HoldReason.BufferingWhilePlayRequested,
@@ -448,7 +447,9 @@ class DiscordPresencePolicyTest {
             ),
             resolution.decision,
         )
-        assertSame(existingHold, resolution.nextHoldState)
+        // The hold keeps the timestamp it started with, so a run of Hold decisions cannot push the
+        // 7_000ms timeout out indefinitely: it still lapses at 9_000ms, not at nowMs + 7_000.
+        assertEquals(existingHold, resolution.nextHoldState)
     }
 
     @Test
