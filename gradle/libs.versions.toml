@@ -79,10 +79,9 @@ accompanist-core = "0.4.7"
 androidsvg = "1.4"
 aboutLibraries = "15.0.3"
 liquid-glass = "2.0.0"
-# Protobuf — Listen Together wire protocol (ported from vivi-music beta, which
-# pins these exact versions: javalite runtime + com.google.protobuf Gradle plugin).
+# Protobuf runtime version for the Listen Together wire protocol (javalite; the
+# generated sources are committed, so no Gradle plugin is involved).
 protobuf = "4.33.5"
-protobufPlugin = "0.9.6"
 # Haze library — used by the queue's frosted-glass blur behind the player artwork.
 # Ported from vivi-music (beta) which uses these exact parameters:
 # blurRadius = 80.dp, tint = HazeTint(Color.Black.copy(alpha = 0.30f)), noiseFactor = 0.15f.
@@ -217,9 +216,8 @@ androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg
 aboutlibraries-core = { module = "com.mikepenz:aboutlibraries-core", version.ref = "aboutLibraries" }
 liquid-glass = { module = "io.github.kyant0:backdrop", version.ref = "liquid-glass" }
 
-# Listen Together wire protocol (protobuf lite runtime, as in vivi-music beta)
+# Listen Together wire protocol (protobuf lite runtime; sources pre-generated, see app/build.gradle.kts)
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
-protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
 
 
 
@@ -233,4 +231,3 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 aboutlibraries-android = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutLibraries" }
-protobufPlugin = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

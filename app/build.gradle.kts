@@ -27,7 +27,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
-    alias(libs.plugins.protobufPlugin)
 }
 
 val localProperties = Properties()
@@ -449,26 +448,13 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-// Protobuf codegen for the Listen Together wire protocol (app/src/main/proto/
-// listentogether.proto). Same configuration as vivi-music beta: protoc toolchain
-// pinned by the version catalog, lite runtimes for both java and kotlin builtins.
-protobuf {
-    protoc {
-        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
-    }
-    generateProtoTasks {
-        all().forEach { task ->
-            task.builtins {
-                create("java") {
-                    option("lite")
-                }
-                create("kotlin") {
-                    option("lite")
-                }
-            }
-        }
-    }
-}
+// Listen Together wire protocol note: the protobuf classes are PRE-GENERATED and committed
+// (app/src/main/java/moe/rukamori/archivetune/listentogether/proto/Listentogether.java) because
+// protobuf-gradle-plugin cannot apply to this project's AGP 9 (it casts the app extension to the
+// removed BaseExtension). Regenerate after editing app/src/main/proto/listentogether.proto with:
+//   protoc --proto_path=app/src/main/proto --java_out=lite:app/src/main/java \
+//          app/src/main/proto/listentogether.proto
+// (protoc 33.x, matching the protobuf-javalite runtime pinned in the version catalog.)
 
 dependencies {
     implementation(libs.guava)
@@ -585,9 +571,8 @@ dependencies {
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
 
-    // Listen Together wire protocol (protobuf lite runtimes)
+    // Listen Together wire protocol (protobuf lite runtime; sources are pre-generated, see above)
     implementation(libs.protobuf.javalite)
-    implementation(libs.protobuf.kotlin.lite)
 
     coreLibraryDesugaring(libs.desugaring)
 
