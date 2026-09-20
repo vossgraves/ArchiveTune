@@ -1569,8 +1569,9 @@ val TelegramBotForwardToChannelKey = booleanPreferencesKey("telegramBotForwardTo
 // Multi-source audio framework
 // ---------------------------------------------------------------------------
 // A configurable set of lossless/stream sources. The user can reorder them (priority for playback
-// resolution), toggle each on/off, and pick a primary "search" source. YouTube is always available
-// as the final fallback and cannot be removed.
+// resolution), toggle each on/off, and pick a primary "search" source. YouTube is the implicit
+// terminal fallback and can be toggled off like any other source; disabling it turns "no other
+// source matched" into a hard playback failure rather than a silent YouTube stream.
 
 enum class AudioSourceType {
     TIDAL,
@@ -1598,6 +1599,15 @@ enum class AudioSourceType {
 val QqMusicEnabledKey = booleanPreferencesKey("qqMusicEnabled")
 
 val QqMusicAudioQualityKey = stringPreferencesKey("qqMusicAudioQuality")
+
+// ---------------------------------------------------------------------------
+// YouTube source
+// ---------------------------------------------------------------------------
+// YouTube is still the implicit terminal fallback in the resolution chain, but it is a normal
+// toggleable source: turning it off means the resolver will not use YouTube even when every other
+// source misses, so playback fails with the usual no-stream error instead of silently streaming
+// from YouTube. Default ON to preserve the historical "always available" behaviour.
+val YouTubeSourceEnabledKey = booleanPreferencesKey("youtubeSourceEnabled")
 
 enum class QqAudioQuality {
     LOSSLESS,

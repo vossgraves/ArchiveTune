@@ -225,6 +225,7 @@ import moe.rukamori.archivetune.constants.AmazonAudioQualityKey
 import moe.rukamori.archivetune.constants.QqMusicEnabledKey
 import moe.rukamori.archivetune.constants.QqAudioQuality
 import moe.rukamori.archivetune.constants.QqMusicAudioQualityKey
+import moe.rukamori.archivetune.constants.YouTubeSourceEnabledKey
 import moe.rukamori.archivetune.qqmusic.QqMusicProvider
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
@@ -7740,7 +7741,10 @@ class MusicService :
                             return@runCatching
                         }
                     }
-                    // Fall back to YouTube stream URL prefetch.
+                    // Fall back to YouTube stream URL prefetch — unless the user has turned the
+                    // YouTube source off, in which case there is nothing to prefetch: the
+                    // playback path will not use a YouTube URL for this track.
+                    if (!isSourceEnabled(AudioSourceType.YOUTUBE)) return@runCatching
 
                     val result =
                         retryWithoutPlaybackLoginContext {
@@ -8820,6 +8824,9 @@ class MusicService :
     /**
      * The ordered list of enabled non-YouTube sources to try for [resolveMultiSourceDataSpec],
      * with the user's primary/search source pinned first and YouTube (implicit fallback) excluded.
+     * YouTube's own enable state is still read here so the chain builder and the settings toggles
+     * agree on which sources exist; the resolver's terminal YouTube fallback is additionally
+     * gated in [resolvePlaybackDataSpec].
      */
     private fun sourceResolutionChain(): List<AudioSourceType> {
         val enabledDefaults =
@@ -8833,7 +8840,7 @@ class MusicService :
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
                 AudioSourceType.AMAZON to dataStore.get(AmazonEnabledKey, false),
-                AudioSourceType.YOUTUBE to true,
+                AudioSourceType.YOUTUBE to dataStore.get(YouTubeSourceEnabledKey, true),
             )
         // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
         // YouTube act as lossless overrides; once YouTube is reached the user has chosen to use
@@ -8847,15 +8854,16 @@ class MusicService :
     }
 
     /**
-     * Returns true if [source] is currently enabled in the user's preferences. YouTube is always
-     * enabled. Used by [resolveMultiSourceDataSpec] to:
+     * Returns true if [source] is currently enabled in the user's preferences. YouTube is enabled
+     * unless the user has turned it off ([YouTubeSourceEnabledKey], default true). Used by
+     * [resolveMultiSourceDataSpec] to:
      *   1. Decide whether to honor a per-song override whose source has since been disabled
      *      (fall through to the chain instead of trying only the disabled source).
      *   2. Guard the auto-pin write so we never pin to a source the user just turned off.
      */
     private fun isSourceEnabled(source: AudioSourceType): Boolean =
         when (source) {
-            AudioSourceType.YOUTUBE -> true
+            AudioSourceType.YOUTUBE -> dataStore.get(YouTubeSourceEnabledKey, true)
             AudioSourceType.TIDAL -> dataStore.get(TidalEnabledKey, true)
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
             AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
@@ -8992,7 +9000,8 @@ class MusicService :
         val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
         // Sources are surfaced in the Source chooser when ANY of:
-        //   - Always-available: YouTube (the implicit fallback).
+        //   - Always-available: YouTube (the implicit fallback), provided the user has not
+        //     turned the YouTube source off.
         //   - The source was previously resolved successfully for this media id.
         //   - The user previously pinned this song to this source (override).
         //   - The source is GLOBALLY ENABLED — the user has explicitly turned the source
@@ -9002,7 +9011,7 @@ class MusicService :
         //     resolve, which made the user think the source "did nothing" when picked
         //     elsewhere. Now any enabled source is selectable.
         return AudioSourceConfig.DEFAULT_ORDER.filter {
-            it == AudioSourceType.YOUTUBE ||
+            (it == AudioSourceType.YOUTUBE && isSourceEnabled(AudioSourceType.YOUTUBE)) ||
                 it in resolved ||
                 it == override ||
                 isSourceEnabled(it)
@@ -9335,7 +9344,6 @@ class MusicService :
             }
         val overrideStillEnabled =
             override == null ||
-                override == AudioSourceType.YOUTUBE ||
                 isSourceEnabled(override)
         val chain =
             if (isDirectPick) {
@@ -9344,8 +9352,15 @@ class MusicService :
             } else when (override) {
                 null -> sourceResolutionChain()
                 AudioSourceType.YOUTUBE -> {
-                    Timber.tag("MusicService").d("Per-song override: %s pinned to YouTube; skipping lossless", mediaId)
-                    emptyList()
+                    if (overrideStillEnabled) {
+                        Timber.tag("MusicService").d("Per-song override: %s pinned to YouTube; skipping lossless", mediaId)
+                        emptyList()
+                    } else {
+                        // Stale pin: the user turned YouTube off after pinning this song to it.
+                        // Drop the pin and use the normal chain instead of honouring it.
+                        Timber.tag("MusicService").d("Per-song override: %s pinned to YouTube but the YouTube source is disabled; using normal chain", mediaId)
+                        sourceResolutionChain()
+                    }
                 }
                 else -> if (overrideStillEnabled) {
                     Timber.tag("MusicService").d("Per-song override: %s pinned to %s", mediaId, override.name)
@@ -10632,6 +10647,19 @@ class MusicService :
             scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
             return sourceDataSpec
         }
+
+        // No lossless source matched. YouTube is the terminal fallback — and it is a toggleable
+        // source like the others, so a user who turned it off gets the standard no-stream failure
+        // here rather than a YouTube stream they explicitly declined. Everything below this gate
+        // is YouTube resolution (cached URL short-circuit or a fresh player response).
+        if (!isSourceEnabled(AudioSourceType.YOUTUBE)) {
+            throw PlaybackException(
+                getString(R.string.error_no_stream),
+                null,
+                PlaybackException.ERROR_CODE_REMOTE_ERROR,
+            )
+        }
+
 
         val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
         playbackUrlCache[mediaId]

@@ -336,9 +336,6 @@ object AudioSourceConfig {
             AudioSourceType.YOUTUBE,
         )
 
-    /** YouTube is the guaranteed fallback and is always enabled, but its position is user-controlled. */
-    private val ALWAYS_ENABLED = setOf(AudioSourceType.YOUTUBE)
-
     private fun parseType(name: String): AudioSourceType? =
         runCatching { AudioSourceType.valueOf(name.trim().uppercase()) }.getOrNull()
 
@@ -376,14 +373,15 @@ object AudioSourceConfig {
 
     /**
      * Whether a source is enabled. If the stored set is null (never configured), fall back to the
-     * provided per-source defaults. YouTube is always enabled.
+     * provided per-source [default]. YouTube is not special-cased: it is a normal toggleable source
+     * whose default is supplied by the caller (true in both the resolver and the settings UI),
+     * so turning it off disables it like any other source.
      */
     fun isEnabled(
         source: AudioSourceType,
         enabledSet: Set<String>?,
         default: Boolean,
     ): Boolean {
-        if (source in ALWAYS_ENABLED) return true
         val set = enabledSet ?: return default
         return set.any { parseType(it) == source }
     }

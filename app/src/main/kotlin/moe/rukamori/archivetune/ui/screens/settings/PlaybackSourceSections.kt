@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
 import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
 import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.constants.YouTubeSourceEnabledKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
@@ -150,6 +151,9 @@ internal fun PlaybackSourceSections(
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
+
+    // YouTube is a normal toggleable source now; default ON to preserve historical behaviour.
+    val (youTubeEnabled, onYouTubeEnabledChange) = rememberPreference(YouTubeSourceEnabledKey, true)
     val (saavnQuality, onSaavnQualityChange) =
         rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
     val (defaultMetadataSource, onDefaultMetadataSourceChange) =
@@ -238,7 +242,7 @@ internal fun PlaybackSourceSections(
             AudioSourceType.AMAZON -> amazonEnabled
             AudioSourceType.QQ -> qqMusicEnabled
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
-            AudioSourceType.YOUTUBE -> true
+            AudioSourceType.YOUTUBE -> youTubeEnabled
         }
 
     var showOrderDialog by rememberSaveable { mutableStateOf(false) }
@@ -248,7 +252,7 @@ internal fun PlaybackSourceSections(
     // "I put Qobuz first but still got YouTube" happens. Auto-enable the new top source on
     // confirm so the order dialog and the enable toggles can never disagree again.
     fun onOrderConfirm(newOrder: List<AudioSourceType>) {
-        newOrder.firstOrNull { it != AudioSourceType.YOUTUBE }?.let { top ->
+        newOrder.firstOrNull()?.let { top ->
             when (top) {
                 AudioSourceType.TIDAL -> if (!tidalEnabled) onTidalEnabledChange(true)
                 AudioSourceType.QOBUZ -> if (!qobuzEnabled) onQobuzEnabledChange(true)
@@ -258,7 +262,7 @@ internal fun PlaybackSourceSections(
                 AudioSourceType.AMAZON -> if (!amazonEnabled) onAmazonEnabledChange(true)
                 AudioSourceType.QQ -> if (!qqMusicEnabled) onQqMusicEnabledChange(true)
                 AudioSourceType.JIOSAAVN -> if (!jioSaavnEnabled) onJioSaavnEnabledChange(true)
-                AudioSourceType.YOUTUBE -> Unit
+                AudioSourceType.YOUTUBE -> if (!youTubeEnabled) onYouTubeEnabledChange(true)
             }
         }
         onSourceOrderChange(newOrder.joinToString(",") { it.name })
@@ -336,6 +340,19 @@ internal fun PlaybackSourceSections(
 
 
     PreferenceGroup(title = stringResource(R.string.source_youtube)) {
+        // Enable/disable YouTube as a resolution source. Default ON — matches the historical
+        // "YouTube is the implicit fallback" behaviour, so existing users see no change until
+        // they deliberately switch it off.
+        item {
+            SwitchPreference(
+                modifier = positions.modifierFor("youtube_source_enable"),
+                title = { Text(stringResource(R.string.source_youtube)) },
+                description = stringResource(R.string.source_youtube_enable_description),
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                checked = youTubeEnabled,
+                onCheckedChange = onYouTubeEnabledChange,
+            )
+        }
         item {
             EnumListPreference(
                 title = { Text(stringResource(R.string.audio_quality)) },

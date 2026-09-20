@@ -849,7 +849,8 @@
     <string name="audio_search_source">Preferred source</string>
     <string name="audio_source_enabled">Enabled</string>
     <string name="audio_source_disabled">Disabled — enable it in its section below</string>
-    <string name="audio_source_youtube_fallback">YouTube is always tried last if no other source can resolve a track.</string>
+    <string name="audio_source_youtube_fallback">YouTube is tried last if no other source can resolve a track and the YouTube source is enabled.</string>
+    <string name="source_youtube_enable_description">Use YouTube as a resolution source. When off, ArchiveTune will not fall back to YouTube if no other source matches.</string>
     <string name="source_tidal">Tidal</string>
     <string name="source_apple_music">Apple Music</string>
     <string name="source_youtube">YouTube</string>
