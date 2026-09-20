@@ -155,17 +155,26 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                     if (refreshing) return@PreferenceEntry
                     refreshing = true
                     scope.launch {
+                        val before = PoolAccountManager.lastRefreshAtMillis
                         val ok =
                             withContext(Dispatchers.IO) {
-                                // Force past the 6h throttle so the tap always hits the network.
-                                val accountsOk = PoolAccountManager.refresh(context, force = true)
-                                // Re-discover + re-verify community Tidal instances from the pool feed.
-                                runCatching {
-                                    TidalInstanceHealthManager.refresh(
-                                        context,
-                                        includeDiscovery = true,
-                                        staggered = false,
-                                    )
+                                // Deliberately NOT forced. A tap used to bypass the interval, which
+                                // made the interval decorative: the pool's database is woken by
+                                // every fetch, so "I tapped it" was spending the same budget the
+                                // interval exists to protect. The tap now fetches only when the
+                                // cached copy is actually due.
+                                val accountsOk = PoolAccountManager.refresh(context)
+                                // Re-discover + re-verify community Tidal instances, but only when
+                                // that refresh really happened — otherwise this is a second network
+                                // round trip for data the throttle just declined to fetch.
+                                if (PoolAccountManager.lastRefreshAtMillis != before) {
+                                    runCatching {
+                                        TidalInstanceHealthManager.refresh(
+                                            context,
+                                            includeDiscovery = true,
+                                            staggered = false,
+                                        )
+                                    }
                                 }
                                 accountsOk
                             }
@@ -178,6 +187,8 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                             when {
                                 poolError != null ->
                                     context.getString(R.string.pool_refresh_failed) + "\n" + poolError
+                                PoolAccountManager.lastRefreshAtMillis == before ->
+                                    context.getString(R.string.pool_refresh_up_to_date)
                                 ok ->
                                     context.getString(
                                         R.string.pool_refresh_done,

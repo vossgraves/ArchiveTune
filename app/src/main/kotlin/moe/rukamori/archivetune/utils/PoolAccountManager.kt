@@ -150,8 +150,15 @@ object PoolAccountManager {
     @Volatile
     private var amazonCache: List<AmazonPoolAccount> = emptyList()
 
+    /**
+     * When the pool was last fetched over the network, in epoch millis (0 = never fetched).
+     *
+     * Exposed so the settings refresh row can tell "this tap actually fetched" from "this tap was
+     * throttled" — without it the row reported a refresh that never happened.
+     */
     @Volatile
-    private var lastRefreshAt = 0L
+    var lastRefreshAtMillis = 0L
+        private set
 
     @Volatile
     private var loadedFromDisk = false
@@ -332,13 +339,13 @@ object PoolAccountManager {
             loadCached(context)
 
             val now = System.currentTimeMillis()
-            if (!force && hasAccounts() && now - lastRefreshAt < refreshIntervalMs()) {
+            if (!force && hasAccounts() && now - lastRefreshAtMillis < refreshIntervalMs()) {
                 return@withContext true
             }
 
             refreshMutex.withLock {
                 // Re-check the throttle inside the lock in case another caller just refreshed.
-                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
+                if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAtMillis < refreshIntervalMs()) {
                     return@withLock true
                 }
                 val url = accountsUrl ?: legacySourcesUrl
@@ -462,7 +469,7 @@ object PoolAccountManager {
                     deezerCache = deezer
                     appleMusicCache = apple
                     amazonCache = amazon
-                    lastRefreshAt = System.currentTimeMillis()
+                    lastRefreshAtMillis = System.currentTimeMillis()
                     persist(context, tidal, qobuz, deezer, apple, amazon)
                 }
                 Timber.tag(TAG).i(
