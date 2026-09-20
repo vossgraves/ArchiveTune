@@ -197,7 +197,7 @@ class ProtoWireTest {
         assertTrue(decoded.isPlaying)
         assertEquals(4200L, decoded.position)
         assertEquals(1_700_000_000_000L, decoded.lastUpdate)
-        assertEquals(listOf("queued-1"), decoded.queue.map { it.id })
+        assertEquals(listOf("queued-1"), decoded.queue?.map { it.id })
         assertEquals(0.8f, decoded.volume ?: 0f, 0f)
     }
 
