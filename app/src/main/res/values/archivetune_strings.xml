@@ -918,6 +918,9 @@
     <string name="amazon_instances_hint">One URL per line</string>
     <string name="amazon_instances_empty">None configured — add an instance URL to enable Amazon playback</string>
     <string name="amazon_instances_count">%1$d instance(s) configured</string>
+    <string name="amazon_pool_instances">Pool instances</string>
+    <string name="amazon_pool_instances_count">%1$d available from the pool — tried after your own</string>
+    <string name="amazon_pool_instances_empty">None collected by the pool yet. Add your own instance above to use this source.</string>
     <string name="amazon_authorize">Authorize with Turnstile</string>
     <string name="amazon_authorize_description">Solves the Cloudflare challenge in a WebView and stores the access JWT.</string>
     <string name="amazon_jwt_status">Authorization</string>

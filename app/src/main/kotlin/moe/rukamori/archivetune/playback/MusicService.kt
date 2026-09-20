@@ -241,6 +241,7 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
+import moe.rukamori.archivetune.audiosource.AmazonInstances
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
@@ -7268,45 +7269,48 @@ class MusicService :
     }
 
     /**
-     * Amazon Music via a user-configured instance (no official Web API, no LWA sign-in).
+     * Amazon Music via an instance (no official Web API, no LWA sign-in).
      *
-     * Reads the instance list from [AmazonInstancesKey] and tries each one in order, first success
-     * wins. Each attempt needs authorization material — either a Turnstile JWT that has not expired
-     * (or is present, since the server will 428 on a stale one) or the operator's bypass token — and
-     * reads the audio tier from [AmazonAudioQualityKey] to pick the instance-side quality code. The
-     * provider resolves the track, downloads + decrypts the CENC stream to a local file, and hands
-     * back a [DirectStream] with the matched *instance* metadata (never the query's) so the match
-     * gate below sees what actually came back. The provider was restored from this repo's own
-     * earlier instance-based source (see AmazonAudioProvider's header).
+     * The instance list is the user's own entries plus whatever the pool serves for `amazon-music`
+     * ([AmazonInstances.merge] settles the order and hands each host its own material), and each is
+     * tried in turn, first success wins. The user's own entries come first, and a host only ever
+     * receives the material issued for it — a bypass token belongs to its operator and a solved
+     * Turnstile JWT to the origin that handed out the challenge. The audio tier comes from
+     * [AmazonAudioQualityKey]. The provider resolves the track, downloads + decrypts the CENC stream
+     * to a local file, and hands back a [DirectStream] with the matched *instance* metadata (never
+     * the query's) so the match gate below sees what actually came back. The provider was restored
+     * from this repo's own earlier instance-based source (see AmazonAudioProvider's header).
      */
     private fun resolveAmazonStream(
         query: SourceQuery,
         trusted: Boolean,
     ): DirectStream? {
+        // One reading of the clock for both expiry decisions below.
+        val nowMs = System.currentTimeMillis()
         val instances =
-            dataStore.get(AmazonInstancesKey).orEmpty()
-                .split('\n', ',')
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .distinct()
+            AmazonInstances.merge(
+                local = AmazonInstances.parseBaseUrls(dataStore.get(AmazonInstancesKey).orEmpty()),
+                localBypassToken = dataStore.get(AmazonBypassTokenKey),
+                // A recorded expiry that has passed means a guaranteed 428, so the token is left
+                // out and the settings screen's "re-authorize" state is what the user sees. No
+                // recorded expiry keeps the old behaviour: send it and let the instance judge.
+                localTurnstileJwt =
+                    dataStore.get(AmazonTurnstileJwtKey).takeIf {
+                        !it.isNullOrBlank() &&
+                            AmazonInstances.isJwtUsable(
+                                expiresAtMs = dataStore.get(AmazonTurnstileJwtExpiryMsKey, 0L).takeIf { it > 0L },
+                                nowMs = nowMs,
+                            )
+                    },
+                pooled = PoolAccountManager.amazonInstances(),
+                nowMs = nowMs,
+            )
         if (instances.isEmpty()) {
             if (!amazonInertLogged) {
                 amazonInertLogged = true
                 Timber
                     .tag("MusicService")
-                    .i("Amazon Music: no instances configured — the source stays inert")
-            }
-            return null
-        }
-
-        val jwt = dataStore.get(AmazonTurnstileJwtKey).orEmpty().takeIf { it.isNotBlank() }
-        val bypassToken = dataStore.get(AmazonBypassTokenKey).orEmpty().takeIf { it.isNotBlank() }
-        if (jwt == null && bypassToken == null) {
-            if (!amazonAuthNeededLogged) {
-                amazonAuthNeededLogged = true
-                Timber
-                    .tag("MusicService")
-                    .i("Amazon Music: no Turnstile JWT / bypass token — authorize in settings")
+                    .i("Amazon Music: no instance with authorization material — the source stays inert")
             }
             return null
         }
@@ -7318,7 +7322,7 @@ class MusicService :
                 )
             }.getOrDefault(AmazonAudioQuality.Default)
 
-        for (base in instances) {
+        for (instance in instances) {
             val stream =
                 runBlocking(Dispatchers.IO) {
                     AmazonAudioProvider.resolveByMetadata(
@@ -7327,10 +7331,10 @@ class MusicService :
                         album = query.album,
                         durationMs = query.durationMs,
                         cacheDir = cacheDir,
-                        instanceBaseUrl = base,
-                        bypassToken = bypassToken,
+                        instanceBaseUrl = instance.baseUrl,
+                        bypassToken = instance.bypassToken,
                         quality = quality.name,
-                        turnstileJwt = jwt,
+                        turnstileJwt = instance.turnstileJwt,
                     )
                 } ?: continue
             val match =
@@ -7433,9 +7437,6 @@ class MusicService :
 
     @Volatile
     private var amazonInertLogged = false
-
-    /** Logs the "no Turnstile JWT / bypass token" state once per process, like [amazonInertLogged]. */
-    private var amazonAuthNeededLogged = false
 
     /**
      * Cache file for an Apple stream (cacheDir/applemusic/<mediaId>.m4a), built via [build]

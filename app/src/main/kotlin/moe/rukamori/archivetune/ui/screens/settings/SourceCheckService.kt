@@ -10,9 +10,12 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.audiosource.AmazonInstances
 import moe.rukamori.archivetune.constants.AmazonBypassTokenKey
 import moe.rukamori.archivetune.constants.AmazonInstancesKey
+import moe.rukamori.archivetune.constants.AmazonTurnstileJwtExpiryMsKey
 import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.qqmusic.QqMusicProvider
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
@@ -425,32 +428,37 @@ object SourceCheckService {
 
     private suspend fun checkAmazon(context: Context): SourceCheckResult {
         val prefs = context.dataStore.data.first()
+        val nowMs = System.currentTimeMillis()
+        // The check must look at what playback will actually try: the user's own instances plus any
+        // the pool serves, each with the material issued for it.
         val instances =
-            prefs[AmazonInstancesKey].orEmpty()
-                .split('\n', ',')
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .distinct()
+            AmazonInstances.merge(
+                local = AmazonInstances.parseBaseUrls(prefs[AmazonInstancesKey].orEmpty()),
+                localBypassToken = prefs[AmazonBypassTokenKey],
+                localTurnstileJwt =
+                    prefs[AmazonTurnstileJwtKey].takeIf {
+                        !it.isNullOrBlank() &&
+                            AmazonInstances.isJwtUsable(
+                                expiresAtMs = prefs[AmazonTurnstileJwtExpiryMsKey]?.takeIf { it > 0L },
+                                nowMs = nowMs,
+                            )
+                    },
+                pooled = PoolAccountManager.amazonInstances(),
+                nowMs = nowMs,
+            )
         if (instances.isEmpty()) {
             return SourceCheckResult(
                 healthy = false,
-                summary = "Not configured: no Amazon Music instances added. Open " +
-                    "Integration → Amazon Music and add an instance URL. The source is off until then.",
-            )
-        }
-        val hasAuth =
-            !prefs[AmazonTurnstileJwtKey].isNullOrBlank() ||
-                !prefs[AmazonBypassTokenKey].isNullOrBlank()
-        if (!hasAuth) {
-            return SourceCheckResult(
-                healthy = false,
-                summary = "Instances configured (${instances.size}), but no authorization material. " +
-                    "Open Integration → Amazon Music and authorize with Turnstile, or set a bypass token.",
+                summary = "Not configured: no Amazon Music instance with authorization material. " +
+                    "Open Integration → Amazon Music and add an instance URL (or authorize one " +
+                    "with Turnstile). The source is off until then.",
             )
         }
         // Probe the first instance's /health with a short timeout; report it dead if it doesn't
-        // answer. This is a liveness check only — auth is a separate gate (see above).
-        val base = instances.first()
+        // answer. This is a liveness check only — auth is already settled by the list above.
+        val first = instances.first()
+        val base = first.baseUrl
+        val origin = if (first.fromPool) "from the pool" else "yours"
         val client =
             OkHttpClient
                 .Builder()
@@ -473,17 +481,23 @@ object SourceCheckService {
                 Timber.tag("SourceCheck").d(it, "Amazon /health probe failed")
                 false
             }
+        val count =
+            if (instances.size == 1) {
+                "1 instance"
+            } else {
+                "${instances.size} instances (${instances.count { it.fromPool }} from the pool)"
+            }
         return if (probe) {
             SourceCheckResult(
                 healthy = true,
-                summary = "Instances: ${instances.size} configured, first one ($base) is alive. " +
+                summary = "$count available; the first ($base, $origin) is alive. " +
                     "Playback resolves through that instance and is decrypted on-device.",
             )
         } else {
             SourceCheckResult(
                 healthy = false,
-                summary = "Instances configured (${instances.size}), first one ($base) did not " +
-                    "answer /health within 4s — it may be dead or unreachable.",
+                summary = "$count available, but the first ($base, $origin) did not answer " +
+                    "/health within 4s — it may be dead or unreachable.",
             )
         }
     }

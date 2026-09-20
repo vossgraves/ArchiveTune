@@ -61,6 +61,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.text.DateFormat
@@ -213,6 +214,24 @@ fun AmazonSettings(
                             },
                         icon = { Icon(painterResource(R.drawable.link), null) },
                         onClick = { showInstancesDialog = true },
+                    )
+                }
+
+                item {
+                    // Informational: the pool's instances are tried after the user's own and are
+                    // not editable here (they belong to whoever runs them). Read without remember —
+                    // the pool cache fills in on its own schedule, and the row should show it.
+                    val pooledInstances = PoolAccountManager.amazonInstances()
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("amazon_pool_instances"),
+                        title = { Text(stringResource(R.string.amazon_pool_instances)) },
+                        description =
+                            if (pooledInstances.isEmpty()) {
+                                stringResource(R.string.amazon_pool_instances_empty)
+                            } else {
+                                stringResource(R.string.amazon_pool_instances_count, pooledInstances.size)
+                            },
+                        icon = { Icon(painterResource(R.drawable.cloud), null) },
                     )
                 }
 

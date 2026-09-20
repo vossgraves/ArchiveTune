@@ -18,6 +18,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.audiosource.AmazonInstance
+import moe.rukamori.archivetune.audiosource.AmazonInstances
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -121,18 +123,23 @@ object PoolAccountManager {
     )
 
     /**
-     * A shared Amazon Music subscriber credential. Modeled on [DeezerPoolAccount] rather than
-     * Tidal/Qobuz: no self-hosted proxy-instance tier, just one opaque per-account [session] blob
-     * (an Amazon Music web-session artifact) plus a [premium] flag for HD/Ultra HD entitlement.
-     *
-     * Nothing resolves audio with this yet — Amazon serves CENC-protected streams and this fork
-     * ships no decryption step (see AmazonEnabledKey in PreferenceKeys.kt) — but the pool plumbing
-     * is in place so a future AudioProvider only has to consume [amazonAccounts].
+     * A pooled Amazon Music entry. The pool carries two tiers for this service and both land here:
+     * the account tier (an Amazon Music web-session artifact in [session]) and the instance tier
+     * ([baseUrl] plus the material that host accepts). Playback goes through the instance tier —
+     * this fork's provider talks to a self-hosted instance, which is what [baseUrl],
+     * [bypassToken] and [turnstileJwt] describe — while [session] stays for the account tier the
+     * pool also collects.
      */
     data class AmazonPoolAccount(
         val id: Long?,
-        val session: String,
+        val session: String?,
         val premium: Boolean,
+        /** Instance base URL; null for account-tier entries. */
+        val baseUrl: String? = null,
+        val bypassToken: String? = null,
+        val turnstileJwt: String? = null,
+        /** Epoch millis, parsed from the pool's plaintext ISO-8601 expiry; null when absent. */
+        val turnstileJwtExpiresAtMs: Long? = null,
     )
 
     @Volatile
@@ -258,6 +265,25 @@ object PoolAccountManager {
     fun amazonAccounts(): List<AmazonPoolAccount> =
         ordered("amazon-music", amazonCache, { it.id }, { it.premium })
 
+    /**
+     * The pooled instances the Amazon provider can play through: entries that name a host and carry
+     * material, premium first and cooling-down ones last. Account-tier entries (a session with no
+     * host) are skipped; whether a Turnstile JWT is still worth sending is decided by
+     * [AmazonInstances.merge], which owns that rule.
+     */
+    fun amazonInstances(): List<AmazonInstance> =
+        ordered("amazon-music", amazonCache, { it.id }, { it.premium })
+            .mapNotNull { account ->
+                val baseUrl = account.baseUrl ?: return@mapNotNull null
+                AmazonInstance(
+                    baseUrl = baseUrl,
+                    bypassToken = account.bypassToken,
+                    turnstileJwt = account.turnstileJwt,
+                    turnstileJwtExpiresAtMs = account.turnstileJwtExpiresAtMs,
+                    fromPool = true,
+                )
+            }
+
     fun hasAccounts(): Boolean =
         tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() ||
             appleMusicCache.isNotEmpty() || amazonCache.isNotEmpty()
@@ -265,12 +291,11 @@ object PoolAccountManager {
     /**
      * True when every pooled service *that something can actually play* has at least one account.
      *
-     * Deliberately excludes Amazon: no AudioProvider consumes [amazonCache] yet (this fork ships no
-     * CENC decryption step), so an empty Amazon cache is never "missing" anything a user can use.
-     * Folding it in here would mean any pool deployment slow to collect Amazon accounts — plausibly
-     * most of them, indefinitely — permanently downgrades every user from the 24h [refreshIntervalMs]
-     * to the 15-minute partial-pool one, hammering the server for a service nothing resolves through.
-     * Revisit this once an Amazon AudioProvider exists and eager discovery would actually help someone.
+     * Amazon stays out even though its provider now plays through pooled instances: a user can add
+     * their own instance, so an empty Amazon cache means "no pooled host collected yet" rather than
+     * "nothing plays". Folding it in would downgrade every deployment that has not collected one —
+     * plausibly most of them, indefinitely — from the 24h [refreshIntervalMs] to the 15-minute
+     * partial-pool one, for a service that already works without the pool.
      */
     private fun hasEveryService(): Boolean =
         tidalCache.isNotEmpty() && qobuzCache.isNotEmpty() && deezerCache.isNotEmpty() && appleMusicCache.isNotEmpty()
@@ -807,16 +832,30 @@ object PoolAccountManager {
         val out = mutableListOf<AmazonPoolAccount>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val session = field(obj, "session", decryptor) ?: continue
+            // Either tier is useful on its own: the account tier carries a session, the instance
+            // tier a base URL. An entry with neither is not something playback can use.
+            val baseUrl = obj.optString("baseUrl", "").trim().ifBlank { null }
+            val session = field(obj, "session", decryptor)
+            if (baseUrl == null && session == null) continue
             out +=
                 AmazonPoolAccount(
                     id = entryId(obj),
                     session = session,
                     premium = obj.optBoolean("premium", false),
+                    baseUrl = baseUrl,
+                    bypassToken = field(obj, "bypassToken", decryptor),
+                    turnstileJwt = field(obj, "turnstileJwt", decryptor),
+                    turnstileJwtExpiresAtMs = parseIsoMillis(obj.optString("turnstileJwtExpiresAt", "")),
                 )
         }
         return out
     }
+
+    /** Plaintext pool timestamps (the JWT expiry) as epoch millis; unparseable ones read as absent. */
+    private fun parseIsoMillis(raw: String): Long? =
+        raw.takeIf { it.isNotBlank() }?.let {
+            runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull()
+        }
 
     /** Pool entry id from the accounts feed (positive when present); null for manual/legacy entries. */
     private fun entryId(obj: JSONObject): Long? =
