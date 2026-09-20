@@ -35,7 +35,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AmazonAccountNameKey
+import moe.rukamori.archivetune.constants.AmazonEnabledKey
 import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
@@ -75,9 +75,11 @@ fun IntegrationScreen(
     val (deezerArl, _) = rememberPreference(DeezerArlKey, "")
     val (tidalAccessToken, _) = rememberPreference(TidalAccessTokenKey, "")
     val (qobuzTokens, _) = rememberPreference(QobuzTokensKey, "")
-    val (amazonAccountName, _) = rememberPreference(AmazonAccountNameKey, "")
+    // Amazon's row is gated on the source being enabled rather than a signed-in account: the
+    // instance-based source has no account, only instances + a Turnstile JWT (see AmazonSettings).
+    val (amazonSourceEnabled, _) = rememberPreference(AmazonEnabledKey, false)
     val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
-    val showAmazonRow = manualSourceLogin || amazonAccountName.isNotBlank()
+    val showAmazonRow = manualSourceLogin || amazonSourceEnabled
     val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
     val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
 
@@ -228,7 +230,7 @@ fun IntegrationScreen(
                     PreferenceEntry(
                         modifier = positions.modifierFor("amazon"),
                         title = { Text(stringResource(R.string.source_amazon)) },
-                        description = stringResource(R.string.amazon_login_description),
+                        description = stringResource(R.string.amazon_integration_description),
                         icon = { Icon(painterResource(R.drawable.login), null) },
                         onClick = {
                             navController.navigate("settings/amazon")

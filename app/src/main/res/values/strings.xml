@@ -917,6 +917,7 @@
     <string name="qobuz_integration_description">Manage Qobuz proxy instances and lossless quality</string>
     <string name="deezer_integration">Deezer</string>
     <string name="deezer_integration_description">Log in with Deezer Premium to stream lossless audio</string>
+    <string name="amazon_integration_description">Add Amazon Music instances and authorize via Turnstile</string>
     <string name="deezer_login">Sign in to Deezer</string>
     <string name="deezer_login_description">Use your own Deezer account instead of the shared pool</string>
     <string name="deezer_login_success">Signed in to Deezer as %1$s</string>

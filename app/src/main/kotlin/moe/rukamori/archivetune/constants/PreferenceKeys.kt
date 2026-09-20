@@ -1661,32 +1661,28 @@ val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 // ---------------------------------------------------------------------------
 // Amazon Music source
 // ---------------------------------------------------------------------------
-// Shaped like Deezer rather than Tidal/Qobuz: credentials come from a signed-in account or from
-// the pool, and the instance list below only locates the metadata/search tier.
-//
-// IMPORTANT — this source stays inert until the build carries an approved Amazon Music Web API
-// security profile (BuildConfig.AMAZON_LWA_CLIENT_ID; see AmazonMusicProvider). Without one the
-// resolver declines every track and playback falls through to the next source, which is why the
-// toggle defaults OFF and the source-check row names what has to be provisioned. With one, playback
-// goes through Amazon's own playback-session endpoint and is licensed by Amazon's own Widevine
-// server for the signed-in account — no instance, proxy or key service is involved at any point.
+// Shaped like Tidal rather than Deezer: the audio tier is reached through a self-hosted "Amazon
+// Music Stream API" instance the user adds (the list starts EMPTY — the ecosystem has no working
+// public default), and the instance is usually gated behind Cloudflare Turnstile. Authorization is
+// therefore one of:
+//   - a Turnstile JWT obtained interactively via AmazonTurnstileActivity and persisted here with
+//     its expiry (authorize again to refresh), or
+//   - the instance operator's bypass_token.
+// Without an instance AND auth material the resolver declines every track and playback falls
+// through to the next source, which is why the toggle defaults OFF.
 val AmazonEnabledKey = booleanPreferencesKey("amazonEnabled")
 
-// A manually captured Amazon session, stored separately from the pool cache for the same reason
-// DeezerArlKey is: the pool is wiped and rewritten on every refresh.
-val AmazonSessionKey = stringPreferencesKey("amazonSession")
-
-// Display label for the manually signed-in account, so the settings row can name who is signed in
-// without the session token going near the UI.
-val AmazonAccountNameKey = stringPreferencesKey("amazonAccountName")
-
-// Whether the signed-in account reported a lossless-capable (HD/Ultra HD) plan. Orders resolution
-// attempts only; the provider still verifies the real tier per track.
-val AmazonAccountPremiumKey = booleanPreferencesKey("amazonAccountPremium")
-
-// Newline-separated instance URLs, same shape as TidalInstancesKey and QobuzInstancesKey so
-// parseInstances() in MusicService reads all three.
+// Newline- or comma-separated instance URLs, same shape as TidalInstancesKey and QobuzInstancesKey
+// so parseInstances() in MusicService reads all three. Empty by default.
 val AmazonInstancesKey = stringPreferencesKey("amazonInstances")
+
+// Cloudflare Turnstile JWT (X-Turnstile-JWT header) and the wall-clock ms at which it stops being
+// trusted (already discounted for clock skew). Refreshed by running AmazonTurnstileActivity again.
+val AmazonTurnstileJwtKey = stringPreferencesKey("amazonTurnstileJwt")
+val AmazonTurnstileJwtExpiryMsKey = longPreferencesKey("amazonTurnstileJwtExpiryMs")
+
+// Operator-provided bypass_token query parameter — the alternative to solving Turnstile.
+val AmazonBypassTokenKey = stringPreferencesKey("amazonBypassToken")
 
 val AmazonAudioQualityKey = stringPreferencesKey("amazonAudioQuality")
 

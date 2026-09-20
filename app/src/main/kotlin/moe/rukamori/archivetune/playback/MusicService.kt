@@ -218,10 +218,12 @@ import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
 import moe.rukamori.archivetune.constants.AmazonEnabledKey
-import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
-import moe.rukamori.archivetune.constants.AmazonSessionKey
 import moe.rukamori.archivetune.constants.AmazonAudioQuality
 import moe.rukamori.archivetune.constants.AmazonAudioQualityKey
+import moe.rukamori.archivetune.constants.AmazonBypassTokenKey
+import moe.rukamori.archivetune.constants.AmazonInstancesKey
+import moe.rukamori.archivetune.constants.AmazonTurnstileJwtExpiryMsKey
+import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
 import moe.rukamori.archivetune.constants.QqMusicEnabledKey
 import moe.rukamori.archivetune.constants.QqAudioQuality
 import moe.rukamori.archivetune.constants.QqMusicAudioQualityKey
@@ -246,7 +248,7 @@ import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.audiosource.pcmBitrateOrNull
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
-import moe.rukamori.archivetune.amazon.AmazonMusicProvider
+import moe.rukamori.archivetune.audiosource.AmazonAudioProvider
 import moe.rukamori.archivetune.applemusic.AppleMusicVirtualStream
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
@@ -9753,37 +9755,48 @@ class MusicService :
     }
 
     /**
-     * Amazon Music — the official Web API path only.
+     * Amazon Music via a user-configured instance (no official Web API, no LWA sign-in).
      *
-     * Declines by returning null, which is what the chain's fall-through expects and what this branch
-     * did as a literal `null` before it existed: no approved Web API profile, no account (the
-     * personal session first, then the pool's in-memory snapshot), no catalog hit, no
-     * manifest-and-licence pair, or a candidate the match gate will not accept. Every one of those is
-     * the normal state of a build without Amazon's approval, so declining is a path rather than an
-     * error, and this never throws.
+     * Reads the instance list from [AmazonInstancesKey] and tries each one in order, first success
+     * wins. Each attempt needs authorization material — either a Turnstile JWT that has not expired
+     * (or is present, since the server will 428 on a stale one) or the operator's bypass token — and
+     * reads the audio tier from [AmazonAudioQualityKey] to pick the instance-side quality code. The
+     * provider resolves the track, downloads + decrypts the CENC stream to a local file, and hands
+     * back a [DirectStream] with the matched *instance* metadata (never the query's) so the match
+     * gate below sees what actually came back. The provider was restored from this repo's own
+     * earlier instance-based source (see AmazonAudioProvider's header).
      */
     private fun resolveAmazonStream(
         query: SourceQuery,
         trusted: Boolean,
     ): DirectStream? {
-        if (!AmazonMusicProvider.isConfigured()) {
-            // Once per process: whether this build carries a security profile is a build-level fact,
-            // not something to re-log for every song that falls through.
+        val instances =
+            dataStore.get(AmazonInstancesKey).orEmpty()
+                .split('\n', ',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+        if (instances.isEmpty()) {
             if (!amazonInertLogged) {
                 amazonInertLogged = true
                 Timber
                     .tag("MusicService")
-                    .i("Amazon Music: no Web API security profile in this build — the source stays inert")
+                    .i("Amazon Music: no instances configured — the source stays inert")
             }
             return null
         }
 
-        val credentials =
-            AmazonMusicProvider.credentials(
-                localSession = dataStore.get(AmazonSessionKey),
-                localPremium = dataStore.get(AmazonAccountPremiumKey, false),
-                pooled = AmazonMusicProvider.pooledCredentials(),
-            ) ?: return null
+        val jwt = dataStore.get(AmazonTurnstileJwtKey).orEmpty().takeIf { it.isNotBlank() }
+        val bypassToken = dataStore.get(AmazonBypassTokenKey).orEmpty().takeIf { it.isNotBlank() }
+        if (jwt == null && bypassToken == null) {
+            if (!amazonAuthNeededLogged) {
+                amazonAuthNeededLogged = true
+                Timber
+                    .tag("MusicService")
+                    .i("Amazon Music: no Turnstile JWT / bypass token — authorize in settings")
+            }
+            return null
+        }
 
         val quality =
             runCatching {
@@ -9792,42 +9805,21 @@ class MusicService :
                 )
             }.getOrDefault(AmazonAudioQuality.Default)
 
-        val searchQuery =
-            listOfNotNull(query.title, query.artists.firstOrNull())
-                .joinToString(" ")
-                .trim()
-        if (searchQuery.isEmpty()) return null
-
-        val deviceId =
-            AmazonMusicProvider.deviceId(
-                runCatching {
-                    android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)
-                }.getOrNull().orEmpty(),
-            )
-
-        val candidates = runBlocking(Dispatchers.IO) { AmazonMusicProvider.searchCandidates(searchQuery, credentials) }
-        for (candidate in candidates) {
+        for (base in instances) {
             val stream =
                 runBlocking(Dispatchers.IO) {
-                    AmazonMusicProvider.resolveStream(candidate.id, quality, credentials, deviceId)
+                    AmazonAudioProvider.resolveByMetadata(
+                        title = query.title,
+                        artists = query.artists,
+                        album = query.album,
+                        durationMs = query.durationMs,
+                        cacheDir = cacheDir,
+                        instanceBaseUrl = base,
+                        bypassToken = bypassToken,
+                        quality = quality.name,
+                        turnstileJwt = jwt,
+                    )
                 } ?: continue
-            val placeholder =
-                DirectStream(
-                    uri = stream.manifestUrl,
-                    // Amazon serves DASH; DefaultMediaSourceFactory picks the DASH source off the
-                    // manifest's own extension, and the DRM provider below attaches the licence
-                    // session for this media id.
-                    mimeType = "audio/mp4",
-                    codecs = "",
-                    contentLength = null,
-                    label = "Amazon Music ${quality.name}",
-                    source = AudioSourceType.AMAZON,
-                    matchedTitle = candidate.title,
-                    matchedArtist = candidate.artist,
-                    matchedAlbum = candidate.album,
-                    matchedDurationMs = candidate.durationMs ?: stream.durationMs,
-                    trustedDirectId = trusted,
-                )
             val match =
                 if (trusted) {
                     TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
@@ -9837,17 +9829,14 @@ class MusicService :
                         wantedArtists = query.artists,
                         wantedAlbum = query.album,
                         wantedDurationMs = query.durationMs,
-                        stream = placeholder,
+                        stream = stream,
                     )
                 }
             if (!match.accepted) continue
-            // Registered before the stream is handed back: the DRM provider runs while the media
-            // item is prepared, and an item with no entry there would be treated as unencrypted.
-            amazonDrmTrackInfo[query.mediaId] = AmazonTrackDrmInfo(trackId = candidate.id, licenseUrl = stream.licenseUrl)
             Timber
                 .tag("MusicService")
-                .i("Amazon Music resolved \"%s\" as %s", query.title, candidate.id)
-            return placeholder
+                .i("Amazon Music resolved \"%s\" via %s", query.title, base)
+            return stream
         }
         return null
     }
@@ -9931,6 +9920,9 @@ class MusicService :
 
     @Volatile
     private var amazonInertLogged = false
+
+    /** Logs the "no Turnstile JWT / bypass token" state once per process, like [amazonInertLogged]. */
+    private var amazonAuthNeededLogged = false
 
     /**
      * Cache file for an Apple stream (cacheDir/applemusic/<mediaId>.m4a), built via [build]
@@ -11102,10 +11094,8 @@ class MusicService :
             // else stays DRM-free with the default behavior.
             .setDrmSessionManagerProvider { mediaItem ->
                 val appleTrack = mediaItem.mediaId?.let { appleDrmTrackInfo[it] }
-                val amazonTrack = mediaItem.mediaId?.let { amazonDrmTrackInfo[it] }
                 when {
                     appleTrack != null -> buildAppleDrmSessionManager(appleTrack) ?: DrmSessionManager.DRM_UNSUPPORTED
-                    amazonTrack != null -> buildAmazonDrmSessionManager(amazonTrack) ?: DrmSessionManager.DRM_UNSUPPORTED
                     else -> DrmSessionManager.DRM_UNSUPPORTED
                 }
             }
@@ -11122,98 +11112,6 @@ class MusicService :
     )
 
     private val appleDrmTrackInfo: MutableMap<String, AppleTrackDrmInfo> = ConcurrentHashMap()
-
-    /**
-     * Media ids resolved through the Amazon source, with the values Amazon's own licence server
-     * needs. Registered when the resolver returns an Amazon stream, for the same reason the Apple
-     * map is: the DRM provider runs per media item and has no other way to know which items are
-     * encrypted.
-     */
-    private class AmazonTrackDrmInfo(
-        val trackId: String,
-        val licenseUrl: String,
-    )
-
-    private val amazonDrmTrackInfo: MutableMap<String, AmazonTrackDrmInfo> = ConcurrentHashMap()
-
-    /**
-     * Widevine session for one Amazon track.
-     *
-     * The licence itself is issued by Amazon's server for the signed-in user's own entitlement —
-     * there is no key service, no proxy and no fallback that would mint one any other way. L3 is
-     * requested for the same reason Apple's does: the web playback pipeline is L3-shaped, and the
-     * level the server actually grants is its decision, not ours.
-     */
-    private fun buildAmazonDrmSessionManager(track: AmazonTrackDrmInfo): DrmSessionManager? {
-        val session =
-            AmazonMusicProvider.credentials(
-                localSession = dataStore.get(AmazonSessionKey),
-                localPremium = dataStore.get(AmazonAccountPremiumKey, false),
-                pooled = AmazonMusicProvider.pooledCredentials(),
-            ) ?: return null
-        val callback = AmazonLicenseCallback(track, session.session)
-        return DefaultDrmSessionManager
-            .Builder()
-            .setUuidAndExoMediaDrmProvider(
-                C.WIDEVINE_UUID,
-                ExoMediaDrm.Provider { uuid ->
-                    val created =
-                        runCatching { FrameworkMediaDrm.newInstance(uuid) }.getOrNull()?.apply {
-                            runCatching { setPropertyString("securityLevel", "L3") }
-                                .recoverCatching { setPropertyString("securityLevel", "3") }
-                        }
-                    created ?: FrameworkMediaDrm.DEFAULT_PROVIDER.acquireExoMediaDrm(uuid)
-                },
-            )
-            .build(callback)
-    }
-
-    /**
-     * Posts the Widevine challenge straight to the licence URL the playback session returned.
-     *
-     * Unlike Apple's JSON envelope, Amazon's endpoint takes the challenge as the request body and
-     * the session token in the Authorization header — the ordinary Widevine shape. Provisioning
-     * still goes to Widevine's own server.
-     */
-    private inner class AmazonLicenseCallback(
-        private val track: AmazonTrackDrmInfo,
-        private val session: String,
-    ) : MediaDrmCallback {
-        private val provisionFallback = HttpMediaDrmCallback(null, OkHttpDataSource.Factory(mediaOkHttpClient))
-
-        override fun executeProvisionRequest(
-            uuid: java.util.UUID,
-            request: ExoMediaDrm.ProvisionRequest,
-        ): MediaDrmCallback.Response = provisionFallback.executeProvisionRequest(uuid, request)
-
-        override fun executeKeyRequest(
-            uuid: java.util.UUID,
-            request: ExoMediaDrm.KeyRequest,
-        ): MediaDrmCallback.Response {
-            val uri = android.net.Uri.parse(track.licenseUrl)
-            val builder =
-                Request
-                    .Builder()
-                    .url(track.licenseUrl)
-                    .header("Authorization", "Bearer $session")
-                    .header("Content-Type", "application/octet-stream")
-                    .post(request.data.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
-            mediaOkHttpClient.newCall(builder.build()).execute().use { response ->
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                if (!response.isSuccessful) {
-                    Timber.tag("MusicService").w("Amazon licence exchange failed: HTTP ${response.code}")
-                    throw MediaDrmCallbackException(
-                        DataSpec(uri),
-                        uri,
-                        emptyMap(),
-                        0L,
-                        java.io.IOException("Amazon licence exchange failed: HTTP ${response.code}"),
-                    )
-                }
-                return MediaDrmCallback.Response(bytes)
-            }
-        }
-    }
 
     private fun buildAppleDrmSessionManager(track: AppleTrackDrmInfo): DrmSessionManager? {
         val mediaToken = AppleMusicAudioProvider.mediaUserToken() ?: return null

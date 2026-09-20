@@ -89,9 +89,7 @@ import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
 import moe.rukamori.archivetune.ui.screens.settings.APPLE_MUSIC_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
-import moe.rukamori.archivetune.ui.screens.settings.AmazonLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
-import moe.rukamori.archivetune.ui.screens.settings.AMAZON_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
@@ -646,9 +644,6 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
-    }
-    composable(AMAZON_LOGIN_ROUTE) {
-        AmazonLoginScreen(navController)
     }
     composable(APPLE_MUSIC_LOGIN_ROUTE) {
         AppleMusicLoginScreen(navController)

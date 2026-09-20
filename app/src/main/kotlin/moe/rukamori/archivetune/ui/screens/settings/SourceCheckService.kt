@@ -10,9 +10,9 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.constants.AmazonAccountNameKey
-import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
-import moe.rukamori.archivetune.amazon.AmazonMusicProvider
+import moe.rukamori.archivetune.constants.AmazonBypassTokenKey
+import moe.rukamori.archivetune.constants.AmazonInstancesKey
+import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
 import moe.rukamori.archivetune.qqmusic.QqMusicProvider
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
@@ -423,46 +423,68 @@ object SourceCheckService {
     }
 
     private suspend fun checkAmazon(context: Context): SourceCheckResult {
-        // force = true, same reasoning as checkDeezer: this row exists to answer "can accounts be
-        // found right now", and a throttled refresh would just repeat advice this call declined.
-        PoolAccountManager.refresh(context, force = true)
-        val pooled = PoolAccountManager.amazonAccounts()
         val prefs = context.dataStore.data.first()
-        val manualName = prefs[AmazonAccountNameKey]?.takeIf { it.isNotBlank() }
-        val manualPremium = prefs[AmazonAccountPremiumKey] == true
-        // The Web API is approval-gated: without the security profile this build cannot talk to
-        // Amazon at all, so credentials alone would not make the source work and reporting them as
-        // healthy would promise playback that cannot happen.
-        if (!AmazonMusicProvider.isConfigured()) {
+        val instances =
+            prefs[AmazonInstancesKey].orEmpty()
+                .split('\n', ',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+        if (instances.isEmpty()) {
             return SourceCheckResult(
                 healthy = false,
-                summary = "Amazon Music needs an approved Web API security profile (AMAZON_LWA_CLIENT_ID) " +
-                    "in this build. Until the maintainer provisions one the source stays inert and " +
-                    "playback falls through to the next source.",
+                summary = "Not configured: no Amazon Music instances added. Open " +
+                    "Integration → Amazon Music and add an instance URL. The source is off until then.",
             )
         }
-        if (pooled.isEmpty() && manualName == null) {
+        val hasAuth =
+            !prefs[AmazonTurnstileJwtKey].isNullOrBlank() ||
+                !prefs[AmazonBypassTokenKey].isNullOrBlank()
+        if (!hasAuth) {
             return SourceCheckResult(
                 healthy = false,
-                summary = "No Amazon Music credentials available. Sign in via Integration → Amazon Music, " +
-                    "or tap 'Refresh source pool' at the top to pick up shared accounts.",
+                summary = "Instances configured (${instances.size}), but no authorization material. " +
+                    "Open Integration → Amazon Music and authorize with Turnstile, or set a bypass token.",
             )
         }
-        val origin =
-            buildList {
-                if (manualName != null) {
-                    add("your own account '$manualName'${if (manualPremium) " (HD/Ultra HD)" else ""}")
+        // Probe the first instance's /health with a short timeout; report it dead if it doesn't
+        // answer. This is a liveness check only — auth is a separate gate (see above).
+        val base = instances.first()
+        val client =
+            OkHttpClient
+                .Builder()
+                .connectTimeout(4, TimeUnit.SECONDS)
+                .readTimeout(4, TimeUnit.SECONDS)
+                .callTimeout(4, TimeUnit.SECONDS)
+                .build()
+        val probe =
+            runCatching {
+                val request =
+                    Request
+                        .Builder()
+                        .url("${base.trimEnd('/')}/health")
+                        .get()
+                        .build()
+                client.newCall(request).execute().use { response ->
+                    response.isSuccessful
                 }
-                if (pooled.isNotEmpty()) {
-                    add("${pooled.size} pool account(s), ${pooled.count { it.premium }} HD/Ultra HD")
-                }
-            }.joinToString(" + ")
-        return SourceCheckResult(
-            healthy = true,
-            summary = "Credentials: $origin. Playback resolves through Amazon's Web API and is licensed " +
-                "by Amazon's own server for the signed-in account; the quality tier the account is " +
-                "entitled to is the tier it gets.",
-        )
+            }.getOrElse {
+                Timber.tag("SourceCheck").d(it, "Amazon /health probe failed")
+                false
+            }
+        return if (probe) {
+            SourceCheckResult(
+                healthy = true,
+                summary = "Instances: ${instances.size} configured, first one ($base) is alive. " +
+                    "Playback resolves through that instance and is decrypted on-device.",
+            )
+        } else {
+            SourceCheckResult(
+                healthy = false,
+                summary = "Instances configured (${instances.size}), first one ($base) did not " +
+                    "answer /health within 4s — it may be dead or unreachable.",
+            )
+        }
     }
 
     private fun checkJioSaavn(): SourceCheckResult {

@@ -4,43 +4,30 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * Amazon Music integration settings. Shaped like DeezerSettings — account-based, no self-hosted
- * proxy tier — reached from the Integration screen alongside Tidal/Qobuz/Deezer/Apple Music.
- *
- * IMPORTANT: this source cannot play audio yet. Amazon serves CENC-protected fragmented MP4, and
- * turning that into a decodable stream needs a decryption step this fork does not ship (see
- * AmazonEnabledKey's own comment in PreferenceKeys.kt). Signing in only gets metadata and catalogue
- * browsing, so the notice card below is not optional decoration — without it, a successful sign-in
- * here looks identical to a working source right up until the first play fails.
+ * Amazon Music integration settings, for the instance-based source: the user adds their own
+ * "Amazon Music Stream API" instance URL(s) and authorizes once via the Turnstile WebView (or
+ * pastes an operator bypass token). Reached from the Integration screen alongside
+ * Tidal/Qobuz/Deezer/Apple Music. Shaped like TidalSettings — instances + auth, no account.
  */
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.content.Intent
 import android.widget.Toast
-import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import moe.rukamori.archivetune.ui.component.SettingsTopAppBar
@@ -50,25 +37,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AmazonAccountNameKey
-import moe.rukamori.archivetune.constants.AmazonAccountPremiumKey
 import moe.rukamori.archivetune.constants.AmazonAudioQuality
 import moe.rukamori.archivetune.constants.AmazonAudioQualityKey
+import moe.rukamori.archivetune.constants.AmazonBypassTokenKey
+import moe.rukamori.archivetune.constants.AmazonEnabledKey
 import moe.rukamori.archivetune.constants.AmazonInstancesKey
-import moe.rukamori.archivetune.constants.AmazonSessionKey
+import moe.rukamori.archivetune.constants.AmazonTurnstileJwtExpiryMsKey
+import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -78,6 +63,8 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,20 +74,21 @@ fun AmazonSettings(
 ) {
     val context = LocalContext.current
 
-    val (accountName, onAccountNameChange) = rememberPreference(AmazonAccountNameKey, "")
-    val (_, onSessionChange) = rememberPreference(AmazonSessionKey, "")
-    val (isPremium, onPremiumChange) = rememberPreference(AmazonAccountPremiumKey, false)
+    val (enabled, onEnabledChange) = rememberPreference(AmazonEnabledKey, false)
     val (audioQuality, onAudioQualityChange) =
         rememberEnumPreference(AmazonAudioQualityKey, AmazonAudioQuality.Default)
     val (storedInstances, onStoredInstancesChange) = rememberPreference(AmazonInstancesKey, "")
+    val (jwt, _) = rememberPreference(AmazonTurnstileJwtKey, "")
+    val (jwtExpiry, _) = rememberPreference(AmazonTurnstileJwtExpiryMsKey, 0L)
+    val (bypassToken, onBypassTokenChange) = rememberPreference(AmazonBypassTokenKey, "")
 
-    val signedIn = accountName.isNotEmpty()
     val instanceCount =
         remember(storedInstances) {
             storedInstances.split('\n').map { it.trim() }.count { it.isNotEmpty() }
         }
 
     var showInstancesDialog by remember { mutableStateOf(false) }
+    var showBypassDialog by remember { mutableStateOf(false) }
 
     if (showInstancesDialog) {
         TextFieldDialog(
@@ -122,6 +110,20 @@ fun AmazonSettings(
                 )
             },
             onDismiss = { showInstancesDialog = false },
+        )
+    }
+
+    if (showBypassDialog) {
+        TextFieldDialog(
+            icon = { Icon(painterResource(R.drawable.token), null) },
+            title = { Text(stringResource(R.string.amazon_bypass_token)) },
+            placeholder = { Text(stringResource(R.string.amazon_bypass_token_hint)) },
+            initialTextFieldValue =
+                TextFieldValue(bypassToken, selection = TextRange(bypassToken.length)),
+            singleLine = true,
+            isInputValid = { true },
+            onDone = { raw -> onBypassTokenChange(raw.trim()) },
+            onDismiss = { showBypassDialog = false },
         )
     }
 
@@ -163,63 +165,17 @@ fun AmazonSettings(
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + 16.dp),
         ) {
-            AmazonPlaybackNoticeCard(
-                modifier =
-                    Modifier
-                        .padding(horizontal = SettingsDimensions.ScreenHorizontalPadding)
-                        .padding(top = 12.dp, bottom = 4.dp),
-            )
-
             PreferenceGroup(
                 title = stringResource(R.string.source_amazon),
             ) {
-                if (!signedIn) {
-                    item {
-                        PreferenceEntry(
-                            modifier = positions.modifierFor("amazon_login"),
-                            title = { Text(stringResource(R.string.amazon_login)) },
-                            description = stringResource(R.string.amazon_login_description),
-                            icon = { Icon(painterResource(R.drawable.login), null) },
-                            onClick = { navController.navigate(AMAZON_LOGIN_ROUTE) },
-                        )
-                    }
-                } else {
-                    item {
-                        PreferenceEntry(
-                            modifier = positions.modifierFor("amazon_sign_out"),
-                            title = { Text(stringResource(R.string.amazon_sign_out)) },
-                            description = stringResource(R.string.amazon_signed_in_as, accountName),
-                            icon = { Icon(painterResource(R.drawable.logout), null) },
-                            onClick = {
-                                // Clearing the session is what actually signs out; a collector
-                                // elsewhere observes it and drops the provider's session. Name and
-                                // the premium flag are display/ordering state only. AmazonEnabledKey
-                                // is left alone, mirroring Deezer — a pool account can keep the
-                                // source usable even after a personal sign-in ends.
-                                onSessionChange("")
-                                onAccountNameChange("")
-                                onPremiumChange(false)
-                                Toast
-                                    .makeText(context, R.string.amazon_signed_out, Toast.LENGTH_SHORT)
-                                    .show()
-                            },
-                        )
-                    }
-                }
-            }
-
-            PreferenceGroup(
-                title = stringResource(R.string.amazon_settings_playback_group),
-            ) {
                 item {
                     SwitchPreference(
-                        modifier = positions.modifierFor("amazon_premium"),
-                        title = { Text(stringResource(R.string.amazon_premium_toggle)) },
-                        description = stringResource(R.string.amazon_premium_toggle_description),
+                        modifier = positions.modifierFor("amazon_source_enable"),
+                        title = { Text(stringResource(R.string.source_amazon)) },
+                        description = stringResource(R.string.audio_source_enabled),
                         icon = { Icon(painterResource(R.drawable.star), null) },
-                        checked = isPremium,
-                        onCheckedChange = onPremiumChange,
-                        isEnabled = signedIn,
+                        checked = enabled,
+                        onCheckedChange = onEnabledChange,
                     )
                 }
 
@@ -230,7 +186,7 @@ fun AmazonSettings(
                         icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                         selectedValue = audioQuality,
                         onValueSelected = onAudioQualityChange,
-                        isEnabled = signedIn,
+                        isEnabled = enabled,
                         valueText = { quality ->
                             when (quality) {
                                 AmazonAudioQuality.ULTRA_HD -> stringResource(R.string.amazon_quality_ultra_hd)
@@ -259,65 +215,74 @@ fun AmazonSettings(
                         onClick = { showInstancesDialog = true },
                     )
                 }
+
+                item {
+                    val authorizeLauncher =
+                        rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartActivityForResult(),
+                        ) { /* JWT + expiry are persisted by the activity; the rows below re-read
+                            them from DataStore, so no result handling is needed here. */ }
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("amazon_authorize"),
+                        title = { Text(stringResource(R.string.amazon_authorize)) },
+                        description = stringResource(R.string.amazon_authorize_description),
+                        icon = { Icon(painterResource(R.drawable.login), null) },
+                        onClick = {
+                            if (instanceCount == 0) {
+                                Toast
+                                    .makeText(context, R.string.amazon_instances_empty, Toast.LENGTH_SHORT)
+                                    .show()
+                            } else {
+                                authorizeLauncher.launch(
+                                    Intent(context, AmazonTurnstileActivity::class.java),
+                                )
+                            }
+                        },
+                    )
+                }
+
+                item {
+                    // The JWT + expiry are collected from DataStore via rememberPreference, so the
+                    // status text updates on its own the moment the Turnstile activity persists
+                    // them — no resume hook needed.
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("amazon_jwt_status"),
+                        title = { Text(stringResource(R.string.amazon_jwt_status)) },
+                        description =
+                            when {
+                                jwt.isBlank() -> stringResource(R.string.amazon_jwt_status_never)
+                                jwtExpiry <= System.currentTimeMillis() -> stringResource(R.string.amazon_jwt_status_expired)
+                                else ->
+                                    stringResource(
+                                        R.string.amazon_jwt_status_valid_until,
+                                        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                                            .format(Date(jwtExpiry)),
+                                    )
+                            },
+                        icon = { Icon(painterResource(R.drawable.lock), null) },
+                        onClick = null,
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("amazon_bypass_token"),
+                        title = { Text(stringResource(R.string.amazon_bypass_token)) },
+                        description =
+                            if (bypassToken.isBlank()) {
+                                stringResource(R.string.amazon_bypass_token_description)
+                            } else {
+                                stringResource(
+                                    R.string.amazon_bypass_token_set,
+                                    bypassToken.takeLast(4),
+                                )
+                            },
+                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        onClick = { showBypassDialog = true },
+                    )
+                }
             }
         }
     }
 }
 
-/**
- * The mandatory "this doesn't play yet" notice. Uses the error container rather than a neutral one
- * — this is a hard limitation, not a tip, and it needs to read as one at a glance from the top of
- * the screen before anyone taps sign-in expecting a working source.
- */
-@Composable
-private fun AmazonPlaybackNoticeCard(modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(SettingsDimensions.BannerCardCornerRadius),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(SettingsDimensions.BannerIconSize)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.lock),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.size(SettingsDimensions.BannerIconInnerSize),
-                )
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.amazon_playback_notice_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
-                Text(
-                    text = stringResource(R.string.amazon_playback_notice_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f),
-                )
-            }
-        }
-    }
-}

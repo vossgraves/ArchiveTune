@@ -906,30 +906,26 @@
     <string name="qq_music_credentials_ready">Partner credentials are present in this build</string>
     <string name="qq_music_credentials_missing">No partner credentials in this build</string>
 
-    <!-- Amazon Music sign-in (WebView) + settings. Shaped like Deezer's: account-based, no
-         self-hosted proxy tier. Playback goes through Amazon's own Web API, which is approval-gated:
-         a build without the security profile (BuildConfig.AMAZON_LWA_CLIENT_ID) resolves nothing and
-         falls through to the next source, which is what amazon_playback_notice_* says on screen. -->
-    <string name="amazon_login">Sign in to Amazon Music</string>
-    <string name="amazon_login_description">Use your own Amazon Music account for playback and catalogue lookups</string>
-    <string name="amazon_login_success">Signed in to Amazon Music</string>
-    <string name="amazon_login_invalid_session">Not signed in yet — finish signing in on this page.</string>
-    <string name="auth_webview_amazon_subtitle">Sign in to Amazon Music below. The session is saved automatically once you\'re signed in.</string>
-    <string name="amazon_account_name_generic">Amazon Music account</string>
-    <string name="amazon_sign_out">Sign out of Amazon Music</string>
-    <string name="amazon_signed_in_as">Signed in as %1$s</string>
-    <string name="amazon_signed_out">Signed out of Amazon Music</string>
-    <string name="amazon_playback_notice_title">Needs Amazon Web API approval</string>
-    <string name="amazon_playback_notice_description">Playback runs through Amazon\'s own Web API and Amazon\'s own licence server — no proxy, no key service. That API is approval-gated, so this build only plays Amazon tracks once the maintainer provisions a Login with Amazon security profile; until then the source resolves nothing and playback falls through to your next source.</string>
-    <string name="amazon_settings_playback_group">Playback preferences</string>
-    <string name="amazon_premium_toggle">Lossless-capable plan</string>
-    <string name="amazon_premium_toggle_description">Turn on if your account has an Unlimited HD or Ultra HD plan. There is no way for the app to check this on its own, so it\'s reported by you; it only orders resolution attempts once playback support exists.</string>
+    <!-- Amazon Music settings, for the instance-based source. The user adds their own
+         "Amazon Music Stream API" instance URL(s) and authorizes once via the Turnstile WebView
+         (AmazonTurnstileActivity) or pastes an operator bypass token. Resolutions are
+         metadata-based; CENC streams are decrypted on-device. -->
     <string name="amazon_audio_quality">Preferred audio quality</string>
     <string name="amazon_quality_ultra_hd">Ultra HD (24-bit)</string>
     <string name="amazon_quality_hd">HD (16-bit lossless)</string>
     <string name="amazon_quality_standard">Standard</string>
-    <string name="amazon_instances">Metadata instances</string>
+    <string name="amazon_instances">Amazon instances</string>
     <string name="amazon_instances_hint">One URL per line</string>
-    <string name="amazon_instances_empty">None configured — metadata resolves through your signed-in account only</string>
+    <string name="amazon_instances_empty">None configured — add an instance URL to enable Amazon playback</string>
     <string name="amazon_instances_count">%1$d instance(s) configured</string>
+    <string name="amazon_authorize">Authorize with Turnstile</string>
+    <string name="amazon_authorize_description">Solves the Cloudflare challenge in a WebView and stores the access JWT.</string>
+    <string name="amazon_jwt_status">Authorization</string>
+    <string name="amazon_jwt_status_valid_until">Valid until %1$s</string>
+    <string name="amazon_jwt_status_expired">Expired — authorize again</string>
+    <string name="amazon_jwt_status_never">Never authorized</string>
+    <string name="amazon_bypass_token">Bypass token</string>
+    <string name="amazon_bypass_token_description">Operator-provided bypass_token, sent as a query parameter. Alternative to Turnstile.</string>
+    <string name="amazon_bypass_token_set">Set · ****%1$s — tap to replace</string>
+    <string name="amazon_bypass_token_hint">Paste bypass token</string>
 </resources>

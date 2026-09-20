@@ -395,8 +395,9 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/amazon") },
             hidden = true,
             children = listOf(
-                SettingsChild("Sign in to Amazon Music", "amazon_login", listOf("amazon login", "amazon sign in", "connect amazon")),
-                SettingsChild("Sign out of Amazon Music", "amazon_sign_out", listOf("amazon logout", "amazon sign out", "disconnect amazon")),
+                SettingsChild("Amazon instances", "amazon_instances", listOf("amazon instance", "amazon url", "amazon server")),
+                SettingsChild("Authorize with Turnstile", "amazon_authorize", listOf("amazon authorize", "amazon turnstile", "amazon login")),
+                SettingsChild("Amazon bypass token", "amazon_bypass_token", listOf("amazon bypass", "amazon token")),
                 SettingsChild("Amazon audio quality", "amazon_audio_quality", listOf("amazon quality", "amazon hd", "amazon ultra hd")),
             ),
         )
