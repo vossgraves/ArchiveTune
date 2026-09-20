@@ -4,8 +4,8 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * The QQ Music RPC surface this source needs: catalogue search, track detail, and the call that
- * mints a playable URL for the signed-in account.
+ * The QQ Music RPC surface this source needs: catalogue search, track detail, the Home page's
+ * charts, and the call that mints a playable URL for the signed-in account.
  *
  * Every call is a single POST to `https://u.y.qq.com/cgi-bin/musicu.fcg` carrying a
  * `{comm, req_N: {module, method, param}}` envelope. `comm` identifies the caller; the module name
@@ -29,6 +29,9 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -137,6 +140,22 @@ internal data class QqTrack(
     val album: String?,
     val durationMs: Long?,
     val mediaMid: String? = null,
+    val coverUrl: String? = null,
+)
+
+/**
+ * One of the charts the Home page shows: its title, the group it is published under, and the songs
+ * it currently ranks.
+ *
+ * [tracks] starts as the three songs the chart listing itself carries and is replaced by the
+ * chart's own ranked list when that can be fetched, so a chart is never dropped for a failed second
+ * request when it already arrived with something to show.
+ */
+internal data class QqHomeChart(
+    val id: Int,
+    val title: String,
+    val label: String?,
+    val tracks: List<QqTrack>,
 )
 
 /** A playable resource: the CDN path, and whether its bytes are a protected container. */
@@ -161,6 +180,19 @@ internal object QqMusicApi {
 
     /** `search_type: 0` is a song search. */
     private const val SEARCH_TYPE_SONG = 0
+
+    /** How many charts the Home page shows. Each one costs a second request for its songs. */
+    private const val HOME_SECTION_LIMIT = 6
+
+    /** How many songs of a chart its section shows. */
+    private const val HOME_SECTION_TRACKS = 10
+
+    /**
+     * The album art naming rule QQ Music's own clients use: `T002` is an album, `R300x300` the size
+     * segment, and the media id is the file name.
+     */
+    private const val ALBUM_COVER_URL_PREFIX = "https://y.gtimg.cn/music/photo_new/T002R300x300M000"
+    private const val ALBUM_COVER_URL_SUFFIX = ".jpg"
 
     /**
      * The one CDN the web client falls back to when the response's `sip` list is empty. It is a
@@ -260,6 +292,138 @@ internal object QqMusicApi {
                 }
             }
         }
+
+    /**
+     * The chart listing. `GetAll` takes no parameters and answers with every chart the service
+     * publishes, grouped into families.
+     */
+    private fun toplistBody(session: QqMusicSession?): JsonObject =
+        buildJsonObject {
+            put("comm", catalogComm(session))
+            putJsonObject(ENVELOPE_KEY) {
+                put("module", "music.musicToplist.Toplist")
+                put("method", "GetAll")
+                putJsonObject("param") {}
+            }
+        }
+
+    /**
+     * One chart's songs. `GetDetail` is addressed by `topId` and pages by `offset`/`num`; tags are
+     * not asked for, because nothing on the page shows them.
+     */
+    private fun toplistDetailBody(
+        session: QqMusicSession?,
+        topId: Int,
+    ): JsonObject =
+        buildJsonObject {
+            put("comm", catalogComm(session))
+            putJsonObject(ENVELOPE_KEY) {
+                put("module", "music.musicToplist.Toplist")
+                put("method", "GetDetail")
+                putJsonObject("param") {
+                    put("topId", topId)
+                    put("offset", 0)
+                    put("num", HOME_SECTION_TRACKS)
+                    put("withTags", false)
+                }
+            }
+        }
+
+    /**
+     * The Home page's sections: the charts QQ Music publishes, each with the songs it currently
+     * ranks.
+     *
+     * Two calls for the page, not two per section. The chart listing (`music.musicToplist.Toplist`
+     * / `GetAll`) names the charts, groups them, and carries their top three songs; each chart's
+     * `GetDetail` call then fills its section out to [HOME_SECTION_TRACKS] songs. The detail calls
+     * run together rather than in turn, so the page costs one round trip plus the slowest chart
+     * instead of the sum of them.
+     *
+     * Null means the page could not be fetched — no answer, or an answer with no chart listing in
+     * it — which the caller reports as a failure worth retrying. An empty list means it was fetched
+     * and held nothing readable, which is a different thing to say. A chart whose own songs cannot
+     * be fetched is neither: it keeps the three the listing carried. Nothing here throws.
+     */
+    suspend fun home(session: QqMusicSession): List<QqHomeChart>? =
+        withContext(Dispatchers.IO) {
+            val listing = post(toplistBody(session), session) ?: return@withContext null
+            val charts = parseHomeCharts(listing)?.take(HOME_SECTION_LIMIT) ?: return@withContext null
+            if (charts.isEmpty()) return@withContext emptyList()
+            coroutineScope {
+                charts
+                    .map { chart -> async { chart.withSongs(session) } }
+                    .awaitAll()
+                    .filter { it.tracks.isNotEmpty() }
+            }
+        }
+
+    /**
+     * [this] chart with its songs: the chart's own ranked list when the detail call answers, and the
+     * previews the listing already carried when it does not.
+     */
+    private suspend fun QqHomeChart.withSongs(session: QqMusicSession): QqHomeChart {
+        val songs =
+            post(toplistDetailBody(session, id), session)
+                ?.let(::parseChartSongs)
+                .orEmpty()
+        return copy(tracks = songs.ifEmpty { tracks })
+    }
+
+    /**
+     * The charts a `GetAll` reply lists, in the order the service publishes them.
+     *
+     * Null means the reply carries no chart listing at all — a refused call, an error envelope, or
+     * a shape this build does not know — which is a failed fetch rather than an empty one. An empty
+     * list means the listing was there and nothing in it could be read. Below the listing every
+     * level is optional: a group with no charts, a chart with no id or title, and a song with no id
+     * or title are each skipped, so one unfamiliar entry never costs the rest of the page.
+     */
+    internal fun parseHomeCharts(response: JsonObject): List<QqHomeChart>? {
+        val groups = businessData(response)?.get("group")?.jsonArrayOrNull() ?: return null
+        return groups
+            .mapNotNull { it.jsonObjectOrNull() }
+            .flatMap { group ->
+                val groupName = group["groupName"]?.stringOrNull()
+                group["toplist"]
+                    ?.jsonArrayOrNull()
+                    .orEmpty()
+                    .mapNotNull { chart -> chart.jsonObjectOrNull()?.let { parseChart(it, groupName) } }
+            }
+    }
+
+    /** One listed chart, or null when the entry names no id or title to address it by. */
+    private fun parseChart(
+        chart: JsonObject,
+        groupName: String?,
+    ): QqHomeChart? {
+        val id = chart["topId"]?.stringOrNull()?.toIntOrNull() ?: return null
+        val title = chart["title"]?.stringOrNull() ?: return null
+        val previews =
+            chart["song"]
+                ?.jsonArrayOrNull()
+                .orEmpty()
+                .mapNotNull { preview ->
+                    val song = preview.jsonObjectOrNull() ?: return@mapNotNull null
+                    val songId = song["songId"]?.stringOrNull() ?: return@mapNotNull null
+                    parseTrack(song, songId).takeIf { it.title != null }
+                }
+        return QqHomeChart(id = id, title = title, label = groupName, tracks = previews)
+    }
+
+    /**
+     * The songs a `GetDetail` reply ranks, in chart order. They are the catalogue's own song
+     * objects, so they are read by the same parser a search hit is.
+     */
+    internal fun parseChartSongs(response: JsonObject): List<QqTrack> =
+        businessData(response)
+            ?.get("songInfoList")
+            ?.jsonArrayOrNull()
+            .orEmpty()
+            .mapNotNull { song ->
+                val entry = song.jsonObjectOrNull() ?: return@mapNotNull null
+                val mid = entry["mid"]?.stringOrNull() ?: return@mapNotNull null
+                parseTrack(entry, mid).takeIf { it.title != null }
+            }
 
     /** Track detail: the authoritative title/artists/album/duration and the resource id. */
     suspend fun detail(
@@ -536,7 +700,12 @@ internal object QqMusicApi {
                 element["title"]?.stringOrNull()
                     ?: element["songname"]?.stringOrNull()
                     ?: element["name"]?.stringOrNull(),
-            artist = element["singer"]?.artistsOrNull() ?: element["singername"]?.stringOrNull(),
+            // A search hit spells the artist as a `singer` list; a chart's preview song spells it
+            // as one already-joined `singerName` string.
+            artist =
+                element["singer"]?.artistsOrNull()
+                    ?: element["singerName"]?.stringOrNull()
+                    ?: element["singername"]?.stringOrNull(),
             album =
                 element["album"]?.jsonObjectOrNull()?.get("name")?.stringOrNull()
                     ?: element["albumname"]?.stringOrNull(),
@@ -544,7 +713,28 @@ internal object QqMusicApi {
             mediaMid =
                 file?.get("media_mid")?.stringOrNull()
                     ?: element["media_mid"]?.stringOrNull(),
+            coverUrl = coverUrl(element),
         )
+    }
+
+    /**
+     * A track's album art, when the response names one.
+     *
+     * A chart preview carries a ready URL in `cover`; the catalogue's own song objects carry an
+     * album media id instead, which QQ Music's clients turn into an image URL by the `photo_new`
+     * naming rule. Neither is required: a missing id, or a `cover` that is not a URL, leaves the
+     * track without artwork rather than with a broken address.
+     */
+    private fun coverUrl(element: JsonObject): String? {
+        element["cover"]?.stringOrNull()?.takeIf { it.startsWith("http") }?.let { return it }
+        val album = element["album"]?.jsonObjectOrNull()
+        val albumId =
+            album?.get("mid")?.stringOrNull()
+                ?: album?.get("pmid")?.stringOrNull()
+                ?: element["albummid"]?.stringOrNull()
+                ?: element["albumMid"]?.stringOrNull()
+                ?: return null
+        return "$ALBUM_COVER_URL_PREFIX$albumId$ALBUM_COVER_URL_SUFFIX"
     }
 
     private fun JsonElement.stringOrNull(): String? =

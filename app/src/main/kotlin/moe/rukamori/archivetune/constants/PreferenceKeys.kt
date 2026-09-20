@@ -1016,15 +1016,17 @@ val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
 enum class HomeSource {
     YOUTUBE,
     SPOTIFY,
+    QQ,
 }
 
 val HomeSourceKey = stringPreferencesKey("homeSource")
 
 /**
  * The Home pages the user has made available, as a CSV of [HomeSource] names. Empty means "not
- * configured": the switcher then offers YouTube alone (plus Spotify once a session exists), which
- * is exactly the behaviour this key was introduced to preserve. YouTube is always part of the
- * resolved set — it is the app's own home and the only one that needs no session.
+ * configured": the switcher then offers YouTube alone (plus Spotify once a session exists, and QQ
+ * Music once an account is signed in), which is exactly the behaviour this key was introduced to
+ * preserve. YouTube is always part of the resolved set — it is the app's own home and the only one
+ * that needs no session.
  */
 val ActiveHomeSourcesKey = stringPreferencesKey("activeHomeSources")
 

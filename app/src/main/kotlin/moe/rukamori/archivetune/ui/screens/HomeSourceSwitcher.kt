@@ -31,6 +31,8 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ActiveHomeSourcesKey
 import moe.rukamori.archivetune.constants.HomeSource
 import moe.rukamori.archivetune.constants.HomeSourceKey
+import moe.rukamori.archivetune.constants.QqMusicMusickeyKey
+import moe.rukamori.archivetune.constants.QqMusicUinKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.ui.component.PreferenceMultiSelectBottomSheet
 import moe.rukamori.archivetune.ui.component.PreferenceSelectionBottomSheet
@@ -47,11 +49,28 @@ fun rememberHomeSourceAvailable(): Boolean {
     return spDc.isNotBlank()
 }
 
+/**
+ * True when the QQ Music page is usable at all: an account has to be signed in, because every
+ * section of it is QQ Music's own catalogue addressed with that account's ticket. Like Spotify's,
+ * this is read from the stored session rather than probed, so it costs nothing and cannot leave the
+ * switcher offering a page whose session has already gone.
+ */
+@Composable
+fun rememberQqHomeSourceAvailable(): Boolean {
+    val uin by rememberPreference(QqMusicUinKey, defaultValue = "")
+    val musicKey by rememberPreference(QqMusicMusickeyKey, defaultValue = "")
+    return uin.isNotBlank() && musicKey.isNotBlank()
+}
+
 /** Whether [this] page can be shown right now. YouTube is the app's own home and always can. */
-private fun HomeSource.isAvailable(spotifyAvailable: Boolean): Boolean =
+private fun HomeSource.isAvailable(
+    spotifyAvailable: Boolean,
+    qqAvailable: Boolean,
+): Boolean =
     when (this) {
         HomeSource.YOUTUBE -> true
         HomeSource.SPOTIFY -> spotifyAvailable
+        HomeSource.QQ -> qqAvailable
     }
 
 /**
@@ -78,24 +97,29 @@ internal fun canonicalHomeSources(selected: List<HomeSource>): List<HomeSource> 
  * The Home pages the user has made available, resolved against availability and never empty.
  *
  * An unset [ActiveHomeSourcesKey] means "not configured" and keeps the historical behaviour:
- * YouTube alone, plus Spotify the moment a session exists. YouTube is always in the result — it is
- * the only page that needs nothing. Unparseable values are treated the same as unset.
+ * YouTube alone, plus Spotify the moment a session exists and QQ Music the moment an account is
+ * signed in. YouTube is always in the result — it is the only page that needs nothing. Unparseable
+ * values are treated the same as unset.
  */
 @Composable
 fun rememberActiveHomeSources(): List<HomeSource> {
     val (raw) = rememberPreference(ActiveHomeSourcesKey, "")
     val spotifyAvailable = rememberHomeSourceAvailable()
+    val qqAvailable = rememberQqHomeSourceAvailable()
     val stored = remember(raw) { parseHomeSources(raw) }
     val base =
         if (stored.isEmpty()) {
             buildList {
                 add(HomeSource.YOUTUBE)
                 if (spotifyAvailable) add(HomeSource.SPOTIFY)
+                if (qqAvailable) add(HomeSource.QQ)
             }
         } else {
             stored
         }
-    return base.filter { it.isAvailable(spotifyAvailable) }.ifEmpty { listOf(HomeSource.YOUTUBE) }
+    return base
+        .filter { it.isAvailable(spotifyAvailable, qqAvailable) }
+        .ifEmpty { listOf(HomeSource.YOUTUBE) }
 }
 
 /**
@@ -191,15 +215,17 @@ fun HomeSourceSwitcherSheet(
  * The Appearance screen's picker for [ActiveHomeSourcesKey], as the app's multi-select sheet.
  *
  * Membership is editable regardless of availability — a page whose prerequisite is missing (a
- * signed-out Spotify) is annotated rather than hidden, because otherwise someone who wants that page
- * gone would have to sign in first just to remove it. YouTube, the floor page, cannot be switched
- * off. The sheet commits on dismissal, like every other selection sheet in the app.
+ * signed-out Spotify or QQ Music) is annotated rather than hidden, because otherwise someone who
+ * wants that page gone would have to sign in first just to remove it. YouTube, the floor page,
+ * cannot be switched off. The sheet commits on dismissal, like every other selection sheet in the
+ * app.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreensDialog(
     selected: List<HomeSource>,
     spotifyAvailable: Boolean,
+    qqAvailable: Boolean,
     onConfirm: (List<HomeSource>) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -214,7 +240,11 @@ fun HomeScreensDialog(
         isSelected = { it in working },
         valueText = { stringResource(it.labelResId()) },
         valueDescription = { source ->
-            if (source.isAvailable(spotifyAvailable)) null else stringResource(R.string.home_screens_needs_sign_in)
+            if (source.isAvailable(spotifyAvailable, qqAvailable)) {
+                null
+            } else {
+                stringResource(R.string.home_screens_needs_sign_in)
+            }
         },
         sheetState = sheetState,
         onDismiss = { onConfirm(canonicalHomeSources(working).ifEmpty { listOf(HomeSource.YOUTUBE) }) },
@@ -241,10 +271,14 @@ internal fun HomeSource.labelResId(): Int =
     when (this) {
         HomeSource.YOUTUBE -> R.string.home_source_youtube
         HomeSource.SPOTIFY -> R.string.home_source_spotify
+        HomeSource.QQ -> R.string.home_source_qq
     }
 
 internal fun HomeSource.iconResId(): Int =
     when (this) {
         HomeSource.YOUTUBE -> R.drawable.ic_music
         HomeSource.SPOTIFY -> R.drawable.spotify_icon
+        // No QQ Music mark ships in drawable/, so this is the stand-in the source rows in settings
+        // use for the same reason.
+        HomeSource.QQ -> R.drawable.ic_music
     }

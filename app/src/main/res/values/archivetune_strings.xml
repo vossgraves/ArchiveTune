@@ -925,6 +925,9 @@
     <string name="qq_music_login_retry">Show a new code</string>
     <string name="qq_music_login_limits">Only the signed-in account is used: no tier is unlocked, no advert, limit or purchase prompt is evaded, and a protected container is decrypted on device and never re-shared.</string>
 
+    <!-- The Home tab's QQ Music page: the account's charts. See QqHomeScreen and QqHomeViewModel. -->
+    <string name="qq_home_load_failed">Could not load your QQ Music charts. Try again in a moment.</string>
+
     <!-- Amazon Music settings, for the instance-based source. The user adds their own
          "Amazon Music Stream API" instance URL(s) and authorizes once via the Turnstile WebView
          (AmazonTurnstileActivity) or pastes an operator bypass token. Resolutions are
