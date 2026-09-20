@@ -1003,9 +1003,10 @@ enum class HomeScreenStyle {
 val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
 
 /**
- * Which service the Home tab is showing. The two homes are separate pages you switch between, not
- * one feed with the other stacked into it — signing into Spotify must not cost you the YouTube
- * home, and vice versa.
+ * Which service the Home tab is showing. The homes are separate pages you switch between, not one
+ * feed with the others stacked into it — signing into Spotify must not cost you the YouTube home,
+ * and vice versa. [ActiveHomeSourcesKey] holds the set the user made available; this key holds the
+ * one currently on screen.
  */
 enum class HomeSource {
     YOUTUBE,
@@ -1013,6 +1014,14 @@ enum class HomeSource {
 }
 
 val HomeSourceKey = stringPreferencesKey("homeSource")
+
+/**
+ * The Home pages the user has made available, as a CSV of [HomeSource] names. Empty means "not
+ * configured": the switcher then offers YouTube alone (plus Spotify once a session exists), which
+ * is exactly the behaviour this key was introduced to preserve. YouTube is always part of the
+ * resolved set — it is the app's own home and the only one that needs no session.
+ */
+val ActiveHomeSourcesKey = stringPreferencesKey("activeHomeSources")
 
 /**
  * Layout style for the Spotify home, mirroring [HomeScreenStyle] for the YouTube one.

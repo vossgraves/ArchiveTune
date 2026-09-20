@@ -1644,6 +1644,8 @@
     <string name="home_source_youtube">YouTube</string>
     <string name="home_source_spotify">Spotify</string>
     <string name="home_source_switch_to">Switch to %1$s</string>
+    <string name="home_screens">Home screens</string>
+    <string name="home_screens_desc">Choose which Home pages are available. Two is a toggle in the top bar; three or more open a switcher.</string>
     <string name="library_source_ytm">YTM</string>
     <string name="spotify_dj_unsupported">Spotify\u2019s DJ is built by Spotify as you listen \u2014 the running order and the spoken bits between tracks only exist inside their app. Opening it there.</string>
     <string name="spotify_history">Spotify</string>

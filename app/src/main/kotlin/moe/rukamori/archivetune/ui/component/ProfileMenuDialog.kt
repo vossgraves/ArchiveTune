@@ -54,6 +54,12 @@ fun ProfileMenuDialog(
     accountImageUrl: String?,
     items: List<ProfileMenuItem>,
     onDismiss: () -> Unit,
+    /**
+     * When set, the header shows this title instead of the account row — so the same dialog shell
+     * can serve menus that are not about the account (the Home-screen switcher, for one) without
+     * growing a second, near-identical dialog.
+     */
+    headerTitle: String? = null,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -105,7 +111,17 @@ fun ProfileMenuDialog(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.weight(1f),
                         ) {
-                            if (accountName.isNotBlank()) {
+                            if (!headerTitle.isNullOrBlank()) {
+                                Text(
+                                    text = headerTitle,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            } else if (accountName.isNotBlank()) {
                                 Surface(
                                     modifier = Modifier.size(40.dp),
                                     shape = CircleShape,
@@ -170,7 +186,7 @@ fun ProfileMenuDialog(
                         }
                     }
 
-                    if (accountName.isNotBlank()) {
+                    if (accountName.isNotBlank() || !headerTitle.isNullOrBlank()) {
                         Spacer(Modifier.height(8.dp))
                     }
 
