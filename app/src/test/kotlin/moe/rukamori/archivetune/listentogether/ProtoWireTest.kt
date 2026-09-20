@@ -125,7 +125,7 @@ class ProtoWireTest {
     fun `playback action payload round trips with every field`() {
         val codec = MessageCodec(format = MessageFormat.PROTOBUF)
         val payload = PlaybackActionPayload(
-            action = MessageTypes.PLAY,
+            action = PlaybackActions.PLAY,
             trackId = "track-1",
             position = 1234L,
             trackInfo = TrackInfo(
