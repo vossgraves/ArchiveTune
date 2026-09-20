@@ -166,7 +166,6 @@ class MessageCodec(
 
         const val SUGGESTION_REJECTED_ID = 1
         const val SUGGESTION_REJECTED_REASON = 2
-    }
 
         /**
          * Detect message format by inspecting first byte

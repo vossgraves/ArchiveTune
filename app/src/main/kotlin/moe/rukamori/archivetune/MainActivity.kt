@@ -2538,7 +2538,6 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate("settings")
                                                                     },
                                                                 ),
-                                                            ),
                                                             ).filterNotNull(),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
