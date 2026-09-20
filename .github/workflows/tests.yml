@@ -1,0 +1,74 @@
+name: Unit tests
+
+# Unit tests live in their own workflow on purpose. A job's log only becomes readable once its whole
+# run completes, and the canary run spends ~20 minutes building five APK variants — so a test failure
+# hosted there takes that long to even read. Here a push gets its verdict in a few minutes.
+#
+# The APK jobs assemble release builds, and a release assembly never compiles src/test, so until this
+# workflow existed the test sources could rot invisibly: listentogether/ProtoWireTest had stopped
+# compiling while every canary run still reported green.
+on:
+  push:
+    branches:
+      - 'main'
+      - 'dev'
+      - 'canary'
+  workflow_dispatch:
+
+concurrency:
+  # Per-commit, matching canary.yml: a second push must not wait out the first, and must not cancel it.
+  group: tests-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  unit-tests:
+    name: Compile and run unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set Up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-cleanup: on-success
+          cache-read-only: false
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The task name carries the flavour (gms/foss × mobile/tv × abi), so ask Gradle which
+          # unit-test tasks exist instead of guessing one — a wrong guess fails with "task not
+          # found", which says nothing about the tests themselves.
+          TASKS="$(./gradlew :app:tasks --all --console=plain)"
+          echo "$TASKS" | grep -E "^test[A-Za-z0-9]*UnitTest\b" || true
+          TASK="$(echo "$TASKS" | grep -oE "^test[A-Za-z0-9]*UnitTest\b" | head -1)"
+          if [ -z "$TASK" ]; then
+            echo "::error::No unit-test task found in :app — check whether unit tests are enabled"
+            exit 1
+          fi
+          echo "running :app:$TASK"
+          ./gradlew --stacktrace ":app:$TASK"
+        env:
+          PULL_REQUEST: 'false'
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
+          CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
+          EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
+          START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
+          SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
+          SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}

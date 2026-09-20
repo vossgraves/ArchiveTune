@@ -331,65 +331,6 @@ jobs:
           name: ${{ steps.variant.outputs.artifact_name }}
           path: ${{ steps.release_dir.outputs.release_dir }}/out/${{ steps.variant.outputs.apk_name }}
 
-  # The APK jobs assemble release builds, and a release assembly never compiles src/test — so a test
-  # that stops compiling stays invisible until someone runs it by hand. That is how
-  # listentogether/ProtoWireTest sat broken at HEAD while every canary run reported green, and why the
-  # QQ cipher tests were never executed. This job compiles and runs the unit tests for one variant.
-  #
-  # Deliberately independent of `create-canary`: a red test must not stop a build from being
-  # published, it must only be visible.
-  unit-tests:
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          submodules: true
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Set Up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-cleanup: on-success
-          cache-read-only: false
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Run unit tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The task name carries the flavour (gms/foss × mobile/tv × abi), so ask Gradle which
-          # unit-test tasks exist instead of guessing one — a wrong guess fails with "task not
-          # found", which says nothing about the tests themselves.
-          TASKS="$(./gradlew :app:tasks --all --console=plain)"
-          echo "$TASKS" | grep -E "^test[A-Za-z0-9]*UnitTest\b" || true
-          TASK="$(echo "$TASKS" | grep -oE "^test[A-Za-z0-9]*UnitTest\b" | head -1)"
-          if [ -z "$TASK" ]; then
-            echo "::error::No unit-test task found in :app — check whether unit tests are enabled"
-            exit 1
-          fi
-          echo "running :app:$TASK"
-          ./gradlew --stacktrace ":app:$TASK"
-        env:
-          PULL_REQUEST: 'false'
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
-          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
-          TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
-          CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
-          EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
-          START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
-          SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
-          SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
-
   create-canary:
     needs: [check, build]
     if: needs.check.outputs.should_build == 'true'
