@@ -141,13 +141,24 @@ fun NavGraphBuilder.navigationBuilder(
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
 ) {
     composable(Screens.Home.route) {
-        // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
+        // Three separate home pages behind one tab, picked by HomeSourceKey and switched from the
         // HomeSourceToggleButton in the top app bar. They are not layered: whichever is showing
-        // owns the tab, keeps its own layout style, and leaves the other one exactly as it was.
-        // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
-        if (rememberHomeSource() == HomeSource.SPOTIFY) {
-            SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
-            return@composable
+        // owns the tab, keeps its own layout style, and leaves the others exactly as they were.
+        // rememberHomeSource already resolves a page whose session has gone back to YOUTUBE.
+        when (rememberHomeSource()) {
+            HomeSource.SPOTIFY -> {
+                SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
+                return@composable
+            }
+
+            HomeSource.QQ -> {
+                // No navController: the QQ page plays its sections rather than opening anything.
+                QqHomeScreen(headerScrollConnection = homeScrollConnection)
+                return@composable
+            }
+
+            // The app's own home, in whichever of its two styles is configured.
+            HomeSource.YOUTUBE -> Unit
         }
 
         val homeScreenStyle by rememberEnumPreference(HomeScreenStyleKey, HomeScreenStyle.Default)

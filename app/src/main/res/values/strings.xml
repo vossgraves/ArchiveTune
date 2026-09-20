@@ -1646,6 +1646,7 @@
     <string name="home_screen_style_spotify">Spotify</string>
     <string name="home_source_youtube">YouTube</string>
     <string name="home_source_spotify">Spotify</string>
+    <string name="home_source_qq">QQ Music</string>
     <string name="home_source_switch_to">Switch to %1$s</string>
     <string name="home_screens">Home screens</string>
     <string name="home_screens_needs_sign_in">Sign in first</string>

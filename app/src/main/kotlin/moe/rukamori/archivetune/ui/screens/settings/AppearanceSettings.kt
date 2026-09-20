@@ -109,6 +109,7 @@ import moe.rukamori.archivetune.ui.screens.labelResId
 import moe.rukamori.archivetune.ui.screens.parseHomeSources
 import moe.rukamori.archivetune.ui.screens.rememberActiveHomeSources
 import moe.rukamori.archivetune.ui.screens.rememberHomeSourceAvailable
+import moe.rukamori.archivetune.ui.screens.rememberQqHomeSourceAvailable
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -382,6 +383,7 @@ fun AppearanceSectionSettings(
         rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.Default)
     var spotifyHomeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.Default)
     val spotifySignedIn = rememberHomeSourceAvailable()
+    val qqSignedIn = rememberQqHomeSourceAvailable()
     val (activeHomeSourcesRaw, setActiveHomeSources) = rememberPreference(ActiveHomeSourcesKey, "")
     val activeHomeSources = rememberActiveHomeSources()
     // What the picker shows and edits: the stored set when there is one, otherwise the resolved
@@ -500,6 +502,7 @@ fun AppearanceSectionSettings(
         HomeScreensDialog(
             selected = homeScreensSelection,
             spotifyAvailable = spotifySignedIn,
+            qqAvailable = qqSignedIn,
             onConfirm = { chosen ->
                 // Only an explicit change rewrites the key. Confirming an untouched picker has to
                 // leave an unset key unset — otherwise a fresh install (or a legacy one) whose
