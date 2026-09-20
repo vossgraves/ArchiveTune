@@ -412,19 +412,20 @@ fun buildSettingsGroups(
                 SettingsChild("Amazon audio quality", "amazon_audio_quality", listOf("amazon quality", "amazon hd", "amazon ultra hd")),
             ),
         )
-    // Sources → QQ Music sub-page. The screen is the source's only entry point, so the search
-    // entry is the only other way to reach the partnership requirement it explains.
+    // Sources → QQ Music sub-page. The screen carries the QR sign-in as well as the source's own
+    // switches, so the account row is indexed too: searching for a sign-in should reach it.
     val qqMusic =
         SettingsItem(
             key = "qqmusic",
             icon = painterResource(R.drawable.ic_music),
             title = "QQ Music",
-            subtitle = "QQ Music audio source (partner programme)",
+            subtitle = "QQ Music account and audio source",
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("qq", "qq music", "qqmusic", "tencent", "tme", "qplay", "partner"),
+            keywords = listOf("qq", "qq music", "qqmusic", "tencent", "tme", "qr login", "sign in"),
             onClick = { navController.navigate("settings/qqmusic") },
             hidden = true,
             children = listOf(
+                SettingsChild("QQ Music account", "qq_music_account", listOf("qq music login", "qq music sign in", "qr code", "scan code")),
                 SettingsChild("Enable QQ Music", "qq_music_enabled", listOf("qq music enable", "turn on qq music")),
                 SettingsChild("QQ Music quality", "qq_music_quality", listOf("qq quality", "qq lossless", "qq flac")),
             ),

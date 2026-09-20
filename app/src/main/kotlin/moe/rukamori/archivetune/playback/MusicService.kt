@@ -228,7 +228,8 @@ import moe.rukamori.archivetune.constants.QqMusicEnabledKey
 import moe.rukamori.archivetune.constants.QqAudioQuality
 import moe.rukamori.archivetune.constants.QqMusicAudioQualityKey
 import moe.rukamori.archivetune.constants.YouTubeSourceEnabledKey
-import moe.rukamori.archivetune.qqmusic.QqMusicProvider
+import moe.rukamori.archivetune.qqmusic.QqMusicAudioProvider
+import moe.rukamori.archivetune.qqmusic.QqMusicSession
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
@@ -6354,6 +6355,7 @@ class MusicService :
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
                 AudioSourceType.AMAZON to dataStore.get(AmazonEnabledKey, false),
+                AudioSourceType.QQ to dataStore.get(QqMusicEnabledKey, false),
                 AudioSourceType.YOUTUBE to dataStore.get(YouTubeSourceEnabledKey, true),
             )
         // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
@@ -7357,25 +7359,24 @@ class MusicService :
     }
 
     /**
-     * QQ Music — Tencent's partner API only.
+     * QQ Music — the signed-in user's own account.
      *
-     * Declines (null) whenever the build has no partnership credentials, the catalogue has no hit,
-     * the track is offered only in an encrypted container, or the match gate will not accept the
-     * candidate. There is no vkey construction and no `u.y.qq.com` call anywhere behind this: the
-     * provider builds requests with the partner's own app id and signature, and a track it cannot
-     * get a plain URL for is reported unavailable rather than worked around.
+     * Declines (null) when no account is connected, when the catalogue has no hit, when no hit
+     * clears the metadata gate, or when the account is not served the requested tier. That last case
+     * is the ordinary one for a track outside the account's entitlements, and it falls through to
+     * the next source like every other miss.
+     *
+     * [trusted] is the per-song override: it reaches the provider, which skips the metadata gate for
+     * the catalogue hit when the user pinned this song to QQ Music by hand.
      */
     private fun resolveQqStream(
         query: SourceQuery,
         trusted: Boolean,
     ): DirectStream? {
-        if (!QqMusicProvider.isConfigured()) {
-            if (!qqInertLogged) {
-                qqInertLogged = true
-                Timber
-                    .tag("MusicService")
-                    .i("QQ Music: no partner credentials in this build — the source stays inert")
-            }
+        val session =
+            runCatching { runBlocking(Dispatchers.IO) { QqMusicSession.read(dataStore) } }.getOrNull()
+        if (session == null) {
+            Timber.tag("MusicService").d("QQ Music: no account connected; skipping")
             return null
         }
 
@@ -7386,52 +7387,24 @@ class MusicService :
                 )
             }.getOrDefault(QqAudioQuality.Default)
 
-        val searchQuery =
-            listOfNotNull(query.title, query.artists.firstOrNull())
-                .joinToString(" ")
-                .trim()
-        if (searchQuery.isEmpty()) return null
-
-        val candidates = runBlocking(Dispatchers.IO) { QqMusicProvider.searchCandidates(searchQuery, quality) }
-        for (candidate in candidates) {
-            val url = runBlocking(Dispatchers.IO) { QqMusicProvider.resolveStream(candidate.mid, quality) } ?: continue
-            val placeholder =
-                DirectStream(
-                    uri = url,
-                    mimeType = "audio/mp4",
-                    codecs = "",
-                    contentLength = null,
-                    label = "QQ Music ${quality.name}",
-                    source = AudioSourceType.QQ,
-                    matchedTitle = candidate.title,
-                    matchedArtist = candidate.artist,
-                    matchedAlbum = candidate.album,
-                    matchedDurationMs = candidate.durationMs,
-                    trustedDirectId = trusted,
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                QqMusicAudioProvider.resolveByMetadata(
+                    title = query.title,
+                    artists = query.artists,
+                    album = query.album,
+                    durationMs = query.durationMs,
+                    quality = quality,
+                    session = session,
+                    cacheDir = cacheDir,
+                    trusted = trusted,
                 )
-            val match =
-                if (trusted) {
-                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
-                } else {
-                    TitleMatch.evaluate(
-                        wantedTitle = query.title,
-                        wantedArtists = query.artists,
-                        wantedAlbum = query.album,
-                        wantedDurationMs = query.durationMs,
-                        stream = placeholder,
-                    )
-                }
-            if (!match.accepted) continue
-            Timber
-                .tag("MusicService")
-                .i("QQ Music resolved \"%s\" as %s", query.title, candidate.mid)
-            return placeholder
+            }
+        }.getOrElse { error ->
+            Timber.tag("MusicService").w(error, "QQ Music resolution failed")
+            null
         }
-        return null
     }
-
-    @Volatile
-    private var qqInertLogged = false
 
     @Volatile
     private var amazonInertLogged = false
@@ -8073,7 +8046,9 @@ class MusicService :
             dataStore.get(QobuzEnabledKey, false) ||
             dataStore.get(QobuzBackupEnabledKey, false) ||
             dataStore.get(DeezerEnabledKey, false) ||
-            dataStore.get(AppleMusicSourceEnabledKey, false)
+            dataStore.get(AppleMusicSourceEnabledKey, false) ||
+            dataStore.get(AmazonEnabledKey, false) ||
+            dataStore.get(QqMusicEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(

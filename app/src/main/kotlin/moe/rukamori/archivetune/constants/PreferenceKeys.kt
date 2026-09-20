@@ -1587,17 +1587,39 @@ enum class AudioSourceType {
 // ---------------------------------------------------------------------------
 // QQ Music source
 // ---------------------------------------------------------------------------
-// QQ Music's catalogue and playback exist through Tencent's partner program only (TME OpenAPI /
-// QPlay). There is no public personal-developer playback API, so this source ships compiled but
-// unreachable: it declines every track until the build carries partner credentials
-// (BuildConfig.QQ_PARTNER_APP_ID) and the user turns the source on. It is deliberately not in
-// DEFAULT_ORDER — like Amazon, it joins the order by hand, after the maintainer has a partnership.
+// Playback uses the user's own QQ Music account, signed in by scanning a QR code in settings. The
+// app then calls the same client protocol QQ Music's own desktop and web clients use — catalogue
+// search, track detail, and the call that mints a playable URL for that account's entitlements —
+// and plays what comes back, decrypting the protected containers a lossless tier arrives in.
 //
-// The web endpoints (u.y.qq.com musicu.fcg) and the leaked vkey signing scheme are not used here
-// and must not be added: building against them is what the boundaries for this source forbid.
+// The account's ticket lives here. The web client carries the same ticket in a cookie called
+// `qm_keyst`; QQ Music's own API calls it the `musickey`. The CSRF parameter the RPC modules take
+// (`g_tk`) is derived from it on every request rather than stored, so a rotated ticket cannot leave
+// a stale one behind.
+//
+// Boundaries this source keeps, because the alternative is a source nobody can rely on:
+//  - it asks only for the tier the user picked, and an unentitled tier comes back empty and falls
+//    through to the next source rather than being worked around;
+//  - it decrypts only a container the account itself was served, on device, into the app's own
+//    cache, and never writes anything back to the service;
+//  - it circumvents no advert, no limit and no purchase prompt.
+// It is deliberately not in AudioSourceConfig.DEFAULT_ORDER: it joins the order by hand through
+// withSourceAdded, once the user has signed in and turned it on.
 val QqMusicEnabledKey = booleanPreferencesKey("qqMusicEnabled")
 
 val QqMusicAudioQualityKey = stringPreferencesKey("qqMusicAudioQuality")
+
+// The account's decimal QQ number, which is the `musicid` the catalogue reports.
+val QqMusicUinKey = stringPreferencesKey("qqMusicUin")
+
+// The `musickey` ticket minted for this account at sign-in. Compared with the other sources'
+// session keys, this one is a bearer ticket rather than a cookie jar: everything the calls need is
+// derived from it.
+val QqMusicMusickeyKey = stringPreferencesKey("qqMusicMusickey")
+
+// Display-only nickname from the login reply, so the settings row can say who is signed in without
+// keeping anything else about the account.
+val QqMusicNicknameKey = stringPreferencesKey("qqMusicNickname")
 
 // ---------------------------------------------------------------------------
 // YouTube source

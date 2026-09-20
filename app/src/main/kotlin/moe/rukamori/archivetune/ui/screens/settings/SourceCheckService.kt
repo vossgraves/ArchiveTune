@@ -15,7 +15,8 @@ import moe.rukamori.archivetune.constants.AmazonBypassTokenKey
 import moe.rukamori.archivetune.constants.AmazonInstancesKey
 import moe.rukamori.archivetune.constants.AmazonTurnstileJwtExpiryMsKey
 import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
-import moe.rukamori.archivetune.qqmusic.QqMusicProvider
+import moe.rukamori.archivetune.qqmusic.QqMusicApi
+import moe.rukamori.archivetune.qqmusic.QqMusicSession
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
@@ -68,7 +69,7 @@ object SourceCheckService {
                 AudioSourceType.DEEZER -> checkDeezer(context)
                 AudioSourceType.APPLE -> checkAppleMusic()
                 AudioSourceType.AMAZON -> checkAmazon(context)
-                AudioSourceType.QQ -> checkQqMusic()
+                AudioSourceType.QQ -> checkQqMusic(context)
                 AudioSourceType.JIOSAAVN -> checkJioSaavn()
                 AudioSourceType.YOUTUBE -> SourceCheckResult(
                     healthy = true,
@@ -77,23 +78,33 @@ object SourceCheckService {
             }
         }
 
-    private fun checkQqMusic(): SourceCheckResult =
-        // There is nothing to probe: QQ Music playback exists through Tencent's partner program
-        // only, and a build without partner credentials cannot even open a session.
-        if (!QqMusicProvider.isConfigured()) {
+    private suspend fun checkQqMusic(context: Context): SourceCheckResult {
+        val session =
+            runCatching { QqMusicSession.read(context.dataStore) }.getOrNull()
+                ?: return SourceCheckResult(
+                    healthy = false,
+                    summary = "No QQ Music account is connected. Sign in from Integration → QQ Music " +
+                        "by scanning the code with the QQ app, then switch the source on.",
+                )
+
+        // The probe inspects the reply envelope rather than what it found, so an empty result set
+        // is not mistaken for a dead session; only a rejected or malformed call is.
+        val reachable = runCatching { QqMusicApi.reachable(session, "love") }.getOrDefault(false)
+        val who = session.nickname?.takeIf { it.isNotBlank() } ?: session.uin
+        return if (reachable) {
             SourceCheckResult(
-                healthy = false,
-                summary = "QQ Music needs a Tencent Music partner application (QQ_PARTNER_APP_ID). " +
-                    "There is no public personal-developer playback API, so until the maintainer " +
-                    "registers as a partner this source stays inert and playback falls through.",
+                healthy = true,
+                summary = "Signed in as $who. Playback uses this account's own entitlements; a tier " +
+                    "the account does not hold comes back empty and falls through to the next source.",
             )
         } else {
             SourceCheckResult(
-                healthy = true,
-                summary = "Partner credentials are present. QQ Music resolves through Tencent's " +
-                    "documented OpenAPI; encrypted formats are reported unavailable rather than bypassed.",
+                healthy = false,
+                summary = "Signed in as $who, but the catalogue did not answer for that ticket — it has " +
+                    "most likely expired. Sign in again from Integration → QQ Music.",
             )
         }
+    }
 
     private suspend fun checkTidal(context: Context): SourceCheckResult {
         // Refresh the pool first so newly-added accounts are visible.
