@@ -893,18 +893,26 @@
     <string name="source_amazon">Amazon Music</string>
     <string name="source_qq_music">QQ Music</string>
 
-    <!-- QQ Music settings. Playback exists through Tencent's partner programme only, so the screen
-         leads with what the maintainer has to provision; see QqMusicProvider for the boundaries. -->
+    <!-- QQ Music settings. Playback uses the user's own QQ Music account, signed in by scanning a
+         QR code with the QQ app; see QqMusicAudioProvider, QqQrLogin and docs/QQ_MUSIC.md. -->
     <string name="qq_music_enabled">Enable QQ Music</string>
     <string name="qq_music_enabled_desc">Try QQ Music for a track before falling through to the sources below it.</string>
     <string name="qq_music_quality">Preferred audio quality</string>
     <string name="qq_quality_lossless">Lossless (FLAC)</string>
     <string name="qq_quality_high">High (320 kbps)</string>
     <string name="qq_quality_standard">Standard (128 kbps)</string>
-    <string name="qq_music_notice_title">Needs Tencent Music partnership</string>
-    <string name="qq_music_notice_description">QQ Music has no public personal-developer playback API. This source talks to the partner API only, with the credentials a partnership issues, so a build without them resolves nothing and playback falls through. It never scrapes the web endpoints, mints vkeys, decrypts encrypted containers, or unlocks a quality the account is not entitled to.</string>
-    <string name="qq_music_credentials_ready">Partner credentials are present in this build</string>
-    <string name="qq_music_credentials_missing">No partner credentials in this build</string>
+    <string name="qq_music_signed_in">Signed in as %1$s</string>
+    <string name="qq_music_signed_in_description">Playback uses this account, at the quality you picked. A tier the account does not hold is left to the next source.</string>
+    <string name="qq_music_sign_out">Sign out of QQ Music</string>
+    <string name="qq_music_login_requesting">Requesting a sign-in code</string>
+    <string name="qq_music_login_scan">Scan this code with the QQ app</string>
+    <string name="qq_music_login_scanned">Scanned — confirm the sign-in on your phone</string>
+    <string name="qq_music_login_declined">The sign-in was declined on your phone.</string>
+    <string name="qq_music_login_unavailable">The sign-in code could not be fetched. Check the connection and try again.</string>
+    <string name="qq_music_login_timed_out">The code expired before it was scanned.</string>
+    <string name="qq_music_login_incomplete">The scan was confirmed but the session could not be completed.</string>
+    <string name="qq_music_login_retry">Show a new code</string>
+    <string name="qq_music_login_limits">Only the signed-in account is used: no tier is unlocked, no advert, limit or purchase prompt is evaded, and a protected container is decrypted on device and never re-shared.</string>
 
     <!-- Amazon Music settings, for the instance-based source. The user adds their own
          "Amazon Music Stream API" instance URL(s) and authorizes once via the Turnstile WebView
