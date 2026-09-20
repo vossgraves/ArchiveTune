@@ -227,24 +227,55 @@ class QmcDecryptorTest {
     /** The newer footer: a length before the `QTag` magic, then the key and its bookkeeping. */
     @Test
     fun theQTagFooterIsReadWithItsBigEndianLength() {
-        val embedded = QmcEkey.findEmbedded(qtagFile)
-        assertEquals("ABEiM0RVZneImaq7zN3u/w==", embedded?.ekey)
-        assertEquals(64, embedded?.audioLength)
+        val footer = QmcEkey.findFooter(qtagFile)
+        assertEquals(QmcEkey.FooterKind.QTAG, footer.kind)
+        assertEquals("ABEiM0RVZneImaq7zN3u/w==", footer.keyText)
+        assertEquals(64, footer.audioLength)
     }
 
     /** The older footer: the key sits immediately before its own length, little-endian. */
     @Test
     fun theOlderFooterIsReadWithItsLittleEndianLength() {
-        val embedded = QmcEkey.findEmbedded(legacyFile)
-        assertEquals("ABEiM0RVZneImaq7zN3u/w==", embedded?.ekey)
-        assertEquals(64, embedded?.audioLength)
+        val footer = QmcEkey.findFooter(legacyFile)
+        assertEquals(QmcEkey.FooterKind.LEGACY_LENGTH, footer.kind)
+        assertEquals("ABEiM0RVZneImaq7zN3u/w==", footer.keyText)
+        assertEquals(64, footer.audioLength)
     }
 
-    /** A file that carries no footer has no embedded key to find, whatever its tail looks like. */
+    /** A container with no trailer at all is read as one: the whole file is the payload. */
     @Test
-    fun aFileWithoutAFooterYieldsNoKey() {
-        assertNull(QmcEkey.findEmbedded(ByteArray(64)))
-        assertNull(QmcEkey.findEmbedded(("fLaC" + "x".repeat(60)).toByteArray(Charsets.US_ASCII)))
+    fun aFileWithoutAFooterIsReadAsWholeFileAudio() {
+        val footer = QmcEkey.findFooter(ByteArray(64))
+        assertEquals(QmcEkey.FooterKind.NONE, footer.kind)
+        assertNull(footer.keyText)
+        assertEquals(64, footer.audioLength)
+    }
+
+    /**
+     * The two layouts that carry metadata only. Their payload still has to be located exactly, which
+     * is what [QmcEkey.Footer.audioLength] is for, and their lack of a key has to be visible — a
+     * payload decrypted with a cipher it cannot have been encrypted with is worse than a refusal.
+     */
+    @Test
+    fun theMetadataOnlyFootersAreReadAndRefusedWithoutAKey() {
+        val expected = listOf(QmcEkey.FooterKind.STAG to stagFile, QmcEkey.FooterKind.MUSICEX to musicExFile)
+        for ((kind, file) in expected) {
+            val footer = QmcEkey.findFooter(file)
+            assertEquals(kind, footer.kind)
+            assertNull(footer.keyText)
+            assertEquals(64, footer.audioLength)
+            assertNull(QmcDecryptor.decrypt(file, ".mflac"))
+        }
+    }
+
+    /** The same two files, decrypted with the key the service discloses alongside the resource. */
+    @Test
+    fun theMetadataOnlyFootersDecryptWithTheDisclosedKey() {
+        for ((name, file) in listOf("STAG" to stagFile, "MUSICEX" to musicExFile)) {
+            val decrypted = QmcDecryptor.decrypt(file, ".mflac", serviceEkey)
+            assertEquals(name, QmcContainer.OGG, decrypted?.container)
+            assertArrayEquals(name, plainPayload, decrypted?.bytes)
+        }
     }
 
     /**
@@ -333,4 +364,51 @@ class QmcDecryptorTest {
                 "9fdaa6999397aad497d2ae918b8fb2cc8fcab6898387bac4414245694d3052565a6e65496d6171" +
                 "377a4e33752f773d3d18000000",
         )
+
+    /** The key both footer fixtures carry, and the one the service would disclose for them. */
+    private val serviceEkey = "ABEiM0RVZneImaq7zN3u/w=="
+
+    /** The encrypted audio every footer fixture wraps, taken from the `QTag` one. */
+    private val audioCiphertext = qtagFile.copyOfRange(0, 64)
+
+    private fun littleEndian(value: Int): ByteArray =
+        byteArrayOf(
+            value.toByte(),
+            (value shr 8).toByte(),
+            (value shr 16).toByte(),
+            (value shr 24).toByte(),
+        )
+
+    private fun bigEndian(value: Int): ByteArray =
+        byteArrayOf(
+            (value shr 24).toByte(),
+            (value shr 16).toByte(),
+            (value shr 8).toByte(),
+            value.toByte(),
+        )
+
+    private val stagMetadata = "9001,2,00QTESTMEDIAAAA".toByteArray(Charsets.US_ASCII)
+
+    /**
+     * A tail of the Android metadata-only kind: a CSV the file keeps for its own bookkeeping, its
+     * big-endian length, then the magic. Nothing here is audio, and nothing here is a key.
+     */
+    private val stagFile =
+        audioCiphertext +
+            stagMetadata +
+            bigEndian(stagMetadata.size) +
+            "STag".toByteArray(Charsets.US_ASCII)
+
+    /**
+     * A tail of the current PC kind: a metadata body, then a little-endian size and version before
+     * the magic. Only the trailer is inspected, so the body only has to be the right length.
+     */
+    private val musicExFile =
+        audioCiphertext +
+            ByteArray(0xB0).also { body ->
+                "00QTESTMEDIAAAA".toByteArray(Charsets.UTF_16LE).copyInto(body, 0x0C)
+            } +
+            littleEndian(0xC0) +
+            littleEndian(1) +
+            "musicex\u0000".toByteArray(Charsets.US_ASCII)
 }

@@ -506,7 +506,7 @@ internal object QqMusicApi {
                     for (child in element.values) walk(child)
                 }
 
-                is JsonArray -> element.forEach(::walk)
+                is JsonArray -> element.forEach { child -> walk(child) }
 
                 else -> Unit
             }

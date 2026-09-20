@@ -17,11 +17,12 @@
  *  - **QMC1** (`qmc0`, `qmc3`, `qmcflac`, `qmcogg`, …) is self-contained. The key is a fixed
  *    keystream indexed by byte offset, so any tool that knows the scheme can read it, and the whole
  *    file is XORed with that keystream.
- *  - **QMC2** (`mflac`, `mgg`, `mgg1`, …) is keyed per file. Older files carry that key in a footer
- *    — either behind the literal `QTag` marker or behind a trailing little-endian size — and those
- *    are the ones handled here. Newer client-authored files keep the key off the file entirely (in
- *    the player's own database), so they do not decrypt, fail the check below, and are reported as
- *    unplayable rather than guessed at.
+ *  - **QMC2** (`mflac`, `mgg`, `mgg1`, …) is keyed per file, and the tail says where that key is.
+ *    The older layouts carry it in the file — behind the literal `QTag` marker or behind a trailing
+ *    little-endian size — and those decrypt on their own. The current PC layout and the Android
+ *    `STag` one deliberately carry metadata only, so those payloads are decrypted with the key the
+ *    service disclosed alongside the resource, and are refused when it disclosed none rather than
+ *    guessed at.
  *
  * The payload is therefore treated as opaque until a footer key is found or the fixed keystream is
  * applied, and the result is only accepted when the decrypted bytes actually start with a container
@@ -451,12 +452,13 @@ internal object TcTea {
 }
 
 /**
- * The per-file key a QMC2 container carries, read out of the file's footer.
+ * The tail a QMC2 container ends with, and the key it carries if any.
  *
- * Two layouts are in the wild and both are handled: the newer one ends with the literal `QTag` and
- * puts a big-endian metadata size immediately before it, and the older one ends with the key's own
- * length as a little-endian word. In both, the key is a base64 blob that still has to be turned into
- * bytes by [derive].
+ * Four layouts are recognised, and they are tried in the order the modern clients try them. Two of
+ * them — the Android `STag` one and the current PC `musicex` one — deliberately carry *metadata*
+ * only: the key is not in those files at all, so their payload can only be decrypted by a key the
+ * service disclosed. That is reported as such rather than being run through a cipher that cannot
+ * possibly be right.
  */
 internal object QmcEkey {
     private const val TAG = "QmcEkey"
@@ -464,8 +466,14 @@ internal object QmcEkey {
     /** `QTag` read as a little-endian word. */
     private const val QTAG_MAGIC = 0x67615451
 
-    /** The older layout's size word; anything longer than this is not a key length. */
+    /** The older Android layout's size word; anything longer than this is not a key length. */
     private const val V1_MAX_KEY_SIZE = 0x400
+
+    /** The layout that names itself instead: `STag` metadata only, `musicex\0` metadata only. */
+    private const val STAG_MAGIC = "STag"
+    private const val MUSICEX_MAGIC = "musicex\u0000"
+    private const val MUSICEX_VERSION = 1
+    private const val MUSICEX_TAG_SIZE = 0xC0
 
     private const val ENCV2_PREFIX = "QQMusic EncV2,Key:"
 
@@ -473,39 +481,84 @@ internal object QmcEkey {
     private const val ENCV2_STAGE1_KEY = "386ZJY!@#*$%^&)("
     private const val ENCV2_STAGE2_KEY = "**#!(#$%&^a1cZ,T"
 
-    /** A footer key and the offset at which the audio it protects ends. */
-    data class EmbeddedKey(
-        val ekey: String,
+    /** Where a container's key comes from, and therefore whether it is readable at all. */
+    enum class FooterKind {
+        /** Newer Android layout: a big-endian payload length, then the key in a CSV before `QTag`. */
+        QTAG,
+
+        /** Older layout: the key's own length as a little-endian word at the very end. */
+        LEGACY_LENGTH,
+
+        /** Android layout carrying metadata only — the key has to come from the service. */
+        STAG,
+
+        /** Current PC layout carrying metadata only — the key has to come from the service. */
+        MUSICEX,
+
+        /** Nothing recognised, so the whole file is the payload. */
+        NONE,
+    }
+
+    /** A container's tail: how it is laid out, the key it carries if any, and where the audio ends. */
+    data class Footer(
+        val kind: FooterKind,
+        val keyText: String?,
         val audioLength: Int,
     )
 
-    /** The footer key in [data], or null when the file carries none. */
-    fun findEmbedded(data: ByteArray): EmbeddedKey? {
-        if (data.size < 16) return null
-        val trailing = readU32Le(data, data.size - 4)
+    /**
+     * Reads the tail of [data]. Never fails: a file whose tail is not one of the known layouts comes
+     * back as [FooterKind.NONE] with the whole file as its payload, which is the correct reading of
+     * a container that carries no trailer.
+     */
+    fun findFooter(data: ByteArray): Footer {
+        val whole = Footer(FooterKind.NONE, null, data.size)
+        if (data.size < 16) return whole
 
+        if (endsWith(data, STAG_MAGIC)) {
+            val payloadLength = readU32Be(data, data.size - 8)
+            val footerSize = payloadLength + 8
+            if (payloadLength > 0 && footerSize < data.size) {
+                return Footer(FooterKind.STAG, null, data.size - footerSize)
+            }
+            return whole
+        }
+
+        if (endsWith(data, MUSICEX_MAGIC)) {
+            // The trailer is a little-endian tag size and version immediately before the magic.
+            val version = readU32Le(data, data.size - 12)
+            val tagSize = readU32Le(data, data.size - 16)
+            if (version == MUSICEX_VERSION && tagSize == MUSICEX_TAG_SIZE && tagSize < data.size) {
+                return Footer(FooterKind.MUSICEX, null, data.size - tagSize)
+            }
+            return whole
+        }
+
+        val trailing = readU32Le(data, data.size - 4)
         if (trailing == QTAG_MAGIC) {
             val metaSize = readU32Be(data, data.size - 8)
             val endOfMeta = data.size - 8
-            if (metaSize <= 0 || metaSize >= endOfMeta) return null
+            if (metaSize <= 0 || metaSize >= endOfMeta) return whole
             val keyStart = endOfMeta - metaSize
             val comma = indexOf(data, ','.code.toByte(), keyStart, endOfMeta)
-            if (comma < 0) return null
-            return EmbeddedKey(
-                ekey = String(data, keyStart, comma - keyStart, Charsets.UTF_8),
+            if (comma < 0) return whole
+            return Footer(
+                kind = FooterKind.QTAG,
+                keyText = String(data, keyStart, comma - keyStart, Charsets.UTF_8),
                 audioLength = keyStart,
             )
         }
 
         if (trailing in 1..V1_MAX_KEY_SIZE) {
             val keyStart = data.size - 4 - trailing
-            if (keyStart < 0) return null
-            return EmbeddedKey(
-                ekey = String(data, keyStart, trailing, Charsets.UTF_8),
+            if (keyStart < 0) return whole
+            return Footer(
+                kind = FooterKind.LEGACY_LENGTH,
+                keyText = String(data, keyStart, trailing, Charsets.UTF_8),
                 audioLength = keyStart,
             )
         }
-        return null
+        return whole
     }
 
     /**
@@ -561,6 +614,19 @@ internal object QmcEkey {
         return -1
     }
 
+    /** True when [data] ends with the ASCII [suffix]. */
+    private fun endsWith(
+        data: ByteArray,
+        suffix: String,
+    ): Boolean {
+        if (data.size < suffix.length) return false
+        val start = data.size - suffix.length
+        for (index in suffix.indices) {
+            if (data[start + index] != suffix[index].code.toByte()) return false
+        }
+        return true
+    }
+
     private fun readU32Le(
         data: ByteArray,
         offset: Int,
@@ -598,34 +664,41 @@ internal object QmcDecryptor {
     /**
      * Decrypts an encrypted container into the plain file it wraps.
      *
-     * The grammar is the one every decryptor implements: a footer key if the file carries one, and
-     * the fixed keystream if it does not. A file whose key lives outside itself — the modern PC and
-     * the Android `STag` layouts — therefore goes down the fixed-keystream path and is rejected by
-     * the signature check below rather than being special-cased, which keeps this to one code path
-     * and still refuses to emit anything unverified.
+     * The footer decides everything: where the audio ends, and whether the key is in the file at
+     * all. When it is not, [ekey] — the key the service disclosed along with the resource — is what
+     * makes the track playable, and without it the payload is refused rather than run through a
+     * cipher that cannot be right.
      *
-     * [encryptedExtension] is only carried for logging. Returns null when the payload is too small
-     * to be a container, when a footer key cannot be derived, or when the result does not begin with
-     * a container signature — never a partial or unverified payload.
+     * [encryptedExtension] is carried for logging only. Returns null when the payload is too small
+     * to be a container, when a key is present but cannot be derived, when the container carries no
+     * key and none was disclosed, or when the result does not begin with a container signature —
+     * never a partial or unverified payload.
      */
     fun decrypt(
         data: ByteArray,
         encryptedExtension: String,
+        ekey: String? = null,
     ): QmcDecrypted? {
         if (data.size < 16) return null
         val extension = encryptedExtension.lowercase().let { if (it.startsWith(".")) it else ".$it" }
 
-        val embedded = QmcEkey.findEmbedded(data)
+        val footer = QmcEkey.findFooter(data)
+        val keyText = footer.keyText ?: ekey?.trim()?.takeIf { it.isNotEmpty() }
         val plain: ByteArray
-        if (embedded != null) {
-            val key = QmcEkey.derive(embedded.ekey) ?: run {
-                Timber.tag(TAG).w("QQ Music container carried a key that could not be derived")
-                return null
-            }
-            if (embedded.audioLength < 16) return null
-            plain = data.copyOfRange(0, embedded.audioLength)
+        if (keyText != null) {
+            val key =
+                QmcEkey.derive(keyText) ?: run {
+                    Timber.tag(TAG).w("QQ Music container carried a key that could not be derived")
+                    return null
+                }
+            if (footer.audioLength < 16) return null
+            plain = data.copyOfRange(0, footer.audioLength)
             if (key.size > 300) QmcRc4Cipher(key).decrypt(0, plain) else QmcMapCipher(key).decrypt(0, plain)
         } else {
+            if (footer.kind != QmcEkey.FooterKind.NONE) {
+                Timber.tag(TAG).i("QQ Music container %s (%s) carries no key", extension, footer.kind)
+                return null
+            }
             plain = data.copyOf()
             QmcStaticCipher.decrypt(plain)
         }

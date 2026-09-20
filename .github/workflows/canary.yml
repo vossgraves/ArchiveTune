@@ -456,3 +456,53 @@ jobs:
             echo "Deleting old Canary release: $tag"
             gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           done
+
+  # TEMPORARY, for the QQ Music branch only: the matrix above assembles release APKs, which never
+  # compiles `src/test`, so a mistake in a test file would go unnoticed. Remove this job (and
+  # .github/workflows/qq-tests.yml) before the branch is merged.
+  qq-unit-tests:
+    if: contains(github.ref, 'refs/tags') == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set Up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: QQ Music unit tests
+        shell: bash
+        run: ./gradlew --console=plain :app:testGmsMobileUniversalDebugUnitTest --tests "moe.rukamori.archivetune.qqmusic.*"
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
+          CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
+          EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
+          START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
+          SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
+          SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
+
+      - name: Whole unit-test suite (informational)
+        continue-on-error: true
+        shell: bash
+        run: ./gradlew --console=plain :app:testGmsMobileUniversalDebugUnitTest
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
+          CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
+          EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
+          START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
+          SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
+          SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}

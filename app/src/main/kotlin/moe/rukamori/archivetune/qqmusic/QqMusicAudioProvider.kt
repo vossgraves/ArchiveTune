@@ -193,7 +193,7 @@ internal object QqMusicAudioProvider {
         }
 
         val downloaded = download(source.url) ?: return null
-        val decrypted = QmcDecryptor.decrypt(downloaded, extension) ?: return null
+        val decrypted = QmcDecryptor.decrypt(downloaded, extension, source.ekey) ?: return null
         val file = cacheContainer(cacheDir, source.url, quality, decrypted) ?: return null
         return DirectStream(
             uri = android.net.Uri.fromFile(file).toString(),
