@@ -173,9 +173,9 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
 private val AppleMusicContentPadding = 28.dp
-private val AppleMusicChipSize = 34.dp
+private val AppleMusicChipSize = 30.dp
 private val AppleMusicTransportIconSize = 52.dp
-private val AppleMusicPlayPauseIconSize = 62.dp
+private val AppleMusicPlayPauseIconSize = 64.dp
 // Bottom action row (lyrics / cast / queue) — reduced "just a bit" from the
 // previous 30dp/56dp per user request. 26dp icons in 48dp boxes are still
 // comfortably above the 48dp minimum touch target while looking less bulky.
