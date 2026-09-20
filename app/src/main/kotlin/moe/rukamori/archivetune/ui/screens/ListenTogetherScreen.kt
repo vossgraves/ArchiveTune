@@ -8,6 +8,7 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import android.graphics.BitmapFactory
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -26,6 +27,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -91,6 +93,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -98,6 +101,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.onFocusChanged
@@ -111,6 +115,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import coil3.compose.rememberAsyncImagePainter
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -121,7 +126,10 @@ import moe.rukamori.archivetune.constants.ListenTogetherUsernameKey
 import moe.rukamori.archivetune.listentogether.ConnectionState
 import moe.rukamori.archivetune.listentogether.JoinRequestPayload
 import moe.rukamori.archivetune.listentogether.ListenTogetherEvent
+import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.listentogether.SuggestionReceivedPayload
+import moe.rukamori.archivetune.listentogether.TrackInfo
 import moe.rukamori.archivetune.listentogether.UserInfo
 import moe.rukamori.archivetune.ui.component.ExpressiveSettingGroup
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -176,6 +184,8 @@ fun ListenTogetherScreen(
     val invalidRoomCodeText = stringResource(R.string.invalid_room_code)
     val joinRequestDeniedText = stringResource(R.string.join_request_denied)
 
+    var showSuggestSearch by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(savedUsername) {
         if (usernameInput.isBlank() && savedUsername.isNotBlank()) {
             viewModel.usernameInput.value = savedUsername
@@ -227,6 +237,25 @@ fun ListenTogetherScreen(
                 viewModel.selectedUserForMenu.value = null
                 viewModel.selectedUsername.value = null
             }
+        )
+    }
+
+    if (showSuggestSearch) {
+        SuggestSongDialog(
+            onDismiss = { showSuggestSearch = false },
+            onSuggest = { song ->
+                showSuggestSearch = false
+                listenTogetherManager.suggestTrack(
+                    TrackInfo(
+                        id = song.id,
+                        title = song.title,
+                        artist = song.artists.joinToString(", ") { it.name },
+                        album = null,
+                        duration = (song.duration ?: 0) * 1000L,
+                        thumbnail = song.thumbnail,
+                    )
+                )
+            },
         )
     }
 
@@ -398,6 +427,21 @@ fun ListenTogetherScreen(
                             suggestions = pendingSuggestions,
                             onApprove = { listenTogetherManager.approveSuggestion(it) },
                             onReject = { listenTogetherManager.rejectSuggestion(it, "Rejected by host") }
+                        )
+                    }
+                }
+
+                item {
+                    RoomQueueSection(
+                        queue = room.queue,
+                        currentTrackId = room.currentTrack?.id,
+                    )
+                }
+
+                if (!isHost) {
+                    item {
+                        SuggestSongCard(
+                            onOpenSearch = { showSuggestSearch = true }
                         )
                     }
                 }
@@ -882,25 +926,37 @@ private fun UserAvatar(
                 ) {
                     val resolvedAvatarIndex = user.avatarIndex
                     val avatarOptions = remember { listOf(R.drawable.person, R.drawable.man, R.drawable.woman, R.drawable.man_1, R.drawable.man_2, R.drawable.man_3, R.drawable.man_4, R.drawable.man_5, R.drawable.man_6, R.drawable.woman_1, R.drawable.woman_2, R.drawable.woman_3, R.drawable.woman_4, R.drawable.luxury_women) }
-                    
-                    if (resolvedAvatarIndex == 0) {
-                        Text(
-                            text = user.cleanUsername.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = when {
-                                user.isHost -> MaterialTheme.colorScheme.onPrimary
-                                isCurrentUser -> MaterialTheme.colorScheme.onSecondary
-                                else -> MaterialTheme.colorScheme.onTertiaryContainer
-                            }
-                        )
-                    } else {
-                        Image(
-                            painter = painterResource(avatarOptions.getOrElse(resolvedAvatarIndex) { R.drawable.person }),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
-                        )
+                    val customAvatarBitmap = CustomAvatarBitmap(userId = user.userId)
+
+                    when {
+                        customAvatarBitmap != null -> {
+                            Image(
+                                bitmap = customAvatarBitmap.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        resolvedAvatarIndex == 0 -> {
+                            Text(
+                                text = user.cleanUsername.take(1).uppercase(),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = when {
+                                    user.isHost -> MaterialTheme.colorScheme.onPrimary
+                                    isCurrentUser -> MaterialTheme.colorScheme.onSecondary
+                                    else -> MaterialTheme.colorScheme.onTertiaryContainer
+                                }
+                            )
+                        }
+                        else -> {
+                            Image(
+                                painter = painterResource(avatarOptions.getOrElse(resolvedAvatarIndex) { R.drawable.person }),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
                     }
                 }
             }
@@ -992,7 +1048,7 @@ private fun PendingJoinRequestsSection(
                 ) {
                     val resolvedAvatarIndex = request.avatarIndex
                     val avatarOptions = remember { listOf(R.drawable.person, R.drawable.man, R.drawable.woman, R.drawable.man_1, R.drawable.man_2, R.drawable.man_3, R.drawable.man_4, R.drawable.man_5, R.drawable.man_6, R.drawable.woman_1, R.drawable.woman_2, R.drawable.woman_3, R.drawable.woman_4, R.drawable.luxury_women) }
-                    
+                    val joinRequestAvatarBitmap = CustomAvatarBitmap(userId = request.userId)
                     Surface(
                         modifier = Modifier.size(40.dp),
                         shape = CircleShape,
@@ -1002,7 +1058,14 @@ private fun PendingJoinRequestsSection(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            if (resolvedAvatarIndex == 0) {
+                            if (joinRequestAvatarBitmap != null) {
+                                Image(
+                                    bitmap = joinRequestAvatarBitmap.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else if (resolvedAvatarIndex == 0) {
                                 Text(
                                     text = request.cleanUsername.take(1).uppercase(),
                                     style = MaterialTheme.typography.titleMedium,
@@ -1186,19 +1249,31 @@ private fun JoinCreateRoomSection(
                 label = { Text(stringResource(R.string.username)) },
                 placeholder = { Text(stringResource(R.string.enter_username)) },
                 leadingIcon = {
-                    if (avatarIndex == 0) {
-                        Icon(
-                            painterResource(R.drawable.person),
-                            null,
-                            tint = usernameIconTint
-                        )
-                    } else {
-                        androidx.compose.foundation.Image(
-                            painter = painterResource(avatarOptions.getOrElse(avatarIndex) { R.drawable.person }),
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape),
-                            contentScale = ContentScale.Fit
-                        )
+                    val usernameAvatarBitmap = CustomAvatarBitmap(userId = null)
+                    when {
+                        usernameAvatarBitmap != null -> {
+                            androidx.compose.foundation.Image(
+                                bitmap = usernameAvatarBitmap.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        avatarIndex == 0 -> {
+                            Icon(
+                                painterResource(R.drawable.person),
+                                null,
+                                tint = usernameIconTint
+                            )
+                        }
+                        else -> {
+                            androidx.compose.foundation.Image(
+                                painter = painterResource(avatarOptions.getOrElse(avatarIndex) { R.drawable.person }),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
                     }
                 },
                 trailingIcon = {
@@ -1717,4 +1792,254 @@ private fun UserActionDialog(
             }
         }
     }
+}
+
+@Composable
+private fun RoomQueueSection(
+    queue: List<TrackInfo>,
+    currentTrackId: String?,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.listen_together_room_queue),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (queue.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.listen_together_queue_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                queue.take(12).forEachIndexed { index, track ->
+                    val isCurrent = track.id == currentTrackId
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                            .alpha(if (isCurrent) 1f else 0.75f)
+                    ) {
+                        Text(
+                            text = if (isCurrent) "▶" else "${index + 1}.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(28.dp)
+                        )
+                        track.thumbnail?.let { thumb ->
+                            Image(
+                                painter = rememberAsyncImagePainter(thumb),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = track.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = track.artist,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+                if (queue.size > 12) {
+                    Text(
+                        text = stringResource(R.string.listen_together_queue_more, queue.size - 12),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestSongCard(
+    onOpenSearch: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenSearch),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.add),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.listen_together_suggest_song),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    text = stringResource(R.string.listen_together_suggest_song_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestSongDialog(
+    onDismiss: () -> Unit,
+    onSuggest: (SongItem) -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+
+    LaunchedEffect(query) {
+        if (query.length < 2) {
+            results = emptyList()
+            return@LaunchedEffect
+        }
+        delay(350L)
+        searching = true
+        results = emptyList()
+        val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false)
+                    .getOrNull()
+                    ?.items
+                    ?.filterIsInstance<SongItem>()
+                    .orEmpty()
+            }.getOrDefault(emptyList())
+        }
+        results = found
+        searching = false
+    }
+
+    DefaultDialog(
+        onDismiss = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.listen_together_suggest_song),
+                fontWeight = FontWeight.Bold
+            )
+        },
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text(stringResource(R.string.search)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (searching) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(32.dp)
+            )
+        } else if (query.length >= 2 && results.isEmpty()) {
+            Text(
+                text = stringResource(R.string.no_results_found),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+        } else {
+            results.take(8).forEach { song ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSuggest(song) }
+                        .padding(vertical = 8.dp, horizontal = 4.dp)
+                ) {
+                    song.thumbnail.let { thumb ->
+                        Image(
+                            painter = rememberAsyncImagePainter(thumb),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = song.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = song.artists.joinToString(", ") { it.name },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomAvatarBitmap(userId: String?): Bitmap? {
+    val manager = LocalListenTogetherManager.current ?: return null
+    val currentUserId by manager.userId.collectAsState()
+    val customAvatars by manager.customAvatars.collectAsState()
+    val selfBytes = remember(manager, currentUserId) { manager.customAvatarFor(currentUserId) }
+    val bytes =
+        if (userId == null || userId == currentUserId) selfBytes else customAvatars[userId]
+    return produceState<Bitmap?>(bytes) {
+        value = bytes?.let { encoded ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                runCatching { BitmapFactory.decodeByteArray(encoded, 0, encoded.size) }.getOrNull()
+            }
+        }
+    }.value
 }

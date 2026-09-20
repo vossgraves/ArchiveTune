@@ -108,6 +108,13 @@ fun CommentTogetherScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding()
+                    // Keep the composer clear of both the gesture nav bar and the
+                    // mini player, which draws over NavHost content otherwise.
+                    .windowInsetsPadding(
+                        windowInsets.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        ),
+                    )
                     .padding(16.dp)
             ) {
                 // Reply Preview

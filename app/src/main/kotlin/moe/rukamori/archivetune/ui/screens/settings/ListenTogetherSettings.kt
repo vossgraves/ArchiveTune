@@ -61,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.LazyRow
@@ -76,11 +77,17 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
+import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
 import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.constants.ListenTogetherUsernameKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import moe.rukamori.archivetune.listentogether.ListenTogetherAvatar
 import moe.rukamori.archivetune.listentogether.ListenTogetherEvent
 import moe.rukamori.archivetune.listentogether.ListenTogetherServer
 import moe.rukamori.archivetune.listentogether.ListenTogetherServers
@@ -118,6 +125,7 @@ fun ListenTogetherSettings(
     var username by rememberPreference(ListenTogetherUsernameKey, "")
     var avatarIndex by rememberPreference(ListenTogetherAvatarIndexKey, 0)
     var autoApproval by rememberPreference(ListenTogetherAutoApprovalKey, false)
+    var suggestionAutoApprove by rememberPreference(ListenTogetherSuggestionAutoApproveKey, true)
     var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, true)
     var smartResync by rememberPreference(ListenTogetherSmartResyncKey, true)
     
@@ -357,6 +365,17 @@ fun ListenTogetherSettings(
         )
     }
 
+    val customAvatarPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) {
+                if (ListenTogetherAvatar.saveCustomAvatar(context, uri)) {
+                    avatarIndex = ListenTogetherAvatar.CUSTOM_AVATAR_INDEX
+                } else {
+                    Toast.makeText(context, context.getString(R.string.listen_together_custom_avatar_failed), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
     if (showAvatarPicker) {
         moe.rukamori.archivetune.ui.component.AvatarBottomSheet(
             avatarOptions = avatarOptions,
@@ -405,12 +424,29 @@ fun ListenTogetherSettings(
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Image(
-                                    painter = painterResource(avatarOptions.getOrElse(avatarIndex) { R.drawable.person }),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit
-                                )
+                                val customAvatarBitmap = remember(avatarIndex) {
+                                    if (avatarIndex == ListenTogetherAvatar.CUSTOM_AVATAR_INDEX) {
+                                        ListenTogetherAvatar.loadCustomAvatarBytes(context)
+                                            ?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                                    } else {
+                                        null
+                                    }
+                                }
+                                if (customAvatarBitmap != null) {
+                                    Image(
+                                        bitmap = customAvatarBitmap.asImageBitmap(),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Image(
+                                        painter = painterResource(avatarOptions.getOrElse(avatarIndex) { R.drawable.person }),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                }
                             }
                         }
                     },
@@ -437,6 +473,22 @@ fun ListenTogetherSettings(
                         )
                     },
                     onClick = { showServerUrlDialog = true }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.image),
+                    title = { Text(stringResource(R.string.listen_together_custom_avatar)) },
+                    description = {
+                        Text(stringResource(R.string.listen_together_custom_avatar_desc))
+                    },
+                    onClick = if (roomState == null) {
+                        {
+                            customAvatarPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                    } else {
+                        { Toast.makeText(context, context.getString(R.string.listen_together_cannot_edit_username_in_room), Toast.LENGTH_SHORT).show() }
+                    }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.person),
@@ -476,6 +528,30 @@ fun ListenTogetherSettings(
                         )
                     },
                     onClick = { if (roomState == null || role != RoomRole.GUEST) autoApproval = !autoApproval }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.queue_music),
+                    title = { Text(stringResource(R.string.listen_together_suggestion_auto_approve)) },
+                    description = {
+                        Text(stringResource(R.string.listen_together_suggestion_auto_approve_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = suggestionAutoApprove,
+                            onCheckedChange = { suggestionAutoApprove = it },
+                            enabled = roomState == null || role != RoomRole.GUEST,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (suggestionAutoApprove) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                                )
+                            }
+                        )
+                    },
+                    onClick = { if (roomState == null || role != RoomRole.GUEST) suggestionAutoApprove = !suggestionAutoApprove }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.volume_up),

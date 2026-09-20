@@ -1727,6 +1727,16 @@
     <string name="listen_together_no_blocked_users">No blocked users</string>
     <string name="approve">Approve</string>
     <string name="reject">Reject</string>
+    <string name="listen_together_suggestion_auto_approve">Auto-approve song suggestions</string>
+    <string name="listen_together_suggestion_auto_approve_desc">Guest song changes and suggestions play for everyone immediately; turn off to review each one</string>
+    <string name="listen_together_suggest_song">Suggest a song</string>
+    <string name="listen_together_suggest_song_desc">Search and send a track to the host</string>
+    <string name="listen_together_room_queue">Room queue</string>
+    <string name="listen_together_queue_empty">The room queue is empty</string>
+    <string name="listen_together_queue_more">…and %d more</string>
+    <string name="listen_together_custom_avatar">Custom profile picture</string>
+    <string name="listen_together_custom_avatar_desc">Pick any photo from your gallery as your Listen Together avatar; everyone in the room sees it</string>
+    <string name="listen_together_custom_avatar_failed">Could not save that picture</string>
 
     <!-- Listen Together UI (T1-C, ported from vivi-music vivi_strings.xml — screen copy) -->
     <string name="comments">Chat</string>
