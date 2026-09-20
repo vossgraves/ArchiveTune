@@ -416,9 +416,7 @@ class MusicService :
     @Inject
     lateinit var listenTogetherManager: moe.rukamori.archivetune.listentogether.ListenTogetherManager
 
-    /** Beat-driven music haptics engine (SpatialFlow port), fed from the PCM tap. */
-    @Volatile
-
+    @Inject
     lateinit var sponsorBlockPlaybackController: SponsorBlockPlaybackController
 
     private lateinit var audioManager: AudioManager
