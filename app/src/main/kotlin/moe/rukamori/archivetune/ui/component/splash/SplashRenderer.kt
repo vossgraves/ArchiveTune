@@ -6,7 +6,7 @@
  *
  * Opening animation Canvas drawing — ported from YumaPlayer (github.com/MuwMx/YumaPlayer),
  * ui/component/splash/SplashRenderer.kt (GPL-3.0).
- */ */
+ */
 
 package moe.rukamori.archivetune.ui.component.splash
 

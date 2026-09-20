@@ -6,7 +6,7 @@
  *
  * Opening animation overlay composable — ported from YumaPlayer (github.com/MuwMx/YumaPlayer),
  * ui/component/splash/SplashOverlay.kt (GPL-3.0).
- */ */
+ */
 
 package moe.rukamori.archivetune.ui.component.splash
 

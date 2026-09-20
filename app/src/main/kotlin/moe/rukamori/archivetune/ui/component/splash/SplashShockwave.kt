@@ -6,7 +6,7 @@
  *
  * Opening animation burst-ring state — ported from YumaPlayer (github.com/MuwMx/YumaPlayer),
  * ui/component/splash/SplashShockwave.kt (GPL-3.0).
- */ */
+ */
 
 package moe.rukamori.archivetune.ui.component.splash
 

@@ -6,7 +6,7 @@
  *
  * Opening animation engine and phase machine — ported from YumaPlayer (github.com/MuwMx/YumaPlayer),
  * ui/component/splash/SplashEngine.kt (GPL-3.0).
- */ */
+ */
 
 package moe.rukamori.archivetune.ui.component.splash
 

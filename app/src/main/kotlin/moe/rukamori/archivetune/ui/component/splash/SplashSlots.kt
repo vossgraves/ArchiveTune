@@ -6,7 +6,7 @@
  *
  * Opening animation shape-to-slot geometry — ported from YumaPlayer (github.com/MuwMx/YumaPlayer),
  * ui/component/splash/SplashSlots.kt (GPL-3.0).
- */ */
+ */
 
 package moe.rukamori.archivetune.ui.component.splash
 

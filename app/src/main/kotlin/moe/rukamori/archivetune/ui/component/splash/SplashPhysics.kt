@@ -6,7 +6,7 @@
  *
  * Opening animation per-particle integrator — ported from YumaPlayer (github.com/MuwMx/YumaPlayer),
  * ui/component/splash/SplashPhysics.kt (GPL-3.0).
- */ */
+ */
 
 package moe.rukamori.archivetune.ui.component.splash
 
