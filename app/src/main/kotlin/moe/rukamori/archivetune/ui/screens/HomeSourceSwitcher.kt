@@ -63,8 +63,11 @@ private fun HomeSource.isAvailable(spotifyAvailable: Boolean): Boolean =
         HomeSource.SPOTIFY -> spotifyAvailable
     }
 
-/** Every page the app could offer, in the order the switcher lists them. */
-val HomeSourceCandidates: List<HomeSource> = listOf(HomeSource.YOUTUBE, HomeSource.SPOTIFY)
+/**
+ * Every page the app could offer, in the order the switcher and the picker list them — the enum's
+ * own order, so a new source cannot be forgotten here and silently never appear.
+ */
+val HomeSourceCandidates: List<HomeSource> = HomeSource.entries.toList()
 
 /** Reads [ActiveHomeSourcesKey]; unknown or duplicate names are dropped, order is preserved. */
 internal fun parseHomeSources(raw: String): List<HomeSource> =
@@ -74,11 +77,18 @@ internal fun parseHomeSources(raw: String): List<HomeSource> =
         .distinct()
 
 /**
+ * The set to store, in [HomeSourceCandidates] order: the switcher lists rows in the stored order,
+ * so a set assembled by toggling would otherwise shuffle rows as pages are removed and re-added.
+ */
+internal fun canonicalHomeSources(selected: List<HomeSource>): List<HomeSource> =
+    HomeSourceCandidates.filter { it in selected }
+
+/**
  * The Home pages the user has made available, resolved against availability and never empty.
  *
  * An unset [ActiveHomeSourcesKey] means "not configured" and keeps the historical behaviour:
  * YouTube alone, plus Spotify the moment a session exists. YouTube is always in the result — it is
- * the only page that needs nothing.
+ * the only page that needs nothing. Unparseable values are treated the same as unset.
  */
 @Composable
 fun rememberActiveHomeSources(): List<HomeSource> {
@@ -131,7 +141,7 @@ fun HomeSourceToggleButton(modifier: Modifier = Modifier) {
     if (switcherOpen) {
         HomeSourceSwitcherDialog(
             active = actives,
-            current = source,
+            current = if (source in actives) source else actives.first(),
             onSelect = {
                 source = it
                 switcherOpen = false
@@ -191,8 +201,12 @@ fun HomeSourceSwitcherDialog(
 }
 
 /**
- * The Appearance screen's picker for [ActiveHomeSourcesKey]: every page the app can offer, with the
- * unusable ones disabled rather than hidden so the screen explains why they are not on the list.
+ * The Appearance screen's picker for [ActiveHomeSourcesKey]: every page the app can offer.
+ *
+ * Membership is editable regardless of availability — a page whose prerequisite is missing (a
+ * signed-out Spotify) is only *annotated* as unavailable, because otherwise someone who wants that
+ * page gone would have to sign in first just to remove it. YouTube, the floor page, is shown
+ * disabled-checked rather than as a toggle that silently refuses input.
  */
 @Composable
 fun HomeScreensDialog(
@@ -201,7 +215,9 @@ fun HomeScreensDialog(
     onConfirm: (List<HomeSource>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var working by remember { mutableStateOf(selected) }
+    // Keyed and copied: the caller's list can change (a session expiring) while this is open, and
+    // Confirm must never write a set the user did not see.
+    var working by remember(selected) { mutableStateOf(selected.toList()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -209,55 +225,56 @@ fun HomeScreensDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 HomeSourceCandidates.forEach { source ->
-                    val available = source.isAvailable(spotifyAvailable)
                     val checked = source in working
+                    val available = source.isAvailable(spotifyAvailable)
+                    val fixed = source == HomeSource.YOUTUBE
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .clickable(enabled = available) {
+                                .clickable(enabled = !fixed) {
                                     working =
-                                        if (checked) {
-                                            // YouTube is the floor: it can be the only page but
-                                            // never absent, since it needs no session.
-                                            if (source == HomeSource.YOUTUBE) {
-                                                working
-                                            } else {
-                                                working - source
-                                            }
-                                        } else {
-                                            (working + source).distinct()
-                                        }
+                                        canonicalHomeSources(
+                                            if (checked) working - source else working + source,
+                                        )
                                 }.padding(vertical = 4.dp),
                     ) {
                         Checkbox(
                             checked = checked,
                             onCheckedChange = null,
-                            enabled = available,
+                            enabled = !fixed,
                         )
                         Icon(
                             painter = painterResource(source.iconResId()),
                             contentDescription = null,
                             modifier = Modifier.size(20.dp),
                         )
-                        Text(
-                            text = stringResource(source.labelResId()),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color =
-                                if (available) {
-                                    MaterialTheme.colorScheme.onSurface
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            modifier = Modifier.padding(start = 12.dp),
-                        )
+                        Column(modifier = Modifier.padding(start = 12.dp)) {
+                            Text(
+                                text = stringResource(source.labelResId()),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color =
+                                    if (available) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                            )
+                            if (!available) {
+                                Text(
+                                    text = stringResource(R.string.home_screens_needs_sign_in),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(working.ifEmpty { listOf(HomeSource.YOUTUBE) }) }) {
+            TextButton(onClick = { onConfirm(canonicalHomeSources(working).ifEmpty { listOf(HomeSource.YOUTUBE) }) }) {
                 Text(stringResource(android.R.string.ok))
             }
         },

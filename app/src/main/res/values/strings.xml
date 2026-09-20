@@ -522,6 +522,8 @@
     <string name="disable_blur_desc">Disable blur effects throughout the app</string>
     <string name="disable_animations">Disable animations</string>
     <string name="disable_animations_desc">Disable most app animations. Recommended for low-end devices</string>
+    <string name="splash_overlay_enabled">Splash screen animation</string>
+    <string name="splash_overlay_enabled_desc">Show animated splash screen on app launch</string>
     <string name="force_high_refresh_rate">Force high refresh rate</string>
     <string name="max_supported_refresh_rate">Max supported: %1$d Hz</string>
     <string name="blur_intensity">Blur intensity</string>
@@ -1645,6 +1647,7 @@
     <string name="home_source_spotify">Spotify</string>
     <string name="home_source_switch_to">Switch to %1$s</string>
     <string name="home_screens">Home screens</string>
+    <string name="home_screens_needs_sign_in">Sign in first</string>
     <string name="home_screens_desc">Choose which Home pages are available. Two is a toggle in the top bar; three or more open a switcher.</string>
     <string name="library_source_ytm">YTM</string>
     <string name="spotify_dj_unsupported">Spotify\u2019s DJ is built by Spotify as you listen \u2014 the running order and the spoken bits between tracks only exist inside their app. Opening it there.</string>

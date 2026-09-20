@@ -100,14 +100,14 @@ import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
 import moe.rukamori.archivetune.constants.SpotifyHomeStyle
-import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
 import moe.rukamori.archivetune.constants.ActiveHomeSourcesKey
 import moe.rukamori.archivetune.constants.HomeSource
-import moe.rukamori.archivetune.ui.screens.rememberHomeSourceAvailable
+import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
 import moe.rukamori.archivetune.ui.screens.HomeScreensDialog
 import moe.rukamori.archivetune.ui.screens.labelResId
 import moe.rukamori.archivetune.ui.screens.parseHomeSources
 import moe.rukamori.archivetune.ui.screens.rememberActiveHomeSources
+import moe.rukamori.archivetune.ui.screens.rememberHomeSourceAvailable
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -378,6 +378,11 @@ fun AppearanceSectionSettings(
     val spotifySignedIn = rememberHomeSourceAvailable()
     val (activeHomeSourcesRaw, setActiveHomeSources) = rememberPreference(ActiveHomeSourcesKey, "")
     val activeHomeSources = rememberActiveHomeSources()
+    // What the picker shows and edits: the stored set when there is one, otherwise the resolved
+    // default. Reading the stored set (not the resolved one) keeps the checkboxes and the summary
+    // agreeing with the CSV — a page parked while signed out still reads as selected.
+    val storedHomeSources = remember(activeHomeSourcesRaw) { parseHomeSources(activeHomeSourcesRaw) }
+    val homeScreensSelection = storedHomeSources.ifEmpty { activeHomeSources }
     var homeScreensOpen by remember { mutableStateOf(false) }
 
     val customFontPickerLauncher =
@@ -487,14 +492,16 @@ fun AppearanceSectionSettings(
 
     if (homeScreensOpen) {
         HomeScreensDialog(
-            selected = activeHomeSources,
+            selected = homeScreensSelection,
             spotifyAvailable = spotifySignedIn,
             onConfirm = { chosen ->
-                // Pages the user picked before but that cannot be shown right now (a signed-out
-                // Spotify) stay in the stored set, so signing back in restores the choice instead
-                // of leaving them silently dropped.
-                val parked = parseHomeSources(activeHomeSourcesRaw).filterNot { it in activeHomeSources }
-                setActiveHomeSources((chosen + parked).distinct().joinToString(",") { it.name })
+                // Only an explicit change rewrites the key. Confirming an untouched picker has to
+                // leave an unset key unset — otherwise a fresh install (or a legacy one) whose
+                // owner taps OK while signed out would pin the set to YouTube alone and never see
+                // the Spotify page again, even after signing in.
+                if (chosen.toSet() != homeScreensSelection.toSet()) {
+                    setActiveHomeSources(chosen.joinToString(",") { it.name })
+                }
                 homeScreensOpen = false
             },
             onDismiss = { homeScreensOpen = false },
@@ -945,7 +952,7 @@ fun AppearanceSectionSettings(
                                 onClick = { homeScreensOpen = true },
                                 trailingContent = {
                                     Text(
-                                        text = rememberHomeSourcesLabel(activeHomeSources),
+                                        text = homeSourcesLabel(homeScreensSelection),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -1483,7 +1490,7 @@ fun ApplyRefreshRate(
 }
 
 @Composable
-private fun rememberHomeSourcesLabel(sources: List<HomeSource>): String {
+private fun homeSourcesLabel(sources: List<HomeSource>): String {
     // map is inline, so the stringResource calls stay in composable scope; joinToString is not.
     val labels = sources.map { stringResource(it.labelResId()) }
     return labels.joinToString(", ")
