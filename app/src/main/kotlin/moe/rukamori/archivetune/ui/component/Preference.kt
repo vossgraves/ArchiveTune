@@ -680,7 +680,9 @@ internal fun <T> PreferenceMultiSelectBottomSheet(
     values: List<T>,
     isSelected: (T) -> Boolean,
     valueText: @Composable (T) -> String,
-    valueDescription: (@Composable (T) -> String)? = null,
+    // Nullable so a row can say "no description" without the caller having to pass a blank string —
+    // a page that is unavailable today still wants to name why, while the others want nothing.
+    valueDescription: (@Composable (T) -> String?)? = null,
     sheetState: SheetState,
     onDismiss: () -> Unit,
     onToggle: (T) -> Unit,
