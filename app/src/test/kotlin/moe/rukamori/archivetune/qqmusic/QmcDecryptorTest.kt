@@ -120,8 +120,14 @@ class QmcDecryptorTest {
     @Test
     fun theLongKeyCipherHandlesItsFirstSegmentBoundary() {
         val cipher = QmcRc4Cipher(sequentialKey(255))
-        assertArrayEquals(hex("00321008050302010101000000000000"), cipher.decrypt(0, ByteArray(16)))
-        assertArrayEquals(hex("00000000000000008d617ac1a665e9d6"), cipher.decrypt(0x80 - 8, ByteArray(16)))
+        assertArrayEquals(
+            hex("00321008050302010101000000000000"),
+            ByteArray(16).also { cipher.decrypt(0, it) },
+        )
+        assertArrayEquals(
+            hex("00000000000000008d617ac1a665e9d6"),
+            ByteArray(16).also { cipher.decrypt(0x80 - 8, it) },
+        )
     }
 
     /**
@@ -132,21 +138,28 @@ class QmcDecryptorTest {
     @Test
     fun theLongKeyCipherHandlesItsStreamSegmentBoundary() {
         val cipher = QmcRc4Cipher(sequentialKey(255))
-        assertArrayEquals(hex("76c1b0530a6269ea9738c601e2ad7f04"), cipher.decrypt(0x1400 - 8, ByteArray(16)))
-        assertArrayEquals(hex("9738c601e2ad7f04b5a5ab155298c3d2"), cipher.decrypt(0x1400, ByteArray(16)))
+        assertArrayEquals(
+            hex("76c1b0530a6269ea9738c601e2ad7f04"),
+            ByteArray(16).also { cipher.decrypt(0x1400 - 8, it) },
+        )
+        assertArrayEquals(
+            hex("9738c601e2ad7f04b5a5ab155298c3d2"),
+            ByteArray(16).also { cipher.decrypt(0x1400, it) },
+        )
     }
 
     /**
-     * Decrypting a segment in isolation must produce the same bytes as reading that segment out of
-     * one long pass. This is the property a block-by-block caller depends on, and the one a
-     * segment-relative state bug breaks while every single-window fixture still passes.
+     * Reading a segment on its own must produce the same bytes as reading that range out of one
+     * long pass from the start of the file. This is the property a block-by-block caller depends
+     * on, and the one a segment-relative state bug breaks while every single-window fixture above
+     * still passes.
      */
     @Test
     fun aSegmentDecryptedAloneMatchesTheSameBytesInALongPass() {
         val key = sequentialKey(255)
-        val whole = QmcRc4Cipher(key).decrypt(0x1400, ByteArray(0x1400 + 64))
-        val window = QmcRc4Cipher(key).decrypt(0x1400, ByteArray(64))
-        assertArrayEquals(whole.copyOfRange(0, 64), window)
+        val whole = ByteArray(0x1400 + 64).also { QmcRc4Cipher(key).decrypt(0, it) }
+        val window = ByteArray(64).also { QmcRc4Cipher(key).decrypt(0x1400, it) }
+        assertArrayEquals(whole.copyOfRange(0x1400, 0x1400 + 64), window)
     }
 
     /** The hash the segment sizes are derived from, against the published value. */
