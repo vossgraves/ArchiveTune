@@ -79,9 +79,6 @@ accompanist-core = "0.4.7"
 androidsvg = "1.4"
 aboutLibraries = "15.0.3"
 liquid-glass = "2.0.0"
-# Protobuf runtime version for the Listen Together wire protocol (javalite; the
-# generated sources are committed, so no Gradle plugin is involved).
-protobuf = "4.33.5"
 # Haze library — used by the queue's frosted-glass blur behind the player artwork.
 # Ported from vivi-music (beta) which uses these exact parameters:
 # blurRadius = 80.dp, tint = HazeTint(Color.Black.copy(alpha = 0.30f)), noiseFactor = 0.15f.
@@ -215,9 +212,6 @@ accompanist-lyrics-core = { module = "com.mocharealm.accompanist:lyrics-core", v
 androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
 aboutlibraries-core = { module = "com.mikepenz:aboutlibraries-core", version.ref = "aboutLibraries" }
 liquid-glass = { module = "io.github.kyant0:backdrop", version.ref = "liquid-glass" }
-
-# Listen Together wire protocol (protobuf lite runtime; sources pre-generated, see app/build.gradle.kts)
-protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
 
 
 

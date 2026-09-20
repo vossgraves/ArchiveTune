@@ -448,13 +448,12 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-// Listen Together wire protocol note: the protobuf classes are PRE-GENERATED and committed
-// (app/src/main/java/moe/rukamori/archivetune/listentogether/proto/Listentogether.java) because
-// protobuf-gradle-plugin cannot apply to this project's AGP 9 (it casts the app extension to the
-// removed BaseExtension). Regenerate after editing app/src/main/proto/listentogether.proto with:
-//   protoc --proto_path=app/src/main/proto --java_out=lite:app/src/main/java \
-//          app/src/main/proto/listentogether.proto
-// (protoc 33.x, matching the protobuf-javalite runtime pinned in the version catalog.)
+// Listen Together wire protocol note: the protocol is encoded by hand in
+// listentogether/ProtoWire.kt + MessageCodec.kt against the field numbers in
+// app/src/main/proto/listentogether.proto. No protobuf runtime is declared because two other
+// routes are blocked in this build: protobuf-gradle-plugin cannot apply to AGP 9 (it casts the
+// app extension to the removed BaseExtension), and a pre-generated copy collides with the
+// protobuf-java runtime another dependency already ships (same `com.google.protobuf` package).
 
 dependencies {
     implementation(libs.guava)
@@ -570,9 +569,6 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
-
-    // Listen Together wire protocol (protobuf lite runtime; sources are pre-generated, see above)
-    implementation(libs.protobuf.javalite)
 
     coreLibraryDesugaring(libs.desugaring)
 

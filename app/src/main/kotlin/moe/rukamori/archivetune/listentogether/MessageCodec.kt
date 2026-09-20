@@ -6,12 +6,15 @@
  *
  * Listen Together message codec — ported from vivi-music (beta branch),
  * vivi-music's listentogether.MessageCodec (GPL-3.0).
+ *
+ * The protobuf path is hand-encoded through [ProtoWriter]/[ProtoReader] against the field numbers in
+ * app/src/main/proto/listentogether.proto (which remains the source of truth). See ProtoWire.kt for
+ * why the generated classes were dropped: neither protobuf-gradle-plugin (AGP 9) nor a pre-generated
+ * copy (a `com.google.protobuf` runtime clash) is usable in this build.
  */
 
 package moe.rukamori.archivetune.listentogether
 
-import com.google.protobuf.MessageLite
-import moe.rukamori.archivetune.listentogether.proto.Listentogether
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.io.ByteArrayInputStream
@@ -126,8 +129,7 @@ class MessageCodec(
         var compressed = false
 
         if (payload != null) {
-            val protoMsg = toProtoMessage(payload)
-            payloadBytes = protoMsg.toByteArray()
+            payloadBytes = encodePayload(payload)
 
             // Compress if enabled and payload is large enough
             if (compressionEnabled && payloadBytes.size > COMPRESSION_THRESHOLD) {
@@ -139,28 +141,41 @@ class MessageCodec(
             }
         }
 
-        val envelope = Listentogether.Envelope.newBuilder()
-            .setType(msgType)
-            .setPayload(com.google.protobuf.ByteString.copyFrom(payloadBytes))
-            .setCompressed(compressed)
-            .build()
-
-        return envelope.toByteArray()
+        val writer = ProtoWriter(payloadBytes.size + 16)
+        writer.writeString(FIELD_ENVELOPE_TYPE, msgType)
+        // proto3 does not write an empty bytes field; an absent payload decodes back to an empty
+        // array, which [decodePayload] treats as "no payload" — same as the generated classes did.
+        if (payloadBytes.isNotEmpty()) {
+            writer.writeBytes(FIELD_ENVELOPE_PAYLOAD, payloadBytes)
+        }
+        writer.writeBool(FIELD_ENVELOPE_COMPRESSED, compressed)
+        return writer.toByteArray()
     }
 
     /**
      * Decode protobuf message
      */
     private fun decodeProtobuf(data: ByteArray): Pair<String, ByteArray> {
-        val envelope = Listentogether.Envelope.parseFrom(data)
+        val reader = ProtoReader(data)
+        var type = ""
+        var payloadBytes = byteArrayOf()
+        var compressed = false
 
-        var payloadBytes = envelope.payload.toByteArray()
+        while (true) {
+            when (val field = reader.nextField()) {
+                -1 -> break
+                FIELD_ENVELOPE_TYPE -> type = reader.readString()
+                FIELD_ENVELOPE_PAYLOAD -> payloadBytes = reader.readBytes()
+                FIELD_ENVELOPE_COMPRESSED -> compressed = reader.readBool()
+                else -> reader.skip()
+            }
+        }
 
-        if (envelope.compressed) {
+        if (compressed) {
             payloadBytes = decompressData(payloadBytes) ?: payloadBytes
         }
 
-        return Pair(envelope.type, payloadBytes)
+        return Pair(type, payloadBytes)
     }
 
     /**
@@ -190,68 +205,75 @@ class MessageCodec(
     }
 
     /**
-     * Convert Kotlin objects to protobuf messages
+     * Convert Kotlin objects to a protobuf payload.
+     *
+     * Field numbers are those of the matching messages in listentogether.proto; nullable strings
+     * are written as empty and therefore omitted, exactly as `setField(x ?: "")` did.
      */
-    private fun toProtoMessage(payload: Any): MessageLite {
-        return when (payload) {
-            is CreateRoomPayload -> Listentogether.CreateRoomPayload.newBuilder()
-                .setUsername(payload.username)
-                .build()
-            is JoinRoomPayload -> Listentogether.JoinRoomPayload.newBuilder()
-                .setRoomCode(payload.roomCode)
-                .setUsername(payload.username)
-                .build()
-            is ApproveJoinPayload -> Listentogether.ApproveJoinPayload.newBuilder()
-                .setUserId(payload.userId)
-                .build()
-            is RejectJoinPayload -> Listentogether.RejectJoinPayload.newBuilder()
-                .setUserId(payload.userId)
-                .setReason(payload.reason ?: "")
-                .build()
+    private fun encodePayload(payload: Any): ByteArray {
+        val writer = ProtoWriter()
+        when (payload) {
+            is CreateRoomPayload ->
+                writer.writeString(FIELD_CREATE_ROOM_USERNAME, payload.username)
+
+            is JoinRoomPayload -> {
+                writer.writeString(FIELD_JOIN_ROOM_CODE, payload.roomCode)
+                writer.writeString(FIELD_JOIN_ROOM_USERNAME, payload.username)
+            }
+
+            is ApproveJoinPayload ->
+                writer.writeString(FIELD_APPROVE_JOIN_USER_ID, payload.userId)
+
+            is RejectJoinPayload -> {
+                writer.writeString(FIELD_REJECT_JOIN_USER_ID, payload.userId)
+                writer.writeString(FIELD_REJECT_JOIN_REASON, payload.reason ?: "")
+            }
+
             is PlaybackActionPayload -> {
-                val builder = Listentogether.PlaybackActionPayload.newBuilder()
-                    .setAction(payload.action)
-                    .setPosition(payload.position ?: 0)
-                    .setInsertNext(payload.insertNext ?: false)
-                    .setVolume(payload.volume ?: 1f)
-                    .setServerTime(payload.serverTime ?: 0)
-
-                payload.trackId?.let { builder.setTrackId(it) }
-                payload.trackInfo?.let { builder.setTrackInfo(trackInfoToProto(it)) }
-                payload.queueTitle?.let { builder.setQueueTitle(it) }
-                payload.queue?.forEach { track ->
-                    builder.addQueue(trackInfoToProto(track))
+                writer.writeString(FIELD_PLAYBACK_ACTION, payload.action)
+                payload.trackId?.let { writer.writeString(FIELD_PLAYBACK_TRACK_ID, it) }
+                payload.position?.let { writer.writeInt64(FIELD_PLAYBACK_POSITION, it) }
+                // Written even when empty: proto3 presence is what tell the reader the field exists.
+                payload.trackInfo?.let { track ->
+                    writer.writeMessage(FIELD_PLAYBACK_TRACK_INFO) { trackInfoToProto(track, it) }
                 }
+                payload.insertNext?.let { writer.writeBool(FIELD_PLAYBACK_INSERT_NEXT, it) }
+                payload.queue?.forEach { track ->
+                    writer.writeMessage(FIELD_PLAYBACK_QUEUE) { trackInfoToProto(track, it) }
+                }
+                payload.queueTitle?.let { writer.writeString(FIELD_PLAYBACK_QUEUE_TITLE, it) }
+                payload.volume?.let { writer.writeFloat(FIELD_PLAYBACK_VOLUME, it) }
+                payload.serverTime?.let { writer.writeInt64(FIELD_PLAYBACK_SERVER_TIME, it) }
+            }
 
-                builder.build()
+            is BufferReadyPayload ->
+                writer.writeString(FIELD_BUFFER_READY_TRACK_ID, payload.trackId)
+
+            is KickUserPayload -> {
+                writer.writeString(FIELD_KICK_USER_ID, payload.userId)
+                writer.writeString(FIELD_KICK_REASON, payload.reason ?: "")
             }
-            is BufferReadyPayload -> Listentogether.BufferReadyPayload.newBuilder()
-                .setTrackId(payload.trackId)
-                .build()
-            is KickUserPayload -> Listentogether.KickUserPayload.newBuilder()
-                .setUserId(payload.userId)
-                .setReason(payload.reason ?: "")
-                .build()
-            is SuggestTrackPayload -> {
-                val builder = Listentogether.SuggestTrackPayload.newBuilder()
-                payload.trackInfo.let { builder.setTrackInfo(trackInfoToProto(it)) }
-                builder.build()
+
+            is SuggestTrackPayload ->
+                writer.writeMessage(FIELD_SUGGEST_TRACK_INFO) { trackInfoToProto(payload.trackInfo, it) }
+
+            is ApproveSuggestionPayload ->
+                writer.writeString(FIELD_APPROVE_SUGGESTION_ID, payload.suggestionId)
+
+            is RejectSuggestionPayload -> {
+                writer.writeString(FIELD_REJECT_SUGGESTION_ID, payload.suggestionId)
+                writer.writeString(FIELD_REJECT_SUGGESTION_REASON, payload.reason ?: "")
             }
-            is ApproveSuggestionPayload -> Listentogether.ApproveSuggestionPayload.newBuilder()
-                .setSuggestionId(payload.suggestionId)
-                .build()
-            is RejectSuggestionPayload -> Listentogether.RejectSuggestionPayload.newBuilder()
-                .setSuggestionId(payload.suggestionId)
-                .setReason(payload.reason ?: "")
-                .build()
-            is ReconnectPayload -> Listentogether.ReconnectPayload.newBuilder()
-                .setSessionToken(payload.sessionToken)
-                .build()
-            is TransferHostPayload -> Listentogether.TransferHostPayload.newBuilder()
-                .setNewHostId(payload.newHostId)
-                .build()
+
+            is ReconnectPayload ->
+                writer.writeString(FIELD_RECONNECT_SESSION_TOKEN, payload.sessionToken)
+
+            is TransferHostPayload ->
+                writer.writeString(FIELD_TRANSFER_HOST_NEW_HOST_ID, payload.newHostId)
+
             else -> throw IllegalArgumentException("Unsupported payload type: ${payload::class.simpleName}")
         }
+        return writer.toByteArray()
     }
 
     /**
@@ -299,171 +321,450 @@ class MessageCodec(
     }
 
     /**
-     * Decode protobuf payload
+     * Decode a protobuf payload for [msgType].
+     *
+     * Unknown fields are skipped, and a message field that never appeared decodes to null — the same
+     * contract the generated `hasX()` accessors provided.
      */
     private fun decodeProtobufPayload(msgType: String, payloadBytes: ByteArray): Any? {
+        val reader = ProtoReader(payloadBytes)
+
         return when (msgType) {
             MessageTypes.ROOM_CREATED -> {
-                val pb = Listentogether.RoomCreatedPayload.parseFrom(payloadBytes)
-                RoomCreatedPayload(pb.roomCode, pb.userId, pb.sessionToken)
+                var roomCode = ""
+                var userId = ""
+                var sessionToken = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        ROOM_CREATED_ROOM_CODE -> roomCode = reader.readString()
+                        ROOM_CREATED_USER_ID -> userId = reader.readString()
+                        ROOM_CREATED_SESSION_TOKEN -> sessionToken = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                RoomCreatedPayload(roomCode, userId, sessionToken)
             }
+
             MessageTypes.JOIN_REQUEST -> {
-                val pb = Listentogether.JoinRequestPayload.parseFrom(payloadBytes)
-                JoinRequestPayload(pb.userId, pb.username)
+                var userId = ""
+                var username = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        JOIN_REQUEST_USER_ID -> userId = reader.readString()
+                        JOIN_REQUEST_USERNAME -> username = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                JoinRequestPayload(userId, username)
             }
+
             MessageTypes.JOIN_APPROVED -> {
-                val pb = Listentogether.JoinApprovedPayload.parseFrom(payloadBytes)
-                JoinApprovedPayload(
-                    pb.roomCode,
-                    pb.userId,
-                    pb.sessionToken,
-                    protoToRoomState(pb.state)
-                )
+                var roomCode = ""
+                var userId = ""
+                var sessionToken = ""
+                var state: RoomState? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        JOIN_APPROVED_ROOM_CODE -> roomCode = reader.readString()
+                        JOIN_APPROVED_USER_ID -> userId = reader.readString()
+                        JOIN_APPROVED_SESSION_TOKEN -> sessionToken = reader.readString()
+                        JOIN_APPROVED_STATE -> state = protoToRoomState(reader.readMessage())
+                        else -> reader.skip()
+                    }
+                }
+                JoinApprovedPayload(roomCode, userId, sessionToken, state ?: emptyRoomState())
             }
+
             MessageTypes.JOIN_REJECTED -> {
-                val pb = Listentogether.JoinRejectedPayload.parseFrom(payloadBytes)
-                JoinRejectedPayload(pb.reason)
+                var reason = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        JOIN_REJECTED_REASON -> reason = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                JoinRejectedPayload(reason)
             }
+
             MessageTypes.USER_JOINED -> {
-                val pb = Listentogether.UserJoinedPayload.parseFrom(payloadBytes)
-                UserJoinedPayload(pb.userId, pb.username)
+                var userId = ""
+                var username = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        USER_JOINED_USER_ID -> userId = reader.readString()
+                        USER_JOINED_USERNAME -> username = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                UserJoinedPayload(userId, username)
             }
+
             MessageTypes.USER_LEFT -> {
-                val pb = Listentogether.UserLeftPayload.parseFrom(payloadBytes)
-                UserLeftPayload(pb.userId, pb.username)
+                var userId = ""
+                var username = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        USER_LEFT_USER_ID -> userId = reader.readString()
+                        USER_LEFT_USERNAME -> username = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                UserLeftPayload(userId, username)
             }
+
             MessageTypes.SYNC_PLAYBACK -> {
-                val pb = Listentogether.PlaybackActionPayload.parseFrom(payloadBytes)
+                var action = ""
+                var trackId: String? = null
+                var position: Long? = null
+                var trackInfo: TrackInfo? = null
+                var insertNext: Boolean? = null
+                val queue = mutableListOf<TrackInfo>()
+                var queueTitle: String? = null
+                var volume: Float? = null
+                var serverTime: Long? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        PLAYBACK_ACTION -> action = reader.readString()
+                        PLAYBACK_TRACK_ID -> trackId = reader.readString().ifEmpty { null }
+                        PLAYBACK_POSITION -> position = reader.readInt64().let { if (it <= 0) null else it }
+                        PLAYBACK_TRACK_INFO -> trackInfo = protoToTrackInfo(reader.readMessage())
+                        PLAYBACK_INSERT_NEXT -> insertNext = reader.readBool()
+                        PLAYBACK_QUEUE -> queue += protoToTrackInfo(reader.readMessage())
+                        PLAYBACK_QUEUE_TITLE -> queueTitle = reader.readString().ifEmpty { null }
+                        PLAYBACK_VOLUME -> volume = reader.readFloat().let { if (it <= 0) null else it }
+                        PLAYBACK_SERVER_TIME -> serverTime = reader.readInt64().let { if (it <= 0) null else it }
+                        else -> reader.skip()
+                    }
+                }
                 PlaybackActionPayload(
-                    action = pb.action,
-                    trackId = pb.trackId.let { if (it.isEmpty()) null else it },
-                    position = pb.position.let { if (it <= 0) null else it },
-                    trackInfo = if (pb.hasTrackInfo()) protoToTrackInfo(pb.trackInfo) else null,
-                    insertNext = pb.insertNext,
-                    queue = pb.queueList.map { protoToTrackInfo(it) },
-                    queueTitle = pb.queueTitle.let { if (it.isEmpty()) null else it },
-                    volume = pb.volume.let { if (it <= 0) null else it },
-                    serverTime = pb.serverTime.let { if (it <= 0) null else it }
+                    action = action,
+                    trackId = trackId,
+                    position = position,
+                    trackInfo = trackInfo,
+                    insertNext = insertNext,
+                    queue = queue,
+                    queueTitle = queueTitle,
+                    volume = volume,
+                    serverTime = serverTime
                 )
             }
+
             MessageTypes.BUFFER_WAIT -> {
-                val pb = Listentogether.BufferWaitPayload.parseFrom(payloadBytes)
-                BufferWaitPayload(pb.trackId, pb.waitingForList)
+                var trackId = ""
+                val waitingFor = mutableListOf<String>()
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        BUFFER_WAIT_TRACK_ID -> trackId = reader.readString()
+                        BUFFER_WAIT_WAITING_FOR -> waitingFor += reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                BufferWaitPayload(trackId, waitingFor)
             }
+
             MessageTypes.BUFFER_COMPLETE -> {
-                val pb = Listentogether.BufferCompletePayload.parseFrom(payloadBytes)
-                BufferCompletePayload(pb.trackId)
+                var trackId = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        BUFFER_COMPLETE_TRACK_ID -> trackId = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                BufferCompletePayload(trackId)
             }
+
             MessageTypes.ERROR -> {
-                val pb = Listentogether.ErrorPayload.parseFrom(payloadBytes)
-                ErrorPayload(pb.code.toString(), pb.message)
+                var code = ""
+                var message = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        ERROR_CODE -> code = reader.readString()
+                        ERROR_MESSAGE -> message = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                ErrorPayload(code, message)
             }
+
             MessageTypes.HOST_CHANGED -> {
-                val pb = Listentogether.HostChangedPayload.parseFrom(payloadBytes)
-                HostChangedPayload(pb.newHostId, pb.newHostName)
+                var newHostId = ""
+                var newHostName = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        HOST_CHANGED_NEW_HOST_ID -> newHostId = reader.readString()
+                        HOST_CHANGED_NEW_HOST_NAME -> newHostName = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                HostChangedPayload(newHostId, newHostName)
             }
+
             MessageTypes.KICKED -> {
-                val pb = Listentogether.KickedPayload.parseFrom(payloadBytes)
-                KickedPayload(pb.reason)
+                var reason = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        KICKED_REASON -> reason = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                KickedPayload(reason)
             }
+
             MessageTypes.SYNC_STATE -> {
-                val pb = Listentogether.SyncStatePayload.parseFrom(payloadBytes)
+                var currentTrack: TrackInfo? = null
+                var isPlaying = false
+                var position = 0L
+                var lastUpdate = 0L
+                val queue = mutableListOf<TrackInfo>()
+                var volume: Float? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        SYNC_STATE_CURRENT_TRACK -> currentTrack = protoToTrackInfo(reader.readMessage())
+                        SYNC_STATE_IS_PLAYING -> isPlaying = reader.readBool()
+                        SYNC_STATE_POSITION -> position = reader.readInt64()
+                        SYNC_STATE_LAST_UPDATE -> lastUpdate = reader.readInt64()
+                        SYNC_STATE_QUEUE -> queue += protoToTrackInfo(reader.readMessage())
+                        SYNC_STATE_VOLUME -> volume = reader.readFloat().let { if (it <= 0) null else it }
+                        else -> reader.skip()
+                    }
+                }
                 SyncStatePayload(
-                    currentTrack = if (pb.hasCurrentTrack()) protoToTrackInfo(pb.currentTrack) else null,
-                    isPlaying = pb.isPlaying,
-                    position = pb.position,
-                    lastUpdate = pb.lastUpdate,
-                    queue = pb.queueList.map { protoToTrackInfo(it) },
-                    volume = pb.volume.let { if (it <= 0) null else it }
+                    currentTrack = currentTrack,
+                    isPlaying = isPlaying,
+                    position = position,
+                    lastUpdate = lastUpdate,
+                    queue = queue,
+                    volume = volume
                 )
             }
+
             MessageTypes.RECONNECTED -> {
-                val pb = Listentogether.ReconnectedPayload.parseFrom(payloadBytes)
-                ReconnectedPayload(
-                    pb.roomCode,
-                    pb.userId,
-                    protoToRoomState(pb.state),
-                    pb.isHost
-                )
+                var roomCode = ""
+                var userId = ""
+                var state: RoomState? = null
+                var isHost = false
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        RECONNECTED_ROOM_CODE -> roomCode = reader.readString()
+                        RECONNECTED_USER_ID -> userId = reader.readString()
+                        RECONNECTED_STATE -> state = protoToRoomState(reader.readMessage())
+                        RECONNECTED_IS_HOST -> isHost = reader.readBool()
+                        else -> reader.skip()
+                    }
+                }
+                ReconnectedPayload(roomCode, userId, state ?: emptyRoomState(), isHost)
             }
+
             MessageTypes.USER_RECONNECTED -> {
-                val pb = Listentogether.UserReconnectedPayload.parseFrom(payloadBytes)
-                UserReconnectedPayload(pb.userId, pb.username)
+                var userId = ""
+                var username = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        USER_RECONNECTED_USER_ID -> userId = reader.readString()
+                        USER_RECONNECTED_USERNAME -> username = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                UserReconnectedPayload(userId, username)
             }
+
             MessageTypes.USER_DISCONNECTED -> {
-                val pb = Listentogether.UserDisconnectedPayload.parseFrom(payloadBytes)
-                UserDisconnectedPayload(pb.userId, pb.username)
+                var userId = ""
+                var username = ""
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        USER_DISCONNECTED_USER_ID -> userId = reader.readString()
+                        USER_DISCONNECTED_USERNAME -> username = reader.readString()
+                        else -> reader.skip()
+                    }
+                }
+                UserDisconnectedPayload(userId, username)
             }
+
             MessageTypes.SUGGESTION_RECEIVED -> {
-                val pb = Listentogether.SuggestionReceivedPayload.parseFrom(payloadBytes)
-                SuggestionReceivedPayload(
-                    pb.suggestionId,
-                    pb.fromUserId,
-                    pb.fromUsername,
-                    protoToTrackInfo(pb.trackInfo)
-                )
+                var suggestionId = ""
+                var fromUserId = ""
+                var fromUsername = ""
+                var trackInfo: TrackInfo? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        SUGGESTION_RECEIVED_ID -> suggestionId = reader.readString()
+                        SUGGESTION_RECEIVED_FROM_USER_ID -> fromUserId = reader.readString()
+                        SUGGESTION_RECEIVED_FROM_USERNAME -> fromUsername = reader.readString()
+                        SUGGESTION_RECEIVED_TRACK_INFO -> trackInfo = protoToTrackInfo(reader.readMessage())
+                        else -> reader.skip()
+                    }
+                }
+                SuggestionReceivedPayload(suggestionId, fromUserId, fromUsername, trackInfo ?: emptyTrackInfo())
             }
+
             MessageTypes.SUGGESTION_APPROVED -> {
-                val pb = Listentogether.SuggestionApprovedPayload.parseFrom(payloadBytes)
-                SuggestionApprovedPayload(
-                    pb.suggestionId,
-                    protoToTrackInfo(pb.trackInfo)
-                )
+                var suggestionId = ""
+                var trackInfo: TrackInfo? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        SUGGESTION_APPROVED_ID -> suggestionId = reader.readString()
+                        SUGGESTION_APPROVED_TRACK_INFO -> trackInfo = protoToTrackInfo(reader.readMessage())
+                        else -> reader.skip()
+                    }
+                }
+                SuggestionApprovedPayload(suggestionId, trackInfo ?: emptyTrackInfo())
             }
+
             MessageTypes.SUGGESTION_REJECTED -> {
-                val pb = Listentogether.SuggestionRejectedPayload.parseFrom(payloadBytes)
-                SuggestionRejectedPayload(pb.suggestionId, pb.reason.let { if (it.isEmpty()) null else it })
+                var suggestionId = ""
+                var reason: String? = null
+                while (true) {
+                    when (val field = reader.nextField()) {
+                        -1 -> break
+                        SUGGESTION_REJECTED_ID -> suggestionId = reader.readString()
+                        SUGGESTION_REJECTED_REASON -> reason = reader.readString().ifEmpty { null }
+                        else -> reader.skip()
+                    }
+                }
+                SuggestionRejectedPayload(suggestionId, reason)
             }
+
             else -> null
         }
     }
 
+    /**
+     * The default instances the generated protobuf accessors returned for an absent message field.
+     * [TrackInfo] and [RoomState] have required constructor parameters, so the "absent" case has to
+     * be spelled out rather than defaulted.
+     */
+    private fun emptyTrackInfo(): TrackInfo =
+        TrackInfo(id = "", title = "", artist = "", duration = 0L)
+
+    private fun emptyRoomState(): RoomState =
+        RoomState(
+            roomCode = "",
+            hostId = "",
+            users = emptyList(),
+            currentTrack = null,
+            isPlaying = false,
+            position = 0L,
+            lastUpdate = 0L,
+            volume = 0f,
+            queue = emptyList()
+        )
+
     // Helper conversion functions
 
-    private fun trackInfoToProto(track: TrackInfo): Listentogether.TrackInfo {
-        return Listentogether.TrackInfo.newBuilder()
-            .setId(track.id)
-            .setTitle(track.title)
-            .setArtist(track.artist)
-            .setAlbum(track.album ?: "")
-            .setDuration(track.duration)
-            .setThumbnail(track.thumbnail ?: "")
-            .setSuggestedBy(track.suggestedBy ?: "")
-            .build()
+    private fun trackInfoToProto(track: TrackInfo, writer: ProtoWriter) {
+        writer.writeString(TRACK_INFO_ID, track.id)
+        writer.writeString(TRACK_INFO_TITLE, track.title)
+        writer.writeString(TRACK_INFO_ARTIST, track.artist)
+        writer.writeString(TRACK_INFO_ALBUM, track.album ?: "")
+        writer.writeInt64(TRACK_INFO_DURATION, track.duration)
+        writer.writeString(TRACK_INFO_THUMBNAIL, track.thumbnail ?: "")
+        writer.writeString(TRACK_INFO_SUGGESTED_BY, track.suggestedBy ?: "")
     }
 
-    private fun protoToTrackInfo(proto: Listentogether.TrackInfo): TrackInfo {
+    private fun protoToTrackInfo(reader: ProtoReader): TrackInfo {
+        var id = ""
+        var title = ""
+        var artist = ""
+        var album: String? = null
+        var duration = 0L
+        var thumbnail: String? = null
+        var suggestedBy: String? = null
+        while (true) {
+            when (val field = reader.nextField()) {
+                -1 -> break
+                TRACK_INFO_ID -> id = reader.readString()
+                TRACK_INFO_TITLE -> title = reader.readString()
+                TRACK_INFO_ARTIST -> artist = reader.readString()
+                TRACK_INFO_ALBUM -> album = reader.readString().ifEmpty { null }
+                TRACK_INFO_DURATION -> duration = reader.readInt64()
+                TRACK_INFO_THUMBNAIL -> thumbnail = reader.readString().ifEmpty { null }
+                TRACK_INFO_SUGGESTED_BY -> suggestedBy = reader.readString().ifEmpty { null }
+                else -> reader.skip()
+            }
+        }
         return TrackInfo(
-            id = proto.id,
-            title = proto.title,
-            artist = proto.artist,
-            album = proto.album.let { if (it.isEmpty()) null else it },
-            duration = proto.duration,
-            thumbnail = proto.thumbnail.let { if (it.isEmpty()) null else it },
-            suggestedBy = proto.suggestedBy.let { if (it.isEmpty()) null else it }
+            id = id,
+            title = title,
+            artist = artist,
+            album = album,
+            duration = duration,
+            thumbnail = thumbnail,
+            suggestedBy = suggestedBy
         )
     }
 
-    private fun protoToUserInfo(proto: Listentogether.UserInfo): UserInfo {
-        return UserInfo(
-            userId = proto.userId,
-            username = proto.username,
-            isHost = proto.isHost,
-            isConnected = proto.isConnected
-        )
+    private fun protoToUserInfo(reader: ProtoReader): UserInfo {
+        var userId = ""
+        var username = ""
+        var isHost = false
+        var isConnected = false
+        while (true) {
+            when (val field = reader.nextField()) {
+                -1 -> break
+                USER_INFO_USER_ID -> userId = reader.readString()
+                USER_INFO_USERNAME -> username = reader.readString()
+                USER_INFO_IS_HOST -> isHost = reader.readBool()
+                USER_INFO_IS_CONNECTED -> isConnected = reader.readBool()
+                else -> reader.skip()
+            }
+        }
+        return UserInfo(userId, username, isHost, isConnected)
     }
 
-    private fun protoToRoomState(proto: Listentogether.RoomState): RoomState {
+    private fun protoToRoomState(reader: ProtoReader): RoomState {
+        var roomCode = ""
+        var hostId = ""
+        val users = mutableListOf<UserInfo>()
+        var currentTrack: TrackInfo? = null
+        var isPlaying = false
+        var position = 0L
+        var lastUpdate = 0L
+        var volume = 0f
+        val queue = mutableListOf<TrackInfo>()
+        while (true) {
+            when (val field = reader.nextField()) {
+                -1 -> break
+                ROOM_STATE_ROOM_CODE -> roomCode = reader.readString()
+                ROOM_STATE_HOST_ID -> hostId = reader.readString()
+                ROOM_STATE_USERS -> users += protoToUserInfo(reader.readMessage())
+                ROOM_STATE_CURRENT_TRACK -> currentTrack = protoToTrackInfo(reader.readMessage())
+                ROOM_STATE_IS_PLAYING -> isPlaying = reader.readBool()
+                ROOM_STATE_POSITION -> position = reader.readInt64()
+                ROOM_STATE_LAST_UPDATE -> lastUpdate = reader.readInt64()
+                ROOM_STATE_VOLUME -> volume = reader.readFloat()
+                ROOM_STATE_QUEUE -> queue += protoToTrackInfo(reader.readMessage())
+                else -> reader.skip()
+            }
+        }
         return RoomState(
-            roomCode = proto.roomCode,
-            hostId = proto.hostId,
-            users = proto.usersList.map { protoToUserInfo(it) },
-            currentTrack = if (proto.hasCurrentTrack()) protoToTrackInfo(proto.currentTrack) else null,
-            isPlaying = proto.isPlaying,
-            position = proto.position,
-            lastUpdate = proto.lastUpdate,
-            volume = proto.volume,
-            queue = proto.queueList.map { protoToTrackInfo(it) }
+            roomCode = roomCode,
+            hostId = hostId,
+            users = users,
+            currentTrack = currentTrack,
+            isPlaying = isPlaying,
+            position = position,
+            lastUpdate = lastUpdate,
+            volume = volume,
+            queue = queue
         )
     }
 
@@ -485,5 +786,135 @@ class MessageCodec(
             is ChatPayload -> ChatPayload.serializer()
             else -> throw IllegalArgumentException("Unknown type: ${value!!::class.simpleName}")
         } as kotlinx.serialization.KSerializer<T>
+    }
+
+    /**
+     * Field numbers, straight from app/src/main/proto/listentogether.proto.
+     */
+    private companion object Fields {
+        const val FIELD_ENVELOPE_TYPE = 1
+        const val FIELD_ENVELOPE_PAYLOAD = 2
+        const val FIELD_ENVELOPE_COMPRESSED = 3
+
+        const val TRACK_INFO_ID = 1
+        const val TRACK_INFO_TITLE = 2
+        const val TRACK_INFO_ARTIST = 3
+        const val TRACK_INFO_ALBUM = 4
+        const val TRACK_INFO_DURATION = 5
+        const val TRACK_INFO_THUMBNAIL = 6
+        const val TRACK_INFO_SUGGESTED_BY = 7
+
+        const val USER_INFO_USER_ID = 1
+        const val USER_INFO_USERNAME = 2
+        const val USER_INFO_IS_HOST = 3
+        const val USER_INFO_IS_CONNECTED = 4
+
+        const val ROOM_STATE_ROOM_CODE = 1
+        const val ROOM_STATE_HOST_ID = 2
+        const val ROOM_STATE_USERS = 3
+        const val ROOM_STATE_CURRENT_TRACK = 4
+        const val ROOM_STATE_IS_PLAYING = 5
+        const val ROOM_STATE_POSITION = 6
+        const val ROOM_STATE_LAST_UPDATE = 7
+        const val ROOM_STATE_VOLUME = 8
+        const val ROOM_STATE_QUEUE = 9
+
+        const val FIELD_CREATE_ROOM_USERNAME = 1
+
+        const val FIELD_JOIN_ROOM_CODE = 1
+        const val FIELD_JOIN_ROOM_USERNAME = 2
+
+        const val FIELD_APPROVE_JOIN_USER_ID = 1
+
+        const val FIELD_REJECT_JOIN_USER_ID = 1
+        const val FIELD_REJECT_JOIN_REASON = 2
+
+        const val FIELD_PLAYBACK_ACTION = 1
+        const val FIELD_PLAYBACK_TRACK_ID = 2
+        const val FIELD_PLAYBACK_POSITION = 3
+        const val FIELD_PLAYBACK_TRACK_INFO = 4
+        const val FIELD_PLAYBACK_INSERT_NEXT = 5
+        const val FIELD_PLAYBACK_QUEUE = 6
+        const val FIELD_PLAYBACK_QUEUE_TITLE = 7
+        const val FIELD_PLAYBACK_VOLUME = 8
+        const val FIELD_PLAYBACK_SERVER_TIME = 9
+
+        const val FIELD_BUFFER_READY_TRACK_ID = 1
+
+        const val FIELD_KICK_USER_ID = 1
+        const val FIELD_KICK_REASON = 2
+
+        const val FIELD_SUGGEST_TRACK_INFO = 1
+
+        const val FIELD_APPROVE_SUGGESTION_ID = 1
+
+        const val FIELD_REJECT_SUGGESTION_ID = 1
+        const val FIELD_REJECT_SUGGESTION_REASON = 2
+
+        const val FIELD_RECONNECT_SESSION_TOKEN = 1
+
+        const val FIELD_TRANSFER_HOST_NEW_HOST_ID = 1
+
+        const val ROOM_CREATED_ROOM_CODE = 1
+        const val ROOM_CREATED_USER_ID = 2
+        const val ROOM_CREATED_SESSION_TOKEN = 3
+
+        const val JOIN_REQUEST_USER_ID = 1
+        const val JOIN_REQUEST_USERNAME = 2
+
+        const val JOIN_APPROVED_ROOM_CODE = 1
+        const val JOIN_APPROVED_USER_ID = 2
+        const val JOIN_APPROVED_SESSION_TOKEN = 3
+        const val JOIN_APPROVED_STATE = 4
+
+        const val JOIN_REJECTED_REASON = 1
+
+        const val USER_JOINED_USER_ID = 1
+        const val USER_JOINED_USERNAME = 2
+
+        const val USER_LEFT_USER_ID = 1
+        const val USER_LEFT_USERNAME = 2
+
+        const val BUFFER_WAIT_TRACK_ID = 1
+        const val BUFFER_WAIT_WAITING_FOR = 2
+
+        const val BUFFER_COMPLETE_TRACK_ID = 1
+
+        const val ERROR_CODE = 1
+        const val ERROR_MESSAGE = 2
+
+        const val HOST_CHANGED_NEW_HOST_ID = 1
+        const val HOST_CHANGED_NEW_HOST_NAME = 2
+
+        const val KICKED_REASON = 1
+
+        const val SYNC_STATE_CURRENT_TRACK = 1
+        const val SYNC_STATE_IS_PLAYING = 2
+        const val SYNC_STATE_POSITION = 3
+        const val SYNC_STATE_LAST_UPDATE = 4
+        const val SYNC_STATE_QUEUE = 5
+        const val SYNC_STATE_VOLUME = 6
+
+        const val RECONNECTED_ROOM_CODE = 1
+        const val RECONNECTED_USER_ID = 2
+        const val RECONNECTED_STATE = 3
+        const val RECONNECTED_IS_HOST = 4
+
+        const val USER_RECONNECTED_USER_ID = 1
+        const val USER_RECONNECTED_USERNAME = 2
+
+        const val USER_DISCONNECTED_USER_ID = 1
+        const val USER_DISCONNECTED_USERNAME = 2
+
+        const val SUGGESTION_RECEIVED_ID = 1
+        const val SUGGESTION_RECEIVED_FROM_USER_ID = 2
+        const val SUGGESTION_RECEIVED_FROM_USERNAME = 3
+        const val SUGGESTION_RECEIVED_TRACK_INFO = 4
+
+        const val SUGGESTION_APPROVED_ID = 1
+        const val SUGGESTION_APPROVED_TRACK_INFO = 2
+
+        const val SUGGESTION_REJECTED_ID = 1
+        const val SUGGESTION_REJECTED_REASON = 2
     }
 }
