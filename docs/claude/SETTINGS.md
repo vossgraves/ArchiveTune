@@ -12,9 +12,29 @@ The Spotify group contains account login/logout, playlist visibility, playlist r
 
 ## Apple Music experience status
 
-The current Apple Music player, queue/lyrics presentation, animated artwork, playlist hero, sleep timer, sliders, and menu-header treatment are implemented. The current experience flag still couples the player style to the broader Apple presentation.
+Shipped and driven by the experience switch: the Apple Music player (with its queue sheet, inline
+lyrics and mini header), the animated-artwork backdrop, the playlist hero, the sleep-timer sheet, the
+sliders, and the menu-header treatment. The switch forces the player style and the tab bar, and it
+keeps `LibraryStyleKey` in step — that coupling is deliberate: the switch is meant to turn the whole
+experience on, and the library-style row is the way to turn on the library half alone.
 
-The following independent controls are not complete and must not be described as shipped: playlist UI, player menu, lyrics menu, Home style, Library style, Apple navigation pill, and a non-locking preset that writes those controls independently. YouTube/Spotify Apple-style Home variants and Spotify Recommended for Today are also open gaps. Direct authenticated Apple playback must remain separate from any future public catalog search/fallback work.
+Also shipped since this note was written:
+
+- **Library screen** — with the library style on, the Library tab renders an Apple Music root (large
+  title, chevron rows, hairline insets to the text column, the four sections opened in place under a
+  back row) instead of the fork's chip row.
+- **Tab bar** — the Apple Music style is a floating rounded bar, inset, with a solid accent pill
+  behind the active tab, its glyph knocked out, and the label in the accent.
+- **Home pages** — the Home tab's pages are a multi-select set (`ActiveHomeSourcesKey`) with a
+  single-choice switcher sheet in the top bar when more than one is active; YouTube and Spotify
+  today, and the enum/selector take more.
+- **Player and lyrics overflow** — the player's more button opens the shared menus, which carry the
+  Apple Music sleep-timer sheet and the lyrics menu.
+
+Not complete, and must not be described as shipped: a non-locking preset that writes those
+sub-controls independently, YouTube/Spotify Apple-style *Home variants* (the Home selector switches
+sources, it does not restyle them), and Spotify's Recommended for Today. Direct authenticated Apple
+playback must remain separate from any future public catalog search/fallback work.
 
 ## Settings change checklist
 
