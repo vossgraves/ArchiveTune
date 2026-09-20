@@ -56,3 +56,24 @@ is indistinguishable from a screen that is still trying. Deezer says when the co
 anonymous visitor, Qobuz says when no candidate signed, Apple says when its poll gave up after two
 minutes. Tidal's rejected first Bearer is the one deliberate silence — it happens on every load
 before sign-in, so a toast there would fire on the normal path.
+
+## The QQ Music QR sign-in
+
+QQ Music has no personal-developer API, so the source signs in the way the official client does:
+the settings card requests a QR code, the user scans it with the QQ Music app, and the app polls the
+login ticket until it is confirmed. The chain is `ptqrshow` → `ptqrlogin` → `check_sig` → the
+`oauth2.0/authorize` hop → `QQConnectLogin/QQLogin`, and what comes back is the ticket/cookie set the
+catalogue and the stream minter need.
+
+Two things follow from that shape, and both are deliberate:
+
+- **The QR expires, and the card says so.** The poll has four distinguishable states — waiting for a
+  scan, scanned and waiting for confirmation, expired, refused — and each is rendered, with a refresh
+  that re-requests the code. This is the same rule as the rest of this file: a screen that only
+  speaks on success is indistinguishable from one that is still trying.
+- **Signing out is a first-class action.** The stored ticket is not a session the app can refresh on
+  its own, so the signed-in card carries the sign-out, and a failed sign-out is reported rather than
+  leaving a stale card.
+
+The account is the user's own; nothing is pooled, shared, or minted on anyone's behalf, and the
+service's own quality locks are respected rather than worked around.
