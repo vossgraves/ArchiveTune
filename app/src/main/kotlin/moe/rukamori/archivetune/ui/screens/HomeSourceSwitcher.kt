@@ -12,26 +12,17 @@
 
 package moe.rukamori.archivetune.ui.screens
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -41,8 +32,8 @@ import moe.rukamori.archivetune.constants.ActiveHomeSourcesKey
 import moe.rukamori.archivetune.constants.HomeSource
 import moe.rukamori.archivetune.constants.HomeSourceKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
-import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
-import moe.rukamori.archivetune.ui.component.ProfileMenuItem
+import moe.rukamori.archivetune.ui.component.PreferenceMultiSelectBottomSheet
+import moe.rukamori.archivetune.ui.component.PreferenceSelectionBottomSheet
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
@@ -139,7 +130,7 @@ fun HomeSourceToggleButton(modifier: Modifier = Modifier) {
     var switcherOpen by remember { mutableStateOf(false) }
 
     if (switcherOpen) {
-        HomeSourceSwitcherDialog(
+        HomeSourceSwitcherSheet(
             active = actives,
             current = if (source in actives) source else actives.first(),
             onSelect = {
@@ -173,41 +164,38 @@ fun HomeSourceToggleButton(modifier: Modifier = Modifier) {
 }
 
 /**
- * The page switcher, drawn in the account menu's shell: one row per active page, the current one
- * badged. Selecting a row switches the Home tab and closes the dialog.
+ * The page switcher, drawn in the app's own selection sheet — the same one the settings rows use for
+ * a single choice — so picking a Home page reads like every other picker in the app.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeSourceSwitcherDialog(
+fun HomeSourceSwitcherSheet(
     active: List<HomeSource>,
     current: HomeSource,
     onSelect: (HomeSource) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ProfileMenuDialog(
-        accountName = "",
-        accountImageUrl = null,
-        headerTitle = stringResource(R.string.home_screens),
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    PreferenceSelectionBottomSheet(
+        title = { Text(stringResource(R.string.home_screens)) },
+        values = active,
+        selectedValue = current,
+        valueText = { stringResource(it.labelResId()) },
+        sheetState = sheetState,
         onDismiss = onDismiss,
-        items =
-            active.map { source ->
-                ProfileMenuItem(
-                    icon = source.iconResId(),
-                    label = stringResource(source.labelResId()),
-                    showBadge = source == current,
-                    onClick = { onSelect(source) },
-                )
-            },
+        onValueSelected = onSelect,
     )
 }
 
 /**
- * The Appearance screen's picker for [ActiveHomeSourcesKey]: every page the app can offer.
+ * The Appearance screen's picker for [ActiveHomeSourcesKey], as the app's multi-select sheet.
  *
  * Membership is editable regardless of availability — a page whose prerequisite is missing (a
- * signed-out Spotify) is only *annotated* as unavailable, because otherwise someone who wants that
- * page gone would have to sign in first just to remove it. YouTube, the floor page, is shown
- * disabled-checked rather than as a toggle that silently refuses input.
+ * signed-out Spotify) is annotated rather than hidden, because otherwise someone who wants that page
+ * gone would have to sign in first just to remove it. YouTube, the floor page, cannot be switched
+ * off. The sheet commits on dismissal, like every other selection sheet in the app.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreensDialog(
     selected: List<HomeSource>,
@@ -216,70 +204,24 @@ fun HomeScreensDialog(
     onDismiss: () -> Unit,
 ) {
     // Keyed and copied: the caller's list can change (a session expiring) while this is open, and
-    // Confirm must never write a set the user did not see.
+    // the committed set must never be one the user did not see.
     var working by remember(selected) { mutableStateOf(selected.toList()) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    PreferenceMultiSelectBottomSheet(
         title = { Text(stringResource(R.string.home_screens)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                HomeSourceCandidates.forEach { source ->
-                    val checked = source in working
-                    val available = source.isAvailable(spotifyAvailable)
-                    val fixed = source == HomeSource.YOUTUBE
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = !fixed) {
-                                    working =
-                                        canonicalHomeSources(
-                                            if (checked) working - source else working + source,
-                                        )
-                                }.padding(vertical = 4.dp),
-                    ) {
-                        Checkbox(
-                            checked = checked,
-                            onCheckedChange = null,
-                            enabled = !fixed,
-                        )
-                        Icon(
-                            painter = painterResource(source.iconResId()),
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Column(modifier = Modifier.padding(start = 12.dp)) {
-                            Text(
-                                text = stringResource(source.labelResId()),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color =
-                                    if (available) {
-                                        MaterialTheme.colorScheme.onSurface
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                            )
-                            if (!available) {
-                                Text(
-                                    text = stringResource(R.string.home_screens_needs_sign_in),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+        values = HomeSourceCandidates,
+        isSelected = { it in working },
+        valueText = { stringResource(it.labelResId()) },
+        valueDescription = { source ->
+            if (source.isAvailable(spotifyAvailable)) null else stringResource(R.string.home_screens_needs_sign_in)
         },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(canonicalHomeSources(working).ifEmpty { listOf(HomeSource.YOUTUBE) }) }) {
-                Text(stringResource(android.R.string.ok))
+        sheetState = sheetState,
+        onDismiss = { onConfirm(canonicalHomeSources(working).ifEmpty { listOf(HomeSource.YOUTUBE) }) },
+        onToggle = { source ->
+            if (source != HomeSource.YOUTUBE) {
+                working = canonicalHomeSources(if (source in working) working - source else working + source)
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
         },
     )
 }

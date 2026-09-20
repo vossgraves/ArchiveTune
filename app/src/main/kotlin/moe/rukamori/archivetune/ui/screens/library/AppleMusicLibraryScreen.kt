@@ -153,8 +153,8 @@ private fun AppleMusicLibrarySections(onSectionSelected: (AppleMusicLibrarySecti
                     Modifier.padding(
                         start = AppleMusicListSidePadding,
                         end = AppleMusicListSidePadding,
-                        top = 8.dp,
-                        bottom = 16.dp,
+                        top = 0.dp,
+                        bottom = 8.dp,
                     ),
             )
         }
@@ -177,7 +177,7 @@ private fun AppleMusicLibrarySectionRow(
                 Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onClick)
-                    .padding(horizontal = AppleMusicListSidePadding, vertical = 8.dp),
+                    .padding(horizontal = AppleMusicListSidePadding, vertical = 4.dp),
         ) {
             // The sections have no artwork of their own, so the reference's thumbnail column holds
             // a tinted glyph tile: same size and corner as the playlists list, so the two read as

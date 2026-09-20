@@ -494,7 +494,7 @@ inline fun <reified T : Enum<T>> EnumListPreference(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun <T> PreferenceSelectionBottomSheet(
+internal fun <T> PreferenceSelectionBottomSheet(
     title: @Composable () -> Unit,
     values: List<T>,
     selectedValue: T,
@@ -660,6 +660,109 @@ private fun PreferenceSelectionOption(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(SettingsDimensions.BottomSheetOptionIconSize),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * The same sheet as [PreferenceSelectionBottomSheet], for choices where more than one answer can be
+ * on at once: each row keeps its tick, and the sheet stays open so the set can be built up.
+ *
+ * [isEnabled] lets a caller show an option that cannot be used right now (a Home page whose service
+ * is not signed in) without hiding it — the row still answers taps so membership stays editable, the
+ * caller decides what that means.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun <T> PreferenceMultiSelectBottomSheet(
+    title: @Composable () -> Unit,
+    values: List<T>,
+    isSelected: (T) -> Boolean,
+    valueText: @Composable (T) -> String,
+    valueDescription: (@Composable (T) -> String)? = null,
+    sheetState: SheetState,
+    onDismiss: () -> Unit,
+    onToggle: (T) -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        dragHandle = null,
+    ) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SettingsDimensions.BottomSheetHorizontalPadding)
+                    .padding(bottom = SettingsDimensions.BottomSheetBottomPadding)
+                    .navigationBarsPadding(),
+            shape = RoundedCornerShape(SettingsDimensions.BottomSheetCornerRadius),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(
+                width = SettingsDimensions.GlassBorderThickness,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+            ),
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = SettingsDimensions.BottomSheetContentPaddingH)
+                        .padding(top = SettingsDimensions.BottomSheetContentPaddingTop, bottom = SettingsDimensions.BottomSheetContentPaddingBottom),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(bottom = SettingsDimensions.BottomSheetDragHandleBottomPadding)
+                            .size(width = SettingsDimensions.BottomSheetDragHandleWidth, height = SettingsDimensions.BottomSheetDragHandleHeight)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)),
+                )
+
+                ProvideTextStyle(
+                    MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = SettingsDimensions.BottomSheetTitleBottomPadding),
+                    ) {
+                        title()
+                    }
+                }
+
+                LazyColumn(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = SettingsDimensions.BottomSheetListMaxHeight),
+                ) {
+                    itemsIndexed(
+                        items = values,
+                        key = { index, value -> preferenceOptionKey(index, value) },
+                        contentType = { _, _ -> "preference_option" },
+                    ) { index, value ->
+                        val shape = segmentedPreferenceItemShape(index, values.size)
+                        val position = yumaSegmentPosition(index, values.size)
+                        val isLast = index == values.lastIndex
+                        PreferenceSelectionOption(
+                            text = valueText(value),
+                            description = valueDescription?.invoke(value),
+                            selected = isSelected(value),
+                            shape = shape,
+                            position = position,
+                            modifier = Modifier.padding(bottom = if (isLast) 0.dp else SettingsDimensions.SegmentedItemGap),
+                            onClick = { onToggle(value) },
+                        )
+                    }
+                }
             }
         }
     }
