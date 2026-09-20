@@ -41,11 +41,10 @@ import java.util.concurrent.ConcurrentHashMap
 object AppleMusicProvider {
     // ── Logging ──────────────────────────────────────────────────────────────────────
     //
-    // Routed through GlobalLog so the canvas diagnostic lines show up in the
-    // in-app logcat viewer with the proper tag. Previously this used
-    // `println(...)` which Android redirects to logcat as `I/System.out:` —
-    // losing the tag and the log level, and bypassing the host app's log
-    // pipeline (which is what allows the in-app log viewer to filter by tag).
+    // Routed through GlobalLog so the canvas diagnostic lines show up in the in-app
+    // logcat viewer with the proper tag and stay filterable by tag. Plain `println(...)`
+    // reaches logcat as `I/System.out:` instead, without the tag, the log level, or the
+    // host app's log pipeline.
     //
     // The logger callback is set by the host app (App.kt) on startup, mirroring
     // how PaxsenixLyrics.logger is wired. When null we fall back to plain
@@ -116,13 +115,10 @@ object AppleMusicProvider {
     // Fallback Apple Music web player JWT — publicly distributed by Apple in
     // their web player JavaScript bundle. Apple rotates it roughly every ~6
     // months, so this value WILL go stale; [ensureTokenFresh] scrapes a live
-    // one and only falls back to this when scraping fails (e.g. offline).
-    //
-    // The previous value here expired on 2026-06-17 and, because the scraper
-    // was also broken (see [jsBundleRegex]), every AMP request 401'd — which is
-    // what made "ArchiveTune Canvas" silently resolve nothing and log
-    // `No playable canvas resolved for <mediaId>`. This value expires
-    // 2026-10-22.
+    // one and only falls back to this when scraping fails (e.g. offline). A
+    // stale value makes every AMP request 401, which surfaces as "ArchiveTune
+    // Canvas" silently resolving nothing and `No playable canvas resolved for
+    // <mediaId>` in the log. This value expires 2026-10-22.
     private val fallbackAppleMusicToken: String =
         "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ" +
             ".eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2" +
@@ -369,11 +365,10 @@ object AppleMusicProvider {
     private val directJwtRegex: Regex =
         Regex("""eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}""")
 
-    // Apple's Vite build names the entry chunk `index~<hash>.js`. This pattern
-    // previously only accepted `index-<hash>.js`, so once Apple switched the
-    // separator to `~` no bundle was ever found, the scrape returned null, and
-    // the provider fell back to the (expired) hardcoded token forever. Accept
-    // both separators.
+    // Apple's Vite build names the entry chunk `index~<hash>.js`; older builds used
+    // `index-<hash>.js`. Both separators must be accepted — when the pattern misses, no
+    // bundle is found, the scrape returns null, and the provider falls back to the
+    // (expired) hardcoded token forever.
     private val jsBundleRegex: Regex =
         Regex("""(?:src|href)=["']([^"']*index[~\-][A-Za-z0-9._~-]+\.js)["']""")
 

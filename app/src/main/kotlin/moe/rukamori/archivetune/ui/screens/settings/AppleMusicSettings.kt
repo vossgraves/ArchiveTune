@@ -82,8 +82,8 @@ private fun looksLikeJwt(value: String): Boolean = value.matches(Regex("^[A-Za-z
 /**
  * Media-user-token shape: Apple's iTunes-store token is NOT a JWT — it is a
  * short version prefix (`0.`) followed by standard base64 (may contain `+`, `/`,
- * `=`), e.g. `0.Ap7VmmO+s4RlV4F…==`. Accept either that or a JWT so panel-pasted
- * tokens pass; the old JWT-only check rejected every real media token.
+ * `=`), e.g. `0.Ap7VmmO+s4RlV4F…==`. A JWT is accepted too, so panel-pasted
+ * tokens pass.
  */
 private fun looksLikeMediaUserToken(value: String): Boolean =
     looksLikeJwt(value) || value.matches(Regex("^0\\.[A-Za-z0-9+/=]{40,}$"))

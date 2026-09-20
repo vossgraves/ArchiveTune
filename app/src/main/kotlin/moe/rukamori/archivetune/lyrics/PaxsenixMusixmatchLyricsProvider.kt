@@ -17,16 +17,14 @@ object PaxsenixMusixmatchLyricsProvider : LyricsProvider {
     override val name = "Paxsenix: Musixmatch"
 
     // Paxsenix retired every provider endpoint except /apple-music/lyrics: the
-    // others answer 403 with "This endpoint is no longer available due to the
-    // massive amount of traffic and the lack of support needed to keep it
-    // running." Verified against the live API — the 403 is unconditional and
-    // is returned with a valid key, an invalid key and no key at all, so it is
-    // not a quota or auth problem.
+    // others answer 403 ("no longer available due to the massive amount of
+    // traffic"), unconditionally — verified against a valid key, an invalid key
+    // and no key at all, so it is not a quota or auth problem.
     //
-    // The default is therefore false: left on, this provider burned one
-    // guaranteed-failing round trip per song before the lyrics chain could
-    // fall through to a working provider. Users who front the API with their
-    // own mirror can still switch it back on.
+    // The default is therefore false: left on, this provider spends one
+    // guaranteed-failing round trip per song before the lyrics chain can fall
+    // through to a working provider. Users who front the API with their own
+    // mirror can still switch it back on.
     override fun isEnabled(context: Context): Boolean = context.dataStore[EnablePaxsenixMusixmatchLyricsKey] ?: false
 
     override suspend fun getLyrics(

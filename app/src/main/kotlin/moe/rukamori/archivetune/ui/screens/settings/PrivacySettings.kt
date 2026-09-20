@@ -348,8 +348,6 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                // "Open supported links" moved here from the main settings page (Task 10).
-                // Android 12+ only — same gate the original pill had.
                 if (isAndroid12OrLater) {
                     item {
                         PreferenceEntry(

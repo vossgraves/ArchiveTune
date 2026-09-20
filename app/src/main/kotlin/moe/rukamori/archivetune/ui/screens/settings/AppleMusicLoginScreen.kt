@@ -34,11 +34,11 @@ private const val LOGIN_URL = "https://music.apple.com/login"
 /**
  * Reads both Apple Music tokens out of the signed-in web player.
  *
- * A cookie probe cannot do this: MusicKit keeps the Music User Token out of the cookie jar, which
- * is why this screen previously could not tell that sign-in had finished and left the token to be
- * pasted by hand. Both tokens are however readable from the live MusicKit instance, and the
- * user token is additionally mirrored into localStorage under a `media-user-token` key, so the
- * scan covers the case where the instance is not reachable on the current page.
+ * A cookie probe cannot do this: MusicKit keeps the Music User Token out of the cookie jar, so the
+ * token is never visible to a cookie scan. Both tokens are however readable from the live MusicKit
+ * instance, and the user token is additionally mirrored into localStorage under a
+ * `media-user-token` key, so the scan covers the case where the instance is not reachable on the
+ * current page.
  *
  * Polls because MusicKit initialises asynchronously and the user token only appears after the
  * Apple ID flow completes — there is no event to hook. Gives up after ~2 minutes so a page that

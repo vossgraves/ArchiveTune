@@ -59,7 +59,7 @@ fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
 }
 
 /**
- * Metadata-aware track matching used to gate lossless source playback. Inspired by Stash's matcher,
+ * Metadata-aware track matching gates lossless source playback. Inspired by Stash's matcher,
  * this combines title, artist, duration and album signals while applying hard gates for a different
  * version or implausible duration. This prevents a same-title recording by another artist from
  * passing merely because its normalized title is identical.

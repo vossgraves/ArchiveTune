@@ -257,10 +257,9 @@ private fun MainQualityPage(
         onClick = { onSelect(VideoQualityPreference.HIGH_QUALITY) },
     )
 
-    // The three modes and the Advanced row are different kinds of thing, so they used to be
-    // separated by a HorizontalDivider. A divider drawn across a column of pills cuts through the
-    // gap between two rounded shapes and reads as a stray line; extra breathing room says the same
-    // thing without fighting the pills.
+    // The three modes and the Advanced row are different kinds of thing, so they are separated by
+    // extra breathing room rather than a HorizontalDivider: a divider drawn across a column of pills
+    // cuts through the gap between two rounded shapes and reads as a stray line.
     Spacer(modifier = Modifier.height(metrics.dividerVerticalPadding))
 
     val exactHeight = preferredHeight?.takeIf { VideoQualityPreference.isExactHeight(it) }
@@ -349,10 +348,10 @@ private fun AdvancedQualityPage(
 /**
  * Aspect-ratio picker, presented as the same bottom sheet as [VideoQualitySheet].
  *
- * The fullscreen overlay used to anchor a [androidx.compose.material3.DropdownMenu] to the
- * aspect-ratio button in the top-right pill, which had the same two problems the quality dropdown
- * had: it opened in the corner furthest from the thumb in landscape, and it looked nothing like the
- * quality picker sitting next to it. Sharing this sheet makes the two controls behave alike.
+ * A [androidx.compose.material3.DropdownMenu] anchored to the aspect-ratio button in the top-right
+ * pill has the same two problems the quality dropdown had: it opens in the corner furthest from the
+ * thumb in landscape, and it looks nothing like the quality picker sitting next to it. Sharing this
+ * sheet makes the two controls behave alike.
  */
 @Composable
 internal fun VideoAspectRatioSheet(

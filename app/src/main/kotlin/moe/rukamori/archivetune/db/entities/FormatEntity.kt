@@ -29,8 +29,7 @@ fun FormatEntity.containerLabel(): String = mimeType.substringAfter("/").substri
 
 /**
  * Returns the appropriate file extension for this format's audio codec. Used when exporting cached
- * songs so lossless FLAC files get a .flac extension instead of the generic .mp3 that was
- * previously hardcoded.
+ * songs so lossless FLAC files get a .flac extension rather than the generic .mp3.
  */
 fun FormatEntity.fileExtension(): String {
     val rawCodec = codecs.ifBlank { mimeType.substringAfter("/") }.lowercase()

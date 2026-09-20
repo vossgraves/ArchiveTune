@@ -189,9 +189,9 @@ abstract class InternalDatabase : RoomDatabase() {
                         java.util.concurrent.Executors
                             .newFixedThreadPool(4),
                     ).openHelperFactory { configuration ->
-                        // Repair before reset. A corrupt or drifted schema used to throw straight
-                        // out of Room's integrity check and take the app down on launch; now the
-                        // file is repaired in place first, and only recreated if that fails too.
+                        // Repair before reset: Room's integrity check throws on a corrupt or
+                        // drifted schema and takes the app down on launch, so the file is repaired
+                        // in place first, and only recreated if that fails too.
                         RecoveringOpenHelper(
                             create = { FrameworkSQLiteOpenHelperFactory().create(configuration) },
                             shouldRecover = { error ->

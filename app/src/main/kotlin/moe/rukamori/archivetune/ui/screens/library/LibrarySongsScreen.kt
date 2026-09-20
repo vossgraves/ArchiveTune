@@ -130,7 +130,7 @@ fun LibrarySongsScreen(
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
     val lazyListState = rememberLazyListState()
 
-    // Issue 2: player-aware bottom padding so content is never hidden behind nav bar + miniplayer
+    // Bottom padding sized for the nav bar and the mini player, so no row hides behind them.
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -217,7 +217,6 @@ fun LibrarySongsScreen(
 
                 // Dropdown sort trigger
                 var showSortMenu by remember { mutableStateOf(false) }
-                // Issue 4 fix: A-Z label shows ascending direction arrow
                 val currentSortLabel =
                     when (sortType) {
                         SongSortType.CREATE_DATE -> {
@@ -276,7 +275,7 @@ fun LibrarySongsScreen(
                                 when (type) {
                                     SongSortType.CREATE_DATE -> stringResource(R.string.recently_added)
 
-                                    // Issue 4: select NAME always sets ascending (A→Z) by default
+                                    // Selecting NAME always sorts ascending (A→Z) by default.
                                     SongSortType.NAME -> stringResource(R.string.sort_a_to_z)
 
                                     SongSortType.ARTIST -> stringResource(R.string.sort_artist)
@@ -329,7 +328,6 @@ fun LibrarySongsScreen(
 
             LazyColumn(
                 state = lazyListState,
-                // Issue 2: use player-aware window insets for bottom padding
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
                 modifier = Modifier.fillMaxSize(),
@@ -428,8 +426,8 @@ fun LibrarySongsScreen(
                     val song = songWrapper.item
                     val isActive = song.id == mediaMetadata?.id
 
-                    // Issue 7: active song gets fully rounded shape + artwork-based color
-                    // inactive songs use theme color and are more rounded than before
+                    // The active row takes its colour from the artwork; inactive rows use the
+                    // theme colour.
                     val activeCardColor =
                         rememberArtworkCardColor(
                             thumbnailUrl = song.song.thumbnailUrl,
@@ -437,7 +435,7 @@ fun LibrarySongsScreen(
                         )
                     val inactiveCardColor = MaterialTheme.colorScheme.surfaceContainerLow
 
-                    // Issue 6: divider between cards visible in pure black dark theme
+                    // Divider between cards, shown only in the pure-black dark theme.
                     val showDivider = isDarkTheme && pureBlack && index > 0
                     if (showDivider) {
                         HorizontalDivider(
@@ -447,7 +445,6 @@ fun LibrarySongsScreen(
                         )
                     }
 
-                    // Issue 7: Active corners 36.dp, inactive 24.dp
                     val cornerRadius = if (isActive) 36.dp else 24.dp
                     val topPadding = if (index == 0 || showDivider) 0.dp else 8.dp
 
@@ -502,7 +499,8 @@ fun LibrarySongsScreen(
 
                         Spacer(modifier = Modifier.width(14.dp))
 
-                        // Song Details (Issue 7: onPrimaryContainer on active dynamic background for legibility)
+                        // Song details — onPrimaryContainer keeps this legible over the active row's
+                        // dynamic background.
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = song.song.title,
@@ -544,7 +542,6 @@ fun LibrarySongsScreen(
                                 )
                             }
 
-                            // Issue 1: Real duration pill using makeTimeString
                             val durationText = makeTimeString(song.song.duration * 1000L)
                             Box(
                                 modifier =

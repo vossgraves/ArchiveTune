@@ -329,10 +329,10 @@ object TidalAccountManager {
                             .orEmpty()
                     val soundQuality = json.optString("highestSoundQuality").uppercase()
                     // `premiumAccess` is Tidal's authoritative entitlement flag and is the only
-                    // signal that reliably separates a real paying account from a free one. Free
+                    // signal that reliably separates a real paying account from a free one: free
                     // accounts frequently still report a non-blank subscription.type (e.g. an
-                    // "INTRO"/"PREMIUM" placeholder), which is exactly why the old
-                    // "anything not FREE = premium" check reported free accounts as premium.
+                    // "INTRO"/"PREMIUM" placeholder), so an "anything not FREE = premium" test
+                    // would read them as paying.
                     when {
                         json.has("premiumAccess") ->
                             if (json.optBoolean("premiumAccess", false)) {
@@ -479,9 +479,8 @@ object TidalAccountManager {
     /**
      * Fetches playback info for a track from the official API, then delegates manifest handling to
      * [TidalAudioProvider.resolveAccountManifest] so both BTS (direct URL) and DASH (segmented
-     * lossless/HiRes) manifests produce a playable stream. Previously this only accepted the BTS
-     * manifest, so lossless/HiRes — which Tidal returns as DASH — always fell through, which is why
-     * the signed-in account path never actually played.
+     * lossless/HiRes) manifests produce a playable stream. Lossless/HiRes come back as DASH, so
+     * accepting BTS alone would leave the signed-in account path unable to play anything.
      */
     private fun resolvePlaybackInfo(
         accessToken: String,

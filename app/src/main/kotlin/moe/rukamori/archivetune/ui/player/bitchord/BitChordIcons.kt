@@ -13,7 +13,7 @@
  *
  * This object belongs exclusively to the Bitchord player style and is not
  * shared with any other player style, per the self-containment rule for
- * player styles (2026-09-01).
+ * player styles.
  */
 
 package moe.rukamori.archivetune.ui.player.bitchord

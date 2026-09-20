@@ -268,7 +268,8 @@ object AmazonAudioProvider {
 
     /**
      * Gen-1.5 request: `GET {base}/api/track/?track=&artist=&album=&duration=&quality=`.
-     * Returns null on any failure (including auth), mirroring the OLD provider's unwrap.
+     * Returns null on any failure (including auth) — it never throws — so the caller can
+     * treat it as an absent result and fall through.
      */
     private fun fetchGen1(
         base: String,
@@ -365,7 +366,7 @@ object AmazonAudioProvider {
         return null
     }
 
-    /** Parses the gen-1.5 unwrapped payload; reuses the OLD file's field shapes. */
+    /** Parses the gen-1.5 unwrapped payload. */
     private fun parseGen1(
         body: String,
         requestedQuality: String,

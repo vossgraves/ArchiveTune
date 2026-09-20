@@ -144,8 +144,7 @@ fun TelegramBotChatScreen(
     // bot processes the choice).
     var pendingChoiceText by remember { mutableStateOf<String?>(null) }
 
-    // Add-to-playlist dialog state. The "pending track" is the track the user wants to add; when
-    // set, the dialog is shown.
+    // The track the add-to-playlist dialog is open for; null keeps the dialog hidden.
     var addToPlaylistTrack by remember { mutableStateOf<TelegramTrack?>(null) }
 
     // Bot command picker state. Some music bots require slash commands (e.g. `/search <query>`,
@@ -369,8 +368,7 @@ fun TelegramBotChatScreen(
     }
 
     // After AddToPlaylistDialog closes, check whether the song was added to any Telegram-channel
-    // playlist (LPtg…) and forward the original bot message to those channels. This is the
-    // "auto-forward to my channel" behavior the user asked for.
+    // playlist (LPtg…) and forward the original bot message to those channels.
     suspend fun maybeForwardToTelegramChannels(track: TelegramTrack) {
         if (!forwardToChannel) return
         // playlistDuplicates returns the song ids present in the playlist, so a non-empty result

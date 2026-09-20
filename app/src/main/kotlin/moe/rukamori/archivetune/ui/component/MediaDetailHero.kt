@@ -216,8 +216,8 @@ public fun MediaDetailHero(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Title — use a tighter lineHeight than headlineLarge's default
-            // 40sp to avoid the "weird spacing" the user reported when a
-            // playlist title wraps to two lines.
+            // 40sp, which gives awkward spacing when a playlist title wraps to
+            // two lines.
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
@@ -357,9 +357,7 @@ public fun MediaDetailPrimaryActions(
     onToggleAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     additionalActions: (@Composable RowScope.(Color) -> Unit)? = null,
-    // The hero artwork URL. Used for the main hero artwork above. (Previously
-    // also used as the backdrop source for the liquid-glass play button — that
-    // sampling has been removed; see useBlurredPlayButton below.)
+    // The hero artwork URL, used for the main hero artwork above.
     thumbnailUrl: String? = null,
     useBlurredPlayButton: Boolean = false,
 ) {
@@ -430,11 +428,9 @@ public fun MediaDetailPrimaryActions(
                 }
 
                 onPlay?.let { play ->
-                    // Play button — always uses a solid color pill. The liquid-glass layered
-                    // Box variant (smoked-glass veil + top-highlight gradient) was REMOVED at
-                    // the user's request: "Remove the liquid glass effect from all play buttons
-                    // in playlists or anywhere else". The same solid-color path now runs whether
-                    // or not a LiquidGlassBackdrop is active upstream.
+                    // Play button — always a solid-colour pill, whether or not a LiquidGlassBackdrop
+                    // is active upstream. Deliberately not a liquid-glass variant: the smoked-glass
+                    // veil + top-highlight gradient is not wanted on play buttons anywhere.
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
                     val playShape = RoundedCornerShape(percent = 50)
                     val playPadding =

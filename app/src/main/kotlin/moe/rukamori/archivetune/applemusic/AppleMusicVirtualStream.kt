@@ -186,11 +186,11 @@ object AppleMusicVirtualStream {
         } ?: 0L
 
         // A Widevine challenge is only valid when the pssh carries the real 16-byte tenc KID.
-        // Fabricating an all-zero KID (the previous `?: ByteArray(16)` fallback) still produced a
-        // structurally valid, playable file — Apple's licence server simply refused to issue a
-        // usable key, so every track decoded to SILENCE with no error logged anywhere. Fail loudly
-        // instead: resolveAppleStream catches this and falls through to the next source, and the
-        // reason lands in the log rather than being inaudible.
+        // Fabricating an all-zero KID instead still yields a structurally valid, playable file
+        // that Apple's licence server refuses to issue a key for, so every track decodes to
+        // SILENCE with no error logged anywhere. Fail loudly: resolveAppleStream catches this and
+        // falls through to the next source, and the reason lands in the log rather than being
+        // inaudible.
         val kid = kidHex
             ?.let { hexToBytes(it) }
             ?.takeIf { it.size == KID_BYTES }

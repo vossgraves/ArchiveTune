@@ -282,10 +282,8 @@ fun SearchScreen(
                                 }
                             }
 
-                            // Section 2 — Trending Searches (minimal chips).
-                            // "Based on what you like" section has been removed
-                            // from the Explore tab per user request — Explore
-                            // now shows only Recent Searches + Trending Searches.
+                            // Section 2 — Trending Searches (minimal chips). The Explore tab
+                            // shows only Recent Searches and Trending Searches.
                             if (currentState.data.suggestedArtists.isNotEmpty()) {
                                 item(
                                     key = "search_trending_searches_title",
@@ -393,10 +391,9 @@ private fun SearchEntryField(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     // The search bar is a real inline input — tapping it focuses the field
-    // and shows the keyboard WITHOUT navigating away, so the Recent Searches
-    // and "Based on what you like" content stays on screen. Pressing the
-    // search IME action submits the query (navigates to results + records
-    // history) just like the old overlay flow.
+    // and shows the keyboard WITHOUT navigating away, so the list below stays
+    // on screen. Pressing the search IME action submits the query (navigates
+    // to results + records history).
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =

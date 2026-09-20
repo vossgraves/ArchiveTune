@@ -97,12 +97,9 @@ internal class BlurWanderDrift(
         // the outer half of the disc.
         val radius = WanderRadiusDp * (MinRadiusFraction + random.nextFloat() * (1f - MinRadiusFraction))
         toX = cos(legAngle) * radius
-        // No vertical squash. It used to shave the vertical amplitude to 0.8 on
-        // the grounds that the covering budget was tighter horizontally, which
-        // was true while panning was the only motion and is not once the budget
-        // is measured to a corner. It also worked directly against the symptom
-        // rotation is here to fix, by making the axis that already struggled to
-        // reach the bottom of the screen the shorter of the two.
+        // No vertical squash: shaving the vertical amplitude to 0.8 would make the axis
+        // that already struggles to reach the bottom of the screen the shorter of the two,
+        // working against the symptom rotation is here to fix.
         toY = sin(legAngle) * radius
         // Rotation direction is drawn per leg rather than taken from the leg's
         // own angle: tying the two together would make the backdrop appear to

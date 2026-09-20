@@ -183,12 +183,9 @@ fun HistoryScreen(
     val focusRequester = remember { FocusRequester() }
     val localListState = rememberLazyListState()
     val remoteListState = rememberLazyListState()
-    // Dedicated LazyListState instances for the search-mode list. Previously
-    // the search-mode LazyColumn shared `localListState` / `remoteListState`
-    // with the non-search LazyColumn, and during the AnimatedVisibility exit
-    // window BOTH LazyColumns were composed simultaneously — fighting over
-    // the same LazyListState and causing the list to disappear or stick on
-    // the skeleton loader when the back button was pressed.
+    // Dedicated LazyListState instances for the search-mode list: during the AnimatedVisibility
+    // exit window BOTH LazyColumns are composed at once, and sharing one LazyListState between
+    // them makes the list disappear or stick on the skeleton loader when back is pressed.
     val localSearchListState = rememberLazyListState()
     val remoteSearchListState = rememberLazyListState()
     val spotifyListState = rememberLazyListState()

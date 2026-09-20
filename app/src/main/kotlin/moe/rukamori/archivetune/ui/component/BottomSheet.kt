@@ -341,8 +341,8 @@ class BottomSheetState(
     }
 
     /**
-     * One instance per sheet, deliberately — this used to be a `get()` that minted a fresh
-     * connection on every read.
+     * Single instance per sheet, deliberately: the connection carries per-sheet state
+     * (`isTopReached`), so every read must return the same object.
      */
     val preUpPostDownNestedScrollConnection: NestedScrollConnection by lazy {
         object : NestedScrollConnection {

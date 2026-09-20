@@ -130,9 +130,9 @@ fun QobuzLoginScreen(navController: NavController) {
     /**
      * Tries each candidate against the API and keeps the first that can sign a stream request.
      *
-     * Matching cannot do this job: the secret is indistinguishable from a chunk hash on sight, so an
-     * earlier version saved whichever hex string appeared first and reported success, leaving a
-     * session that failed on the first play. Only the API can tell them apart.
+     * Matching cannot do this job: the secret is indistinguishable from a chunk hash on sight, and
+     * saving the wrong one yields a session that fails on the first play. Only the API can tell
+     * them apart.
      */
     fun searchForSecret(
         token: String,

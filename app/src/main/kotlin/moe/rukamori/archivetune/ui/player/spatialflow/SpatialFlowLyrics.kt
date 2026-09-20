@@ -334,17 +334,15 @@ internal fun SpatialFlowLyricsOverlay(
         // The backdrop layer wraps EVERY visual in the overlay — the moving-
         // blur background AND the content — so the lyrics overflow popup's
         // drawBackdrop() samples the actual on-screen pixels behind it
-        // (gradient + moving blur + text), not just the text column over a
-        // transparent base (which is what the popup used to sample: an empty
-        // texture = "transparent popup, no liquid glass"). The popup itself
-        // stays OUTSIDE this box, as a later sibling, so it never feeds back
-        // into its own sample. (Same pattern as AppleMusicPlayer.)
+        // (gradient + moving blur + text). Sampling just the text column over a
+        // transparent base would yield an empty texture, i.e. no liquid glass.
+        // The popup itself stays OUTSIDE this box, as a later sibling, so it
+        // never feeds back into its own sample. (Same pattern as AppleMusicPlayer.)
         //
-        // The padding that used to sit on THIS box now lives on the content
-        // Column inside: back then MovingBlurBackground was inset by the
-        // status-bar padding, so the strip above the song title showed only
-        // the dark scrim/base brush — the reported "black bar above the
-        // song's name". The blur background now fills edge to edge.
+        // The padding lives on the content Column inside, NOT on this box: padding
+        // here would inset MovingBlurBackground and leave the strip above the song
+        // title showing only the dark scrim/base brush. The blur background fills
+        // edge to edge.
         Box(
             modifier =
                 Modifier.fillMaxSize().let { base ->

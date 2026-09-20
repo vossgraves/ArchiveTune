@@ -293,11 +293,10 @@ fun LibraryMixScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     if (!hideLikedSongsCard) {
-                                        // Spotify's liked songs used to be a row inside the
-                                        // Spotify playlists tab. They belong on the same card as
-                                        // everything else called "Liked songs", so the card
-                                        // follows the source pills: the count is only meaningful
-                                        // for the local library, and Spotify's is named instead.
+                                        // Spotify's liked songs sit on the same card as
+                                        // everything else called "Liked songs", and follow the
+                                        // source pills: the count is only meaningful for the
+                                        // local library, and Spotify's is named instead.
                                         val likedOnSpotify = librarySource == LibrarySource.SPOTIFY
                                         ShortcutCard(
                                             title = stringResource(R.string.liked_songs),

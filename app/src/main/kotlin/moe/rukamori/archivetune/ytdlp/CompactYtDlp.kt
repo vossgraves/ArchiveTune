@@ -58,7 +58,7 @@ object CompactYtDlp {
     /**
      * True if an external yt-dlp runtime is already installed and executable.
      * Checks (in order): YTDLnis python plugin APK's nativeLibraryDir, YTDLnis main APK,
-     * youtubedl-android, and a previously-downloaded `filesDir/ytdlnis/yt-dlp` binary.
+     * youtubedl-android, and a `filesDir/ytdlnis/yt-dlp` binary from an earlier download.
      * No download is triggered here — that is the user's explicit action in settings.
      */
     fun isAvailable(context: Context): Boolean = resolvePythonExecutable(context) != null
@@ -86,7 +86,7 @@ object CompactYtDlp {
                 continue
             }
         }
-        // Locally cached yt-dlp python (if user previously installed via settings)
+        // Locally cached yt-dlp python (installed earlier via settings)
         val cached = File(context.noBackupFilesDir, "ytdlnis/yt-dlp-python/bin/python")
         if (cached.exists() && cached.canExecute()) return cached
         return null

@@ -254,7 +254,7 @@ fun ArtistScreen(
 
     // Stable top inset: does not collapse to 0 when the status bar is transiently hidden
     // (overflow menu, expanded player, etc.). The artist hero's top padding anchors below the
-    // TopAppBar using this value, so songs in inline sections no longer overlap the header when
+    // TopAppBar using this value, so songs in inline sections stay clear of the header when
     // "hide status bar" is triggered.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface

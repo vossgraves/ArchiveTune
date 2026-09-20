@@ -86,8 +86,8 @@ import moe.rukamori.archivetune.viewmodels.PaxsenixStatsState
 import androidx.compose.foundation.layout.asPaddingValues
 
 /**
- * Lyrics providers sub-page (Task 2): houses every lyrics-provider toggle plus the Musixmatch
- * experimental section that used to live inline on the Lyrics settings page.
+ * Lyrics providers sub-page: houses every lyrics-provider toggle plus the Musixmatch
+ * experimental section.
  */
 @Composable
 fun LyricsProvidersSettings(

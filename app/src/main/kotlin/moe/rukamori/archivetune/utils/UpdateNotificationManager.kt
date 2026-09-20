@@ -88,7 +88,8 @@ object UpdateNotificationManager {
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            // Replace the old six-hour schedule after an app update.
+            // UPDATE (not KEEP): an app update must replace a schedule enqueued by an earlier
+            // version, which may still carry a different interval.
             ExistingPeriodicWorkPolicy.UPDATE,
             updateCheckRequest,
         )

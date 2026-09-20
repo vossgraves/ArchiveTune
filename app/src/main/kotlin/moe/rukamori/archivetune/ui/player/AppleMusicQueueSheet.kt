@@ -311,10 +311,10 @@ fun AppleMusicQueueSheet(
             // Infinity pill — uses the Material "all_inclusive" (∞) drawable.
             // Semantics: "infinite playback" — clicking it fetches radio /
             // related songs via startRadioSeamlessly() and appends them to
-            // the queue so playback continues indefinitely. This fixes the
-            // "search → play → empty queue" issue: when the queue is empty
-            // (only the current song), tapping ∞ populates it with related
-            // songs without interrupting playback.
+            // the queue so playback continues indefinitely. When the queue
+            // holds only the current song (the state a fresh search-and-play
+            // leaves), tapping ∞ populates it with related songs without
+            // interrupting playback.
             // The pill is a one-shot action button (not a toggle), so it
             // always uses the inactive color.
             Box(

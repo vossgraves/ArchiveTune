@@ -51,9 +51,8 @@ fun rememberPlayerTitleActions(
             onTitleClick = {
                 mediaMetadata.album?.let { album ->
                     // collapseSoft animates the sheet AND updates its internal anchor, keeping
-                    // isCollapsed/isExpanded in sync. (Previously this used snapTo, which jumped
-                    // without animation and left the anchor stale, so tapping the title from the
-                    // home screen failed to collapse the player reliably.)
+                    // isCollapsed/isExpanded in sync — a plain snapTo would leave the anchor
+                    // stale, so collapsing from the home screen would not stick.
                     state.collapseSoft()
                     navController.navigate("album/${album.id}")
                 }

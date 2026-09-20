@@ -143,17 +143,14 @@ object TelegramChannelSync {
         // the chat here ensures the message index is warm before we page.
         runCatching { TelegramClient.openChat(chatId) }
             .onFailure { Timber.tag(TAG).w(it, "openChat(%d) failed (non-fatal)", chatId) }
-        // OpenChat on its own only marks the chat as viewed; it does not
-        // guarantee that TDLib has pulled any history from the server. Because
-        // SearchChatMessages is answered out of TDLib's *local* message
-        // database, a freshly added private channel has nothing to search and
-        // returns an empty page with no error — which is why the playlist
-        // materialised empty until "Refresh from Telegram" was tapped.
+        // OpenChat only marks the chat as viewed; it does not guarantee TDLib pulled any history
+        // from the server. SearchChatMessages is answered out of TDLib's *local* message database,
+        // so a freshly added private channel has nothing to search and returns an empty page with
+        // no error.
         //
-        // primeChatHistory forces the fetch with GetChatHistory and waits until
-        // messages actually land, so the search below has an index to hit. A
-        // false result is not fatal (the channel may genuinely be empty), so we
-        // still fall through to the paging loop.
+        // primeChatHistory forces the fetch with GetChatHistory and waits until messages actually
+        // land, so the search below has an index to hit. A false result is not fatal (the channel
+        // may genuinely be empty), so we still fall through to the paging loop.
         runCatching { TelegramClient.primeChatHistory(chatId) }
             .onFailure { Timber.tag(TAG).w(it, "primeChatHistory(%d) failed (non-fatal)", chatId) }
         // Small settle delay so the messages primeChatHistory pulled are fully

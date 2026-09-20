@@ -93,9 +93,9 @@ fun LibraryScreen(navController: NavController) {
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
-    // Spotify is no longer a tab of its own. It held playlists and nothing else, which put a
-    // Spotify playlist three taps from a YouTube one and left Spotify songs, artists and albums
-    // with nowhere to live. Every section now carries the same YTM/Spotify pills instead — see
+    // Spotify is not a tab of its own: it holds playlists and nothing else, which would put a
+    // Spotify playlist three taps from a YouTube one and leave Spotify songs, artists and albums
+    // with nowhere to live. Every section carries the same YTM/Spotify pills instead — see
     // LibrarySourcePills.
     val libraryFilters =
         remember {
@@ -161,9 +161,7 @@ fun LibraryScreen(navController: NavController) {
                     // height + mini player height + safe inset) is applied to each sub-screen's
                     // LazyColumn contentPadding instead, so the LAST items can be scrolled above
                     // the bar (minimum-height clearance) instead of being permanently hidden
-                    // behind it. Per user spec: "scrollable behind navigation bar too (full
-                    // screen width) and when I reach the bottom apply a minimum height so that
-                    // it doesn't get overlapped by mini player and navigation bar".
+                    // behind it.
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,

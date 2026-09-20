@@ -67,10 +67,10 @@ class LyricsPreloadManager
 
                         // The count value is the SOLE control for pre-loading.
                         // count = 0 means off; count > 0 means pre-load that many
-                        // songs. The old PreloadQueueLyricsEnabledKey master switch
-                        // was removed because it was confusing — users would set
-                        // the count but the switch was off, so nothing happened.
-                        // The count picker in Settings now shows "Off" when 0.
+                        // songs. Do NOT gate on PreloadQueueLyricsEnabledKey as well:
+                        // the two controls contradict each other, and a user who set
+                        // the count but left the switch off got nothing at all. The
+                        // count picker in Settings shows "Off" when 0.
                         val preloadCount = preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT
 
                         if (preloadCount <= 0) {
@@ -90,14 +90,13 @@ class LyricsPreloadManager
                             return@launch
                         }
 
-                        // Low Data Mode check removed: lyrics are plain text (~5KB
-                        // per song). Pre-loading 5 songs costs ~25KB — negligible
-                        // compared to streaming audio (1-3 MB/minute). The user
-                        // has explicitly set a preload count, so honoring that
-                        // intent is more important than saving a few KB on
-                        // metered networks. This was the root cause of "preload
-                        // doesn't work" — Low Data Mode defaults to ON, and on
-                        // cellular it silently skipped every preload.
+                        // Lyrics are plain text (~5KB per song): pre-loading 5 songs
+                        // costs ~25KB, negligible compared to streaming audio (1-3
+                        // MB/minute). The user has explicitly set a preload count, so
+                        // honouring that intent is more important than saving a few
+                        // KB on metered networks. Do NOT re-gate this on Low Data
+                        // Mode: it defaults to ON and would silently skip every
+                        // preload on cellular.
 
                         val nextSongs = getNextSongs(queue, currentIndex, preloadCount)
 
@@ -166,11 +165,10 @@ class LyricsPreloadManager
 
             try {
                 // Use getLyricsWithProvider so the providerName is preserved
-                // when storing the lyrics. Previously this called getLyrics()
-                // which discarded the providerName, so pre-loaded lyrics
-                // never showed the "Lyrics from [provider]" attribution
-                // until the user manually re-fetched via the lyrics search
-                // popup. Pass the providerName to
+                // when storing the lyrics: getLyrics() discards it, and the
+                // pre-loaded entity would then be missing the "Lyrics from
+                // [provider]" attribution until the user manually re-fetched
+                // via the lyrics search popup. Pass the providerName to
                 // replaceLyricsIfAbsentOrNotFound so the stored entity
                 // carries it from the moment of preload.
                 val lyricsResult = lyricsHelper.getLyricsWithProvider(song)

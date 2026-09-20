@@ -166,10 +166,8 @@ fun LibraryPlaylistsScreen(
         }
     val mutablePlaylists = remember { mutableStateListOf<Playlist>() }
 
-    // Persist the list/grid view choice across cold launches via DataStore.
-    // Previously this was only `rememberSaveable { mutableStateOf(false) }`
-    // which survives rotation but NOT process death — so every cold launch
-    // reverted to list view. Now the choice survives app restarts.
+    // Persist the list/grid view choice across cold launches via DataStore: rememberSaveable
+    // only survives rotation, so every cold launch would revert to list view.
     var playlistViewType by rememberEnumPreference(PlaylistViewTypeKey, defaultValue = LibraryViewType.LIST)
     val isGridView = playlistViewType == LibraryViewType.GRID
 
@@ -216,7 +214,7 @@ fun LibraryPlaylistsScreen(
         )
     }
 
-    // Issue 2: player-aware bottom padding
+    // Bottom padding sized for the nav bar and the mini player, so the last row is never hidden.
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -738,7 +736,7 @@ fun rememberArtworkCardColor(
         val hue = hsv[0]
 
         if (useDarkTheme) {
-            // Issue 6/3 fix: increased brightness for visibility in pure black mode
+            // Brighter s/v for visibility in pure black mode.
             val s = (hsv[1] * 0.45f).coerceIn(0.06f, 0.20f)
             val v = if (pureBlack) 0.18f else 0.12f
             Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, s, v)))

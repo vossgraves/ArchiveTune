@@ -216,9 +216,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             defaultValue = true,
         )
 
-    // Artwork sources. The Tidal toggle used to default to true as an inert stub; the code
-    // default is now false so updating users do not get unexpected Tidal network traffic.
-    // DataStore only stores values the user explicitly changed, so explicit choices are kept.
+    // Artwork sources. The Tidal toggle defaults to false so users do not get unexpected Tidal
+    // network traffic; DataStore only stores values the user explicitly changed, so an explicit
+    // choice is preserved either way.
     val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
         rememberPreference(
             ArchiveTuneCanvasKey,
@@ -282,8 +282,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             SwipeToSongKey,
             defaultValue = false,
         )
-    // Swipe-to-change-song (Task 7): moved from Appearance → Playback / queue group.
-    // Lets the user swipe the player thumbnail left/right to skip tracks.
+    // Swipe-to-change-song: lets the user swipe the player thumbnail left/right to skip tracks.
     val (swipeThumbnail, onSwipeThumbnailChange) =
         rememberPreference(
             SwipeThumbnailKey,
@@ -772,9 +771,8 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                // Swipe-to-change-song: moved here from Appearance (Task 7). Belongs with
-                // the other queue/skip behaviours. Includes the sensitivity dialog that
-                // was previously shown inline on the Appearance page.
+                // Swipe-to-change-song: belongs with the other queue/skip behaviours, including its
+                // sensitivity dialog.
                 item {
                     SwitchPreference(
                         modifier = positions.modifierFor("enable_swipe_thumbnail"),

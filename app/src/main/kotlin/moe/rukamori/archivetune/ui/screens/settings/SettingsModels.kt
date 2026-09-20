@@ -45,9 +45,9 @@ data class SettingsItem(
     /**
      * When true, the item is excluded from the visible groups on the main settings page
      * (so no row is rendered for it) but its [children] still participate in settings
-     * search. Use this when a pill has been moved into a sub-page (e.g. "Source" moved
-     * into Playback) but the original search index entries should keep working — tapping
-     * a child search result still navigates to the sub-page via [onClick].
+     * search. Use this for a pill that lives on a sub-page (e.g. "Source" in Playback)
+     * when the original search index entries should keep working — tapping a child search
+     * result still navigates to the sub-page via [onClick].
      */
     val hidden: Boolean = false,
 )

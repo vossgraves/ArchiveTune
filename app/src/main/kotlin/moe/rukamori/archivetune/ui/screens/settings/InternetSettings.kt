@@ -521,9 +521,9 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                                     try {
                                         YouTube.enableIpRotation()
                                         // enableIpRotation() succeeds even when every candidate
-                                        // proxy failed validation, which used to leave the switch
-                                        // on and the description stuck at "0 active proxies" with
-                                        // no explanation. Revert and say what happened instead.
+                                        // proxy failed validation, so the switch would read on with
+                                        // the description stuck at "0 active proxies" and no
+                                        // explanation. Revert and say what happened instead.
                                         if (YouTube.ipRotationActiveCount.value == 0) {
                                             YouTube.disableIpRotation()
                                             onIpRotationEnabledChange(false)

@@ -626,14 +626,12 @@ class SpotifyLibraryRepository
                         Spotify.myPlaylists(limit = limit, offset = offset).getOrThrow()
                     }
                 if (page.items.isEmpty()) break
-                // Loading-perf fix (ported from 4nx3b batch-8, 2026-08-29): the libraryV3
-                // GraphQL response often omits `tracks.totalCount` for leaf playlists, and the
-                // previous implementation fetched each missing count SEQUENTIALLY — one extra
-                // HTTP round-trip per playlist, so N playlists meant N serial calls plus 429
-                // Retry-After backoffs (easily 4-5s for 100 playlists). Parallelize the count
-                // lookups with a bounded concurrency so the wall time is roughly
-                // ceil(N / 8) round-trips instead of N. The semaphore matters: without it
-                // Spotify 429s the burst and the backoff compounds the wall time.
+                // The libraryV3 GraphQL response often omits `tracks.totalCount` for leaf
+                // playlists. Count lookups run with bounded concurrency so the wall time is
+                // roughly ceil(N / 8) round trips instead of N serial ones, each of which could
+                // carry its own 429 Retry-After backoff (easily 4-5s for 100 playlists). The
+                // semaphore matters: without it Spotify 429s the burst and the backoff compounds
+                // the wall time.
                 val pageItems = page.items
                 val enriched =
                     coroutineScope {

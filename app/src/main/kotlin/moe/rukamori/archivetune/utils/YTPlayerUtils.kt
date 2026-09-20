@@ -57,11 +57,11 @@ object YTPlayerUtils {
 
     /**
      * Failsafe probe: proves a freshly resolved stream URL is actually fetchable before handing it
-     * to the player. YouTube sometimes returns URLs that are already throttled or rejected (403),
-     * which previously surfaced as a player error even though other clients in the chain had
-     * working URLs. A dead probe demotes the client for this video so the chain automatically
-     * tries the next one. Only runs on URLs that were just resolved (never on cache hits) and is
-     * bounded by short timeouts so it adds at most ~2s to a failing track.
+     * to the player. YouTube sometimes returns URLs that are already throttled or rejected (403);
+     * without the probe such a URL surfaces as a player error even though other clients in the
+     * chain have working URLs. A dead probe demotes the client for this video so the chain
+     * automatically tries the next one. Only runs on URLs that were just resolved (never on cache
+     * hits) and is bounded by short timeouts so it adds at most ~2s to a failing track.
      */
     private val streamProbeClient =
         OkHttpClient
@@ -173,8 +173,8 @@ object YTPlayerUtils {
         )
 
     /**
-     * Embedded-player clients used to play age-restricted tracks, appended to the client order only
-     * while Content Settings → "Allow age-restricted content" is on.
+     * Embedded-player clients that can play age-restricted tracks; appended to the client order
+     * only while Content Settings → "Allow age-restricted content" is on.
      */
     private val AGE_GATE_BYPASS_CLIENTS: Array<YouTubeClient> =
         arrayOf(
@@ -1330,7 +1330,7 @@ object YTPlayerUtils {
                 // Failsafe: verify a freshly resolved URL is fetchable before committing to it.
                 // Cache hits are skipped (they were validated when first resolved). A dead probe
                 // (403/410 or network rejection) demotes this client for the video and moves on
-                // to the next format candidate — playback no longer dead-ends on a throttled URL.
+                // to the next format candidate instead of dead-ending on a throttled URL.
                 if (cached == null) {
                     val probeCode = probeStreamUrl(candidateUrl)
                     val probeAlive = probeCode != null && probeCode in 200..399

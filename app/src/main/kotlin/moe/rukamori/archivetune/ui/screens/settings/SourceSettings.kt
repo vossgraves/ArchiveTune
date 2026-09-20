@@ -158,11 +158,10 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                         val before = PoolAccountManager.lastRefreshAtMillis
                         val ok =
                             withContext(Dispatchers.IO) {
-                                // Deliberately NOT forced. A tap used to bypass the interval, which
-                                // made the interval decorative: the pool's database is woken by
-                                // every fetch, so "I tapped it" was spending the same budget the
-                                // interval exists to protect. The tap now fetches only when the
-                                // cached copy is actually due.
+                                // Deliberately NOT forced. A tap must not bypass the interval:
+                                // the pool's database is woken by every fetch, so "I tapped it"
+                                // would spend the same budget the interval exists to protect.
+                                // The tap fetches only when the cached copy is actually due.
                                 val accountsOk = PoolAccountManager.refresh(context)
                                 // Re-discover + re-verify community Tidal instances, but only when
                                 // that refresh really happened — otherwise this is a second network

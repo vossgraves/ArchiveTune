@@ -57,9 +57,9 @@ object AiLyricsRomanization {
         /**
          * True when AI romanisation should take over from the built-in romanisers.
          *
-         * Deliberately independent of [auto]: the user asked for the built-in romanisation to stop as
-         * soon as AI romanisation is switched on, so a configured-but-not-automatic setup shows AI
-         * results only, on demand, rather than silently mixing the two engines' spellings.
+         * Deliberately independent of [auto]: switching AI romanisation on stops the built-in
+         * romanisers immediately, so a configured-but-not-automatic setup shows AI results only, on
+         * demand, rather than silently mixing the two engines' spellings.
          */
         val active: Boolean get() = enabled && config.canCallApi
 

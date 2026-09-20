@@ -159,10 +159,9 @@ fun HomeScreen(
     ) {
         when (val state = screenState) {
             HomeScreenState.Loading -> {
-                // BitChord behaviour (2026-09-03 redesign): the first page of shelves
-                // is stood in for by shimmer skeletons laid out to the real metrics,
-                // rather than a centered spinner that throws the layout away and
-                // snaps everything down when the data lands.
+                // The first page of shelves is stood in for by shimmer skeletons laid out to the real
+                // metrics, rather than a centered spinner that throws the layout away and snaps
+                // everything down when the data lands.
                 HomeSkeletonFeed()
             }
 
@@ -277,8 +276,6 @@ private fun HomeContent(
             .takeIf { it.quickPicksMode == QuickPicks.QUICK_PICKS }
             ?.remoteQuickPicks
     Box(modifier = modifier.fillMaxSize()) {
-        // ── Tonal backdrop gradient (fade effect) removed ─────────────────── Per user request
-        // (2026-08-28): "Remove the home liquid glass buttons and fade effect".
         val pullState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
@@ -408,16 +405,12 @@ private fun HomeContent(
                                 )
                             }
                         }
-                        // Note: the local "Quick Picks" shelf (driven by
-                        // `uiState.quickPicks` and rendered by upstream's
-                        // `QuickPicksSection` composable) was intentionally
-                        // removed from this fork in commit 9bf3c6bd2 in favour
-                        // of the "Jump back in" hero (which is built from the
-                        // same listening-preference-based picks) plus the
-                        // remote YouTube Music "Quick picks" shelf above.
-                        // Restoring upstream's `QuickPicksSection` would
-                        // require porting back the composable and its
-                        // carousel dependencies — out of scope for this fix.
+                        // Note: upstream's local "Quick Picks" shelf
+                        // (`QuickPicksSection`, driven by `uiState.quickPicks`) is deliberately
+                        // absent here; the "Jump back in" hero is built from the same
+                        // listening-preference-based picks, and the remote YouTube Music "Quick
+                        // picks" shelf above covers the rest. Restoring the upstream composable
+                        // would mean porting back its carousel dependencies as well.
                     }
 
                     // "Recently Played" — horizontal square-card row with a
@@ -728,8 +721,7 @@ private fun HomeContent(
                         }
                     }
 
-                    // BitChord load-more behaviour (2026-09-03): another page of
-                    // shelves is stood in for by a single shelf-shaped skeleton at the
+                    // Another page of shelves is stood in for by a single shelf-shaped skeleton at the
                     // tail rather than a spinner block.
                     if (uiState.isLoadingMore) {
                         homeFeedMoreSkeleton()
@@ -762,10 +754,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.sectionSpacer(key: St
 }
 
 /**
- * The home feed while the first page is still loading (BitChord behaviour,
- * 2026-09-03): the greeting is stood in for by a title-shaped block and the
- * shelves by skeleton cards laid out to the real metrics, so nothing jumps
- * when the data lands.
+ * The home feed while the first page is still loading: the greeting is stood in for by a
+ * title-shaped block and the shelves by skeleton cards laid out to the real metrics, so nothing
+ * jumps when the data lands.
  */
 @Composable
 private fun HomeSkeletonFeed(modifier: Modifier = Modifier) {

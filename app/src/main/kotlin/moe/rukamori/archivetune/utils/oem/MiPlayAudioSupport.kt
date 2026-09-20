@@ -77,7 +77,6 @@ object MiPlayAudioSupport {
             Intent(ACTION_MIPLAY_DETAIL).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-        // TODO 是否需要 try catch？
         return try {
             context.packageManager
                 .resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null

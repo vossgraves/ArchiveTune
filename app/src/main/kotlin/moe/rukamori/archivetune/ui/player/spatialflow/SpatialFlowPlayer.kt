@@ -146,10 +146,9 @@ private val SfCanvasBackdropBlurRadius = 72.dp
 private const val SfCanvasBackdropMaxVideoEdgePx = 480
 
 // Apple Music's exact canvas scrim (AppleMusicPlayer.kt's backdropScrimBrush
-// canvas branch): black at 25% / 40% / 65% down the player. This replaces the
-// old five-stop "frost tint" — the reported "liquid blur is too bright" —
-// with the colors the Apple Music player style itself uses. Shared with the
-// lyrics overlay's moving-blur backdrop (same AM colors behind the lyrics).
+// canvas branch): black at 25% / 40% / 65% down the player — the colours the
+// Apple Music player style itself uses over its blurred canvas. Shared with the
+// lyrics overlay's moving-blur backdrop (same AM colours behind the lyrics).
 internal val SfCanvasScrimBrush =
     Brush.verticalGradient(
         0f to Color.Black.copy(alpha = 0.25f),
@@ -315,8 +314,9 @@ fun SpatialFlowPlayerContent(
     // Music haptics (SpatialFlow port): toggling writes the shared preference;
     // the engine owned by MusicService picks the change up through its prefs
     // listener and the PCM tap inside the audio processor chain starts feeding
-    // it — no permission needed (the old Visualizer tap required RECORD_AUDIO,
-    // which is why it silently failed when the mic permission was denied).
+    // it. No permission is needed, unlike the platform Visualizer, whose tap
+    // requires RECORD_AUDIO and therefore fails silently when the mic
+    // permission is denied.
     var hapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
 
     // ---- Canvas gating (Apple Music recipe) --------------------------------
@@ -324,9 +324,8 @@ fun SpatialFlowPlayerContent(
     // The canvas layers (frosted twin + sharp stage) STAY in composition while
     // lyrics are open; rendering stops in two steps. Playback freezes the
     // instant lyrics open — the decoder and both TextureView composites quit
-    // immediately (the canvas kept decoding behind the opaque lyrics overlay
-    // for the whole fade window — "the lyrics lag for the first few seconds",
-    // fine after close/reopen once everything was warm) — while the surfaces
+    // immediately, otherwise the canvas keeps decoding behind the opaque lyrics
+    // overlay for the whole fade window and the lyrics lag — while the surfaces
     // keep the frozen last frame for the circular reveal, then drop after the
     // fade window. Closing lyrics resumes playback + surfaces immediately; the
     // ExoPlayers are never disposed while lyrics are open, so the canvas
@@ -414,9 +413,9 @@ fun SpatialFlowPlayerContent(
             }
 
             // 2) Apple Music's exact canvas scrim: black at 0.25 / 0.40 / 0.65
-            // down the player — the colors the Apple Music player style itself
-            // paints over its blurred canvas backdrop (the old five-stop
-            // "frost tint" read as "the liquid blur is too bright").
+            // down the player — the colours the Apple Music player style itself
+            // paints over its blurred canvas backdrop, so the liquid blur reads
+            // correctly instead of too bright.
             Box(
                 modifier =
                     Modifier
@@ -472,9 +471,9 @@ fun SpatialFlowPlayerContent(
                 // SpatialFlow's exact top offset: the artwork slot is centered
                 // by formula, not by flexible spacers — `((screenHeight -
                 // albumArtSize) / 2f - 220.dp).coerceAtLeast(statusBar + 68.dp)`
-                // (FullPlayer.kt). The flexible Spacer weights that used to
-                // stand here stretched with leftover space and opened a gap
-                // between the metadata block and the seek bar.
+                // (FullPlayer.kt). Spacer weights stretch with the leftover
+                // space and open a gap between the metadata block and the seek
+                // bar.
                 val statusBarTopDp = LocalStableSystemBarsTopPadding.current
                 val minTopOffset = statusBarTopDp + 68.dp
                 val topOffset = ((screenHeight - albumArtSize) / 2f - 220.dp).coerceAtLeast(minTopOffset)

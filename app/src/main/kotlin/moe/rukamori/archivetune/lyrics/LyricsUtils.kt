@@ -1193,8 +1193,7 @@ object LyricsUtils {
             // instead of being silently dropped. Maps to the same vowel as the last
             // emitted character (e.g. "カ" + "ー" → "ka" + "a" = "kaa"). If there's
             // no previous vowel (start of string, or previous char was a consonant),
-            // we emit nothing — same as the old `"ー" to ""` map entry, but without
-            // losing information when a vowel IS present.
+            // we emit nothing.
             if (!consumed && katakana[i] == 'ー') {
                 val lastChar = romajiBuilder.lastOrNull()
                 val extension = when (lastChar) {
@@ -1445,12 +1444,9 @@ object LyricsUtils {
         text.any { char ->
             (char in '\u3040'..'\u309F') || // Hiragana
                 (char in '\u30A0'..'\u30FF') || // Katakana
-                // CJK Unified Ideographs (covers most common Kanji)
-                // Note: This range also includes many Chinese Hanzi.
-                // Differentiating Japanese Kanji from Chinese Hanzi solely based on Unicode
-                // ranges is challenging as they share many characters.
-                // For more accurate Japanese detection, one might need to analyze
-                // the presence of Hiragana/Katakana alongside Kanji.
+                // CJK Unified Ideographs (covers most common Kanji). This range also
+                // includes many Chinese Hanzi; the two scripts share characters, so a
+                // range check alone cannot tell them apart.
                 (char in '\u4E00'..'\u9FFF')
         }
 

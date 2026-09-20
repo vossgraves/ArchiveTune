@@ -207,10 +207,8 @@ private fun PillActionButton(
 ) {
     // The pill container color is a low-alpha tint of `onBackground` so it
     // reads as a subtle frosted surface against both the dark and light page
-    // surface. Previously this was a `Color.White.copy(alpha = ...)` tint
-    // which on a light-mode page made the pill almost invisible (white on
-    // off-white) and on a dark-mode page made it look like a solid white
-    // slab — neither matched the reference's subtle translucent pill.
+    // surface; a `Color.White` tint is instead invisible on a light page and
+    // a solid slab on a dark one.
     val onBackgroundColor = MaterialTheme.colorScheme.onBackground
     val containerColor = onBackgroundColor.copy(alpha = if (primary) 0.10f else 0.06f)
     Surface(
@@ -222,21 +220,16 @@ private fun PillActionButton(
         shape = RoundedCornerShape(percent = 50),
         color = containerColor,
     ) {
-        // Per user request (2026-08-28): "the play and shuffle icon and text are not centred in
-        // their pills. Fix it. not just in history page but everywhere.
+        // Icon and label are centred within the pill on every screen.
         Row(
             modifier =
                 Modifier
                     .fillMaxHeight()
-                    // Reduced from 22.dp to 16.dp so the pill label has more
-                    // horizontal breathing room. The previous 22.dp padding
-                    // on each side (= 44.dp total) plus the icon (20.dp) plus
-                    // the 8.dp gap left only ~9.dp for the label on a 1/3-width
-                    // pill allocation, which truncated "Play" → "P..." and
-                    // "Shuffle" → "S..." (see the parent Row comment for the
-                    // full-width breakdown). 16.dp is still generous enough
-                    // to read as a pill-shaped capsule, and matches the
-                    // reference's slightly tighter pill proportions.
+                    // 16.dp rather than 22.dp: the wider padding plus the
+                    // 20.dp icon and 8.dp gap left only ~9.dp for the label on
+                    // a 1/3-width pill allocation, truncating "Play" and
+                    // "Shuffle". Still roomy enough to read as a pill capsule,
+                    // and closer to the reference's tighter proportions.
                     .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -278,9 +271,7 @@ private fun TrailingIconButton(
     ) {
         // fillMaxHeight() so the IconButton is vertically centered within
         // the 46dp pill, matching the centered look of the PillActionButton
-        // next to it (per user request 2026-08-28: "the play and shuffle
-        // icon and text are not centred in their pills. Fix it. not just
-        // in history page but everywhere. Fix it.").
+        // next to it.
         Box(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(),
             contentAlignment = Alignment.Center,

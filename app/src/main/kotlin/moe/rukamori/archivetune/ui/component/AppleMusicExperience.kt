@@ -81,10 +81,10 @@ fun rememberAppleMusicExperience(): Boolean =
 /**
  * Sets the Apple Music Experience, and moves the player design style with it.
  *
- * The experience owns the player style while it is on, so every way of setting it has to carry the
- * same coupling. Writing [AppleMusicExperienceKey] on its own — which the settings-search switch
- * did — left the switch reading "on" with the player still on the old style, and no record of the
- * style to give back.
+ * The experience owns the player style while it is on, so every way of setting it has to carry
+ * the same coupling: writing [AppleMusicExperienceKey] on its own would leave the switch
+ * reading "on" with the player still on its previous style, and no record of the style to
+ * give back.
  */
 @Composable
 fun rememberAppleMusicExperienceToggle(): (Boolean) -> Unit {

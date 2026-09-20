@@ -593,12 +593,8 @@ fun KeepListeningSection(
 ) {
     val context = LocalContext.current
 
-    // Per user request (2026-08-28): "Whenever I play a song from forgotten
-    // favourites, keep listening or any other section I've to play each of
-    // them manually because the queue for each song is different. it should
-    // be same. For example if I play a song in recently listened all the
-    // other next songs in queue should be from recently listened one by one
-    // in order".
+    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
+    // than starting a per-song radio.
     //
     // Filter keepListening to songs only (the section is a mix of Song /
     // Album / Artist / Playlist) so we can build a ListQueue from just the
@@ -670,12 +666,8 @@ fun ForgottenFavoritesSection(
     val context = LocalContext.current
     val distinctForgottenFavorites = remember(forgottenFavorites) { forgottenFavorites.distinctBy { it.id } }
 
-    // Per user request (2026-08-28): "Whenever I play a song from
-    // forgotten favourites, keep listening or any other section I've to
-    // play each of them manually because the queue for each song is
-    // different. it should be same. For example if I play a song in
-    // recently listened all the other next songs in queue should be
-    // from recently listened one by one in order".
+    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
+    // than starting a per-song radio.
     //
     // Build the queue from the entire section list (with the tapped song
     // as the startIndex) so Next/Previous walks the section list in
@@ -814,10 +806,8 @@ fun HomePageSectionContent(
 ) {
     val context = LocalContext.current
 
-    // Per user request (2026-08-28): "Whenever I play a song from
-    // forgotten favourites, keep listening or any other section I've to
-    // play each of them manually because the queue for each song is
-    // different. it should be same."
+    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
+    // than starting a per-song radio.
     //
     // For remote YouTube home sections (Quick Picks / Live Performances
     // / Other Remote shelves), build the queue from the section's
@@ -935,10 +925,9 @@ fun SimilarRecommendationsTitle(
     HomeSectionHeader(
         label = stringResource(R.string.similar_to),
         title = recommendation.title.title,
-        // Thumbnail (album art) removed per user request — the "Similar to"
-        // label + artist/album title is enough context without the leading
-        // image. Keeps these headers visually consistent with the other
-        // text-only section headers on the home page.
+        // Text-only header: the "Similar to" label plus the artist/album title is enough
+        // context without a leading thumbnail, and it keeps these headers consistent with
+        // the other text-only section headers on the home page.
         onClick = {
             when (recommendation.title) {
                 is Song -> {
@@ -1004,8 +993,8 @@ fun HomePageSectionTitle(
                     // Sized ImageRequest — same rationale as in
                     // SimilarRecommendationsTitle: request a thumbnail bucket
                     // close to 56dp instead of the original full-res artwork
-                    // the CDN would otherwise serve. This is the slow-loading
-                    // "playlist thumbnail" the user reported on the home feed.
+                    // the CDN would otherwise serve, which is the slow-loading
+                    // one on the home feed.
                     val imageRequest =
                         remember(thumbnailUrl, thumbSizePx) {
                             ImageRequest
@@ -1125,10 +1114,8 @@ fun JumpBackInHeroSection(
     val context = LocalContext.current
     if (recentlyPlayed.isEmpty()) return
 
-    // Per user request (2026-08-28): "Whenever I play a song from
-    // forgotten favourites, keep listening or any other section I've to
-    // play each of them manually because the queue for each song is
-    // different. it should be same."
+    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
+    // than starting a per-song radio.
     //
     // Build the queue from the entire hero list with the tapped song as the
     // startIndex, so Next/Previous walks the shelf in order.
@@ -1213,12 +1200,8 @@ fun RecentlyPlayedSection(
     val distinctSongs = remember(recentlyPlayed) { recentlyPlayed.distinctBy { it.id } }
     if (distinctSongs.isEmpty()) return
 
-    // Per user request (2026-08-28): "Whenever I play a song from forgotten
-    // favourites, keep listening or any other section I've to play each of
-    // them manually because the queue for each song is different. it should
-    // be same. For example if I play a song in recently listened all the
-    // other next songs in queue should be from recently listened one by one
-    // in order".
+    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
+    // than starting a per-song radio.
     fun playFromSection(startIndex: Int) {
         if (distinctSongs.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, distinctSongs.lastIndex)

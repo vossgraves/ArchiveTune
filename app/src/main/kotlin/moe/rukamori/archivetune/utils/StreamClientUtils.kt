@@ -24,9 +24,8 @@ import java.util.Locale
  * Shared utility for resolving the correct User-Agent and Origin/Referer headers
  * based on the stream client query parameters embedded in YouTube stream URLs.
  *
- * This centralizes the logic that was previously duplicated across:
- * - MusicService OkHttp interceptor
- * - DownloadUtil OkHttp interceptor
+ * Single source of truth for the MusicService and DownloadUtil OkHttp interceptors,
+ * which must resolve these headers identically.
  */
 object StreamClientUtils {
     data class StreamRequestProfile(

@@ -100,13 +100,10 @@ fun BottomSheetMenu(
                 modifier =
                     Modifier
                         .fillMaxWidth(),
-                // NOTE: previously had `padding(horizontal = 20.dp)` here, which
-                // left 20dp gutters on both sides of the menu content and made
-                // the bottom sheet look like a narrow centered column. Removed
-                // per user request — the menu now opens full-screen width by
-                // default. The MenuSurfaceSection cards inside still have
-                // their own rounded corners (MaterialTheme.shapes.extraLarge)
-                // and look fine edge-to-edge.
+                // No horizontal padding here: 20dp gutters on both sides made the bottom sheet
+                // look like a narrow centred column, so the menu opens full-screen width by
+                // default. The MenuSurfaceSection cards inside still have their own rounded
+                // corners (MaterialTheme.shapes.extraLarge) and look fine edge-to-edge.
             ) {
                 state.content(this)
             }

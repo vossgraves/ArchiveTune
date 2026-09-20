@@ -339,10 +339,8 @@ internal fun PillChip(
             contentColor.copy(alpha = if (isDark) 0.08f else 0.06f)
         }
 
-    // Only the pill's background reacts to selection — the icon/label tint
-    // stays constant (user request 2026-09-12: "the text in the pills
-    // shouldn't change their colors when they're enabled, only the
-    // background of the pill should change").
+    // Only the pill's background reacts to selection — the icon/label tint stays
+    // constant, so enabling a pill never recolours its text.
     val tintColor = contentColor.copy(alpha = 0.8f)
     val progressColor = accentColor.copy(alpha = if (isDark) 0.35f else 0.25f)
 

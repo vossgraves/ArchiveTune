@@ -6,7 +6,7 @@
  */
 
 /*
- * Bitchord player style — lyrics model + lyrics panel.
+ * Bitchord player style — lyrics model + collapsed-player lyric strip.
  *
  * Ported from BitChord (https://github.com/kushagrasinghx/BitChord):
  *  - data/lyrics/LyricLine.kt (model, verbatim)
@@ -15,10 +15,9 @@
  *    LyricsUnavailableLine, LyricsLoadingLine, keepScrollInList,
  *    bleedHorizontally, fadingEdges)
  *
- * The full-screen LyricsPanel that used to live here is gone: the lyrics window now opens the
- * app's own LyricsV2 / LyricsEnhanced, so the style follows the Lyrics settings like every other
- * surface. What remains is the short wrapped strip on the collapsed player, which has no list around
- * it and is what BitChord's character sweep was actually for.
+ * Only the short wrapped lyric strip on the collapsed player lives here: it has no list around it,
+ * which is what BitChord's character sweep was for. The full-screen lyrics window opens the app's
+ * own LyricsV2 / LyricsEnhanced, so it follows the Lyrics settings like every other surface.
  *
  * Adaptations for ArchiveTune (documented inline):
  *  - a mapper from ArchiveTune's parsed lyrics ([LyricsEntry] with
@@ -31,8 +30,8 @@
  *  - BitChord's per-lyric lyric-clock follows the player position; the entry
  *    composable passes position + isPlaying in.
  *
- * Belongs to the Bitchord player style, with one deliberate exception to the self-containment rule
- * (2026-09-01, amended 2026-09-07): [SweptLyricLine], [rememberLyricClock] and [toBitChordLyrics]
+ * Belongs to the Bitchord player style, with one deliberate exception to the self-containment rule:
+ * [SweptLyricLine], [rememberLyricClock] and [toBitChordLyrics]
  * are also drawn by SimpMusic's current-line band. That band highlighted whole lines while this one
  * swept word by word off the same timings, and a second copy of the sweep is a second thing to fix
  * every time a provider changes shape. Everything else here stays Bitchord's.

@@ -358,8 +358,7 @@ class PlayerConnection(
 
     /**
      * Start radio from [seed]: seamless hand-off when it is already the playing
-     * song, a fresh radio queue otherwise (from rukamori PR #1164 — the player
-     * menu's "Start radio" used to always re-seed from the current song).
+     * song, a fresh radio queue otherwise (from rukamori PR #1164).
      */
     fun startRadio(seed: MediaMetadata) {
         if (mediaMetadata.value?.id == seed.id) {
@@ -523,9 +522,8 @@ class PlayerConnection(
             // once recovery succeeds, which the user perceives as a spurious error popup.
             // We still log via reportException above (in onPlayerErrorChanged) for diagnostics.
             isRecoverableMediaCodecStateError(playbackError) -> {
-                // Intentionally do NOT update error.value; let recovery run silently.
-                // When recovery succeeds, onPlayerErrorChanged(null) will fire and reset
-                // any previously-exposed error state.
+                // Intentionally do NOT update error.value; let recovery run silently —
+                // on success onPlayerErrorChanged(null) fires and resets error state.
             }
 
             playbackError !== dismissedPlaybackError -> {

@@ -668,13 +668,8 @@ internal fun PlaybackSourceSections(
             )
         }
 
-        // Credit row — required by vivi-music's GPL-3.0 porting guidelines.
-        // Previously this lived on a separate JioSettings sub-page that was
-        // reached via an "Open JioSaavn settings" row below the quality picker.
-        // Per design feedback, that navigation row was removed and the credit
-        // was hoisted up to sit directly beneath the audio-quality selection
-        // (its standalone JioSettings.kt page is left in place but no longer
-        // linked from the Sources screen).
+        // Credit row — required by vivi-music's GPL-3.0 porting guidelines, so it sits directly
+        // beneath the audio-quality selection instead of behind its own sub-page.
         item {
             PreferenceEntry(
                 title = { Text(stringResource(R.string.jiosaavn_credit)) },

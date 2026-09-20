@@ -18,11 +18,10 @@ import androidx.compose.ui.unit.dp
  * Per-position shape for grouped list items: the first item curves its top corners, the last
  * item curves its bottom corners, single items are fully rounded, middle items stay flat.
  *
- * PORT-NOTE: vivi's original implementation builds these from
- * `racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape` (squircle "smooth"
- * corners at 60% smoothness). ArchiveTune does not depend on that library, so the identical
- * corner layout is expressed with plain [RoundedCornerShape]; the radius parameter and the
- * first/middle/last positional logic match vivi 1:1.
+ * vivi builds these from `racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape`
+ * (squircle "smooth" corners at 60% smoothness). ArchiveTune does not depend on that library,
+ * so the identical corner layout is expressed with plain [RoundedCornerShape]; the radius
+ * parameter and the first/middle/last positional logic match vivi 1:1.
  */
 fun listItemShape(index: Int, count: Int, radius: Dp = 16.dp): Shape {
     return when {
