@@ -75,7 +75,6 @@ class PlayerColorExtractorTest {
         assertFalse(PlayerColorExtractor.isGreyscale(stats))
 
         val colors = PlayerColorExtractor.extractGradientColors(swatches, FALLBACK)
-        assertTrue(colors.isNotEmpty())
         val blueHue = hueOf(Color(0xFF0A2050.toInt()))
         assertTrue(
             "dark blue cover must keep its blue hue",

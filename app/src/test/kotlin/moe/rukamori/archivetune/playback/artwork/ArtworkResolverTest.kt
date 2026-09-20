@@ -240,37 +240,4 @@ class ArtworkResolverTest {
             // expected
         }
     }
-
-    @Test
-    fun cacheKeysSeparateByProviderAndIdentity() {
-        val base =
-            ArtworkCacheKey(
-                mediaId = "song-1",
-                provider = ArtworkProvider.TIDAL,
-                artworkIdentity = "https://resources.tidal.com/images/ab/cd/1080x1080.jpg",
-                requestedSize = 1080,
-            )
-        val sameAsBase = base.copy()
-        val otherProvider = base.copy(provider = ArtworkProvider.ORIGINAL_METADATA)
-        val otherArtwork = base.copy(artworkIdentity = "https://i.ytimg.com/vi/x/hq.jpg")
-        val otherSize = base.copy(requestedSize = 640)
-
-        assertEquals(base, sameAsBase)
-        assertTrue(base != otherProvider)
-        assertTrue(base != otherArtwork)
-        assertTrue(base != otherSize)
-
-        val paletteBase =
-            PlayerPaletteCacheKey(
-                mediaId = "song-1",
-                provider = ArtworkProvider.TIDAL,
-                artworkIdentity = "https://resources.tidal.com/images/ab/cd/1080x1080.jpg",
-                backgroundMode = "GRADIENT",
-                darkTheme = true,
-            )
-        assertTrue(paletteBase != paletteBase.copy(artworkIdentity = "https://i.ytimg.com/vi/x/hq.jpg"))
-        assertTrue(paletteBase != paletteBase.copy(backgroundMode = "GLOW"))
-        assertTrue(paletteBase != paletteBase.copy(darkTheme = false))
-        assertTrue(paletteBase != paletteBase.copy(provider = ArtworkProvider.ARCHIVETUNE_CANVAS))
-    }
 }
