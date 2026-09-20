@@ -22,6 +22,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.common.collect.ImmutableList
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,9 @@ import moe.rukamori.archivetune.googledrive.ObserveGoogleDriveSyncSettingsUseCas
 import moe.rukamori.archivetune.googledrive.UpdateGoogleDriveSyncUseCase
 import moe.rukamori.archivetune.playback.MusicService
 import moe.rukamori.archivetune.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
+import moe.rukamori.archivetune.playlistexport.ExportPlaylistAsCsvUseCase
+import moe.rukamori.archivetune.playlistexport.ExportablePlaylist
+import moe.rukamori.archivetune.playlistexport.ObserveExportablePlaylistsUseCase
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.reportException
 import org.xmlpull.v1.XmlPullParser
@@ -148,6 +152,42 @@ data class GoogleDriveSyncUiData(
     val isSyncing: Boolean,
 )
 
+sealed interface ExportPlaylistScreenState {
+    data object Loading : ExportPlaylistScreenState
+
+    @Immutable
+    data class Success(
+        val playlists: ImmutableList<ExportPlaylistUiModel>,
+        val isPickerVisible: Boolean,
+        val isExporting: Boolean,
+    ) : ExportPlaylistScreenState
+
+    data object Empty : ExportPlaylistScreenState
+
+    @Immutable
+    data class Error(
+        @StringRes val messageRes: Int,
+    ) : ExportPlaylistScreenState
+}
+
+@Immutable
+data class ExportPlaylistUiModel(
+    val id: String,
+    val name: String,
+    val songCount: Int,
+)
+
+sealed interface ExportPlaylistEvent {
+    @Immutable
+    data class CreateDocument(
+        val suggestedFileName: String,
+    ) : ExportPlaylistEvent
+
+    @Immutable
+    data class ShowMessage(
+        @StringRes val messageRes: Int,
+    ) : ExportPlaylistEvent
+}
 internal fun readCsvRecords(reader: Reader): Sequence<List<String>> =
     sequence {
         val pushbackReader = if (reader is PushbackReader) reader else PushbackReader(reader, 1)
@@ -244,6 +284,8 @@ class BackupRestoreViewModel
         private val googleDriveClient: GoogleDriveClient,
         private val googleDriveSyncRepository: moe.rukamori.archivetune.googledrive.GoogleDriveSyncRepository,
         @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+        private val observeExportablePlaylists: ObserveExportablePlaylistsUseCase,
+        private val exportPlaylistAsCsv: ExportPlaylistAsCsvUseCase,
     ) : ViewModel() {
         private val _backupRestoreProgress = MutableStateFlow<BackupRestoreProgressUi?>(null)
         val backupRestoreProgress: StateFlow<BackupRestoreProgressUi?> = _backupRestoreProgress.asStateFlow()
@@ -257,10 +299,20 @@ class BackupRestoreViewModel
         private val _scheduledBackupEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
         val scheduledBackupEvent: SharedFlow<Int> = _scheduledBackupEvent.asSharedFlow()
 
+        private val _exportPlaylistState = MutableStateFlow<ExportPlaylistScreenState>(ExportPlaylistScreenState.Loading)
+        val exportPlaylistState: StateFlow<ExportPlaylistScreenState> = _exportPlaylistState.asStateFlow()
+
+        private val _exportPlaylistEvent = MutableSharedFlow<ExportPlaylistEvent>(extraBufferCapacity = 1)
+        val exportPlaylistEvent: SharedFlow<ExportPlaylistEvent> = _exportPlaylistEvent.asSharedFlow()
+
         private var scheduledBackupSettings: ScheduledBackupSettings? = null
         private var showCustomDatePicker = false
         private var scheduledBackupUpdateJob: Job? = null
         private var manualBackupJob: Job? = null
+        private var exportablePlaylists: ImmutableList<ExportablePlaylist> = ImmutableList.of()
+        private var pendingExportPlaylistId: String? = null
+        private var exportPlaylistListJob: Job? = null
+        private var exportPlaylistJob: Job? = null
 
         // --- Google Drive sync state ----------------------------------------------------------
         private val _googleDriveSyncState =
@@ -296,6 +348,126 @@ class BackupRestoreViewModel
                         publishGoogleDriveSyncState()
                     }
             }
+            observeExportPlaylists()
+        }
+
+        fun onExportPlaylistClick() {
+            when (val state = _exportPlaylistState.value) {
+                ExportPlaylistScreenState.Loading -> Unit
+                ExportPlaylistScreenState.Empty -> {
+                    _exportPlaylistEvent.tryEmit(
+                        ExportPlaylistEvent.ShowMessage(R.string.export_playlist_empty),
+                    )
+                }
+
+                is ExportPlaylistScreenState.Error -> observeExportPlaylists()
+                is ExportPlaylistScreenState.Success -> {
+                    if (!state.isExporting) {
+                        _exportPlaylistState.value = state.copy(isPickerVisible = true)
+                    }
+                }
+            }
+        }
+
+        fun onExportPlaylistPickerDismissed() {
+            val state = _exportPlaylistState.value as? ExportPlaylistScreenState.Success ?: return
+            if (state.isPickerVisible) {
+                _exportPlaylistState.value = state.copy(isPickerVisible = false)
+            }
+        }
+
+        fun onExportPlaylistSelected(playlistId: String) {
+            val state = _exportPlaylistState.value as? ExportPlaylistScreenState.Success ?: return
+            if (state.isExporting) return
+            val playlist = exportablePlaylists.firstOrNull { item -> item.id == playlistId } ?: return
+            pendingExportPlaylistId = playlist.id
+            _exportPlaylistState.value = state.copy(isPickerVisible = false)
+            _exportPlaylistEvent.tryEmit(
+                ExportPlaylistEvent.CreateDocument(playlist.suggestedFileName),
+            )
+        }
+
+        fun onExportPlaylistDestinationSelected(destination: Uri?) {
+            val playlistId = pendingExportPlaylistId
+            pendingExportPlaylistId = null
+            if (destination == null || playlistId == null || exportPlaylistJob?.isActive == true) return
+
+            val state = _exportPlaylistState.value as? ExportPlaylistScreenState.Success ?: return
+            _exportPlaylistState.value = state.copy(isExporting = true)
+            exportPlaylistJob =
+                viewModelScope.launch {
+                    try {
+                        exportPlaylistAsCsv(playlistId = playlistId, destination = destination)
+                        _exportPlaylistEvent.emit(
+                            ExportPlaylistEvent.ShowMessage(R.string.export_playlist_success),
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (exception: Exception) {
+                        reportException(exception)
+                        _exportPlaylistState.value =
+                            ExportPlaylistScreenState.Error(R.string.export_playlist_failed_retry)
+                        _exportPlaylistEvent.emit(
+                            ExportPlaylistEvent.ShowMessage(R.string.export_playlist_failed),
+                        )
+                    } finally {
+                        val currentState = _exportPlaylistState.value
+                        if (currentState is ExportPlaylistScreenState.Success && currentState.isExporting) {
+                            _exportPlaylistState.value =
+                                if (currentState.playlists.isEmpty()) {
+                                    ExportPlaylistScreenState.Empty
+                                } else {
+                                    currentState.copy(isExporting = false)
+                                }
+                        }
+                    }
+                }
+        }
+
+        private fun observeExportPlaylists() {
+            exportPlaylistListJob?.cancel()
+            _exportPlaylistState.value = ExportPlaylistScreenState.Loading
+            exportPlaylistListJob =
+                viewModelScope.launch {
+                    observeExportablePlaylists()
+                        .catch { exception ->
+                            if (exception is CancellationException) throw exception
+                            reportException(exception)
+                            _exportPlaylistState.value =
+                                ExportPlaylistScreenState.Error(R.string.export_playlist_load_failed_retry)
+                        }.collect { playlists ->
+                            exportablePlaylists = ImmutableList.copyOf(playlists)
+                            if (playlists.isEmpty()) {
+                                val currentState = _exportPlaylistState.value as? ExportPlaylistScreenState.Success
+                                _exportPlaylistState.value =
+                                    if (currentState?.isExporting == true) {
+                                        currentState.copy(
+                                            playlists = ImmutableList.of(),
+                                            isPickerVisible = false,
+                                        )
+                                    } else {
+                                        ExportPlaylistScreenState.Empty
+                                    }
+                            } else {
+                                val currentState = _exportPlaylistState.value as? ExportPlaylistScreenState.Success
+                                _exportPlaylistState.value =
+                                    ExportPlaylistScreenState.Success(
+                                        playlists =
+                                            ImmutableList.copyOf(
+                                                playlists.map { playlist ->
+                                                    ExportPlaylistUiModel(
+                                                        id = playlist.id,
+                                                        name = playlist.name,
+                                                        songCount = playlist.songCount,
+                                                    )
+                                                },
+                                            ),
+                                        isPickerVisible = currentState?.isPickerVisible == true,
+                                        isExporting = currentState?.isExporting == true,
+                                    )
+                            }
+                        }
+                }
         }
 
         private fun emitProgress(

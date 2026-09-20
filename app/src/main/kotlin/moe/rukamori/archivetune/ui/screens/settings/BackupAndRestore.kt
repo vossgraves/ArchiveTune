@@ -30,7 +30,10 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -67,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -92,6 +97,9 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.BackupCategory
 import moe.rukamori.archivetune.viewmodels.BackupRestoreViewModel
+import moe.rukamori.archivetune.viewmodels.ExportPlaylistEvent
+import moe.rukamori.archivetune.viewmodels.ExportPlaylistScreenState
+import moe.rukamori.archivetune.viewmodels.ExportPlaylistUiModel
 import moe.rukamori.archivetune.viewmodels.GoogleDriveSyncScreenState
 import moe.rukamori.archivetune.viewmodels.GoogleDriveSyncUiData
 import moe.rukamori.archivetune.viewmodels.ScheduledBackupScreenState
@@ -149,6 +157,7 @@ fun BackupAndRestore(
     val backupRestoreProgress by viewModel.backupRestoreProgress.collectAsStateWithLifecycle()
     val scheduledBackupState by viewModel.scheduledBackupState.collectAsStateWithLifecycle()
     val googleDriveSyncState by viewModel.googleDriveSyncState.collectAsStateWithLifecycle()
+    val exportPlaylistState by viewModel.exportPlaylistState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -236,6 +245,24 @@ fun BackupAndRestore(
                 }
             }
         }
+    val exportPlaylistLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+            viewModel.onExportPlaylistDestinationSelected(uri)
+        }
+
+    LaunchedEffect(viewModel, context, exportPlaylistLauncher) {
+        viewModel.exportPlaylistEvent.collect { event ->
+            when (event) {
+                is ExportPlaylistEvent.CreateDocument -> {
+                    exportPlaylistLauncher.launch(event.suggestedFileName)
+                }
+
+                is ExportPlaylistEvent.ShowMessage -> {
+                    snackbarHostState.showSnackbar(context.getString(event.messageRes))
+                }
+            }
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -410,6 +437,27 @@ fun BackupAndRestore(
                         onClick = { importPlaylistFromCsv.launch(CSV_MIME_TYPES) },
                     )
                 }
+
+                item {
+                    val exportState = exportPlaylistState
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.export_playlist_csv)) },
+                        description =
+                            stringResource(
+                                when (exportState) {
+                                    ExportPlaylistScreenState.Loading -> R.string.export_playlist_loading
+                                    ExportPlaylistScreenState.Empty -> R.string.export_playlist_empty
+                                    is ExportPlaylistScreenState.Error -> exportState.messageRes
+                                    is ExportPlaylistScreenState.Success -> R.string.export_playlist_csv_description
+                                },
+                            ),
+                        icon = { Icon(painterResource(R.drawable.download), null) },
+                        onClick = viewModel::onExportPlaylistClick,
+                        isEnabled =
+                            exportState !is ExportPlaylistScreenState.Loading &&
+                                (exportState as? ExportPlaylistScreenState.Success)?.isExporting != true,
+                    )
+                }
             }
 
         }
@@ -479,6 +527,15 @@ fun BackupAndRestore(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+
+    val exportState = exportPlaylistState
+    if (exportState is ExportPlaylistScreenState.Success && exportState.isPickerVisible) {
+        ExportPlaylistPickerDialog(
+            playlists = exportState.playlists,
+            onPlaylistSelected = viewModel::onExportPlaylistSelected,
+            onDismiss = viewModel::onExportPlaylistPickerDismissed,
+        )
     }
 
     // Pre-picker help dialog. Explains to the user that they MUST switch to the "Drive"
@@ -588,13 +645,126 @@ fun BackupAndRestore(
         }
     }
 
+    val isExportingPlaylist = (exportPlaylistState as? ExportPlaylistScreenState.Success)?.isExporting == true
     LoadingScreen(
-        isVisible = backupRestoreProgress != null || isProgressStarted,
+        isVisible = backupRestoreProgress != null || isProgressStarted || isExportingPlaylist,
         value = backupRestoreProgress?.percent ?: progressPercentage,
-        title = backupRestoreProgress?.title,
-        stepText = backupRestoreProgress?.step ?: progressStatus,
-        indeterminate = backupRestoreProgress?.indeterminate ?: false,
+        title =
+            backupRestoreProgress?.title
+                ?: if (isExportingPlaylist) stringResource(R.string.export_playlist_in_progress) else null,
+        stepText =
+            backupRestoreProgress?.step
+                ?: if (isExportingPlaylist) stringResource(R.string.export_playlist_writing) else progressStatus,
+        indeterminate = backupRestoreProgress?.indeterminate ?: isExportingPlaylist,
     )
+}
+
+@Composable
+private fun ExportPlaylistPickerDialog(
+    playlists: ImmutableList<ExportPlaylistUiModel>,
+    onPlaylistSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val dialogModifier =
+        remember {
+            Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+        }
+    val listModifier =
+        remember {
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 480.dp)
+        }
+
+    DefaultDialog(
+        onDismiss = onDismiss,
+        modifier = dialogModifier,
+        title = { Text(stringResource(R.string.export_playlist_picker_title)) },
+        constrainContentHeight = true,
+        buttons = {
+            TextButton(
+                onClick = onDismiss,
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    ) {
+        LazyColumn(
+            modifier = listModifier,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(
+                items = playlists,
+                key = ExportPlaylistUiModel::id,
+                contentType = { ExportPlaylistUiModel::class },
+            ) { playlist ->
+                ExportPlaylistItem(
+                    playlist = playlist,
+                    onSelected = onPlaylistSelected,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExportPlaylistItem(
+    playlist: ExportPlaylistUiModel,
+    onSelected: (String) -> Unit,
+) {
+    val onClick = remember(playlist.id, onSelected) { { onSelected(playlist.id) } }
+    val itemModifier = remember { Modifier.fillMaxWidth() }
+    val rowModifier =
+        remember {
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        }
+    val playlistIconModifier = remember { Modifier.size(24.dp) }
+    Surface(
+        onClick = onClick,
+        modifier = itemModifier,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = rowModifier,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val textModifier =
+                remember {
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp)
+                }
+            Icon(
+                painter = painterResource(R.drawable.playlist_local),
+                contentDescription = null,
+                modifier = playlistIconModifier,
+            )
+            Column(modifier = textModifier) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                painter = painterResource(R.drawable.download),
+                contentDescription = null,
+                modifier = playlistIconModifier,
+            )
+        }
+    }
 }
 
 @Composable
