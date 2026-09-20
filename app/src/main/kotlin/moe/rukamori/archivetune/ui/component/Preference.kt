@@ -412,7 +412,7 @@ fun <T> ListPreference(
     selectedValue: T,
     values: List<T>,
     valueText: @Composable (T) -> String,
-    valueDescription: (@Composable (T) -> String?)? = null,
+    valueDescription: (@Composable (T) -> String)? = null,
     onValueSelected: (T) -> Unit,
     isEnabled: Boolean = true,
 ) {
@@ -499,7 +499,7 @@ internal fun <T> PreferenceSelectionBottomSheet(
     values: List<T>,
     selectedValue: T,
     valueText: @Composable (T) -> String,
-    valueDescription: (@Composable (T) -> String?)? = null,
+    valueDescription: (@Composable (T) -> String)? = null,
     sheetState: SheetState,
     onDismiss: () -> Unit,
     onValueSelected: (T) -> Unit,
@@ -680,6 +680,8 @@ internal fun <T> PreferenceMultiSelectBottomSheet(
     values: List<T>,
     isSelected: (T) -> Boolean,
     valueText: @Composable (T) -> String,
+    // Nullable so a row can say "no description" without the caller having to pass a blank string —
+    // a page that is unavailable today still wants to name why, while the others want nothing.
     valueDescription: (@Composable (T) -> String?)? = null,
     sheetState: SheetState,
     onDismiss: () -> Unit,
