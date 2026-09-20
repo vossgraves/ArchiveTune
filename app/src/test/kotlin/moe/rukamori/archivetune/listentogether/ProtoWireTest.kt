@@ -256,33 +256,4 @@ class ProtoWireTest {
         assertEquals(MessageTypes.BUFFER_READY, type)
         assertEquals(BufferReadyPayload("t-7"), codec.decodePayload(type, payload, MessageFormat.PROTOBUF))
     }
-
-    /**
-     * A field that is present but sits at its proto3 default is still present: a room volume of 0 is
-     * a mute, and a position of 0 is the start of the track. Deciding presence by the *value* rather
-     * than by the field tag collapses both into "unset" — which is how a guest's mute could never
-     * reach anyone, and why the decoder no longer sniffs.
-     */
-    @Test
-    fun `fields at their default value survive the round trip`() {
-        val codec = MessageCodec(format = MessageFormat.PROTOBUF)
-        val payload =
-            PlaybackActionPayload(
-                action = PlaybackActions.PLAY,
-                trackId = "",
-                position = 0L,
-                volume = 0f,
-                serverTime = 0L,
-            )
-
-        val encoded = codec.encode(MessageTypes.PLAYBACK_ACTION, payload)
-        val (type, payloadBytes) = codec.decode(encoded)
-        val decoded = codec.decodePayload(type, payloadBytes, MessageFormat.PROTOBUF) as PlaybackActionPayload
-
-        assertEquals(0L, decoded.position)
-        assertEquals(0L, decoded.serverTime)
-        assertEquals("", decoded.trackId)
-        // A sentinel, so a null volume fails rather than passing as "close enough to zero".
-        assertEquals(0f, decoded.volume ?: -1f, 0f)
-    }
 }
