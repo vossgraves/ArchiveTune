@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.constants.SplashOverlayEnabledKey
@@ -43,6 +44,7 @@ fun SplashOverlay(
     isDark: Boolean = true,
     contentColor: Color? = null,
     primaryColor: Color? = null,
+    skip: Boolean = false,
     onBurstStart: () -> Unit = {},
     onDismiss: () -> Unit = {},
 ) {
@@ -63,6 +65,16 @@ fun SplashOverlay(
         var isInitialized by remember { mutableStateOf(false) }
         var burstTriggered by remember { mutableStateOf(false) }
 
+        // One way out for every path — the engine finishing, the host asking to skip, the ceiling
+        // below and a tap — so dismissal cannot half-happen: the layer starts leaving and the host
+        // is told in the same step.
+        val dismissSplash = {
+            if (showSplash) {
+                showSplash = false
+                currentOnDismiss()
+            }
+        }
+
         val density = LocalDensity.current.density
         val engine = remember { SplashEngine() }
         val renderer = remember { SplashRenderer() }
@@ -70,6 +82,16 @@ fun SplashOverlay(
 
         LaunchedEffect(vv) {
             if (vv > 0) engine.rebuildSlots()
+        }
+
+        // The safety net: whatever the engine is doing, the overlay gives the screen back.
+        LaunchedEffect(Unit) {
+            delay(SplashConfig.Reveal.MAX_VISIBLE_MS.toLong())
+            dismissSplash()
+        }
+
+        LaunchedEffect(skip) {
+            if (skip) dismissSplash()
         }
 
         LaunchedEffect(showSplash) {
@@ -97,9 +119,8 @@ fun SplashOverlay(
                         currentOnBurstStart()
                     }
 
-                    if (engine.currentPhase == SplashPhase.Idle && engine.shockwave == null && showSplash) {
-                        showSplash = false
-                        currentOnDismiss()
+                    if (engine.currentPhase == SplashPhase.Idle && engine.shockwave == null) {
+                        dismissSplash()
                     }
                 }
             }
@@ -115,7 +136,10 @@ fun SplashOverlay(
                     enabled = showSplash,
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = {},
+                    // A tap is the reader asking to move on — the same exit as the ceiling, so a
+                    // long ring tail never has to be waited out. It also swallows the tap, which
+                    // is what keeps the invisible content behind it untappable.
+                    onClick = { dismissSplash() },
                 ),
         ) {
             Canvas(

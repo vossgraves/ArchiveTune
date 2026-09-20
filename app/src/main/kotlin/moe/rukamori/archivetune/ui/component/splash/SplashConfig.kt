@@ -177,5 +177,18 @@ object SplashConfig {
         var DURATION_MS: Int = 450
         var RISE_DP: Float = 24f
         var FADE_MS: Int = 250
+
+        /**
+         * Hard ceiling on how long the overlay may hold the screen, added by this port.
+         *
+         * The engine's own exit is "phase is Idle and the shockwave has cleared", and both of
+         * those need frames to advance: no first frame (a window that measures zero, a wedged
+         * draw loop) means no phase, no ring, and no dismissal — with the app's content still
+         * hidden and its input still swallowed underneath. A run is ~2.5 s at 60 fps plus a
+         * quarter-second fade, and the ring advances per frame rather than per second, so a slow
+         * device stretches it; 5 s clears the honest worst case and still bounds the dishonest
+         * one.
+         */
+        var MAX_VISIBLE_MS: Int = 5000
     }
 }

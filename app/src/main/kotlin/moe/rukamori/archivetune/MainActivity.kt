@@ -150,6 +150,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -1141,6 +1143,9 @@ class MainActivity : ComponentActivity() {
                 val splashAnimationEnabled by rememberPreference(SplashOverlayEnabledKey, defaultValue = true)
                 val coldSplash = remember { splashAnimationEnabled && !disableAnimations }
                 var contentVisible by remember { mutableStateOf(!coldSplash) }
+                // Set by the first tap on the opening animation. The overlay owns the exit (it
+                // fades itself out), this only tells it that the reader has asked for the screen.
+                var splashSkipped by remember { mutableStateOf(false) }
                 LaunchedEffect(splashAnimationEnabled, disableAnimations) {
                     // The preference store seeds the first frame from its hot copy, but a value
                     // that only settles on a later read must never strand the UI invisible behind
@@ -2135,7 +2140,14 @@ class MainActivity : ComponentActivity() {
                         if (coldSplash) {
                             SplashOverlay(
                                 isDark = useDarkTheme,
+                                skip = splashSkipped,
                                 onBurstStart = {
+                                    contentVisible = true
+                                },
+                                // Also the recovery path: if the overlay gives up — its ceiling,
+                                // or a tap that raced the engine — the content has to come back
+                                // even though no burst ever fired.
+                                onDismiss = {
                                     contentVisible = true
                                 },
                             )
@@ -2154,12 +2166,20 @@ class MainActivity : ComponentActivity() {
                                         compositingStrategy = CompositingStrategy.ModulateAlpha
                                     }
                                     .pointerInput(contentVisible) {
-                                        // Nothing may be tapped until the burst has begun: the UI
-                                        // is invisible, but it is laid out under the particles.
+                                        // While the app content is invisible it must not be
+                                        // reachable, and it must not hold the reader either. The
+                                        // Initial pass runs outside-in, so consuming there denies
+                                        // every child gesture outright instead of racing the tap
+                                        // detectors inside the screen; a tap then ends the opening
+                                        // early, which is the way out if a frame never arrives.
                                         if (!contentVisible) {
                                             awaitPointerEventScope {
                                                 while (true) {
-                                                    awaitPointerEvent().changes.forEach { it.consume() }
+                                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                                    event.changes.forEach { it.consume() }
+                                                    if (event.changes.any { it.changedToUp() }) {
+                                                        splashSkipped = true
+                                                    }
                                                 }
                                             }
                                         }
