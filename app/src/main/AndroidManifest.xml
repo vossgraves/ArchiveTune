@@ -87,18 +87,6 @@
 
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:host="together"
-                    android:scheme="archivetune" />
-            </intent-filter>
-
-            <!-- Youtube filter -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <action android:name="android.nfc.action.NDEF_DISCOVERED" />
 

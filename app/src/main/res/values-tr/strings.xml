@@ -487,10 +487,6 @@
     <string name="library_top_mixes_ai_not_configured_title">Mix oluşturmak için YZ\'yi yapılandır</string>
     <string name="library_top_mixes_ai_not_configured_desc">ArchiveTune\'un kişisel mix oluşturabilmesi için YZ yapılandırması gereklidir.</string>
     <string name="library_top_mixes_no_recent_history_title">Henüz yakın zamanda dinlenenler mix\'i oluşturulmamış</string>
-    <string name="together_welcome_join_title">Başka bir cihazdan katıl</string>
-    <string name="together_welcome_join_body">Paylaşılan bağlantıyı açın veya kodu girip Katıl\'a basın. Oynatma sıranız ve playback ana cihazı takip edecek.</string>
-    <string name="together_welcome_permissions_title">İzinler ve güvenlik</string>
-    <string name="together_welcome_permissions_body">Ana cihazlar misafirlerin şarkı eklemesine, playback\'i kontrol etmesine veya katılmak için izin isteyip istemeyeceğine karar verebilirler.</string>
     <string name="visitor_data">Ziyaretçi Verisi</string>
     <string name="regenerate">Yeniden oluştur</string>
     <string name="source_url">Kaynak URL\'si</string>

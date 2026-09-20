@@ -202,7 +202,6 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "backup_restore" -> "settings/backup_restore"
             "developer_options" -> "settings/misc"
             "logcat" -> "settings/logcat"
-            "music_together" -> "settings/music_together"
             "about" -> "settings/about"
             "discord" -> "settings/discord"
             "discord_experimental" -> "settings/discord/experimental"
@@ -225,7 +224,6 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
                 "po_token",
                 "account",
                 "logcat",
-                "music_together",
             )
     return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }

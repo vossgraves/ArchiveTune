@@ -318,8 +318,6 @@ private fun rememberMiniPlayerContentColors(useArtworkBackground: Boolean): Mini
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
                 buttonIcon = Color.White,
                 disabledButtonIcon = Color.White.copy(alpha = 0.38f),
-                togetherContainer = Color.White.copy(alpha = 0.16f),
-                togetherContent = Color.White,
             )
         } else {
             MiniPlayerContentColors(
@@ -334,8 +332,6 @@ private fun rememberMiniPlayerContentColors(useArtworkBackground: Boolean): Mini
                 secondaryButtonContainer = colorScheme.surfaceContainerHighest,
                 buttonIcon = colorScheme.onSurface,
                 disabledButtonIcon = colorScheme.onSurface.copy(alpha = 0.38f),
-                togetherContainer = colorScheme.primaryContainer,
-                togetherContent = colorScheme.onPrimaryContainer,
             )
         }
     }

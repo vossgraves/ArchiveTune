@@ -853,19 +853,7 @@ fun buildSettingsGroups(
                 SettingsChild("Web Client PO Token", "web_client_po_token", listOf("po token", "potoken", "web client po token", "botguard", "playability", "youtube token")),
             ),
         )
-    // Listen Together lives on its own screen reached from the player, not from a
-    // settings sub-page — indexed here so searching "listen together" still finds it.
-    val musicTogether =
-        SettingsItem(
-            key = "music_together",
-            icon = painterResource(R.drawable.ic_share),
-            title = stringResource(R.string.music_together),
-            subtitle = "Listen in sync with friends",
-            accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("music together", "listen together", "listening party", "sync listening", "together", "room", "lan", "public room", "share session"),
-            onClick = { navController.navigate("settings/music_together") },
-            hidden = true,
-        )
+
     val storage =
         SettingsItem(
             key = "storage",
@@ -1105,7 +1093,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.storage),
-            items = listOf(storage, downloads, backupRestore, musicTogether),
+            items = listOf(storage, downloads, backupRestore),
         ),
         SettingsGroup(
             title = stringResource(R.string.about),

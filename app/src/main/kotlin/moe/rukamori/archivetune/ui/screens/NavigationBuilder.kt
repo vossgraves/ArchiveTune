@@ -108,7 +108,6 @@ import moe.rukamori.archivetune.ui.screens.settings.LyricsAnimationSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsProvidersSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsRomanisationSettings
-import moe.rukamori.archivetune.ui.screens.settings.MusicTogetherScreen
 import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.PalettePickerScreen
 import moe.rukamori.archivetune.ui.screens.settings.PlayerSettings
@@ -688,9 +687,6 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         AiIntegrationSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
-    }
-    composable("settings/music_together") {
-        MusicTogetherScreen(navController)
     }
     composable(
         route = "settings/lastfm?scrollTo={scrollTo}",

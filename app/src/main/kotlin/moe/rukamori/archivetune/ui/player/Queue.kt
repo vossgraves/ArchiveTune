@@ -183,11 +183,6 @@ fun Queue(
     var locked by rememberPreference(QueueEditLockKey, defaultValue = true)
     var infiniteQueueEnabled by rememberPreference(AutoLoadMoreKey, defaultValue = true)
     val infiniteQueueLoading by playerConnection.service.infiniteQueueLoading.collectAsState()
-    val togetherSessionState by playerConnection.service.togetherSessionState.collectAsState()
-    val togetherForcesLock =
-        togetherSessionState is moe.rukamori.archivetune.together.TogetherSessionState.Joined &&
-            (togetherSessionState as moe.rukamori.archivetune.together.TogetherSessionState.Joined).role is moe.rukamori.archivetune.together.TogetherRole.Guest
-    val effectiveLocked = locked || togetherForcesLock
 
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
@@ -877,7 +872,7 @@ fun Queue(
                     isPlaying = isPlaying,
                     repeatMode = repeatMode,
                     shuffleModeEnabled = playerConnection.player.shuffleModeEnabled,
-                    locked = effectiveLocked,
+                    locked = locked,
                     songCount = queueWindows.size,
                     queueDuration = queueLength,
                     infiniteQueueEnabled = infiniteQueueEnabled,
@@ -935,11 +930,7 @@ fun Queue(
                         }
                     },
                     onLockClick = {
-                        if (togetherForcesLock) {
-                            Toast.makeText(context, R.string.not_allowed, Toast.LENGTH_SHORT).show()
-                        } else {
-                            locked = !locked
-                        }
+                        locked = !locked
                     },
                     onInfiniteQueueClick = {
                         val nextInfiniteQueueEnabled = !infiniteQueueEnabled
@@ -1074,7 +1065,7 @@ fun Queue(
                                                     contentDescription = null,
                                                 )
                                             }
-                                            if (!effectiveLocked) {
+                                            if (!locked) {
                                                 IconButton(
                                                     onClick = { },
                                                     modifier = Modifier.draggableHandle(),
@@ -1107,42 +1098,10 @@ fun Queue(
                                                             if (index == currentWindowIndex) {
                                                                 playerConnection.player.togglePlayPause()
                                                             } else {
-                                                                val joined =
-                                                                    togetherSessionState as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
-                                                                val isGuest = joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest
-                                                                if (isGuest) {
-                                                                    if (joined?.roomState?.settings?.allowGuestsToControlPlayback != true) {
-                                                                        Toast
-                                                                            .makeText(
-                                                                                context,
-                                                                                R.string.not_allowed,
-                                                                                Toast.LENGTH_SHORT,
-                                                                            ).show()
-                                                                        return@combinedClickable
-                                                                    }
-                                                                    val trackId =
-                                                                        window.mediaItem.metadata?.id?.trim().orEmpty().ifBlank {
-                                                                            window.mediaItem.mediaId.trim()
-                                                                        }
-                                                                    if (trackId.isBlank()) return@combinedClickable
-                                                                    Toast
-                                                                        .makeText(
-                                                                            context,
-                                                                            R.string.together_requesting_song_change,
-                                                                            Toast.LENGTH_SHORT,
-                                                                        ).show()
-                                                                    playerConnection.service.requestTogetherControl(
-                                                                        moe.rukamori.archivetune.together.ControlAction.SeekToTrack(
-                                                                            trackId = trackId,
-                                                                            positionMs = 0L,
-                                                                        ),
-                                                                    )
-                                                                } else {
-                                                                    playerConnection.player.seekToDefaultPosition(
-                                                                        window.firstPeriodIndex,
-                                                                    )
-                                                                    playerConnection.player.playWhenReady = true
-                                                                }
+                                                                playerConnection.player.seekToDefaultPosition(
+                                                                    window.firstPeriodIndex,
+                                                                )
+                                                                playerConnection.player.playWhenReady = true
                                                             }
                                                         }
                                                     },
@@ -1161,7 +1120,7 @@ fun Queue(
                                 }
                             }
 
-                            if (effectiveLocked) {
+                            if (locked) {
                                 content()
                             } else {
                                 SwipeToDismissBox(

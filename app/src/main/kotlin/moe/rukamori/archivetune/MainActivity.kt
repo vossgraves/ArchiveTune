@@ -392,7 +392,6 @@ class MainActivity : ComponentActivity() {
     private var pendingAodModeRequest = false
     private var pendingAodModeJob: Job? = null
     private var aodModeLaunchRequestCount by mutableIntStateOf(0)
-    private var pendingTogetherJoinLink: String? = null
     private var pendingBackupRestoreUri by mutableStateOf<Uri?>(null)
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
     private var latestUpdateChannel by mutableStateOf(defaultUpdateChannel)
@@ -414,7 +413,6 @@ class MainActivity : ComponentActivity() {
                     playPendingDeepLinkQueueIfReady()
                     playPendingVoiceSearchIfReady()
                     openPendingAodModeIfReady()
-                    joinPendingTogetherIfReady()
                 }
             }
 
@@ -456,23 +454,6 @@ class MainActivity : ComponentActivity() {
                     aodModeLaunchRequestCount++
                 }
             }
-    }
-
-    private fun joinPendingTogetherIfReady() {
-        val pending = pendingTogetherJoinLink ?: return
-        val connection = playerConnection ?: return
-        pendingTogetherJoinLink = null
-        lifecycleScope.launch(Dispatchers.IO) {
-            val displayName =
-                runCatching { dataStore.data.first()[moe.rukamori.archivetune.constants.TogetherDisplayNameKey] }
-                    .getOrNull()
-                    ?.trim()
-                    .orEmpty()
-                    .ifBlank { Build.MODEL ?: getString(R.string.app_name) }
-            withContext(Dispatchers.Main) {
-                connection.service.joinTogether(pending, displayName)
-            }
-        }
     }
 
     private suspend fun awaitRestorablePlayback(connection: PlayerConnection): Boolean {
@@ -2509,14 +2490,10 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate(MusicRecognitionRoute)
                                                                     },
                                                                 ),
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.multi_user,
-                                                                    label = stringResource(R.string.music_together),
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("settings/music_together")
-                                                                    },
-                                                                ),
+                                                                // Settings entry removed — the Home route's
+                                                                // top-end settings icon in liquid glass is
+                                                                // now the sole entry point, and it carries
+                                                                // the update-available badge.
                                                                 ProfileMenuItem(
                                                                     icon = R.drawable.settings,
                                                                     label = stringResource(R.string.settings),
@@ -3255,12 +3232,6 @@ class MainActivity : ComponentActivity() {
         val coroutineScope = lifecycleScope
 
         val authority = uri.authority?.lowercase()
-        if (uri.scheme.equals("archivetune", ignoreCase = true) && authority == "together") {
-            pendingTogetherJoinLink = uri.toString()
-            startMusicServiceSafely()
-            joinPendingTogetherIfReady()
-            return
-        }
 
         if (uri.scheme.equals("archivetune", ignoreCase = true) && authority == "login") {
             navController.navigate(buildLoginRoute(uri.getQueryParameter(LOGIN_URL_ARGUMENT)))
