@@ -24,10 +24,13 @@ import androidx.annotation.RequiresPermission
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
+import androidx.core.app.RemoteInput
 import androidx.core.content.getSystemService
 import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
+import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
 import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.constants.ListenTogetherBlockedUsersKey
@@ -183,9 +186,19 @@ class ListenTogetherClient @Inject constructor(
         const val ACTION_REJECT_JOIN = "moe.rukamori.archivetune.LISTEN_TOGETHER_REJECT_JOIN"
         const val ACTION_APPROVE_SUGGESTION = "moe.rukamori.archivetune.LISTEN_TOGETHER_APPROVE_SUGGESTION"
         const val ACTION_REJECT_SUGGESTION = "moe.rukamori.archivetune.LISTEN_TOGETHER_REJECT_SUGGESTION"
+        const val ACTION_REPLY_CHAT = "moe.rukamori.archivetune.LISTEN_TOGETHER_REPLY_CHAT"
+        const val KEY_TEXT_REPLY = "key_text_reply"
         const val EXTRA_USER_ID = "extra_user_id"
         const val EXTRA_SUGGESTION_ID = "extra_suggestion_id"
         const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
+
+        // Stable id for the chat conversation notification so each new message
+        // updates the same shade entry (and its RemoteInput history) instead of
+        // stacking separate notifications.
+        private const val CHAT_NOTIFICATION_ID = 40001
+
+        // Conversation depth kept for the MessagingStyle in the shade.
+        private const val MAX_CHAT_NOTIFICATION_HISTORY = 25
 
         @Volatile
         private var instance: ListenTogetherClient? = null
@@ -408,6 +421,21 @@ class ListenTogetherClient @Inject constructor(
 
     // Track notification IDs for suggestions to dismiss them similarly
     private val suggestionNotifications = mutableMapOf<String, Int>()
+
+    /** Recent chat messages backing the conversation notification (MessagingStyle). */
+    private val chatNotificationHistory = ArrayDeque<ChatMessagePayload>()
+
+    private val chatHistoryLock = Any()
+
+    @Volatile
+    private var chatNotificationActive = false
+
+    private val _chatScreenVisible = MutableStateFlow(false)
+
+    /** Set by the chat screen so incoming messages don't notify while it is open. */
+    fun setChatScreenVisible(visible: Boolean) {
+        _chatScreenVisible.value = visible
+    }
 
     // Network connectivity monitoring - use lazy to avoid initialization order issues
     private val connectivityObserver: NetworkConnectivityObserver? by lazy {
@@ -727,6 +755,176 @@ class ListenTogetherClient @Inject constructor(
         }
     }
 
+    private fun appendChatNotificationHistory(payload: ChatMessagePayload) {
+        synchronized(chatHistoryLock) {
+            chatNotificationHistory.addLast(payload)
+            while (chatNotificationHistory.size > MAX_CHAT_NOTIFICATION_HISTORY) {
+                chatNotificationHistory.removeFirst()
+            }
+        }
+    }
+
+    /**
+     * The vivi-style server echoes a sender's own message back to them, so a
+     * locally-appended copy (for instant shade feedback) and the echo would both
+     * land in the history. The echo is skipped when the last entry is the same
+     * self-sent text from within a few seconds.
+     */
+    private fun isSelfEchoAlreadyInHistory(payload: ChatMessagePayload): Boolean {
+        val selfId = _userId.value ?: return false
+        synchronized(chatHistoryLock) {
+            val last = chatNotificationHistory.lastOrNull() ?: return false
+            return last.userId == selfId &&
+                last.message == payload.message &&
+                kotlin.math.abs(last.timestamp - payload.timestamp) < 5000L
+        }
+    }
+
+    // Internally guarded by a POST_NOTIFICATIONS check — no annotation so that
+    // unguarded internal callers (message handler, reply receiver) stay lint-clean.
+    private fun postChatNotification(alert: Boolean) {
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        val history = synchronized(chatHistoryLock) { chatNotificationHistory.toList() }
+        if (history.isEmpty()) return
+
+        val selfId = _userId.value
+        val me = Person.Builder()
+            .setName(storedUsername ?: context.getString(R.string.listen_together_chat_you))
+            .setKey("self:$selfId")
+            .build()
+        val style = NotificationCompat.MessagingStyle(me)
+        history.takeLast(8).forEach { msg ->
+            val sender = if (msg.userId == selfId) {
+                me
+            } else {
+                Person.Builder()
+                    .setName(msg.username)
+                    .setKey(msg.userId.ifBlank { msg.username })
+                    .build()
+            }
+            style.addMessage(
+                NotificationCompat.MessagingStyle.Message(msg.message.take(300), msg.timestamp, sender)
+            )
+        }
+
+        val replyRemoteInput = RemoteInput.Builder(KEY_TEXT_REPLY)
+            .setLabel(context.getString(R.string.listen_together_chat_reply_label))
+            .build()
+        val replyIntent = Intent(context, ListenTogetherActionReceiver::class.java).apply {
+            action = ACTION_REPLY_CHAT
+            putExtra(EXTRA_NOTIFICATION_ID, CHAT_NOTIFICATION_ID)
+        }
+        // FLAG_MUTABLE is required: the system attaches the RemoteInput results.
+        val replyPendingIntent = PendingIntent.getBroadcast(
+            context,
+            CHAT_NOTIFICATION_ID,
+            replyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+
+        val contentIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            putExtra("navigate_to", "listen_together/chat")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val contentPendingIntent = contentIntent?.let {
+            PendingIntent.getActivity(
+                context,
+                CHAT_NOTIFICATION_ID + 1,
+                it,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.share)
+            .setContentTitle(context.getString(R.string.listen_together))
+            .setStyle(style)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(!alert)
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    0,
+                    context.getString(R.string.listen_together_chat_reply_label),
+                    replyPendingIntent
+                ).addRemoteInput(replyRemoteInput).build()
+            )
+        contentPendingIntent?.let { builder.setContentIntent(it) }
+
+        NotificationManagerCompat.from(context).notify(CHAT_NOTIFICATION_ID, builder.build())
+        chatNotificationActive = true
+    }
+
+    private fun maybeNotifyChatMessage(payload: ChatMessagePayload) {
+        try {
+            val selfId = _userId.value
+            if (payload.userId == selfId) {
+                // Own echo — keep the shade conversation current without alerting.
+                if (chatNotificationActive) postChatNotification(alert = false)
+                return
+            }
+            if (!isInRoom) return
+            if (payload.username in _blockedUsernames.value) return
+            if (_chatScreenVisible.value) return
+            if (!context.dataStore.get(ListenTogetherChatNotificationsKey, true)) return
+            postChatNotification(alert = true)
+        } catch (e: Exception) {
+            log(LogLevel.WARNING, "Failed to show chat notification", e.message)
+        }
+    }
+
+    /** Cancels the conversation notification (chat opened / room left). */
+    fun cancelChatNotification() {
+        chatNotificationActive = false
+        try {
+            NotificationManagerCompat.from(context).cancel(CHAT_NOTIFICATION_ID)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun clearChatNotificationState() {
+        synchronized(chatHistoryLock) { chatNotificationHistory.clear() }
+        cancelChatNotification()
+    }
+
+    /**
+     * Routes a reply typed directly into the notification shade into the room's
+     * chat. Called from ListenTogetherActionReceiver on the main thread.
+     */
+    fun handleChatReplyFromNotification(rawText: CharSequence?) {
+        val text = rawText?.toString()?.trim().orEmpty()
+        if (text.isEmpty()) {
+            // Consume the empty RemoteInput so the shade doesn't keep the
+            // "reply" spinner; re-post the current conversation state.
+            if (chatNotificationActive) postChatNotification(alert = false)
+            return
+        }
+        if (!isInRoom || codec.format == MessageFormat.PROTOBUF) {
+            postChatReplyFailedNotification()
+            return
+        }
+        sendChatMessage(text)
+    }
+
+    private fun postChatReplyFailedNotification() {
+        try {
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+            val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.drawable.share)
+                .setContentTitle(context.getString(R.string.listen_together))
+                .setContentText(context.getString(R.string.listen_together_chat_reply_failed))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+            NotificationManagerCompat.from(context).notify(CHAT_NOTIFICATION_ID, builder.build())
+        } catch (_: Exception) {
+        }
+    }
+
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     private fun showSuggestionNotification(payload: SuggestionReceivedPayload) {
         val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
@@ -1005,6 +1203,7 @@ class ListenTogetherClient @Inject constructor(
                     sessionToken = null
                     _roomState.value = null
                     _role.value = RoomRole.NONE
+                    clearChatNotificationState()
                     scope.launch { _events.emit(ListenTogetherEvent.Kicked(payload.reason)) }
                 }
 
@@ -1270,6 +1469,13 @@ class ListenTogetherClient @Inject constructor(
                     }
 
                     log(LogLevel.INFO, "Chat message received", "From: ${payload.username}")
+
+                    val isSelfEcho = payload.userId == _userId.value
+                    if (!isSelfEcho || !isSelfEchoAlreadyInHistory(payload)) {
+                        appendChatNotificationHistory(payload)
+                    }
+                    maybeNotifyChatMessage(payload)
+
                     scope.launch { _events.emit(ListenTogetherEvent.ChatMessageReceived(payload)) }
                 }
 
@@ -1372,6 +1578,8 @@ class ListenTogetherClient @Inject constructor(
         _userId.value = null
         _pendingJoinRequests.value = emptyList()
         _bufferingUsers.value = emptyList()
+
+        clearChatNotificationState()
 
         // Clear from persistent storage
         clearPersistedSession()
@@ -1483,6 +1691,20 @@ class ListenTogetherClient @Inject constructor(
         }
 
         sendMessage(MessageTypes.CHAT, ChatPayload(finalMessage, replyTo))
+
+        // Local echo for the notification shade's conversation (the server's own
+        // echo is deduped in the CHAT branch); re-post silently so a reply sent
+        // straight from the shade appears there immediately.
+        appendChatNotificationHistory(
+            ChatMessagePayload(
+                userId = _userId.value ?: "",
+                username = storedUsername ?: context.getString(R.string.listen_together_chat_you),
+                message = message,
+                timestamp = System.currentTimeMillis(),
+                replyTo = replyTo,
+            )
+        )
+        if (chatNotificationActive) postChatNotification(alert = false)
     }
 
     private val _customAvatars = kotlinx.coroutines.flow.MutableStateFlow<Map<String, ByteArray>>(emptyMap())

@@ -77,6 +77,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenTogetherAutoApprovalKey
+import moe.rukamori.archivetune.constants.ListenTogetherChatNotificationsKey
 import moe.rukamori.archivetune.constants.ListenTogetherSuggestionAutoApproveKey
 import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
 import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
@@ -128,7 +129,7 @@ fun ListenTogetherSettings(
     var suggestionAutoApprove by rememberPreference(ListenTogetherSuggestionAutoApproveKey, true)
     var syncHostVolume by rememberPreference(ListenTogetherSyncVolumeKey, true)
     var smartResync by rememberPreference(ListenTogetherSmartResyncKey, true)
-    
+    var chatNotifications by rememberPreference(ListenTogetherChatNotificationsKey, true)
     var showServerUrlDialog by rememberSaveable { mutableStateOf(false) }
     var showUsernameDialog by rememberSaveable { mutableStateOf(false) }
     var showAvatarPicker by rememberSaveable { mutableStateOf(false) }
@@ -552,6 +553,29 @@ fun ListenTogetherSettings(
                         )
                     },
                     onClick = { if (roomState == null || role != RoomRole.GUEST) suggestionAutoApprove = !suggestionAutoApprove }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.chat),
+                    title = { Text(stringResource(R.string.listen_together_chat_notifications)) },
+                    description = {
+                        Text(stringResource(R.string.listen_together_chat_notifications_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = chatNotifications,
+                            onCheckedChange = { chatNotifications = it },
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (chatNotifications) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                                )
+                            }
+                        )
+                    },
+                    onClick = { chatNotifications = !chatNotifications }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.volume_up),

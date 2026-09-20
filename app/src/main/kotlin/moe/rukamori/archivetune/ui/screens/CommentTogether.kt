@@ -65,6 +65,13 @@ fun CommentTogetherScreen(navController: NavController) {
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
 
+    // While the chat screen is on top, the client suppresses chat-message
+    // notifications (and the shade conversation is cancelled via markChatAsRead).
+    DisposableEffect(Unit) {
+        manager.setChatScreenVisible(true)
+        onDispose { manager.setChatScreenVisible(false) }
+    }
+
     // Auto-scroll to bottom when new messages arrive and clear unread badge
     LaunchedEffect(messages.size) {
         manager.markChatAsRead()

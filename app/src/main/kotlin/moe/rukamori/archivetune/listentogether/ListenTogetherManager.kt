@@ -151,6 +151,12 @@ class ListenTogetherManager @Inject constructor(
 
     fun markChatAsRead() {
         _unreadMessageCount.value = 0
+        client.cancelChatNotification()
+    }
+
+    /** Tells the client whether the chat screen is on top (suppresses its chat notifications). */
+    fun setChatScreenVisible(visible: Boolean) {
+        client.setChatScreenVisible(visible)
     }
 
     // PORT-NOTE: vivi's PlayerConnection exposed play()/pause() wrappers that routed

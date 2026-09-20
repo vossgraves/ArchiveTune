@@ -1719,6 +1719,11 @@
     <string name="listen_together_join_request_notification">%1$s wants to join the room</string>
     <string name="listen_together_notification_channel_name">Listen Together</string>
     <string name="listen_together_notification_channel_desc">Notifications for Listen Together events</string>
+    <string name="listen_together_chat_notifications">Chat message notifications</string>
+    <string name="listen_together_chat_notifications_desc">Show a notification with a direct reply action whenever someone chats in the room</string>
+    <string name="listen_together_chat_reply_label">Reply</string>
+    <string name="listen_together_chat_you">You</string>
+    <string name="listen_together_chat_reply_failed">Reply not delivered — open the app to reconnect</string>
     <string name="listen_together_room_created">Room created: %s</string>
     <string name="listen_together_cannot_edit_username_in_room">Cannot edit username while in a room</string>
     <string name="listen_together_settings_desc">Configure server, username, and more</string>
