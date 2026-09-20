@@ -64,6 +64,25 @@ downloads keep the key in their own database instead, so those files do not decr
 reported unavailable rather than guessed at. Because the plain resource is requested first, this
 affects only the tracks the service will serve no other way.
 
+## The Home page
+
+Settings → Appearance → Home screens offers **QQ Music** beside YouTube and Spotify. It is offered
+while an account is signed in and is filtered out of the switcher if that account goes away, without
+forgetting that it was chosen — the same rule the Spotify page follows.
+
+The page is QQ Music's charts. `music.musicToplist.Toplist` / `GetAll` names every chart the service
+publishes, grouped into families and carrying each chart's top three songs, and each chart's own
+`GetDetail` call fills its section out to ten. A chart whose detail call does not answer keeps the
+three previews the listing carried, so one refused request does not cost a section.
+
+Tapping a song plays the section it came from: the page hands the player the app's own items, and
+the source chain then finds the recording on QQ Music by title, artists and duration — the same
+metadata match, the same gate and the same fall-through every other source here uses. Nothing on the
+page asks for a tier the account does not hold.
+
+A listing the app cannot fetch is an error with a retry; a listing it fetches and cannot read is the
+empty state. Neither is a crash.
+
 ## What it will not do
 
 - **No entitlement is unlocked.** Only the tiers the account holds are requested; the others come
@@ -81,12 +100,13 @@ protocol:
 
 | Reference | Used for |
 | --- | --- |
-| [L-1124/QQMusicApi](https://github.com/L-1124/QQMusicApi) | the QR chain, `musicu.fcg` envelopes, the `comm` profiles, the filename rule, the quality tables |
+| [L-1124/QQMusicApi](https://github.com/L-1124/QQMusicApi) | the QR chain, `musicu.fcg` envelopes, the `comm` profiles, the filename rule, the quality tables, the toplist module/method pairs and the album-art address rule |
 | [jsososo/QQMusicApi](https://github.com/jsososo/QQMusicApi) | the legacy `vkey.GetVkeyServer` param shape and the `sip` selection |
 | [listen1/listen1_chrome_extension](https://github.com/listen1/listen1_chrome_extension) | the search request and the `req.data.body.song.list` response |
 | [lx-music-desktop](https://github.com/lyswhut/lx-music-desktop) | the song-detail call and `track_info` response |
 | [unlock-music](https://github.com/unlock-music) (DMCA'd; read via a mirror) and its Go/C++ ports | the static keystream, the map and RC4 ciphers, the TEA key wrapping, the footer grammar |
 | [mzj3920/qqmusic-decrypt](https://github.com/mzj3920/qqmusic-decrypt) | the fixed 128-byte key, the `STag`/`musicex` footers and the published key fixtures |
+| [Yyyangshenghuo/simple-music](https://github.com/Yyyangshenghuo/simple-music/blob/master/docs/qq-music-api.md) | the live-verified (2026-08-24) `music.musicToplist.Toplist` routes the Home page calls, and their response fields |
 
 The tests under `app/src/test/.../qqmusic` carry the same references' known-answer vectors, so a
 change to any of the cipher arithmetic fails against their numbers rather than this app's own.
