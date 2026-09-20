@@ -34,7 +34,11 @@ Both players carry a small "current line" strip, and they are *not* the same sha
 
 SimpMusic *also* has a 300dp lyrics card further down the page
 (`SimpMusicLyricsCard`), below the fold with the artist and track-info cards. That
-is a different surface again, and it renders `LyricsEnhanced`.
+is a different surface again, and it follows the global `LyricsModeKey`: the
+SimpMusic renderer when the mode is SIMPMUSIC, `LyricsEnhanced` for every other
+mode (the card is a preview, and the other renderers' karaoke sweep needs a full
+screen to read as anything but flicker). The style's own fullscreen lyrics sheet
+(`SimpMusicFullscreenLyricsSheet`) follows the same rule.
 
 ## The word sweep
 

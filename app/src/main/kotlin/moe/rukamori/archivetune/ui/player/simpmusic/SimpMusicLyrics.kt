@@ -13,8 +13,9 @@
  * dim grey except the line being sung, which steps up a type size and goes white. A word-timed line
  * lights word by word as it is sung, the rest of the line waiting behind it.
  *
- * Only the SimpMusic player style can reach this, and only while the user has turned it on — every
- * other surface in the app follows LyricsModeKey. See SimpMusicLyricsKey.
+ * Reached wherever LyricsMode.SIMPMUSIC is selected (the SimpMusic style's 300dp card and its
+ * fullscreen sheet, the shared lyrics page, the Apple Music player), so it follows the global
+ * LyricsModeKey like every other renderer.
  *
  * REWRITTEN rather than transliterated, and deliberately much smaller than either shared renderer:
  * it shows lyrics, follows the song, and seeks on tap. Romanisation, AI translation, per-word blur
@@ -102,8 +103,13 @@ import moe.rukamori.archivetune.utils.rememberPreference
 /** Everything but the line being sung. SimpMusic's `Color.LightGray.copy(alpha = 0.35f)`. */
 private val DimLine = Color.LightGray.copy(alpha = 0.35f)
 
-/** Words of the sung line that have not been reached yet — brighter than a whole dim line. */
-private val PendingWord = Color.LightGray.copy(alpha = 0.6f)
+/**
+ * Words of the sung line that have not been reached yet — brighter than a whole dim line. Derived
+ * from the host's inactive colour (see [pendingWordColor]) rather than a fixed grey, so a host that
+ * tints its lyrics keeps the pending words on the same palette.
+ */
+private fun pendingWordColor(inactiveColor: Color): Color =
+    inactiveColor.copy(alpha = (inactiveColor.alpha * 2f).coerceAtMost(1f))
 
 /** Matches the lead the other two renderers apply, so all three sit on the same beat. */
 private const val LRC_LEAD_MS = 300L
@@ -423,6 +429,7 @@ private fun SimpMusicLyricsLine(
             sungThrough = sungThrough,
             style = style,
             sungColor = currentColor,
+            pendingColor = pendingWordColor(inactiveColor),
             modifier = Modifier.fillMaxWidth(),
         )
         if (translation != null) {
@@ -450,6 +457,7 @@ private fun FlowRowWords(
     sungThrough: Int,
     style: TextStyle,
     sungColor: Color,
+    pendingColor: Color,
     modifier: Modifier = Modifier,
 ) {
     FlowRow(
@@ -460,7 +468,7 @@ private fun FlowRowWords(
             Text(
                 text = word,
                 style = style,
-                color = if (index <= sungThrough) sungColor else PendingWord,
+                color = if (index <= sungThrough) sungColor else pendingColor,
             )
         }
     }

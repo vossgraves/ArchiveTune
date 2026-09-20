@@ -1187,6 +1187,10 @@ fun AppleMusicPlayerContent(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(horizontal = lyricsHorizontalPadding),
+                                // This overlay is white-on-scrim (see the brightened backdrop
+                                // above), so the renderer's default light-grey dim tone would sit
+                                // almost invisible on it.
+                                textColorOverride = Color.White,
                             )
                         }
                     }

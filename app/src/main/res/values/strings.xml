@@ -236,6 +236,7 @@
     <string name="save_canvas_variant_regular">Regular</string>
     <string name="save_canvas_variant_vertical">Vertical</string>
     <string name="save_canvas_variant_unavailable">Unavailable</string>
+    <string name="lyrics_not_available">No lyrics for this track</string>
     <string name="save_canvas_saving">Saving canvas…</string>
     <string name="save_canvas_saved">Canvas saved to Movies/ArchiveTune Canvas</string>
     <string name="save_canvas_save_failed">Couldn\'t save canvas: %1$s</string>

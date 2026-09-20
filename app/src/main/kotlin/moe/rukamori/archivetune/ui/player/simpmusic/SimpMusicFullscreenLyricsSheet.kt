@@ -112,19 +112,24 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.hilt.navigation.compose.hiltViewModel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.ui.component.BottomSheetPageState
+import moe.rukamori.archivetune.ui.component.BottomSheetPage
+import moe.rukamori.archivetune.ui.component.LyricsEnhancedState
 import moe.rukamori.archivetune.ui.component.BottomSheetMenu
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.layerBackdrop
@@ -176,6 +181,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
+    val (lyricsMode) = rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
     val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
 
@@ -515,20 +521,33 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             .padding(horizontal = LyricsGutter),
                 ) {
                     if (hasLyrics) {
-
-                        SimpMusicLyrics(
-                            sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
-                            lyricsSyncOffset = lyricsSyncOffset,
-                            inactiveColorOverride = unsungLineColor,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        // The mode is global (Lyrics settings), so this page renders whichever
+                        // renderer the user picked — the same rule the style's 300dp card follows.
+                        // Rendering SimpMusicLyrics unconditionally made the card and this page
+                        // disagree for every mode except SIMPMUSIC.
+                        if (lyricsMode == LyricsMode.SIMPMUSIC) {
+                            SimpMusicLyrics(
+                                sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                inactiveColorOverride = unsungLineColor,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            LyricsEnhanced(
+                                sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = Modifier.fillMaxSize(),
+                                textColorOverride = Color.White,
+                                spotifyStyle = lyricsMode == LyricsMode.SPOTIFY,
+                            )
+                        }
                     } else {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = stringResource(R.string.save_canvas_variant_unavailable),
+                                text = stringResource(R.string.lyrics_not_available),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color.White,
                                 textAlign = TextAlign.Center,
