@@ -28,16 +28,19 @@ import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
 import moe.rukamori.archivetune.constants.HomeSource
+import moe.rukamori.archivetune.constants.LibraryStyle
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionDetailsRoute
+import moe.rukamori.archivetune.ui.component.rememberLibraryStyle
 import moe.rukamori.archivetune.ui.screens.BrowseScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistAlbumsScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistItemsScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistSongsScreen
+import moe.rukamori.archivetune.ui.screens.library.AppleMusicLibraryScreen
 import moe.rukamori.archivetune.ui.screens.library.LibraryScreen
 import moe.rukamori.archivetune.ui.screens.library.LocalSongScreen
 import moe.rukamori.archivetune.ui.screens.musicrecognition.MusicRecognitionScreen
@@ -169,7 +172,14 @@ fun NavGraphBuilder.navigationBuilder(
     composable(
         Screens.Library.route,
     ) {
-        LibraryScreen(navController)
+        // The Apple Music Experience's library half: a large-title list of sections instead of the
+        // fork's chip row. Dispatched here rather than inside LibraryScreen so the two layouts stay
+        // separate screens, each owning its own scroll state, insets and section state.
+        if (rememberLibraryStyle().first == LibraryStyle.APPLE_MUSIC) {
+            AppleMusicLibraryScreen(navController)
+        } else {
+            LibraryScreen(navController)
+        }
     }
     composable("listen_together") {
         ListenTogetherScreen(navController, showTopBar = false)
