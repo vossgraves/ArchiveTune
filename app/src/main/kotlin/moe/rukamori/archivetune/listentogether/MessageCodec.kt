@@ -41,6 +41,133 @@ class MessageCodec(
         private const val TAG = "MessageCodec"
         private const val COMPRESSION_THRESHOLD = 100 // Only compress if > 100 bytes
 
+        // Field numbers, straight from app/src/main/proto/listentogether.proto.
+        const val FIELD_ENVELOPE_TYPE = 1
+        const val FIELD_ENVELOPE_PAYLOAD = 2
+        const val FIELD_ENVELOPE_COMPRESSED = 3
+
+        const val TRACK_INFO_ID = 1
+        const val TRACK_INFO_TITLE = 2
+        const val TRACK_INFO_ARTIST = 3
+        const val TRACK_INFO_ALBUM = 4
+        const val TRACK_INFO_DURATION = 5
+        const val TRACK_INFO_THUMBNAIL = 6
+        const val TRACK_INFO_SUGGESTED_BY = 7
+
+        const val USER_INFO_USER_ID = 1
+        const val USER_INFO_USERNAME = 2
+        const val USER_INFO_IS_HOST = 3
+        const val USER_INFO_IS_CONNECTED = 4
+
+        const val ROOM_STATE_ROOM_CODE = 1
+        const val ROOM_STATE_HOST_ID = 2
+        const val ROOM_STATE_USERS = 3
+        const val ROOM_STATE_CURRENT_TRACK = 4
+        const val ROOM_STATE_IS_PLAYING = 5
+        const val ROOM_STATE_POSITION = 6
+        const val ROOM_STATE_LAST_UPDATE = 7
+        const val ROOM_STATE_VOLUME = 8
+        const val ROOM_STATE_QUEUE = 9
+
+        const val FIELD_CREATE_ROOM_USERNAME = 1
+
+        const val FIELD_JOIN_ROOM_CODE = 1
+        const val FIELD_JOIN_ROOM_USERNAME = 2
+
+        const val FIELD_APPROVE_JOIN_USER_ID = 1
+
+        const val FIELD_REJECT_JOIN_USER_ID = 1
+        const val FIELD_REJECT_JOIN_REASON = 2
+
+        const val FIELD_PLAYBACK_ACTION = 1
+        const val FIELD_PLAYBACK_TRACK_ID = 2
+        const val FIELD_PLAYBACK_POSITION = 3
+        const val FIELD_PLAYBACK_TRACK_INFO = 4
+        const val FIELD_PLAYBACK_INSERT_NEXT = 5
+        const val FIELD_PLAYBACK_QUEUE = 6
+        const val FIELD_PLAYBACK_QUEUE_TITLE = 7
+        const val FIELD_PLAYBACK_VOLUME = 8
+        const val FIELD_PLAYBACK_SERVER_TIME = 9
+
+        const val FIELD_BUFFER_READY_TRACK_ID = 1
+
+        const val FIELD_KICK_USER_ID = 1
+        const val FIELD_KICK_REASON = 2
+
+        const val FIELD_SUGGEST_TRACK_INFO = 1
+
+        const val FIELD_APPROVE_SUGGESTION_ID = 1
+
+        const val FIELD_REJECT_SUGGESTION_ID = 1
+        const val FIELD_REJECT_SUGGESTION_REASON = 2
+
+        const val FIELD_RECONNECT_SESSION_TOKEN = 1
+
+        const val FIELD_TRANSFER_HOST_NEW_HOST_ID = 1
+
+        const val ROOM_CREATED_ROOM_CODE = 1
+        const val ROOM_CREATED_USER_ID = 2
+        const val ROOM_CREATED_SESSION_TOKEN = 3
+
+        const val JOIN_REQUEST_USER_ID = 1
+        const val JOIN_REQUEST_USERNAME = 2
+
+        const val JOIN_APPROVED_ROOM_CODE = 1
+        const val JOIN_APPROVED_USER_ID = 2
+        const val JOIN_APPROVED_SESSION_TOKEN = 3
+        const val JOIN_APPROVED_STATE = 4
+
+        const val JOIN_REJECTED_REASON = 1
+
+        const val USER_JOINED_USER_ID = 1
+        const val USER_JOINED_USERNAME = 2
+
+        const val USER_LEFT_USER_ID = 1
+        const val USER_LEFT_USERNAME = 2
+
+        const val BUFFER_WAIT_TRACK_ID = 1
+        const val BUFFER_WAIT_WAITING_FOR = 2
+
+        const val BUFFER_COMPLETE_TRACK_ID = 1
+
+        const val ERROR_CODE = 1
+        const val ERROR_MESSAGE = 2
+
+        const val HOST_CHANGED_NEW_HOST_ID = 1
+        const val HOST_CHANGED_NEW_HOST_NAME = 2
+
+        const val KICKED_REASON = 1
+
+        const val SYNC_STATE_CURRENT_TRACK = 1
+        const val SYNC_STATE_IS_PLAYING = 2
+        const val SYNC_STATE_POSITION = 3
+        const val SYNC_STATE_LAST_UPDATE = 4
+        const val SYNC_STATE_QUEUE = 5
+        const val SYNC_STATE_VOLUME = 6
+
+        const val RECONNECTED_ROOM_CODE = 1
+        const val RECONNECTED_USER_ID = 2
+        const val RECONNECTED_STATE = 3
+        const val RECONNECTED_IS_HOST = 4
+
+        const val USER_RECONNECTED_USER_ID = 1
+        const val USER_RECONNECTED_USERNAME = 2
+
+        const val USER_DISCONNECTED_USER_ID = 1
+        const val USER_DISCONNECTED_USERNAME = 2
+
+        const val SUGGESTION_RECEIVED_ID = 1
+        const val SUGGESTION_RECEIVED_FROM_USER_ID = 2
+        const val SUGGESTION_RECEIVED_FROM_USERNAME = 3
+        const val SUGGESTION_RECEIVED_TRACK_INFO = 4
+
+        const val SUGGESTION_APPROVED_ID = 1
+        const val SUGGESTION_APPROVED_TRACK_INFO = 2
+
+        const val SUGGESTION_REJECTED_ID = 1
+        const val SUGGESTION_REJECTED_REASON = 2
+    }
+
         /**
          * Detect message format by inspecting first byte
          */
@@ -788,133 +915,4 @@ class MessageCodec(
         } as kotlinx.serialization.KSerializer<T>
     }
 
-    /**
-     * Field numbers, straight from app/src/main/proto/listentogether.proto.
-     */
-    private companion object Fields {
-        const val FIELD_ENVELOPE_TYPE = 1
-        const val FIELD_ENVELOPE_PAYLOAD = 2
-        const val FIELD_ENVELOPE_COMPRESSED = 3
-
-        const val TRACK_INFO_ID = 1
-        const val TRACK_INFO_TITLE = 2
-        const val TRACK_INFO_ARTIST = 3
-        const val TRACK_INFO_ALBUM = 4
-        const val TRACK_INFO_DURATION = 5
-        const val TRACK_INFO_THUMBNAIL = 6
-        const val TRACK_INFO_SUGGESTED_BY = 7
-
-        const val USER_INFO_USER_ID = 1
-        const val USER_INFO_USERNAME = 2
-        const val USER_INFO_IS_HOST = 3
-        const val USER_INFO_IS_CONNECTED = 4
-
-        const val ROOM_STATE_ROOM_CODE = 1
-        const val ROOM_STATE_HOST_ID = 2
-        const val ROOM_STATE_USERS = 3
-        const val ROOM_STATE_CURRENT_TRACK = 4
-        const val ROOM_STATE_IS_PLAYING = 5
-        const val ROOM_STATE_POSITION = 6
-        const val ROOM_STATE_LAST_UPDATE = 7
-        const val ROOM_STATE_VOLUME = 8
-        const val ROOM_STATE_QUEUE = 9
-
-        const val FIELD_CREATE_ROOM_USERNAME = 1
-
-        const val FIELD_JOIN_ROOM_CODE = 1
-        const val FIELD_JOIN_ROOM_USERNAME = 2
-
-        const val FIELD_APPROVE_JOIN_USER_ID = 1
-
-        const val FIELD_REJECT_JOIN_USER_ID = 1
-        const val FIELD_REJECT_JOIN_REASON = 2
-
-        const val FIELD_PLAYBACK_ACTION = 1
-        const val FIELD_PLAYBACK_TRACK_ID = 2
-        const val FIELD_PLAYBACK_POSITION = 3
-        const val FIELD_PLAYBACK_TRACK_INFO = 4
-        const val FIELD_PLAYBACK_INSERT_NEXT = 5
-        const val FIELD_PLAYBACK_QUEUE = 6
-        const val FIELD_PLAYBACK_QUEUE_TITLE = 7
-        const val FIELD_PLAYBACK_VOLUME = 8
-        const val FIELD_PLAYBACK_SERVER_TIME = 9
-
-        const val FIELD_BUFFER_READY_TRACK_ID = 1
-
-        const val FIELD_KICK_USER_ID = 1
-        const val FIELD_KICK_REASON = 2
-
-        const val FIELD_SUGGEST_TRACK_INFO = 1
-
-        const val FIELD_APPROVE_SUGGESTION_ID = 1
-
-        const val FIELD_REJECT_SUGGESTION_ID = 1
-        const val FIELD_REJECT_SUGGESTION_REASON = 2
-
-        const val FIELD_RECONNECT_SESSION_TOKEN = 1
-
-        const val FIELD_TRANSFER_HOST_NEW_HOST_ID = 1
-
-        const val ROOM_CREATED_ROOM_CODE = 1
-        const val ROOM_CREATED_USER_ID = 2
-        const val ROOM_CREATED_SESSION_TOKEN = 3
-
-        const val JOIN_REQUEST_USER_ID = 1
-        const val JOIN_REQUEST_USERNAME = 2
-
-        const val JOIN_APPROVED_ROOM_CODE = 1
-        const val JOIN_APPROVED_USER_ID = 2
-        const val JOIN_APPROVED_SESSION_TOKEN = 3
-        const val JOIN_APPROVED_STATE = 4
-
-        const val JOIN_REJECTED_REASON = 1
-
-        const val USER_JOINED_USER_ID = 1
-        const val USER_JOINED_USERNAME = 2
-
-        const val USER_LEFT_USER_ID = 1
-        const val USER_LEFT_USERNAME = 2
-
-        const val BUFFER_WAIT_TRACK_ID = 1
-        const val BUFFER_WAIT_WAITING_FOR = 2
-
-        const val BUFFER_COMPLETE_TRACK_ID = 1
-
-        const val ERROR_CODE = 1
-        const val ERROR_MESSAGE = 2
-
-        const val HOST_CHANGED_NEW_HOST_ID = 1
-        const val HOST_CHANGED_NEW_HOST_NAME = 2
-
-        const val KICKED_REASON = 1
-
-        const val SYNC_STATE_CURRENT_TRACK = 1
-        const val SYNC_STATE_IS_PLAYING = 2
-        const val SYNC_STATE_POSITION = 3
-        const val SYNC_STATE_LAST_UPDATE = 4
-        const val SYNC_STATE_QUEUE = 5
-        const val SYNC_STATE_VOLUME = 6
-
-        const val RECONNECTED_ROOM_CODE = 1
-        const val RECONNECTED_USER_ID = 2
-        const val RECONNECTED_STATE = 3
-        const val RECONNECTED_IS_HOST = 4
-
-        const val USER_RECONNECTED_USER_ID = 1
-        const val USER_RECONNECTED_USERNAME = 2
-
-        const val USER_DISCONNECTED_USER_ID = 1
-        const val USER_DISCONNECTED_USERNAME = 2
-
-        const val SUGGESTION_RECEIVED_ID = 1
-        const val SUGGESTION_RECEIVED_FROM_USER_ID = 2
-        const val SUGGESTION_RECEIVED_FROM_USERNAME = 3
-        const val SUGGESTION_RECEIVED_TRACK_INFO = 4
-
-        const val SUGGESTION_APPROVED_ID = 1
-        const val SUGGESTION_APPROVED_TRACK_INFO = 2
-
-        const val SUGGESTION_REJECTED_ID = 1
-        const val SUGGESTION_REJECTED_REASON = 2
-    }
 }
