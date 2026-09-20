@@ -27,6 +27,11 @@ val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
 val WallpaperExtractionFailedKey = booleanPreferencesKey("wallpaperExtractionFailed")
 val HideStatusBarKey = booleanPreferencesKey("hideStatusBar")
 
+// The particle opening animation drawn over the app on a cold launch. On by default: the
+// animation is the feature, so the switch exists to turn it off rather than to opt in. It also
+// stands down on its own when [DisableAnimationsKey] is set — see the overlay's own gate.
+val SplashOverlayEnabledKey = booleanPreferencesKey("splashOverlayEnabled")
+
 // UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
 // 1.0f = system default. Range clamped to [0.85f, 1.30f] in AppearanceSettings.
 // Stored as a float so the slider is continuous (1% steps via 46 discrete positions).

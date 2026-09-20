@@ -143,6 +143,7 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "appearance_theme", "appearance",
             "dynamic_theme", "random_theme_on_startup", "dark_theme", "pure_black", "color_palette",
             "color_source", "palette_picker", "theme_creator", "app_icon", "disable_animations",
+            "splash_overlay_enabled",
             "hide_status_bar", "ui_scale", "blur_intensity", "disable_blur", "backdrop_blur",
             "backdrop_blur_amount", "font_preference", "use_system_font", "custom_font",
             "liquid_glass_effects", "wallpaper_permission",

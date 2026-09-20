@@ -95,6 +95,7 @@ import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
+import moe.rukamori.archivetune.constants.SplashOverlayEnabledKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.HomeScreenStyle
@@ -315,6 +316,11 @@ fun AppearanceSectionSettings(
         rememberPreference(
             DisableAnimationsKey,
             defaultValue = defaultDisableAnimations,
+        )
+    val (splashOverlayEnabled, onSplashOverlayEnabledChange) =
+        rememberPreference(
+            SplashOverlayEnabledKey,
+            defaultValue = true,
         )
     val (forceHighRefreshRate, onForceHighRefreshRateChange) =
         rememberPreference(
@@ -786,6 +792,20 @@ fun AppearanceSectionSettings(
                         icon = { Icon(painterResource(R.drawable.animation), null) },
                         checked = disableAnimations,
                         onCheckedChange = onDisableAnimationsChange,
+                    )
+                }
+
+                // The opening animation is the one animation that plays before the app is
+                // visible, so it gets its own switch rather than riding on "Disable animations":
+                // a reader can want the launch flourish without the rest of the app's motion.
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("splash_overlay_enabled"),
+                        title = { Text(stringResource(R.string.splash_overlay_enabled)) },
+                        description = stringResource(R.string.splash_overlay_enabled_desc),
+                        icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                        checked = splashOverlayEnabled,
+                        onCheckedChange = onSplashOverlayEnabledChange,
                     )
                 }
 
