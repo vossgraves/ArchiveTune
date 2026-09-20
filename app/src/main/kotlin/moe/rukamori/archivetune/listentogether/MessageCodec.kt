@@ -79,15 +79,15 @@ class MessageCodec(
         const val FIELD_REJECT_JOIN_USER_ID = 1
         const val FIELD_REJECT_JOIN_REASON = 2
 
-        const val FIELD_PLAYBACK_ACTION = 1
-        const val FIELD_PLAYBACK_TRACK_ID = 2
-        const val FIELD_PLAYBACK_POSITION = 3
-        const val FIELD_PLAYBACK_TRACK_INFO = 4
-        const val FIELD_PLAYBACK_INSERT_NEXT = 5
-        const val FIELD_PLAYBACK_QUEUE = 6
-        const val FIELD_PLAYBACK_QUEUE_TITLE = 7
-        const val FIELD_PLAYBACK_VOLUME = 8
-        const val FIELD_PLAYBACK_SERVER_TIME = 9
+        const val PLAYBACK_ACTION = 1
+        const val PLAYBACK_TRACK_ID = 2
+        const val PLAYBACK_POSITION = 3
+        const val PLAYBACK_TRACK_INFO = 4
+        const val PLAYBACK_INSERT_NEXT = 5
+        const val PLAYBACK_QUEUE = 6
+        const val PLAYBACK_QUEUE_TITLE = 7
+        const val PLAYBACK_VOLUME = 8
+        const val PLAYBACK_SERVER_TIME = 9
 
         const val FIELD_BUFFER_READY_TRACK_ID = 1
 
@@ -356,20 +356,20 @@ class MessageCodec(
             }
 
             is PlaybackActionPayload -> {
-                writer.writeString(FIELD_PLAYBACK_ACTION, payload.action)
-                payload.trackId?.let { writer.writeString(FIELD_PLAYBACK_TRACK_ID, it) }
-                payload.position?.let { writer.writeInt64(FIELD_PLAYBACK_POSITION, it) }
+                writer.writeString(PLAYBACK_ACTION, payload.action)
+                payload.trackId?.let { writer.writeString(PLAYBACK_TRACK_ID, it) }
+                payload.position?.let { writer.writeInt64(PLAYBACK_POSITION, it) }
                 // Written even when empty: proto3 presence is what tell the reader the field exists.
                 payload.trackInfo?.let { track ->
-                    writer.writeMessage(FIELD_PLAYBACK_TRACK_INFO) { trackInfoToProto(track, it) }
+                    writer.writeMessage(PLAYBACK_TRACK_INFO) { trackInfoToProto(track, it) }
                 }
-                payload.insertNext?.let { writer.writeBool(FIELD_PLAYBACK_INSERT_NEXT, it) }
+                payload.insertNext?.let { writer.writeBool(PLAYBACK_INSERT_NEXT, it) }
                 payload.queue?.forEach { track ->
-                    writer.writeMessage(FIELD_PLAYBACK_QUEUE) { trackInfoToProto(track, it) }
+                    writer.writeMessage(PLAYBACK_QUEUE) { trackInfoToProto(track, it) }
                 }
-                payload.queueTitle?.let { writer.writeString(FIELD_PLAYBACK_QUEUE_TITLE, it) }
-                payload.volume?.let { writer.writeFloat(FIELD_PLAYBACK_VOLUME, it) }
-                payload.serverTime?.let { writer.writeInt64(FIELD_PLAYBACK_SERVER_TIME, it) }
+                payload.queueTitle?.let { writer.writeString(PLAYBACK_QUEUE_TITLE, it) }
+                payload.volume?.let { writer.writeFloat(PLAYBACK_VOLUME, it) }
+                payload.serverTime?.let { writer.writeInt64(PLAYBACK_SERVER_TIME, it) }
             }
 
             is BufferReadyPayload ->

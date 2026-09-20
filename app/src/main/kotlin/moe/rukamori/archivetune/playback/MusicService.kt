@@ -413,7 +413,6 @@ class MusicService :
     lateinit var equalizerPlaybackController: EqualizerPlaybackController
 
     @Inject
-    @Inject
     lateinit var listenTogetherManager: moe.rukamori.archivetune.listentogether.ListenTogetherManager
 
     /** Beat-driven music haptics engine (SpatialFlow port), fed from the PCM tap. */
@@ -5157,8 +5156,6 @@ class MusicService :
         if (queue.any { it != null }) {
             lyricsPreloadManager?.onSongChanged(currentIndex, queue)
         }
-
-        updateSongPreload()
 
         val timelineEmpty = player.currentTimeline.isEmpty || player.mediaItemCount == 0 || player.currentMediaItem == null
         currentMediaMetadata.value = if (timelineEmpty) null else (mediaItem?.metadata ?: player.currentMetadata)
