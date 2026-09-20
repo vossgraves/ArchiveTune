@@ -37,3 +37,24 @@ settings).
 Instance URLs are entered one per line in the settings screen and tried in order, first success
 wins. Any deployment of the Amazon Music Stream API shape works; the app probes `/health` for the
 source-check row so a dead host is reported as such rather than silently failing.
+
+## Instances from the pool
+
+The ArchivePool serves `amazon-music` hosts as well, so the source works without the user typing a
+URL: the accounts feed carries each pooled instance's `baseUrl` in plain text and its material
+(`bypassToken`, `turnstileJwt`) encrypted, with the JWT's expiry also plain text so a stale token can
+be skipped rather than spent on a call the instance must reject.
+
+`AmazonInstances.merge` is what the resolver and the settings screen both read:
+
+- the user's own entries first, then the pooled ones, de-duplicated by normalised URL;
+- material never crosses hosts — a bypass token belongs to the operator who issued it and a solved
+  Turnstile JWT to the origin that handed out the challenge, so the user's token is not offered to a
+  pooled host (nor the pool's to the user's);
+- a pooled host that arrives with no usable material is skipped, and one whose only JWT has expired
+  is skipped until the pool refreshes it.
+
+The settings screen shows how many pooled instances stand behind the user's own, and the source
+check probes the same assembled list, so "Amazon is ready" describes what playback will actually do.
+A pool deployment that has collected no Amazon host yet is the normal state for a fresh deployment —
+the user's own instance is then the only way in.
