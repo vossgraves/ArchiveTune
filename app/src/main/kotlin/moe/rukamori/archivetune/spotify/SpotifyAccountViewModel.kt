@@ -54,10 +54,9 @@ class SpotifyAccountViewModel
                                 isLoading = false,
                             )
                         }
-                        // Reads the playlists already on disk. Without it the page reported "0
-                        // playlists" for a connected account until the user hit reload by hand:
-                        // the auto-refresh that used to populate the count was removed below, and
-                        // nothing took over the job of filling it in from the cache.
+                        // Reads the playlists already on disk. Without it the page shows "0
+                        // playlists" for a connected account until the user hits reload by hand:
+                        // nothing else fills the count in from the cache.
                         if (session.isAuthenticated) {
                             runCatching { repository.restoreCachedPlaylists() }
                                 .onFailure { error ->
