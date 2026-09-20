@@ -168,14 +168,10 @@ object LosslessStreamResolver {
             // no proxy instance needed.
             val poolAccounts = PoolAccountManager.tidalAccounts()
             if (poolAccounts.isNotEmpty()) {
-                // PARALLEL RACE: race all pool accounts in parallel — the first
-                // hit wins, the rest are cancelled. With N pool accounts this
-                // reduces the worst-case wall time from N × resolve_time to
-                // ~1 × resolve_time (typical speedup: 10× for a 10-account pool
-                // where the user's first 9 accounts don't have the track).
-                // Previously this loop ran each account sequentially, so a song
-                // that wasn't on the user's first N-1 pool accounts took
-                // N × ~3s = ~30s+ before the chain moved on to Deezer/YT Music.
+                // Race all pool accounts in parallel: the first hit wins and the rest are
+                // cancelled. With N pool accounts this reduces the worst-case wall time from
+                // N × resolve_time to ~1 × resolve_time (typical speedup: 10× for a 10-account
+                // pool where the user's first 9 accounts don't have the track).
                 //
                 // resolveTidal is NOT a suspend function, so we wrap the
                 // coroutineScope in runBlocking to bridge into the suspend world.

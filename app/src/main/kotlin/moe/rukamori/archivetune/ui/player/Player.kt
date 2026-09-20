@@ -1038,17 +1038,15 @@ fun BottomSheetPlayer(
         if (!state.isExpandedOrExpanding) isLyricsScreenVisible = false
     }
 
-    // ISSUE 1 FIX: track Apple Music's INLINE lyrics open state separately from
-    // the standalone lyrics overlay (isLyricsScreenVisible). Both feed into
-    // lyricsFullScreenActive so back-stack screens suspend GPU work during ANY
-    // lyrics morph — but only isLyricsScreenVisible triggers the standalone
-    // MikoLyricsTransition overlay. Previously, Apple Music's inline lyrics morph
-    // didn't propagate, causing back-stack LiquidGlass/Canvas GPU work to compete
-    // with the sharedBounds morph and produce the reported "sometimes lags" stutter.
+    // Track Apple Music's INLINE lyrics open state separately from the standalone lyrics overlay
+    // (isLyricsScreenVisible). Both feed into lyricsFullScreenActive so back-stack screens suspend
+    // GPU work during ANY lyrics morph — but only isLyricsScreenVisible triggers the standalone
+    // MikoLyricsTransition overlay. Without the inline state propagating, back-stack
+    // LiquidGlass/Canvas GPU work competes with the sharedBounds morph and stutters.
     var isAppleMusicInlineLyricsOpen by rememberSaveable { mutableStateOf(false) }
 
     // Report full-screen lyrics visibility upward so the status bar can be hidden for every player
-    // style while the lyrics overlay is showing (previously only the Immersive style went edge-to-edge).
+    // style while the lyrics overlay is showing, not only for the Immersive style.
     val lyricsFullScreenActive =
         (isLyricsScreenVisible || isAppleMusicInlineLyricsOpen) && state.isExpandedOrExpanding
     LaunchedEffect(lyricsFullScreenActive) {
@@ -2848,7 +2846,7 @@ private fun MikoLyricsTransition(
                             visibilityThreshold = 0.001f,
                         )
                     } else {
-                        // CLOSE — slower by ~40% (~700 ms) per user request.
+                        // CLOSE — slower by ~40% (~700 ms).
                         spring(
                             dampingRatio = 1f,
                             stiffness = 80f,

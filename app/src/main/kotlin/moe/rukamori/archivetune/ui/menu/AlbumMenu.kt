@@ -726,10 +726,9 @@ fun AlbumMenu(
 
                     // Hide from "Keep Listening" on home — adds the album's ID to
                     // the HiddenHomeItemsKey preference set. The HomeViewModel
-                    // filters out hidden items from the keepListening flow so the
-                    // album no longer appears on the home page. The user wants
-                    // to be able to hide entire albums/playlists from Keep
-                    // Listening, not individual songs.
+                    // filters out hidden items from the keepListening flow, so the
+                    // album no longer appears on the home page. Hiding applies to
+                    // whole albums/playlists, not individual songs.
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.hide_from_home)) },
                         leadingContent = {

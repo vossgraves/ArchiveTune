@@ -19,8 +19,9 @@ import org.junit.Test
  *
  * `MusicService.sourceResolutionChain` cuts the playback chain at YouTube, so a source that the merge
  * places *after* YouTube is silently dropped from playback and shows up below the visual end of the
- * order picker. The merge used to append sources missing from the stored CSV, which did exactly that
- * to every source added after a user last touched the picker — Deezer, Qobuz backup and JioSaavn.
+ * order picker. Sources missing from the stored CSV are therefore inserted directly above YouTube
+ * rather than appended, which keeps Deezer, Qobuz backup and JioSaavn reachable for a user whose
+ * stored order predates them.
  */
 class SourceOrderTest {
     @Test
@@ -63,8 +64,8 @@ class SourceOrderTest {
     fun userPlacementOfYouTubeIsPreserved() {
         val merged = AudioSourceConfig.parseOrder("YOUTUBE,TIDAL,QOBUZ")
 
-        // The user asked for YouTube first; the new sources go directly above it rather than being
-        // appended past the end, and TIDAL/QOBUZ keep the relative order that was stored.
+        // New sources go directly above YouTube rather than being appended past the end,
+        // and stored sources keep their relative order.
         assertTrue(merged.indexOf(AudioSourceType.DEEZER) < merged.indexOf(AudioSourceType.YOUTUBE))
         assertTrue(merged.indexOf(AudioSourceType.TIDAL) > merged.indexOf(AudioSourceType.YOUTUBE))
         assertTrue(merged.indexOf(AudioSourceType.QOBUZ) > merged.indexOf(AudioSourceType.TIDAL))

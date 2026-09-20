@@ -148,7 +148,6 @@ fun LibraryAlbumsScreen(
             albums
         }
 
-    // Issue 2: player-aware bottom padding
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -280,7 +279,7 @@ fun LibraryAlbumsScreen(
                                     onClick = {
                                         filter = AlbumFilter.LIKED
                                         onSortTypeChange(type)
-                                        // Issue 4: A-Z sort defaults to ascending
+                                        // A-Z sort defaults to ascending
                                         if (type == AlbumSortType.NAME) onSortDescendingChange(false)
                                         showSortMenu = false
                                     },

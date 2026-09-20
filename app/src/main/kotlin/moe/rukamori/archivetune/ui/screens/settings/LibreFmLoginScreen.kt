@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 const val LASTFM_LIBREFM_LOGIN_ROUTE = "settings/lastfm/librefm-login"
 
 /**
- * (Task 4) WebView-based Libre.fm sign-in. Identical flow to [LastFmLoginScreen] but pointing at
+ * WebView-based Libre.fm sign-in. Identical flow to [LastFmLoginScreen] but pointing at
  * libre.fm — Libre.fm is API-compatible with Last.fm, so the same `auth.getSession` token exchange
  * works against `https://libre.fm/2.0/`.
  */

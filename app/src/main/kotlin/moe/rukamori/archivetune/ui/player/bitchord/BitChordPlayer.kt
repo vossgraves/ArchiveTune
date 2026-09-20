@@ -35,7 +35,7 @@
  * travel, the sweep, the shimmer — is BitChord's, at BitChord's dimensions.
  *
  * Belongs exclusively to the Bitchord player style; not shared with any other
- * player style, per the self-containment rule for player styles (2026-09-01).
+ * player style, per the self-containment rule for player styles.
  */
 
 package moe.rukamori.archivetune.ui.player.bitchord
@@ -456,11 +456,11 @@ fun BitChordPlayerContent(
     /**
      * Read as late as possible, never in this composable's own body.
      *
-     * Taking the position as a plain `Long` meant this whole scope was invalidated by every tick of
-     * the ~100ms poll, for the sake of three leaves that actually use it. Each of those now reads
-     * through the provider inside its own composable, so a tick invalidates the scrubber, the lyric
-     * line and the previous button rather than the entire player. The same shape AppleMusicPlayer
-     * already uses, fed by the same remembered lambda in Player.kt.
+     * Reading the position as a plain `Long` in the body re-invalidates the whole scope on every
+     * tick of the ~100ms poll, for the sake of only three leaves that use it; each of those reads
+     * through the provider inside its own composable instead, so a tick invalidates the scrubber,
+     * the lyric line and the previous button rather than the entire player. The same shape
+     * AppleMusicPlayer uses, fed by the same remembered lambda in Player.kt.
      */
     positionProvider: () -> Long,
     duration: Long,
@@ -486,8 +486,7 @@ fun BitChordPlayerContent(
     // Parsing routes through every format the lyrics table can hold — LRC,
     // QRC, TTML and plain text — the same way the other lyrics surfaces route,
     // so a plain-text or TTML result picked from the lyrics search sheet
-    // actually renders here too (user report 2026-09-02: "if I choose a
-    // different lyrics from a provider nothing shows up").
+    // actually renders here too.
     val lyricsEntity by database.lyrics(mediaMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
     val parsedLyrics = remember(lyricsEntity?.lyrics, mediaMetadata.duration) {
@@ -503,7 +502,7 @@ fun BitChordPlayerContent(
     val lyricsProviderName = lyricsEntity?.providerName.orEmpty()
     val lyricsUnavailable = lyricsEntity?.lyrics == LyricsEntityNotFound
 
-    // ── Auto translation (ArchiveTune addition, user request 2026-09-02) ──
+    // ── Auto translation (ArchiveTune addition) ──
     // The same gate the standalone lyrics screen (LyricsScreen.kt) runs: when
     // "Auto translate lyrics" is on, and this track's lyrics are in a language
     // the user hasn't excluded, hand them to the AI translator and write the
@@ -829,12 +828,11 @@ fun BitChordPlayerContent(
                             // The DstIn mask below erases part of what this layer
                             // drew; without an offscreen buffer of its own it
                             // instead erases everything already on screen in its
-                            // rect — the mesh backdrop included — which is what
-                            // drew the black band and the hard cut at the banner's
-                            // bottom edge (user report 2026-09-01: the artwork
-                            // "doesn't blend with the bottom controls"). With
-                            // Offscreen, the fade only fades the artwork, and the
-                            // mesh gradient stays behind it exactly as in BitChord.
+                            // rect — the mesh backdrop included — which draws a
+                            // black band and a hard cut at the banner's bottom
+                            // edge. With Offscreen, the fade only fades the
+                            // artwork, and the mesh gradient stays behind it
+                            // exactly as in BitChord.
                             compositingStrategy = CompositingStrategy.Offscreen
                         }
                         .drawWithContent {
@@ -1161,11 +1159,10 @@ fun BitChordPlayerContent(
                         )
                     }
 
-                    // The measured codec/quality line used to be drawn here too, pinned to the
-                    // sleeve's bottom edge. It read as a caption floating loose over the artwork,
-                    // anchored to nothing the eye could see, and it duplicated LosslessOrStats in
-                    // the transport row below — which is where the same information already sits,
-                    // in a slot that visibly holds it.
+                    // The measured codec/quality line does NOT belong here: pinned to the sleeve's
+                    // bottom edge it read as a caption floating loose over the artwork, anchored to
+                    // nothing the eye could see, and it duplicated LosslessOrStats in the transport
+                    // row below, which is a slot that visibly holds that information.
                 }
 
                 // Sits in the gap under the sleeve, clear of its rounded
@@ -1402,8 +1399,7 @@ fun BitChordPlayerContent(
                         modifier = Modifier.fillMaxWidth(),
                         // The strip is the way into the lyrics page when this
                         // track has no lyrics at all — the panel's ellipsis
-                        // button is where refetch / search live (user request
-                        // 2026-09-02).
+                        // button is where refetch / search live.
                         onClick = { lyricsOpen = true },
                     )
                 } else {
@@ -1411,8 +1407,7 @@ fun BitChordPlayerContent(
                         trackKey = mediaMetadata.id,
                         modifier = Modifier.fillMaxWidth(),
                         // Same: the loading line is tappable so the lyrics
-                        // page is reachable mid-lookup (user request
-                        // 2026-09-02).
+                        // page is reachable mid-lookup.
                         onClick = { lyricsOpen = true },
                     )
                 }

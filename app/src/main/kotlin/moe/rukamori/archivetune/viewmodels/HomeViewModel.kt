@@ -593,10 +593,8 @@ class HomeViewModel
                         // Recently played — chronological recents, used by the
                         // "Recently Played" square-card row. Filter out blocked
                         // artists and cap at 30 so the row has enough to draw
-                        // from without over-fetching. (The "Jump back in" hero
-                        // at the top of the home page now uses `heroPicks` —
-                        // random songs from listening preference — instead of
-                        // the top 3 of this list.)
+                        // from without over-fetching. The "Jump back in" hero is
+                        // fed by `heroPicks`, not this list.
                         recentlyPlayed.value =
                             database
                                 .recentSongs(limit = 30)
@@ -810,13 +808,10 @@ class HomeViewModel
             }
 
         private suspend fun refreshAccountIdentity() {
-            // Seed from the identity persisted at login before touching the network. accountInfo()
-            // is a live call, and this used to start by blanking the name and avatar and blank them
-            // again on failure — so any failed refresh made the app report that no account was
-            // connected even though the session was intact. That is what picking a YouTube Music
-            // region looked like: the picker restarts the process, the first identity fetch after
-            // the restart races the region/proxy restore in App.initializeDeferredAsync(), and a
-            // single failure left the top bar signed out until the next successful fetch.
+            // Seed from the identity persisted at login before touching the network.
+            // accountInfo() is a live call and is allowed to fail: blanking the name or
+            // avatar here (or on failure) would report no account connected even though
+            // the session is intact.
             context.dataStore.data.first().let { prefs ->
                 prefs[AccountNameKey]?.takeIf { it.isNotBlank() }?.let { _accountName.value = it }
                 prefs[AccountImageUrlKey]?.takeIf { it.isNotBlank() }?.let { _accountImageUrl.value = it }

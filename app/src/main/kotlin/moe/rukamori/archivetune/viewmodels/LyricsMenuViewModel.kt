@@ -343,10 +343,11 @@ class LyricsMenuViewModel
                         throw e
                     } catch (e: Exception) {
                         // Always log the failure — auto-translations are silent (no toast),
-                        // so without this log there's no way to diagnose why auto-translate
-                        // "just stops working" after a few songs. The most common causes are:
-                        //  - AiRateLimitException (hourly budget hit; now fixed to refund on failure)
-                        //  - IOException (stale OkHttp pool; now fixed to recreate client on failure)
+                        // so without this log there's no way to diagnose an auto-translate
+                        // that silently stops working after a few songs. The most common
+                        // causes are:
+                        //  - AiRateLimitException (hourly budget hit; the budget is refunded on failure)
+                        //  - IOException (stale OkHttp pool; the client is recreated on failure)
                         //  - HTTP 4xx (bad API key, quota exceeded, model deprecated)
                         //  - HTTP 5xx (provider outage)
                         Log.w(
@@ -446,10 +447,10 @@ class LyricsMenuViewModel
                 }
             // Delegate to the shared detector so the badge shown here always agrees
             // with what the "Prioritize Word Synced Lyrics" override in LyricsHelper
-            // considers word-synced. Previously this only checked TTML <span> entries,
-            // which missed Enhanced LRC ([mm:ss.xxx]<mm:ss.xxx>word) returned by
-            // YouLyPlus's fallback endpoint — causing the badge to say "Line Synced"
-            // while the override (correctly) skipped it, or vice versa.
+            // considers word-synced. The detector must cover Enhanced LRC
+            // ([mm:ss.xxx]<mm:ss.xxx>word) from YouLyPlus's fallback endpoint as well
+            // as TTML <span> entries, otherwise the badge here says "Line Synced" while
+            // the override skips the same lyrics, or vice versa.
             val isWordSynced = LyricsUtils.hasWordSyncedLyrics(lyrics)
 
             return LyricsSearchResultUiModel(

@@ -52,12 +52,10 @@ class SearchDiscoveryRepository
     constructor(
         private val database: MusicDatabase,
     ) {
-        // ── In-memory TTL cache ────────────────────────────────────────────────────────
-        //
-        // Re-entering the Search tab previously re-fired 20+ HTTP requests every time,
-        // making the tab feel permanently slow. Cache the last successful discovery
-        // snapshot for a short window so the user sees content immediately on re-entry
-        // and only pays the network cost on pull-to-refresh / cache expiry.
+        // Without this, re-entering the Search tab re-fires 20+ HTTP requests every time, which
+        // makes the tab feel permanently slow. Cache the last successful discovery snapshot for a
+        // short window so the user sees content immediately on re-entry and only pays the network
+        // cost on pull-to-refresh / cache expiry.
         private data class CachedSnapshot(
             val data: SearchDiscoveryData,
             val expiresAtMs: Long,
@@ -99,11 +97,9 @@ class SearchDiscoveryRepository
 
         private suspend fun loadDiscoveryFromNetwork(): SearchDiscoveryData =
             coroutineScope {
-                // ── Fan out every sub-load in parallel ─────────────────────────────────
-                // Previously explore/charts used getOrThrow() — a single transient failure
-                // nuked the entire discovery load. Now each sub-load returns its result
-                // (or null on failure) and the UI gets partial content rather than an
-                // error state.
+                // Each sub-load returns its result (or null on failure) rather than throwing:
+                // getOrThrow() would let a single transient failure nuke the entire discovery
+                // load, whereas the UI now gets partial content instead of an error state.
                 val explorePageDeferred =
                     async {
                         runCatching { YouTube.explore().getOrThrow() }.getOrNull()

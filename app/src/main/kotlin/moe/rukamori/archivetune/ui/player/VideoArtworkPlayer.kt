@@ -165,9 +165,8 @@ private const val VideoHardResyncCooldownMs = 30_000L
 /**
  * How often to poll the main player's position and re-sync the video.
  *
- * 250ms (previously 500ms) makes the frozen-renderer detector respond
- * within ~750ms (3 cycles) and keeps speed correction responsive. The
- * polling cost is negligible (a couple of reads every 250ms).
+ * 250ms lets the frozen-renderer detector respond within ~750ms (3 cycles) and keeps speed
+ * correction responsive. The polling cost is negligible (a couple of reads every 250ms).
  */
 private const val VideoSyncPollIntervalMs = 250L
 
@@ -755,17 +754,12 @@ fun rememberVideoArtworkState(
         if (state.hasPlaybackFailed) {
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
-            // The video isn't ready yet — keep the video paused. The
-            // main audio is ALSO paused (see [beginAudioHold], which
-            // calls `updatedOnRequestPauseMain()` when the load begins).
-            // Both stay paused until the video's first frame renders,
-            // at which point `onRenderedFirstFrame` schedules a
-            // delayed resume via `state.pendingResumeAtMs` — both
-            // audio and video resume together 1 second later. This is
-            // the user's explicit "pause both for a second, then
-            // resume" request and eliminates the audio-first /
-            // video-first desync that occurred under previous
-            // behaviors.
+            // The video isn't ready yet — keep the video paused. The main audio is ALSO paused
+            // (see [beginAudioHold], which calls `updatedOnRequestPauseMain()` when the load
+            // begins). Both stay paused until the video's first frame renders, at which point
+            // `onRenderedFirstFrame` schedules a delayed resume via `state.pendingResumeAtMs`, so
+            // audio and video resume together 1 second later. Holding BOTH until that first frame
+            // keeps them from desyncing, with one starting ahead of the other.
             exoPlayer.pause()
         } else if (state.isChangingQuality) {
             // A quality or caption change is in progress — keep BOTH
@@ -847,9 +841,8 @@ fun rememberVideoArtworkState(
     //
     // Triggered by [VideoArtworkState.requestResync], which is called from
     // the seekbar's onValueChangeFinished in BottomSheetPlayer. This is the
-    // ONLY path that performs a pause-load-resume. The automatic drift-based
-    // resync was removed because it caused the "video keeps pausing repeatedly"
-    // bug (infinite resync loop).
+    // ONLY path that performs a pause-load-resume — an automatic drift-based
+    // resync must not be reintroduced, as it loops indefinitely.
     LaunchedEffect(state.pendingResync) {
         val (position, wasPlaying, isAutomatic) = state.pendingResync ?: return@LaunchedEffect
         // Consume the request immediately so subsequent calls re-trigger.
@@ -1359,17 +1352,14 @@ fun VideoArtworkSurface(
         label = "videoAlpha",
     )
 
-    // NOTE: A previous attempt ported Flow's PlayerView + SurfaceManager pattern
-    // here (inflating PlayerView from XML and managing SurfaceHolder.Callbacks
-    // explicitly with PlaceholderSurface). It compiled but produced a black
-    // screen — the explicit surface wiring raced with the PlayerView's own
-    // internal surface lifecycle and the codec never attached. We reverted
-    // to Media3's ContentFrame composable with SURFACE_TYPE_TEXTURE_VIEW,
-    // which was the working implementation. The Flow files (VideoSurfacePolicy,
-    // VideoSurfaceManager, the two XML layouts) are kept in the tree for a
-    // future attempt — the PlaceholderSurface codec-preservation insight is
-    // sound; the wiring just needs more careful integration with the
-    // VideoArtworkState's existing Player.Listener + kickRenderer paths.
+    // Media3's ContentFrame with SURFACE_TYPE_TEXTURE_VIEW is deliberate. Flow's PlayerView +
+    // SurfaceManager pattern (inflating PlayerView from XML, managing SurfaceHolder.Callbacks with
+    // PlaceholderSurface) compiles but produces a black screen: the explicit surface wiring races
+    // the PlayerView's own internal surface lifecycle and the codec never attaches. The Flow files
+    // (VideoSurfacePolicy, VideoSurfaceManager, the two XML layouts) are kept in the tree for a
+    // future attempt — the PlaceholderSurface codec-preservation insight is sound; the wiring needs
+    // more careful integration with VideoArtworkState's existing Player.Listener + kickRenderer
+    // paths.
     Box(modifier = modifier) {
         // ── Ambient mode background ──
         // Render a slowly drifting, blurred copy of the song thumbnail

@@ -231,11 +231,10 @@ fun FloatingNavigationToolbar(
     // bar surface with the accent (primary) color so the frost reads as a colored glass.
     val anyFrosted = frostedBlur || tintFrostedBlur
     val canBlurBackdrop = anyFrosted && frostedBackdrop != null && !isPreS
-    // Liquid Glass nav bar: requires the master toggle on and the LayerBackdrop
-    // available (Android 12+). Pure-black mode is no longer a hard blocker — the
+    // available (Android 12+). Pure-black mode is not a hard blocker — the
     // liquid glass surface tints itself with `surfaceContainerHigh`, so it stays
-    // visible even when the rest of the UI is pitch black. The user explicitly
-    // opts in via the Liquid Glass toggle, so honour that choice in pure dark too.
+    // visible even when the rest of the UI is pitch black, and the user explicitly
+    // opted in via the Liquid Glass toggle.
     val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
     val resolvedBarHeight =
         if (canLiquidGlass) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
@@ -253,7 +252,7 @@ fun FloatingNavigationToolbar(
                 when {
                     // Apple Music's tab bar is a floating, rounded bar inset from the edges — the
                     // reference separates it from the content on all four sides, which is why it
-                    // keeps the hairline border below. It used to be a full-width rectangle.
+                    // keeps the hairline border below.
                     isAppleMusic -> RoundedCornerShape(navBarCornerRadius.dp)
                     // A detached pill keeps the user-configurable corner radius (default 28 dp).
                     isFloating -> RoundedCornerShape(navBarCornerRadius.dp)

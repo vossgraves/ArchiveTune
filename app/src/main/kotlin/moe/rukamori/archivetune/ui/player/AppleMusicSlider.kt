@@ -6,10 +6,8 @@
  *
  * Shared flat slider + volume row for the "Apple Music" player design.
  *
- * The player and the lyrics screen each used to carry their own volume slider — one a hand-drawn
- * Canvas with no thumb, the other an M3 Slider with a zero-size invisible thumb. They looked
- * subtly different and neither animated, so the fill snapped between values. Both now share this
- * component so the two screens read as one control.
+ * Both the player and its lyrics screen draw this one component, so the two surfaces stay in step
+ * instead of drifting apart.
  */
 
 package moe.rukamori.archivetune.ui.player
@@ -160,8 +158,7 @@ internal fun AppleMusicFlatSlider(
 /**
  * Volume row used by both the Apple Music player and its lyrics screen.
  *
- * The left glyph switches to the muted speaker at zero so silence is visible at a glance; neither
- * screen used to indicate mute at all.
+ * The left glyph switches to the muted speaker at zero so silence is visible at a glance.
  */
 @Composable
 internal fun AppleMusicVolumeRow(

@@ -31,7 +31,7 @@ fun Context.systemAnimationScale(): Float =
     }.getOrDefault(1f)
 
 /**
- * App-wide scrollbar toggle (Task 8). When `true`, all LazyColumn / LazyGrid /
+ * App-wide scrollbar toggle. When `true`, all LazyColumn / LazyGrid /
  * ScrollState scrollbars in the app are suppressed. Provided by MainActivity
  * from the [HideScrollbarKey] preference; consumed by the scrollbar modifier
  * extension in [moe.rukamori.archivetune.ui.utils.ScrollUtils].

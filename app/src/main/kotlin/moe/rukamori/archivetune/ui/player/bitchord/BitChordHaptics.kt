@@ -12,7 +12,7 @@
  * app/src/main/java/com/music/bitchord/ui/haptics/Haptics.kt (package renamed).
  *
  * Belongs exclusively to the Bitchord player style; not shared with any other
- * player style, per the self-containment rule for player styles (2026-09-01).
+ * player style, per the self-containment rule for player styles.
  */
 
 package moe.rukamori.archivetune.ui.player.bitchord

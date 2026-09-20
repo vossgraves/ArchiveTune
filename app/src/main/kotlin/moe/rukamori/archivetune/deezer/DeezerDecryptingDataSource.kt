@@ -10,8 +10,8 @@
  * This is deliberately a DataSource rather than a standalone downloader. Downloads in this app run
  * through Media3's DownloadManager over the same DataSource factory as playback, so implementing
  * Deezer here means downloading, caching, tag embedding and codec reporting all keep working with no
- * Deezer-specific code in those paths. An external HTTP download loop is what produced corrupted
- * files and unreadable tags in earlier attempts at Deezer support elsewhere.
+ * Deezer-specific code in those paths. A separate download loop cannot share that machinery, and is
+ * how corrupted files and unreadable tags arise.
  */
 
 package moe.rukamori.archivetune.deezer

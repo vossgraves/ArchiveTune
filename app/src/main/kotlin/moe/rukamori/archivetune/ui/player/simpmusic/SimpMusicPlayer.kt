@@ -9,22 +9,21 @@
  * SimpMusic player style.
  *
  * The layout is SimpMusic's default now-playing screen — its `NowPlayingContentSpotify`
- * (https://github.com/maxrave-dev/SimpMusic, GPL-3.0). The thing that makes it that screen, and
- * which the first version of this file missed entirely, is that IT SCROLLS: the artwork, info row,
- * scrubber and transport are one screen-height hero, and below the fold sit three cards — lyrics,
- * artist, and track info. Scroll past the hero and a compact toolbar sticks to the top.
+ * (https://github.com/maxrave-dev/SimpMusic, GPL-3.0). The thing that makes it that screen is that
+ * IT SCROLLS: the artwork, info row, scrubber and transport are one screen-height hero, and below
+ * the fold sit three cards — lyrics, artist, and track info. Scroll past the hero and a compact
+ * toolbar sticks to the top.
  *
  * The hero's vertical rhythm is measured, not guessed. SimpMusic computes
  *
  *     gap = (screenHeight - topBarHeight - artworkHeight - infoLayoutHeight - 30dp) / 2
  *
  * and spends that gap twice: once above the artwork, once below it, where the current lyric line
- * lives. That is why the artwork sits slightly high with the controls gathered under it rather than
- * floating in the middle of an empty screen. The first version here used a `weight(1f)` artwork and
- * a bottom-anchored control stack, which centred the sleeve in ALL the leftover space and left the
- * dead band the screenshot shows.
+ * lives. That is why the artwork sits slightly high with the controls gathered under it, rather
+ * than centred in a `weight(1f)` sleeve above a bottom-anchored control stack, which leaves a dead
+ * band under the artwork.
  *
- * REWRITTEN, not transliterated. SimpMusic is Compose Multiplatform and this screen is one
+ * Not a transliteration. SimpMusic is Compose Multiplatform and this screen is one
  * ~1,700-line composable carrying its own state model (NowPlayingScreenData, ControlState, TimeLine,
  * GenericCastState) and re-running Palette on every adjacent pager page. None of that survives:
  *
@@ -38,9 +37,9 @@
  *
  * Belongs exclusively to this style, per the self-containment rule; what it shares is the app's
  * playback substrate (the one PlayerConnection, queue, like state and lyrics), deliberately -- plus
- * the swept lyric renderer, which is the one deliberate exception (2026-09-07): the current-line
- * band was the only surface still highlighting whole lines, so it now draws through Bitchord's
- * sweep rather than keeping a second, worse copy of it.
+ * the swept lyric renderer, which is the one deliberate exception: the current-line band was the
+ * only surface still highlighting whole lines, so it draws through Bitchord's sweep rather than
+ * keeping a second, worse copy of it.
  */
 
 package moe.rukamori.archivetune.ui.player.simpmusic
@@ -230,9 +229,8 @@ private val MinGap = 30.dp
  * Artwork width as a fraction of the screen.
  *
  * SimpMusic sizes its sleeve to the full width minus its gutters, which on a phone is around 90%
- * and reads noticeably bigger than Spotify's — the complaint that prompted this. Spotify's sleeve
- * leaves a clear margin either side; 0.84 matches it and keeps the square from crowding the title
- * row underneath.
+ * and reads noticeably bigger than Spotify's. Spotify's sleeve leaves a clear margin either side;
+ * 0.84 matches it and keeps the square from crowding the title row underneath.
  */
 private const val ARTWORK_WIDTH_FRACTION = 0.84f
 
@@ -777,9 +775,9 @@ private fun SimpMusicLyricLine(
                     text = text,
                     style = style,
                     color = Color.White,
-                    // Wraps rather than marquees. A long line used to scroll sideways across the
-                    // player, which is both harder to read than a second line and unlike every
-                    // reference player; two lines is what the band above is sized for.
+                    // Wraps rather than marquees. A sideways-scrolling marquee is harder to read
+                    // than a second line and unlike every reference player; two lines is what the
+                    // band above is sized for.
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = Gutter),

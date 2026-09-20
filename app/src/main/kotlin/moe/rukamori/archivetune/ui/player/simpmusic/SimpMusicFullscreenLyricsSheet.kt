@@ -11,20 +11,19 @@
  * A port of SimpMusic's `FullscreenLyricsSheet` (its ui/component/LyricsView.kt,
  * https://github.com/maxrave-dev/SimpMusic, GPL-3.0): a full-height black sheet whose
  * background is the artwork palette colour bleeding into black through a slowly wandering
- * five-stop linear gradient (angle ±45° over 24 s, offsets ±1500/±1000 over 32 s — the
- * original 6 s / 8 s sweeps read as a fast strobe on a phone screen and were slowed 4x
- * 2026-09-05, user report: "the background changes at extremely fast speed" — the stops
- * easing toward new palette colours over 1200 ms), an Apple-Music-style header (45 dp sleeve,
- * marquee'd title, artist row that navigates to the artist page, like / share-lyrics /
- * more-vert), SimpMusic's own Classic lyrics renderer filling the middle, and a bottom
- * control block — slider with the 8×18 dp thumb, time row, transport, info/queue buttons —
- * that AUTO-HIDES after four seconds and comes back on any tap, exactly like the original.
+ * five-stop linear gradient (angle ±45° over 24 s, offsets ±1500/±1000 over 32 s — 4x
+ * slower than upstream, whose 6 s / 8 s sweeps read as a fast strobe on a phone screen,
+ * with the stops easing toward new palette colours over 1200 ms), an Apple-Music-style
+ * header (45 dp sleeve, marquee'd title, artist row that navigates to the artist page,
+ * like / share-lyrics / more-vert), SimpMusic's own Classic lyrics renderer filling the
+ * middle, and a bottom control block — slider with the 8×18 dp thumb, time row, transport,
+ * info/queue buttons — that AUTO-HIDES after four seconds and comes back on any tap,
+ * exactly like the original.
  *
- * Only the SimpMusic player style reaches this: the lyrics card's "Show" affordance opens it
- * (user request 2026-09-05 — it previously opened the app's shared LyricsScreen instead of
- * SimpMusic's own lyrics page). The lyric DATA is the same store every other renderer reads
- * (playerConnection.currentLyrics through SimpMusicLyrics) — real providers, no second
- * implementation.
+ * Only the SimpMusic player style reaches this: the lyrics card's "Show" affordance opens
+ * it rather than the app's shared LyricsScreen, since SimpMusic has its own lyrics page.
+ * The lyric DATA is the same store every other renderer reads (playerConnection.currentLyrics
+ * through SimpMusicLyrics) — real providers, no second implementation.
  */
 
 package moe.rukamori.archivetune.ui.player.simpmusic
@@ -240,8 +239,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     var sliderPosition by remember { mutableLongStateOf(-1L) }
-    // Per-song sync offset, adjustable from the lyrics overflow menu. The menu previously got a
-    // hard-coded 0 with a no-op setter, so the adjustment it offered never did anything.
+    // Per-song sync offset, adjustable from the lyrics overflow menu.
     var lyricsSyncOffset by rememberSaveable(mediaMetadata?.id) { mutableIntStateOf(0) }
     var isScrubbing by remember { mutableStateOf(false) }
     var duration by remember { mutableLongStateOf(-1L) }
@@ -598,10 +596,9 @@ internal fun SimpMusicFullscreenLyricsSheet(
                                         thumbColor = Color.White,
                                         activeTrackColor = Color.White,
                                         // A transparent unplayed portion made the whole seekbar
-                                        // read as invisible: at 0:00 only the thumb dot rendered
-                                        // (and that is exactly what the user saw). Spotify's
-                                        // lyrics page keeps a faint full-width track under the
-                                        // played part - a translucent white does the same here
+                                        // read as invisible: at 0:00 only the thumb dot rendered.
+                                        // Spotify's lyrics page keeps a faint full-width track under
+                                        // the played part - a translucent white does the same here
                                         // without fighting the palette backdrop.
                                         inactiveTrackColor = Color.White.copy(alpha = 0.30f),
                                     ),

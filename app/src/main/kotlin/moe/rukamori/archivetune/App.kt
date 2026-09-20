@@ -174,10 +174,9 @@ class App :
             )
         }
 
-        // Route AppleMusicProvider (canvas) diagnostic logs through GlobalLog
-        // too — same rationale as PaxsenixLyrics.logger above. Previously the
-        // canvas module used `println(...)` which Android redirects to logcat
-        // as `I/System.out:` with no tag/level, bypassing the in-app log viewer.
+        // Route AppleMusicProvider (canvas) diagnostic logs through GlobalLog too — same rationale
+        // as PaxsenixLyrics.logger above: `println(...)` lands in logcat as `I/System.out:` with no
+        // tag/level, bypassing the in-app log viewer.
         AppleMusicProvider.logger = { level, tag, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
         }
@@ -308,10 +307,10 @@ class App :
                 // Restore the YouTube Music region override. BOTH halves have to come back: the
                 // `gl` locale override *and* `regionSpooferActive`, which is what forces the
                 // region-sensitive endpoints (home, search, charts, explore, moods, new releases)
-                // to go out anonymously so `gl` is authoritative. Restoring only `gl` — as this
-                // used to — meant spoofing silently stopped working after the very first restart,
-                // including the automatic one that picking a region triggers: the account context
-                // came back and YouTube went on serving the account's home country.
+                // to go out anonymously so `gl` is authoritative. Restoring only `gl` would mean
+                // spoofing silently stops working after the very first restart, including the
+                // automatic one that picking a region triggers: the account context comes back and
+                // YouTube went on serving the account's home country.
                 prefs[YouTubeMusicRegionKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { regionValue ->
                     YouTube.locale = YouTube.locale.copy(gl = regionValue)
                     YouTube.regionSpooferActive = true

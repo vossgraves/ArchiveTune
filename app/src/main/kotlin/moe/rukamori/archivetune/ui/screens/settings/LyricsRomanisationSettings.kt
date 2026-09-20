@@ -47,10 +47,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
 
 /**
- * Romanisation sub-page (Task 3): houses every per-language romanisation toggle that
- * used to live inline on the Lyrics settings page. Behaviour preserved verbatim —
- * Japanese romanisation stays gated on the Japanese language pack being installed,
- * matching the original inline implementation.
+ * Romanisation sub-page: houses every per-language romanisation toggle. Japanese romanisation is
+ * gated on the Japanese language pack being installed.
  */
 @Composable
 fun LyricsRomanisationSettings(

@@ -70,8 +70,8 @@ fun IntegrationScreen(
     // source pool, so most users never need to see raw instance/token fields.
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
     // …but a source the user has *already* signed into must stay reachable regardless, otherwise
-    // turning the toggle back off strands the account with no way to view or sign out of it — and
-    // "Check source" would keep pointing at a screen that is no longer in the list.
+    // turning the toggle back off strands the account with no way to view or sign out of it, and
+    // settings-search anchors would scroll to a row that is never rendered.
     val (deezerArl, _) = rememberPreference(DeezerArlKey, "")
     val (tidalAccessToken, _) = rememberPreference(TidalAccessTokenKey, "")
     val (qobuzTokens, _) = rememberPreference(QobuzTokensKey, "")
@@ -136,9 +136,8 @@ fun IntegrationScreen(
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-            // AI integration lives at the top of the Integration page (Task 8). It used to
-            // be a top-level pill on the main settings page; moving it here co-locates it
-            // with the other integrations (Discord, Last.fm, Tidal, Qobuz, Telegram, …).
+            // AI integration sits here with the other integrations (Discord, Last.fm, Tidal,
+            // Qobuz, Telegram, …).
             PreferenceGroup(
                 modifier = positions.modifierFor("ai_integration"),
                 title = stringResource(R.string.ai_integration),
@@ -293,9 +292,9 @@ fun IntegrationScreen(
             }
 
             PreferenceGroup(
-                // Also carries the "lastfm_scrobbling" anchor, which used to sit on the removed
-                // Accounts group. Settings search offers a "Last.fm scrobbling" result that scrolls
-                // here, so without this the result would open this screen and then sit at the top.
+                // Also carries the "lastfm_scrobbling" anchor: settings search offers a
+                // "Last.fm scrobbling" result that scrolls here, so without this the result
+                // would open this screen and then sit at the top.
                 // Chaining is safe: modifierFor only registers a y position per key.
                 modifier =
                     positions

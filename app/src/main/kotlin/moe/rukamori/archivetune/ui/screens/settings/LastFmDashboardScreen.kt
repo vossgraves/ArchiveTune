@@ -209,8 +209,7 @@ private fun dashboardTheme(): DashboardTheme {
     // surface". Using surfaceContainer* gives us the standard Material 3
     // elevation stack (background → surface → surfaceContainer →
     // surfaceContainerHigh → surfaceContainerHighest), so cards/pills
-    // naturally appear elevated over the page background without the
-    // five-shades-of-dark mismatch the user reported.
+    // naturally appear elevated over the page background.
     val pageBackground = cs.background
     val cardBackground = cs.surfaceContainer
     val elevatedSurface = cs.surfaceContainerHigh
@@ -438,16 +437,16 @@ fun LastFmDashboardScreen(
     var selectedFilter by remember { mutableStateOf(LastFmFilter.RECENT) }
     var overflowTrack by remember { mutableStateOf<LastFmTrackRef?>(null) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
-    // (Task 5c) Captured ref of the track the user wants to add to a playlist.
-    // Decoupled from [overflowTrack] because the bottom sheet is dismissed
-    // BEFORE the AddToPlaylistDialog opens (otherwise the dialog renders
-    // behind the sheet's high-elevation scrim). The ref lives here so it
-    // survives the sheet dismissal and is consumed by the dialog's onGetSong.
+    // Captured ref of the track being added to a playlist. Decoupled from
+    // [overflowTrack] because the bottom sheet is dismissed BEFORE the
+    // AddToPlaylistDialog opens (otherwise the dialog renders behind the
+    // sheet's high-elevation scrim). The ref lives here so it survives the
+    // sheet dismissal and is consumed by the dialog's onGetSong.
     var showAddToPlaylistTrack by remember { mutableStateOf<LastFmTrackRef?>(null) }
-    // Inline scrobble-search overlay (Task 6c): tapping the header search
-    // icon toggles a TextField that filters the currently-loaded recent +
-    // top tracks by title / artist, with an "×N" badge for each match's
-    // play count (from the merged-dedup data). Empty when not visible.
+    // Inline scrobble-search overlay: tapping the header search icon toggles a
+    // TextField that filters the currently-loaded recent + top tracks by
+    // title / artist, with an "×N" badge for each match's play count (from the
+    // merged-dedup data). Empty when not visible.
     var searchVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -586,19 +585,16 @@ fun LastFmDashboardScreen(
             recent.associateArtworkByTrack()
         }
 
-        // (Task 6a) Track artwork is now resolved lazily per-row inside
-        // [DashboardTrackRow] via its own `LaunchedEffect(track.artworkKey())`.
-        // The previous upfront batch resolution (LaunchedEffect over all
-        // tracks at once) ran even for off-screen rows; the per-row approach
-        // only resolves what's actually composed, so opening the dashboard
-        // with a long recent-tracks list no longer kicks off 50+ parallel
-        // YouTube searches before the user has scrolled past row 3. The
-        // [CachedArtworkStore] process cache (seed lookups below) is still
-        // consulted so a previously-resolved row doesn't re-resolve.
+        // Track artwork is resolved lazily per-row inside [DashboardTrackRow] via its own
+        // `LaunchedEffect(track.artworkKey())`. A per-row effect only resolves what is actually
+        // composed, whereas an upfront batch LaunchedEffect over all tracks also runs for
+        // off-screen rows — that is 50+ parallel YouTube searches the moment the dashboard opens
+        // with a long recent-tracks list, before the user has scrolled past row 3. The
+        // [CachedArtworkStore] process cache (seed lookups below) is still consulted so a
+        // previously-resolved row doesn't re-resolve.
 
-        // Scrobble-search filter (Task 6c): case-insensitive substring match
-        // on title or artist text. Empty query = no filtering (return the
-        // original list).
+        // Scrobble-search filter: case-insensitive substring match on title or
+        // artist text. Empty query = no filtering (return the original list).
         val q = searchQuery.trim()
         val recentFiltered = remember(recent, q) {
             if (q.isBlank() || !searchVisible) recent
@@ -722,13 +718,11 @@ fun LastFmDashboardScreen(
                 HeroStatsCard(
                     userInfo = userInfo,
                     isRefreshing = isRefreshing,
-                    // (Task 1) Read the lifetime unique-item counts
-                    // off the dedicated limit=1 stats responses — mirrors
-                    // LastWave-native's _fetchHomeData() batch where the
-                    // hero stats come from the limit=1 fetches, not the
-                    // list fetches. Falls back to the list responses if
-                    // the stats fetch failed (defensive: same source, so
-                    // the value is still authoritative).
+                    // Read the lifetime unique-item counts off the dedicated limit=1 stats
+                    // responses — mirrors LastWave-native's _fetchHomeData() batch where the
+                    // hero stats come from the limit=1 fetches, not the list fetches. Falls
+                    // back to the list responses if the stats fetch failed (defensive: same
+                    // source, so the value is still authoritative).
                     trackCount = (statsTopTracks ?: topTracks)
                         ?.getOrNull()?.toptracks?.attr?.total?.toIntOrNull() ?: 0,
                     artistCount = (statsTopArtists ?: topArtists)
@@ -751,9 +745,8 @@ fun LastFmDashboardScreen(
 
             // List container — no background card. The track rows sit directly
             // on the page background (matching LastWave-native's design where
-            // the list is NOT inside a colored container). The previous dark
-            // cardBackground behind the track list was causing a "weird black
-            // background behind songs" that the user reported.
+            // the list is NOT inside a coloured container): a dark card behind
+            // the rows reads as a block of black behind the songs.
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -882,13 +875,11 @@ fun LastFmDashboardScreen(
             }
         }
 
-        // (Task 5c) Dismiss the bottom sheet FIRST, then surface the
-        // AddToPlaylistDialog on top. The previous implementation left the
-        // sheet mounted while the dialog opened, so the dialog (a low-
-        // elevation AlertDialog) was visually hidden behind the high-
-        // elevation ModalBottomSheet and the user saw nothing happen. The
-        // sheet's onDismiss clears `overflowTrack`, but we capture the
-        // ref locally first so the dialog still has a track to resolve.
+        // Dismiss the bottom sheet FIRST, then surface the AddToPlaylistDialog on top:
+        // a low-elevation AlertDialog opened under a mounted high-elevation
+        // ModalBottomSheet is visually hidden, so the user sees nothing happen. The
+        // sheet's onDismiss clears `overflowTrack`, but we capture the ref locally
+        // first so the dialog still has a track to resolve.
         overflowTrack?.let { track ->
             TrackOverflowSheet(
                 track = track,
@@ -975,13 +966,10 @@ private fun LastFmDashboardHeader(
                     tint = theme.topAppBarIconTint,
                 )
             }
-            // The "Last.fm" wordmark and the inline search field swap with a
-            // fluid spring cross-fade, mirroring the NewReleaseScreen's top
-            // bar search animation. The user reported the previous instant
-            // `if (searchVisible) OutlinedTextField else Text` swap felt
-            // abrupt and the OutlinedTextField looked "extremely basic and
-            // bad" — Material3's SearchBar pill + AnimatedContent gives the
-            // same polished feel as the New Releases page.
+            // bar search animation. An instant `if (searchVisible) OutlinedTextField else Text`
+            // swap reads as abrupt, and a bare OutlinedTextField looks unfinished — Material3's
+            // SearchBar pill + AnimatedContent gives the same polished feel as the New Releases
+            // page.
             //
             // Keep dashboard actions at the far trailing edge rather than
             // visually attaching them to the Last.fm wordmark.
@@ -1205,8 +1193,7 @@ private fun HeroStatsCard(
         else -> {
             // When user.getInfo fails, show nothing — the user will see
             // just the list below. The refresh button in the header can
-            // be tapped to retry. (Previously showed a "Could not load"
-            // fallback card which the user found unnecessary.)
+            // be tapped to retry.
         }
     }
 }
@@ -1432,17 +1419,13 @@ private fun DashboardTrackRow(
     onOverflow: () -> Unit,
     theme: DashboardTheme,
 ) {
-    // (Task 6a) Lazy per-row artwork resolution. Seed from: (1) the Last.fm
-    // image array via [bestArtwork], (2) the parent's pre-resolved map (which
-    // for the RECENT filter is just `recentArtworkByTrack` — same Last.fm
-    // images, deduplicated), (3) the process-wide [CachedArtworkStore].
-    // Only if all three miss do we kick off a YouTube search in a
-    // `LaunchedEffect(track.artworkKey())` — and that effect only runs when
-    // this row is actually composed (i.e. visible / about to be visible on
-    // the LazyColumn), so the dashboard no longer fires 50+ parallel YT
-    // searches the moment it opens. Resolved URLs are written back to the
-    // [CachedArtworkStore] so re-composition (filter switch, scroll back)
-    // doesn't re-resolve.
+    // Per-row artwork resolution. Seed from the Last.fm image array via [bestArtwork], the
+    // parent's pre-resolved map, then the process-wide [CachedArtworkStore]. Only if all three miss
+    // do we kick off a YouTube search in a `LaunchedEffect(track.artworkKey())`, which runs only
+    // when this row is actually composed (i.e. visible / about to be visible on the LazyColumn) —
+    // an upfront batch would fire 50+ parallel YT searches the moment the dashboard opens.
+    // Resolved URLs are written back to the [CachedArtworkStore] so re-composition (filter switch,
+    // scroll back) doesn't re-resolve.
     val artworkKey = track.artworkKey()
     // When the user has enabled "Prefer YouTube thumbnails" in settings,
     // skip the Last.fm image array entirely (it can return non-square /
@@ -1860,14 +1843,13 @@ private fun TrackOverflowSheet(
             }
     }
 
-    // (Task 5a) Pre-resolve the YT search once on sheet open so the
-    // banner can show the YouTube thumbnail when Last.fm has no artwork,
-    // AND so the user-facing play / queue / mix actions are instant (cache
-    // hit). The resolved SongItem (or null, if no match) is also cached
-    // in [ytSearchCache] so subsequent taps reuse it without re-searching.
-    // Falls back to Last.fm's own image array via [bestArtwork] first —
-    // for most scrobbles Last.fm has artwork, so the YT search never even
-    // has to run for the banner.
+    // Pre-resolve the YT search once on sheet open so the banner can show the YouTube
+    // thumbnail when Last.fm has no artwork, AND so the user-facing play / queue / mix
+    // actions are instant (cache hit). The resolved SongItem (or null, if no match) is
+    // also cached in [ytSearchCache] so subsequent taps reuse it without re-searching.
+    // Falls back to Last.fm's own image array via [bestArtwork] first — for most
+    // scrobbles Last.fm has artwork, so the YT search never even has to run for the
+    // banner.
     var bannerArtworkUrl by remember(track.artworkKey()) {
         mutableStateOf(bestArtwork(track.image))
     }
@@ -1883,13 +1865,11 @@ private fun TrackOverflowSheet(
         }
     }
 
-    // (Task 5b) Wraps each YT-resolving action with: leading CircularProgressIndicator
-    // while the search is in flight (via [loadingAction] state), toast on null
-    // match, toast on null [playerConnection], and Timber logging so failures
-    // don't disappear silently. The previous implementation called into
-    // `playerConnection?.playNext(...)` etc., which no-ops if the player
-    // service isn't bound — the user tapped and saw nothing happen. Now we
-    // surface that as a toast.
+    // Wraps each YT-resolving action with: leading CircularProgressIndicator while the search
+    // is in flight (via [loadingAction] state), toast on null match, toast on null
+    // [playerConnection], and Timber logging so failures don't disappear silently. Calling
+    // `playerConnection?.playNext(...)` directly no-ops when the player service isn't bound,
+    // so the user taps and sees nothing happen; this surfaces it as a toast.
     fun runWithYtSearch(action: String, onFound: (SongItem) -> Unit) {
         if (loadingAction != null) return
         if (playerConnection == null) {
@@ -1938,17 +1918,14 @@ private fun TrackOverflowSheet(
         containerColor = theme.cardBackground,
         contentColor = theme.textPrimary,
     ) {
-        // ── 1. Start Mix banner ─────────────────────────────────────────
-        // The banner is intentionally a clickable Surface (not a ListItem)
-        // so it reads as a primary CTA — same visual hierarchy as
-        // LastWave-native's hero "Start radio" banner.
+        // ── Start Mix banner ─────────────────────────────────────────────
+        // The banner is intentionally a clickable Surface (not a ListItem) so it reads as a
+        // primary CTA — same visual hierarchy as LastWave-native's hero "Start radio" banner.
         //
-        // (Task 5a) The 48dp circular slot now shows the track's album
-        // artwork: Last.fm image array via [bestArtwork] → YouTube
-        // thumbnail from the background-resolved SongItem → accent-color
-        // fallback with solar_forward_linear icon when no artwork is
-        // available at all. The CircularProgressIndicator still renders on
-        // top while the search is in flight.
+        // The 48dp circular slot shows the track's album artwork: Last.fm image array via
+        // [bestArtwork] → YouTube thumbnail from the background-resolved SongItem → accent-colour
+        // fallback with solar_forward_linear icon when no artwork is available at all. The
+        // CircularProgressIndicator still renders on top while the search is in flight.
         Surface(
             onClick = {
                 runWithYtSearch("mix") { song ->

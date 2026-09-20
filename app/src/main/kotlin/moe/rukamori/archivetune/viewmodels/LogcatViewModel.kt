@@ -212,9 +212,8 @@ class LogcatViewModel
 
         init {
             // Seed the paused flag from DataStore so it survives screen navigation AND process
-            // restarts. Previously this lived only in a HiltViewModel's MutableStateFlow, which
-            // was destroyed on screen exit and re-created with `false` — so the user's pause
-            // was silently dropped every time they navigated away from the Debug Logs screen.
+            // restarts; an in-memory flag is re-created as `false` on every screen exit, which
+            // would silently drop the user's pause.
             viewModelScope.launch {
                 val persisted = appContext.dataStore.data.first()[LogcatPausedKey] ?: false
                 if (paused.value != persisted) paused.value = persisted
@@ -256,9 +255,8 @@ class LogcatViewModel
             viewModelScope.launch {
                 appContext.dataStore.edit { it[LogcatPausedKey] = newValue }
             }
-            // KEY FIX: actually stop the logcat subprocess when paused. Previously only the UI
-            // assignment was gated — the upstream Flow kept polling every 2s, spawning a fresh
-            // `logcat` ProcessBuilder each iteration.
+            // Pausing must cancel the observation job, not just gate the UI: the upstream Flow
+            // keeps polling every 2s, spawning a fresh `logcat` ProcessBuilder each iteration.
             if (newValue) {
                 observationJob?.cancel()
                 observationJob = null

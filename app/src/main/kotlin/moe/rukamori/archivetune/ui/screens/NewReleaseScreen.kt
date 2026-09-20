@@ -621,7 +621,7 @@ private fun NewReleaseHorizontalSection(
     }
 }
 
-/** Modern summary header — replaces the old frosted-glass summary card. */
+/** Summary header for the new-release list: the total-release count and the tab row. */
 @Composable
 private fun NewReleaseSummaryHeader(
     content: NewReleaseContent,

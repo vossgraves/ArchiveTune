@@ -107,13 +107,10 @@ object TidalAudioProvider {
     // This list is intentionally empty so nothing is ever baked into the app or silently used.
     private val DEFAULT_DOWNLOAD_API_ENDPOINTS = emptyList<TidalDownloadEndpoint>()
 
-    // Nor are any public HiFi/QQDL hostnames seeded into the startup health scan. A
-    // SEED_INSTANCE_CANDIDATES list used to hold ten well-known monochrome.tf / qqdl.site hosts
-    // so the scan had something to probe when the Source Pool discovery feed came back empty. In
-    // practice they were all dead — a real scan resolved them as two PREVIEW_ONLY and eight
-    // UNREACHABLE — so they bought nothing, cost ~10s of probing on every launch, and made an
-    // install that never asked for those hosts look like it was "fetching instances from
-    // monochrome". Instances now come only from the user's own Tidal settings entries and the
+    // Nor are any public HiFi/QQDL hostnames seeded into the startup health scan: a fixed
+    // candidate list probed nothing but dead hosts, cost ~10s of probing on every launch, and
+    // made an install that never asked for those hosts look like it was "fetching instances
+    // from monochrome". Instances come only from the user's own Tidal settings entries and the
     // Source Pool discovery feed ($SOURCE_PROVIDER_URL/api/discovery/tidal).
 
     // Live uptime feed used by the official monochrome.tf frontend to discover currently-healthy
@@ -980,8 +977,8 @@ object TidalAudioProvider {
         query: Query,
         exactIsrcOnly: Boolean = false,
     ): List<ArtworkSearchResult> {
-        // Computed once per search rather than per candidate: these were previously recomputed
-        // (via contentArtworkScore) on every iteration below despite being constant for the call.
+        // Hoisted out of the loop below: these are constant for the call, so re-deriving them
+        // per candidate would repeat the same normalisation work on every iteration.
         val wantedTitle = query.title.titleMatchNormalized()
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         val wantedAlbum = query.album.normalized()

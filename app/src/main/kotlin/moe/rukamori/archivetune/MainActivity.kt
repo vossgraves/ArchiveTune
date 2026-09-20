@@ -505,8 +505,8 @@ class MainActivity : ComponentActivity() {
         playPendingDeepLinkQueueIfReady()
         openPendingAodModeIfReady()
 
-        // Qobuz cache staleness fix: clear the transient failure cache and instance cooldowns on
-        // app foreground so Qobuz is retried without requiring a force-stop.
+        // Clear the transient failure cache and instance cooldowns on app foreground so Qobuz is
+        // retried without requiring a force-stop.
         QobuzAudioProvider.clearTransientCaches()
         playerConnection?.service?.let { service ->
             val currentMediaId = playerConnection?.mediaMetadata?.value?.id
@@ -769,10 +769,9 @@ class MainActivity : ComponentActivity() {
                     .checkForUpdates(this@MainActivity)
             }
 
-            // Use remembered instances so the same state object is used everywhere
-            // (previously retrieving the composition local directly created different
-            // instances in different composition scopes which caused the update
-            // bottom sheet to not appear and overlay interactions to be blocked).
+            // Use remembered instances so the same state object is used everywhere: retrieving the
+            // composition local directly creates a different instance per composition scope, which
+            // stops the update bottom sheet from appearing and blocks overlay interactions.
             val bottomSheetPageState =
                 remember {
                     moe.rukamori.archivetune.ui.component
@@ -783,9 +782,8 @@ class MainActivity : ComponentActivity() {
                     moe.rukamori.archivetune.ui.component
                         .MenuState()
                 }
-            // BitChord home redesign (2026-09-03): shared Haze state for the Home
-            // route's progressive top-fade blur. HomeScreen tags its root Box as
-            // the haze source; the top bar renders the blurred strip (see the
+            // Shared Haze state for the Home route's progressive top-fade blur. HomeScreen tags
+            // its root Box as the haze source; the top bar renders the blurred strip (see the
             // topBar slot). Provided to the tree via LocalHomeHazeState.
             val homeHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
@@ -1209,10 +1207,10 @@ class MainActivity : ComponentActivity() {
 
                     // UI scale — applied via a LocalDensity override. It scales TEXT ONLY: only
                     // `fontScale` is touched, so `dp` sizes (icons, paddings, artwork) are
-                    // unchanged and text grows or shrinks within the existing layout. The comment
-                    // here used to claim it scaled the whole tree; scaling `density` as well would
-                    // make it genuinely DPI-like, but that would resize every screen for everyone
-                    // already running a non-default value, so it stays text-only until asked for.
+                    // unchanged and text grows or shrinks within the existing layout. Scaling
+                    // `density` as well would make it genuinely DPI-like, but that would resize
+                    // every screen for everyone already running a non-default value, so it stays
+                    // text-only.
                     //
                     // Multiplied onto the system font scale rather than replacing it, so the
                     // device's own font-size setting still applies. The slider in Appearance
@@ -2121,9 +2119,8 @@ class MainActivity : ComponentActivity() {
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
-                        // BitChord home redesign (2026-09-03): the haze state shared
-                        // between HomeScreen's hazeSource and the top bar's progressive
-                        // fade blur over the Home route.
+                        // The haze state shared between HomeScreen's hazeSource and the top
+                        // bar's progressive fade blur over the Home route.
                         moe.rukamori.archivetune.ui.screens.LocalHomeHazeState provides homeHazeState,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
@@ -2432,7 +2429,7 @@ class MainActivity : ComponentActivity() {
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
-                                                    // ── BitChord TopFadeBlur (2026-09-03) ──────────────────
+                                                    // ── TopFadeBlur ────────────────────────────────────────
                                                     // Full blur along the top edge ramping to nothing on the
                                                     // way down (progressive vertical gradient, EaseOutCubic,
                                                     // peak 0.75), over the HazeState HomeScreen tags its
@@ -2959,17 +2956,17 @@ class MainActivity : ComponentActivity() {
                                                 Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
-                                                    // Liquid-glass nav lag fix (ported from 4nx3b
-                                                    // batch-8, 2026-08-29): `Modifier.offset` runs
-                                                    // in the LAYOUT phase, so every spring frame
-                                                    // (nav bar height animating when the mini
-                                                    // player docks) and every sheet-drag frame
-                                                    // (player progress) re-laid-out the entire
-                                                    // FloatingNavigationToolbar subtree — cascading
-                                                    // to every onGloballyPositioned callback,
-                                                    // re-positioning the kyant drawBackdrop shaders
-                                                    // and invalidating the app-wide layerBackdrop
-                                                    // recording on the NavHost root.
+                                                    // Why `graphicsLayer.translationY` and not
+                                                    // `Modifier.offset`: offset runs in the LAYOUT
+                                                    // phase, so every spring frame (nav bar height
+                                                    // animating when the mini player docks) and
+                                                    // every sheet-drag frame (player progress)
+                                                    // re-lays-out the whole
+                                                    // FloatingNavigationToolbar subtree — every
+                                                    // onGloballyPositioned callback cascades, the
+                                                    // kyant drawBackdrop shaders re-position, and
+                                                    // the app-wide layerBackdrop recording on the
+                                                    // NavHost root is invalidated.
                                                     .graphicsLayer {
                                                         translationY =
                                                             if (bottomNavigationBarHeight == 0.dp) {

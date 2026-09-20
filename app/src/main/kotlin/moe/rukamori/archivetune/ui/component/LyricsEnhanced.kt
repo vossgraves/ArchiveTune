@@ -369,11 +369,11 @@ fun LyricsEnhanced(
     // Parsed off the composition thread. `null` means "not parsed yet" — the render `when` below
     // keeps the shimmer up on that state instead of falling through to "lyrics not found".
     //
-    // parseTtml/parseLyrics used to run right here, synchronously, and buildSyncedLyrics below
-    // walked the result again in the same composition. For word-synced TTML that is an XML parse
-    // plus one object per syllable, twice — landing on the exact frame the Apple Music
-    // COVER->LYRICS morph starts, which is what made switching to the lyrics page stutter. Both
-    // now run on Dispatchers.Default, the dispatcher the romanization pass below already uses.
+    // The parse must stay off the composition thread: for word-synced TTML it is an XML parse
+    // plus one object per syllable, twice (buildSyncedLyrics walks the result again). On the
+    // composition thread that lands on the exact frame the Apple Music COVER->LYRICS morph starts
+    // and stutters the switch to the lyrics page. Both run on Dispatchers.Default, the dispatcher
+    // the romanization pass below already uses.
     var parsedEntries by remember(lyrics) { mutableStateOf<List<LyricsEntry>?>(null) }
     LaunchedEffect(lyrics) {
         val text = lyrics
@@ -438,7 +438,7 @@ fun LyricsEnhanced(
 
     LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines) {
         // Everything below (scanning + romanizing every line, often one job per word for TTML)
-        // used to inherit the main dispatcher and could stutter the karaoke animation on track
+        // must not inherit the main dispatcher — it stutters the karaoke animation on track
         // change; run the whole batch on Default and only publish the results back.
         withContext(Dispatchers.Default) {
         // Publishing new lyrics as state (instead of bumping a key that tears the whole karaoke
@@ -523,11 +523,11 @@ fun LyricsEnhanced(
                 jobs.awaitAll().toMap()
             }
 
-        // Why the un-romanised build is not published up front: it used to be, unconditionally, and the romanised one replaced it a moment later. That
-        // second build is exactly the case KaraokeBuild describes: the lines on screen when it
-        // landed kept their phonetic-less layout for good. Waiting a beat for the local pass means
-        // the first build the view ever sees already has the phonetics, so nothing has to be
-        // replaced at all — and the shimmer is already up, so the wait costs no visible state.
+        // Why the un-romanised build is not published up front: KaraokeBuild describes the case of
+        // a second build landing while lines are already on screen — those lines then keep their
+        // phonetic-less layout for good. Waiting a beat for the local pass means the first build
+        // the view ever sees already has the phonetics, so nothing has to be replaced at all —
+        // and the shimmer is already up, so the wait costs no visible state.
         //
         // The timeout is what keeps that from becoming a stall: it does not cancel the pass (the
         // deferred belongs to the enclosing scope, not to withTimeoutOrNull), it only stops waiting
@@ -577,9 +577,7 @@ fun LyricsEnhanced(
     // position jumps backward, so the highlight gets stuck at whatever line
     // was last active before the wrap. Forcing a re-key here disposes the old
     // view instance and creates a fresh one, which restarts the karaoke
-    // animation from the current line. The user-visible symptom of the bug is
-    // "lyrics stuck at start, no highlight, only fixed by closing and
-    // reopening the lyrics sheet".
+    // animation from the current line.
     var positionResetCounter by remember { mutableIntStateOf(0) }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
@@ -650,11 +648,10 @@ fun LyricsEnhanced(
             // seeks, while the 1s threshold excludes playback jitter and minor
             // ExoPlayer position corrections.
             //
-            // This used to additionally require `sliderPosition == null`, which
-            // disabled restart detection entirely in the Apple Music player —
-            // that player always installs a slider provider, so on repeat the
-            // lyrics snapped back to the first line but never re-animated until
-            // the overlay was reopened.
+            // Do NOT gate this on `sliderPosition == null`: the Apple Music player always installs
+            // a slider provider, so the gate would disable restart detection there and the lyrics
+            // would snap back to the first line without re-animating until the overlay was
+            // reopened.
             val rawPlayerPosition = player.currentPosition.coerceAtLeast(0L)
             if (lastRawPositionMs - rawPlayerPosition > POSITION_RESET_BACKWARD_THRESHOLD_MS) {
                 positionResetCounter += 1
@@ -801,7 +798,8 @@ fun LyricsEnhanced(
         onLyricsScroll(isManualScrolling)
     }
 
-    // NOTE: this LaunchedEffect used to key on `syncedLyrics` as well.
+    // Deliberately not a key on `syncedLyrics` — the value is read through rememberUpdatedState
+    // below instead, so a lyrics update does not restart the collector.
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
     // Restart this collector after a repeat, or after a romanisation re-key. The karaoke view is
     // re-keyed at the same time, and the fresh collector resets its focus state before it
@@ -1022,16 +1020,8 @@ fun LyricsEnhanced(
             modifier
                 .fillMaxSize()
                 .padding(bottom = 12.dp)
-                // Draw-phase read: holds everything back until the active line is in place (see
-                // awaitingFirstFocus), then fades it in without recomposing anything.
-                //
-                // The gate lives on the whole Box, not just the karaoke branch, because the
-                // branches below swap while it is armed: the shimmer draws first, then (for one or
-                // two frames, between the two Dispatchers.Default hops that publish parsedEntries
-                // and syncedLyrics) possibly "lyrics not found", then the lines. Gating only the
-                // last of those meant the first two flashed at full opacity and then vanished when
-                // the lines took over — visible as the lyrics appearing, blinking out and coming
-                // back. When there is nothing to place (plain lyrics, no lyrics, not-found) the
+                // last of those lets the first two flash at full opacity and vanish when the lines
+                // take over. When there is nothing to place (plain lyrics, no lyrics, not-found) the
                 // gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
@@ -1597,11 +1587,10 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
         // line-advance scrolls — they're typically ~22% of viewport), snap
         // instantly instead of running a 280ms tween. The tween triggers a
         // LazyColumn re-layout every frame for its entire duration, which
-        // steals frame budget from the 60Hz karaoke syllable sweep — the
-        // root cause of "auto-scroll lag". The snap is imperceptible because
-        // the karaoke fill animation already provides visual continuity.
-        // Larger deltas (return from manual scroll, large seeks) still
-        // animate so the motion stays smooth over long distances.
+        // steals frame budget from the 60Hz karaoke syllable sweep. The snap
+        // is imperceptible because the karaoke fill animation already provides
+        // visual continuity. Larger deltas (return from manual scroll, large
+        // seeks) still animate so the motion stays smooth over long distances.
         val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
         if (snap || animationsDisabled || (abs(scrollDelta) <= instantThreshold && !force)) {
             scrollBy(scrollDelta.toFloat())
@@ -1875,12 +1864,11 @@ private fun buildWrappingKaraokeSyllables(
         }
     }
 
-    // Every unit shares one instant, deliberately: these syllables exist only to hang a romanisation over the right glyphs. Staggering their
-    // windows across the line duration — which is what this used to do — invented per-word timing out
-    // of the line's *length*, and `KaraokeLineText` faithfully animated it. So turning romanisation on
-    // made plain LRC lyrics fill word by word, while the very same lines without romanisation just
-    // highlighted whole through `SyncedLine`. The sweep was pure fabrication and drifted against the
-    // vocal on any line whose words aren't evenly spaced, i.e. all of them.
+    // Every unit shares one instant, deliberately: these syllables exist only to hang a
+    // romanisation over the right glyphs, so per-word timing derived from the line's *length*
+    // would be pure fabrication, and `KaraokeLineText` would faithfully animate it — making plain
+    // LRC lyrics fill word by word whenever romanisation is on, while the very same lines without
+    // romanisation highlight whole through `SyncedLine`.
     //
     // Collapsing every unit onto `[start, start + 1)` makes `KaraokeSyllable.progress` a step
     // function: 0 before the line, 1 from its first millisecond. The whole line lights up at once,

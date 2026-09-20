@@ -340,12 +340,12 @@ fun PlayerMenu(
         }
     var showSourceDialog by rememberSaveable { mutableStateOf(false) }
 
-    // Trigger a fresh source resolution each time the Source dialog opens. This fixes the bug
-    // where Qobuz (or Tidal) was missing from the Sources list because a previous resolution
-    // failed transiently — the in-memory cache pinned the song to YouTube, and the lossless
-    // sources were never retried for the lifetime of the process. The refresh evicts the cache
-    // and re-runs the lossless resolution chain in the background; the resulting sources show
-    // up via resolvedSourcesRevision (a StateFlow that bumps when recording completes).
+    // Trigger a fresh source resolution each time the Source dialog opens. A previous
+    // resolution that failed transiently would otherwise pin the song to YouTube in the
+    // in-memory cache, leaving Qobuz or Tidal out of the Sources list for the lifetime of
+    // the process. The refresh evicts the cache and re-runs the lossless resolution chain
+    // in the background; the resulting sources show up via resolvedSourcesRevision (a
+    // StateFlow that bumps when recording completes).
     val sourceRevision by playerConnection.service.resolvedSourcesRevision.collectAsStateWithLifecycle()
     LaunchedEffect(showSourceDialog, mediaMetadata.id) {
         if (showSourceDialog) {
@@ -622,10 +622,6 @@ fun PlayerMenu(
         }
     }
 
-    // The inline volume slider that previously appeared at the top of the song
-    // overflow menu has been removed per design feedback — volume is already
-    // exposed via the system media-output panel and the device hardware keys,
-    // so surfacing it again here was redundant and cluttered the menu.
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -729,13 +725,8 @@ fun PlayerMenu(
                                     ),
                                 )
                             }
-                            // "Add to playlist" and "Pin to speed dial" used to be
-                            // box-pill chips here in the NewActionGrid. Moved to
-                            // list-item form below per user request — they now
-                            // appear as ListItems in their own MenuSurfaceSection
-                            // right after the chips section, matching the visual
-                            // style of "View artist" / "View album" / "Download"
-                            // / "Details" / etc.
+                            // "Add to playlist" and "Pin to speed dial" are ListItems in the
+                            // MenuSurfaceSection below, not chips in this grid.
                             add(
                                 if (isLocalMedia) {
                                     NewAction(
@@ -787,10 +778,6 @@ fun PlayerMenu(
                                 },
                             )
                             if (!isLocalMedia) {
-                                // "ArchiveTune Music Together" entry was removed from the
-                                // song overflow menu per maintainer request — the feature
-                                // is still reachable from Settings, but it shouldn't take a
-                                // slot in every song's popup.
                                 add(
                                     NewAction(
                                         icon = {
@@ -868,10 +855,8 @@ fun PlayerMenu(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-        // "Add to playlist" and "Pin to speed dial" — converted from
-        // box-pill chips (in the NewActionGrid above) to ListItem form
-        // per user request. They now appear in their own MenuSurfaceSection
-        // with the same visual style as the other list items below.
+        // "Add to playlist" and "Pin to speed dial" appear here as ListItems in their own
+        // MenuSurfaceSection, matching the visual style of the list items below.
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
@@ -1407,10 +1392,10 @@ private fun VolumeSliderL(
         if (!isDragging) sliderValue = safeValue
     }
 
-    // NOTE: do NOT constrain the Slider's height. The Material3 Slider's internal
-    // touch target is 48dp tall; forcing a smaller height (we previously used
-    // height(36.dp)) clips the touch area and makes the thumb impossible to
-    // drag — the value updates in state but the thumb never visibly moves.
+    // Do NOT constrain the Slider's height. The Material3 Slider's internal touch
+    // target is 48dp tall; forcing a smaller height clips the touch area and makes the
+    // thumb impossible to drag — the value updates in state but the thumb never visibly
+    // moves.
     Slider(
         value = sliderValue,
         onValueChange = { updated ->

@@ -22,9 +22,8 @@ import moe.rukamori.archivetune.utils.get
 object MegalobizLyricsProvider : LyricsProvider {
     override val name: String = "Megalobiz"
 
-    // Hoisted file-level Regex patterns: previously allocated per lyrics
-    // fetch call. Compiling once at class-load avoids per-call allocation.
-    // Same patterns, same matching semantics.
+    // File-level Regex patterns, compiled once at class-load rather than per lyrics fetch
+    // call so no per-call allocation happens.
     private val LRC_PATH_REGEX = Regex("""href=["'](/lrc/maker/download/[^"']+)["']""")
     private val LRC_SPAN_REGEX = Regex("""id=["']lrc_[^"']*_details["'][^>]*>(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
     private val HTML_TAG_REGEX = Regex("""<[^>]+>""")

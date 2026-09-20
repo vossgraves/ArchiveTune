@@ -207,9 +207,9 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             val totalSpanBytes = spans.sumOf { it.length }
                             if (totalSpanBytes <= 0L) { failed++; continue@loop }
                             val detectedExt = detectAudioExtensionFromSpans(spans)
-                            // Skip legacy WebM/Opus caches entirely. These formats come from old
-                            // YouTube Music downloads (pre-PR #67, when the format picker preferred
-                            // Opus-in-WebM over AAC-in-M4A).
+                            // Skip legacy WebM/Opus caches entirely: they come from older
+                            // YouTube Music downloads whose format picker preferred
+                            // Opus-in-WebM over AAC-in-M4A.
                             if (detectedExt == "webm" || detectedExt == "opus") {
                                 skippedIncompatible++
                                 continue@loop
@@ -458,7 +458,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     ) {
                         // Count + progress line — full width so the "X of Y selected"
                         // text never gets squeezed into a vertical strip by the two
-                        // action buttons below it (previously rendered as "1 / o / f / 1 / …").
+                        // action buttons below it.
                         Text(
                             text =
                                 stringResource(
@@ -851,15 +851,13 @@ private suspend fun resolveExportMetadata(
         )
     }
 
-    // Fallback: query YouTube.getMediaInfo() for title/author.
-    // This is the key fix for "all exported songs show unknown artist" —
-    // when the DB row was inserted from a playlist context (not a full
-    // browse), the artist relation often isn't persisted. The watch
-    // endpoint always returns the author.
+    // Fallback: query YouTube.getMediaInfo() for title/author. The watch endpoint always
+    // returns the author, which the DB row may lack when it was inserted from a playlist
+    // context (not a full browse), where the artist relation is often not persisted.
     //
-    // Note: we deliberately ignore mediaInfo.authorThumbnail here — that's
-    // the channel's avatar, not the song's album cover. The song thumbnail
-    // is constructed from the videoId below when isYouTubeSource is true.
+    // mediaInfo.authorThumbnail is deliberately ignored — that's the channel's avatar,
+    // not the song's album cover. The song thumbnail is constructed from the videoId
+    // below when isYouTubeSource is true.
     val mediaInfo = runCatching {
         if (isYouTubeSource) {
             moe.rukamori.archivetune.innertube.YouTube.getMediaInfo(row.songId).getOrNull()

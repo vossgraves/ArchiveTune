@@ -479,9 +479,8 @@ object PoolAccountManager {
                 val amazon = parseAmazon(accountsArray(root, "amazon-music"), decryptor)
                 // Don't overwrite the in-memory cache with an empty list when the pool returns a
                 // 200 with a partial/empty response (rate-limit, transient server bug, captive-portal
-                // interception, malformed JSON). The user symptom is "Qobuz and other source
-                // providers disappear all of a sudden while playing songs" — and the only way to
-                // recover was force-stop + re-open. Only update the cache when at least one list is
+                // interception, malformed JSON): every provider would vanish from playback until a
+                // force-stop and re-open. Only update the cache when at least one list is
                 // non-empty. Otherwise keep the previous (non-empty) cache so playback keeps working.
                 val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty() && apple.isEmpty() && amazon.isEmpty()
                 if (allEmpty && hasAccounts()) {

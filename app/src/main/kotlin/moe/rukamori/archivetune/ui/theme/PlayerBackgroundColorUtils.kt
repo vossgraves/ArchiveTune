@@ -13,11 +13,11 @@ import androidx.compose.ui.graphics.toArgb
 import android.graphics.Color as AndroidColor
 
 object PlayerBackgroundColorUtils {
-    // Brightened ranges — previously [0.15, 0.58] which forced even vibrant
-    // artwork into a dim, muddy hue. The new [0.35, 0.85] window lets the
-    // actual dominant artwork colour shine through the blur (matching the
-    // bright, airy Vivi Music aesthetic) while still keeping a sensible
-    // floor so pure-black artwork doesn't blow out text contrast.
+    // Brightened ranges: [0.35, 0.85] lets the dominant artwork colour shine through the
+    // blur (matching the bright, airy Vivi Music aesthetic) while keeping a floor above
+    // pure black, whose artwork would otherwise blow out text contrast. The window must
+    // stay wide — something like [0.15, 0.58] forces even vibrant artwork into a dim, muddy
+    // hue.
     private const val DEFAULT_MIN_BRIGHTNESS = 0.35f
     private const val DEFAULT_MAX_BRIGHTNESS = 0.85f
 

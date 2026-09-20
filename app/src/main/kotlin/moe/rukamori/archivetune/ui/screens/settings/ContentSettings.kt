@@ -100,9 +100,8 @@ fun ContentSettings(
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
     val (allowAgeRestricted, onAllowAgeRestrictedChange) = rememberPreference(key = AllowAgeRestrictedKey, defaultValue = false)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
-    // (Round 13) "Set quick picks" UI removed — the preference is still read
-    // here so the underlying DataStore value is preserved (in case the user
-    // re-enables the UI later), but the values are intentionally unused.
+    // The preference is still read so the underlying DataStore value is preserved
+    // for a possible future UI, but the values are intentionally unused.
     @Suppress("UNUSED_VARIABLE")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
 
@@ -302,11 +301,8 @@ fun ContentSettings(
                     onValueChange = onLengthTopChange,
                 )
             }
-            // (Round 13) "Set quick picks" ListPreference removed per user
-            // request — the quick-picks home tab is no longer configurable
-            // from Content settings. The underlying QuickPicksKey preference
-            // is preserved (not deleted) so any previously-saved value
-            // remains intact; the setting is just no longer exposed in the UI.
+            // QuickPicksKey is deliberately still stored rather than deleted, so
+            // any saved value survives; it is no longer exposed in the UI.
         }
     }
 

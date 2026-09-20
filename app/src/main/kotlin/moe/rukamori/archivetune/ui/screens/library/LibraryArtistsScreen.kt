@@ -136,7 +136,6 @@ fun LibraryArtistsScreen(
 
     val topArtist = artists.firstOrNull()
 
-    // Issue 2: player-aware bottom padding
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)

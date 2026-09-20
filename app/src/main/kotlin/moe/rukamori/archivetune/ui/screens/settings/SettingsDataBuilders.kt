@@ -459,8 +459,8 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("source", "music source", "youtube music", "spotify", "metadata source", "search source", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
-            // Moved to the Playback sub-page (Task 4). Kept in the search index so existing
-            // search shortcuts still work.
+            // Playback sub-page anchor, kept in the search index so existing search shortcuts
+            // still work.
             hidden = true,
             children = listOf(
                 SettingsChild("YouTube Music", "youtube_music", listOf("youtube", "youtube music", "yt music")),
@@ -479,8 +479,8 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("lyrics", "lyric", "subtitle", "text", "sing along", "lrc", "translation", "romanize", "karaoke"),
             onClick = { navController.navigate("settings/lyrics") },
-            // Moved to the Playback sub-page (Task 5). Kept in the search index so existing
-            // search shortcuts still work.
+            // Playback sub-page anchor, kept in the search index so existing search shortcuts
+            // still work.
             hidden = true,
             children = listOf(
                 SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "paxsenix", "betterlyrics", "portato", "youlyplus", "unison", "simpmusic", "megalobiz")),
@@ -613,8 +613,8 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("language pack", "translation", "translate", "localization", "i18n"),
             onClick = { navController.navigate("settings/language_packs") },
-            // Moved into the Lyrics sub-page (Task 6). Kept in the search index so existing
-            // search shortcuts still work.
+            // Lyrics sub-page anchor, kept in the search index so existing search shortcuts still
+            // work.
             hidden = true,
         )
     val behavior =
@@ -805,8 +805,8 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("ai", "artificial intelligence", "chatgpt", "openai", "gemini", "llm", "ai integration", "mix", "smart mix"),
             onClick = { navController.navigate("settings/ai_integration") },
-            // Moved to the top of the Integration sub-page (Task 8). Kept in the search
-            // index so existing search shortcuts still work.
+            // Integration sub-page anchor, kept in the search index so existing search shortcuts
+            // still work.
             hidden = true,
             children = listOf(
                 SettingsChild("AI provider", "ai_provider", listOf("ai provider", "provider", "openai", "gemini", "claude", "anthropic", "model provider")),
@@ -862,8 +862,8 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("po token", "potoken", "botguard", "youtube token", "playability"),
             onClick = { navController.navigate(PO_TOKEN_ROUTE) },
-            // Moved into the Accounts sub-page (Task 9). Kept in the search index so existing
-            // search shortcuts still work.
+            // Accounts sub-page anchor, kept in the search index so existing search shortcuts still
+            // work.
             hidden = true,
             children = listOf(
                 SettingsChild("Web Client PO Token", "web_client_po_token", listOf("po token", "potoken", "web client po token", "botguard", "playability", "youtube token")),
@@ -1010,8 +1010,8 @@ fun buildSettingsGroups(
                         }
                     }
                 },
-                // Moved into the Behaviour sub-page (Task 10). Kept in the search index so
-                // existing search shortcuts still work.
+                // Behaviour sub-page anchor, kept in the search index so existing search shortcuts
+                // still work.
                 hidden = true,
             )
         } else {
@@ -1092,9 +1092,9 @@ fun buildSettingsGroups(
             // Discord / Last.fm / Tidal / Qobuz / Telegram are intentionally NOT
             // top-level items here — they live as children of `integration` (and
             // also under their respective `sources` / `integration` screens).
-            // Surfacing them as separate rows on the main settings page was
-            // redundant noise per user feedback. The `hidden = true` entries below
-            // exist purely so their own sub-page settings are searchable.
+            // Separate rows on the main settings page are redundant noise. The
+            // `hidden = true` entries below exist purely so their own sub-page
+            // settings are searchable.
             items =
                 listOf(
                     integration,

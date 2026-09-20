@@ -558,8 +558,7 @@ class MusicService :
     private var initialQueueLoadGeneration = 0L
     // True while playQueue's initial async load is still assembling the queue. While set, the
     // transition-driven infinite-radio bootstrap is suppressed so it isn't started prematurely and
-    // then invalidated by the settling transitions (which previously left infiniteQueueLoading stuck
-    // "on" with no songs actually queued when playing a single track from search).
+    // then invalidated by the settling transitions.
     @Volatile
     private var initialQueueLoadInProgress = false
     private val persistentStateLock = Any()
@@ -605,7 +604,7 @@ class MusicService :
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
     private val playbackStreamRecoveryTracker = PlaybackStreamRecoveryTracker()
 
-    // Initial-buffer-stall recovery (ported from Metrolist's "fix: playback once again").
+    // Initial-buffer-stall recovery (ported from Metrolist).
     // A stream can stall in STATE_BUFFERING forever without surfacing an HTTP error the
     // onPlayerError recovery paths can act on — the player just spins, then the user skips.
     // Watchdog: if playback is BUFFERING with playWhenReady at the very start of a track for
@@ -1227,10 +1226,8 @@ class MusicService :
         }.collectLatest(ioScope) { mediaMetadata ->
             if (mediaMetadata == null) return@collectLatest
             // Always attempt to fetch lyrics when a new song starts playing so the
-            // lyrics panel is ready by the time the user opens it (instead of
-            // requiring the user to manually open the panel + search to trigger a
-            // fetch). Previously this was gated on `showLyrics || isTelegram`,
-            // which broke auto-fetch for non-Telegram tracks by default.
+            // lyrics panel is ready by the time the user opens it, instead of requiring
+            // the user to manually open the panel and search to trigger a fetch.
             //
             // We also retry a stored LYRICS_NOT_FOUND on every play, because early
             // plays can fail while metadata/network are still settling.
@@ -1513,9 +1510,9 @@ class MusicService :
 
         // Periodic save exists only to keep the resume *position* roughly current for a process
         // death; every change to the queue itself already calls saveQueueToDisk from the eight
-        // event handlers that cause one. So this writes the small player-state file only — the
-        // full-queue snapshot it used to take mapped every media item on the main thread and wrote
-        // both files, six times a minute, for a queue that had not changed.
+        // event handlers that cause one. So this writes the small player-state file only — a
+        // full-queue snapshot would have to map every media item on the main thread, for a queue
+        // that has usually not changed.
         scope.launch {
             while (isActive) {
                 delay(PERSISTENT_POSITION_SAVE_INTERVAL)
@@ -5269,10 +5266,10 @@ class MusicService :
         val nextItem = player.getMediaItemAt(nextIndex)
         val mediaId = nextItem.mediaId.trim().takeIf { it.isNotBlank() } ?: return
 
-        // Don't cancel a prefetch whose result is still wanted. This used to cancel
-        // unconditionally, so skipping twice inside the resolve window killed the in-flight job
-        // for the very track being skipped onto — the one case where the work was about to pay
-        // off — and that track then resolved from scratch, synchronously, while the user waited.
+        // Don't cancel a prefetch whose result is still wanted. Skipping twice inside the
+        // resolve window would kill the in-flight job for the very track being skipped onto — the
+        // one case where the work was about to pay off — and that track would then resolve from
+        // scratch, synchronously, while the user waited.
         // A job for the now-current item is finishing into the same caches the resolver reads.
         val inFlight = prefetchingMediaId
         if (nextMediaItemPrefetchJob?.isActive == true && inFlight != null) {
@@ -5833,10 +5830,8 @@ class MusicService :
         // cache metadata is missing the content length (which would make
         // `isFullyDownloadedMedia` false), having cached spans means the song
         // was at least partially downloaded and we should try to play it from
-        // cache instead of waiting for network. This is the key fix for the
-        // "downloaded songs don't play when offline" bug — the cache metadata
-        // sometimes doesn't have the content length persisted, but the bytes
-        // are still there.
+        // cache instead of waiting for network: the metadata can lack the
+        // persisted content length while the bytes are still there.
         val hasAnyCachedData =
             isFullyDownloadedMedia ||
                 runCatching {
@@ -6476,8 +6471,8 @@ class MusicService :
      * Called on app foreground (MainActivity.onStart) for the currently-playing song (or null to
      * clear all). Drops the in-memory record of which lossless sources last resolved successfully
      * so the "Play from" picker re-resolves fresh instead of returning a stale cached set. This
-     * pairs with [moe.rukamori.archivetune.qobuz.QobuzAudioProvider.clearTransientCaches] to fix
-     * the bug where Qobuz lossless was unavailable until force-stop.
+     * pairs with [moe.rukamori.archivetune.qobuz.QobuzAudioProvider.clearTransientCaches]: the
+     * provider's own transient failures have to be dropped too, or the re-resolve reuses them.
      */
     fun clearResolvedSources(mediaId: String?) {
         if (mediaId == null) {
@@ -6522,10 +6517,7 @@ class MusicService :
         //   - The user previously pinned this song to this source (override).
         //   - The source is GLOBALLY ENABLED — the user has explicitly turned the source
         //     on in Settings, so they should be able to pick it per-song even if the
-        //     initial resolution hasn't completed (or failed transiently). Previously
-        //     JioSaavn / Qobuz would not appear in the chooser until they happened to
-        //     resolve, which made the user think the source "did nothing" when picked
-        //     elsewhere. Now any enabled source is selectable.
+        //     initial resolution hasn't completed (or failed transiently).
         return AudioSourceConfig.DEFAULT_ORDER.filter {
             (it == AudioSourceType.YOUTUBE && isSourceEnabled(AudioSourceType.YOUTUBE)) ||
                 it in resolved ||
@@ -6686,11 +6678,10 @@ class MusicService :
             // Cancel any in-flight crossfade so its volume ramp / secondary player can't pin the
             // primary player's volume low while the new source is preparing.
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
-            // Re-claim audio focus BEFORE computing/applying the effective volume. The previous
-            // order applied the volume first (which would multiply by a stale ducked
-            // audioFocusVolumeFactor if focus had been transiently lost) and then restored
-            // focus — leaving the player pinned at the ducked volume until the reactive volume
-            // flow happened to re-fire. Restoring focus first means the captured baseline
+            // Re-claim audio focus BEFORE computing/applying the effective volume: applying the
+            // volume first multiplies by a stale ducked audioFocusVolumeFactor when focus had been
+            // transiently lost, which pins the player at the ducked volume until the reactive
+            // volume flow happens to re-fire. Restoring focus first means the captured baseline
             // reflects the restored 1.0 factor.
             ensureAudioFocusForActivePlayback()
 
@@ -6919,11 +6910,10 @@ class MusicService :
         //
         // OVERRIDE BYPASS: when the user has explicitly pinned this song to a single source via
         // the player's Source chooser ("Play from"), we trust their intent — the TitleMatch gate is
-        // skipped for that source's candidate. This fixes the bug where picking JioSaavn (or any
-        // non-YouTube source) from the Source chooser "did nothing": the JioSaavn candidate's
-        // title formatting often differs from the YouTube-derived wanted title enough to fail the
-        // metadata gate, the resolver silently fell back to YouTube, and the user saw no change.
-        // The override is the user's manual override of the gate — we should respect it.
+        // skipped for that source's candidate. A non-YouTube candidate's title formatting often
+        // differs from the YouTube-derived wanted title enough to fail the metadata gate, which
+        // would silently fall back to YouTube and make the pick look like it did nothing. The
+        // override is the user's manual override of the gate — we should respect it.
         val overrideIsSourceOverride = (override != null && override != AudioSourceType.YOUTUBE) || isDirectPick
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
@@ -7293,7 +7283,7 @@ class MusicService :
                 localBypassToken = dataStore.get(AmazonBypassTokenKey),
                 // A recorded expiry that has passed means a guaranteed 428, so the token is left
                 // out and the settings screen's "re-authorize" state is what the user sees. No
-                // recorded expiry keeps the old behaviour: send it and let the instance judge.
+                // recorded expiry means the token is sent anyway and the instance judges.
                 localTurnstileJwt =
                     dataStore.get(AmazonTurnstileJwtKey).takeIf {
                         !it.isNullOrBlank() &&
@@ -7427,10 +7417,10 @@ class MusicService :
             f.delete()
         }
         val safeId = mediaId.replace(Regex("[^A-Za-z0-9_-]"), "_")
-        // The v2 marker invalidates files built before the pssh KID fix: those carry an all-zero
-        // Widevine key id, so they are structurally valid (and therefore cached and replayed
-        // forever) but decode to silence. Bumping the name is what makes the fix observable on a
-        // song the user has already played; the size prune above retires the stale v1 files.
+        // The v2 marker retires files whose Widevine key id is all-zero: they are structurally
+        // valid (and therefore cached and replayed forever) but decode to silence. Bumping the name
+        // is what makes that observable on a song the user has already played; the size prune above
+        // retires the stale v1 files.
         val out = java.io.File(dir, "${safeId}_${quality.name.lowercase()}_v2.m4a")
         if (out.exists() && out.length() > 0) return out
         out.writeBytes(build())
@@ -7707,10 +7697,9 @@ class MusicService :
      */
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
         // DeezerAudioProvider.accounts() merges the manually signed-in account (setManualArl) with
-        // PoolAccountManager.deezerAccounts(). Calling PoolAccountManager directly here bypassed the
-        // manual account entirely: a user who signed in through the Deezer login screen would see an
-        // empty list even though their ARL was registered, and every track would silently produce null.
-        // The guard now uses DeezerAudioProvider.hasAccounts() so both sources are considered.
+        // PoolAccountManager.deezerAccounts(), so the guard has to go through it: asking the pool
+        // directly misses a user who signed in on the Deezer login screen, and every track then
+        // silently produces null.
         if (!DeezerAudioProvider.hasAccounts()) {
             Timber.tag("MusicService").d("Deezer skip: no manual or pooled accounts available")
             return null
@@ -7768,14 +7757,10 @@ class MusicService :
      * stream URL matching the user's quality preference. Falls back to YouTube on any failure.
      */
     private fun resolveJioSaavnStream(query: SourceQuery): DirectStream? {
-        // NOTE: the global JioSaavnEnabledKey gate was removed here. The chain
-        // (sourceResolutionChain / the override list) already filters by enabled-ness,
-        // so re-checking it here is redundant for the global-on case. More importantly,
-        // it BLOCKED the per-song override path: if the user has JioSaavn globally OFF
-        // but explicitly pinned one song to JioSaavn via the Source chooser, this gate
-        // returned null and the resolver silently fell back to YouTube — making the
-        // override look like it "did nothing". Removing the gate lets the override
-        // resolve even when JioSaavn is globally disabled.
+        // No global JioSaavnEnabledKey gate here on purpose: the chain (sourceResolutionChain /
+        // the override list) already filters by enabled-ness, and a gate would block the per-song
+        // override — a song pinned to JioSaavn via the Source chooser must resolve even when
+        // JioSaavn is globally off.
         val quality = SaavnAudioQuality.fromStoredName(dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name))
         val qualityApiValue = quality.toApiValue()
         Timber.tag("MusicService").d("JioSaavn resolve start | quality=%s", qualityApiValue)
@@ -7884,8 +7869,7 @@ class MusicService :
 
     /**
      * Writes a [FormatEntity] describing a resolved external ([DirectStream]) source so the
-     * media-info "Details" tab can render technical stats instead of spinning forever. Only the
-     * YouTube resolver used to persist a format, leaving Tidal streams with no row.
+     * media-info "Details" tab can render technical stats instead of spinning forever.
      */
     private fun persistDirectStreamFormat(
         mediaId: String,
@@ -8033,7 +8017,7 @@ class MusicService :
 
     /**
      * Cheap check (no network) for whether an external lossless source (Tidal) should be preferred
-     * for [mediaId]. Used to gate the ephemeral YouTube player-cache short-circuit so enabling a
+     * for [mediaId]. Gates the ephemeral YouTube player-cache short-circuit so enabling a
      * source takes effect immediately instead of replaying previously cached YouTube bytes.
      */
     private fun tidalSourceApplies(mediaId: String): Boolean {
@@ -8384,10 +8368,9 @@ class MusicService :
                     // For offline playback of fully-downloaded songs whose
                     // cache metadata never had the content length persisted,
                     // compute the total cached byte range across all candidate
-                    // keys and use that as the requested length. This is the
-                    // key fix for "downloaded songs don't play when offline" —
-                    // without it, the resolver returns null here, falls
-                    // through to the YouTube resolver, and fails offline.
+                    // keys and use that as the requested length. Without it, the
+                    // resolver returns null here, falls through to the YouTube
+                    // resolver, and fails offline.
                     val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
                     val maxCachedLength =
                         candidateKeys.maxOfOrNull { key ->
@@ -9630,9 +9613,8 @@ class MusicService :
          * How often the resume position is written while the service is alive.
          *
          * This only bounds how far back a restore lands after a process death, so 30s of accuracy
-         * is plenty; it used to be 10s while playing, which meant six wakeups and six pairs of file
-         * writes a minute for a queue that had not changed. Every event that changes the queue
-         * saves it directly, so nothing is lost by ticking less often.
+         * is plenty. Every event that changes the queue saves it directly, so nothing is lost by
+         * ticking less often.
          */
         private val PERSISTENT_POSITION_SAVE_INTERVAL = 30.seconds
         const val MAX_CONSECUTIVE_ERR = 5
@@ -9644,9 +9626,7 @@ class MusicService :
         // Delay before re-asserting the captured baseline volume after a source switch's
         // player.prepare() call. Long enough that the prepare pipeline has settled (and any
         // async state transitions complete within one frame after that) without being so long
-        // that the user perceives a muted gap. Originally added in commit 9a224662b alongside
-        // a broken import from the morideobfuscator submodule (where the constant never
-        // existed) — moved back here so the reference resolves.
+        // that the user perceives a muted gap.
         const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
         // Fast-path reassert for a seek that stays within the buffered region (no
         // BUFFERING->READY, so the STATE_READY seek hook never fires). Covers the case the

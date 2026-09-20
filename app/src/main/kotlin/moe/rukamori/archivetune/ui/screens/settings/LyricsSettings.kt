@@ -365,7 +365,6 @@ fun LyricsSettings(
             }
         }
 
-        // Language packs entry moved here from the main settings page (Task 6).
         // Sits above the display group so users can install/enable packs before
         // toggling romanization for the relevant languages below.
         PreferenceGroup(
@@ -382,9 +381,8 @@ fun LyricsSettings(
             }
         }
 
-        // "Providers" sub-page entry — opens the new LyricsProvidersSettings screen which
-        // houses all provider toggles + experimental lyrics (Task 2). The inline provider
-        // group that used to live below is moved there.
+        // "Providers" sub-page entry — opens the LyricsProvidersSettings screen, which
+        // houses all provider toggles + experimental lyrics.
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_provider"),
             title = stringResource(R.string.providers),
@@ -400,8 +398,8 @@ fun LyricsSettings(
             }
         }
 
-        // "Romanisation" sub-page entry — opens the new LyricsRomanisationSettings screen
-        // which houses all per-language romanisation toggles (Task 3).
+        // "Romanisation" sub-page entry — opens the LyricsRomanisationSettings screen,
+        // which houses all per-language romanisation toggles.
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_romanize"),
             title = stringResource(R.string.romanization),
@@ -504,20 +502,13 @@ fun LyricsSettings(
             }
         }
 
-        // Provider toggles, experimental lyrics, and romanisation settings have been moved
-        // into dedicated sub-pages (see `settings/lyrics/providers` and
-        // `settings/lyrics/romanisation` routes, plus the new entries above that navigate
-        // to them). The inline groups that used to render them here are removed.
 
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_preload"),
             title = stringResource(R.string.queue),
         ) {
             // The count value is the SOLE control: 0 = off, >0 = pre-load that
-            // many songs. The old master switch was removed because it was
-            // confusing — users would set the count but the switch was off,
-            // so nothing happened. Now the count picker is always visible and
-            // shows "Off" when 0.
+            // many songs.
             item {
                 NumberPickerPreference(
                     modifier = positions.modifierFor("preload_queue_lyrics"),

@@ -389,10 +389,6 @@ fun YouTubeSongMenu(
                         playerConnection.addToQueue(song.toMediaItem())
                     },
                 ),
-                // "Add to playlist" used to be a box-pill chip here.
-                // Moved to list-item form below — it now appears as a
-                // ListItem in the same MenuSurfaceSection as
-                // "Pin to speed dial", per user request.
                 NewAction(
                     icon = {
                         Icon(

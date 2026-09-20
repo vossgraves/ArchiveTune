@@ -254,8 +254,6 @@ fun InlineVideoPlayer(
             }
 
             // Controls overlay: quality picker + fullscreen button.
-            // (Captions button removed per spec — captions are no longer
-            // user-togglable.)
             //
             // Both buttons are grouped inside a single dark pill so the
             // inline and fullscreen controls look consistent.
@@ -774,9 +772,8 @@ fun FullscreenVideoOverlay(
                     // ── Quality pill ──
                     // Icon + current-quality label, so the pill reports what is playing instead of
                     // only being a way in. Tapping it raises VideoQualitySheet from the bottom of
-                    // the screen (the old DropdownMenu opened as a cramped popup pinned to this
-                    // corner, which is the far side of the screen from the user's thumb in
-                    // landscape).
+                    // the screen, not a popup pinned to this corner — that corner is the far side
+                    // of the screen from the user's thumb in landscape.
                     if (availableHeights.isNotEmpty()) {
                         Row(
                             modifier =
@@ -1188,9 +1185,8 @@ private fun VideoOverflowSheetContent(
             )
         }
 
-        // Aspect ratio has been moved to a dedicated button in the top bar
-        // of the fullscreen overlay (next to the quality picker) so it's
-        // reachable without opening this sheet. See FullscreenVideoOverlay.
+        // Aspect ratio lives in the top bar of the fullscreen overlay (next to the quality
+        // picker), so it is reachable without opening this sheet. See FullscreenVideoOverlay.
     }
 }
 

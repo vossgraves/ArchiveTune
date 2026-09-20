@@ -215,9 +215,7 @@ object SourceCheckService {
     }
 
     private fun checkQobuzBackup(): SourceCheckResult {
-        // The Qobuz backup is a two-step resolver: GET the resolver endpoint to
-        // get the actual stream URL on the CDN, then range-probe the CDN URL.
-        // NOTE: server addresses are intentionally hidden from the summary text.
+        // Server addresses are intentionally hidden from the summary text.
         val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
             val resolverRequest = Request.Builder()
@@ -388,9 +386,9 @@ object SourceCheckService {
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
         // force = true. The whole point of tapping "Check source" is to find out whether accounts
-        // can be obtained *now*, and a non-forced refresh is throttled — previously for a full 24h
-        // whenever any other service had accounts cached, so the message telling the user to refresh
-        // the pool was advice this very call had just declined to follow.
+        // can be obtained *now*, and a non-forced refresh is throttled — for up to 24h whenever any
+        // other service had accounts cached — so the message telling the user to refresh the pool
+        // would be advice this very call had just declined to follow.
         PoolAccountManager.refresh(context, force = true)
 
         // Ask the provider, not the pool. DeezerAudioProvider.accounts() merges the manually
@@ -513,9 +511,7 @@ object SourceCheckService {
     }
 
     private fun checkJioSaavn(): SourceCheckResult {
-        // JioSaavn is unauthenticated — just probe the public search API with
-        // a canned query and verify it returns at least one result.
-        // NOTE: server addresses are intentionally hidden from the summary text.
+        // Server addresses are intentionally hidden from the summary text.
         return runCatching {
             val result = kotlinx.coroutines.runBlocking {
                 SaavnService.searchSongs("test query").getOrDefault(emptyList())

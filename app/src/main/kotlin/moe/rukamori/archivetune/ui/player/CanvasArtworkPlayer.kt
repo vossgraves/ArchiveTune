@@ -67,8 +67,8 @@ fun CanvasArtworkPlayer(
     // on a live TextureView is a heavy per-frame GPU cost even when the video
     // is paused, because the blur RenderEffect is re-applied every frame.
     // Hiding the TextureView frees the entire GPU frame budget for the
-    // karaoke syllable sweep, eliminating the "lyrics lag when canvas is
-    // playing" issue. When `visible` flips back to true, the TextureView is
+    // karaoke syllable sweep, so the lyrics do not lag while the canvas is
+    // playing. When `visible` flips back to true, the TextureView is
     // re-created and the ExoPlayer attaches to it — no reload delay because
     // the player instance was retained.
     visible: Boolean = true,
@@ -222,9 +222,8 @@ fun CanvasArtworkPlayer(
 
     // When `visible` flips from false → true (e.g. lyrics closing in the
     // Apple Music player), a NEW TextureView is created and the retained
-    // ExoPlayer re-attaches to it. The `isVideoReady` state is stale
-    // (still true from before the TextureView was removed), which would
-    // make the alpha animate to 1 immediately — showing a black
+    // ExoPlayer re-attaches to it. The `isVideoReady` state is then stale,
+    // which would make the alpha animate to 1 immediately — showing a black
     // TextureView surface (no frame yet) over the blurred AsyncImage
     // fallback below. Resetting isVideoReady to false keeps the new
     // TextureView invisible until `onRenderedFirstFrame` fires again,

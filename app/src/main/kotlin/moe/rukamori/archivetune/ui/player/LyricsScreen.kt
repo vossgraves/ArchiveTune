@@ -240,10 +240,9 @@ fun LyricsScreen(
     val density = LocalDensity.current
     val swipeStartRegionPx = with(density) { LyricsSwipeStartRegion.toPx() }
     val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
-    // The lyrics controls used to hide themselves after five seconds and be re-summoned by a
-    // tap, behind two preferences. They no longer hide at all: the bar carries the scrubber, the
-    // quality badge and the lyrics provider, none of which is worth playing hide-and-seek with,
-    // and a control you have to poke the screen to see is worse than one that is simply there.
+    // The lyrics controls never hide: the bar carries the scrubber, the quality badge and the
+    // lyrics provider, none of which is worth playing hide-and-seek with, and a control you have
+    // to poke the screen to see is worse than one that is simply there.
     // isUserScrollingLyrics is still collected because LyricsEnhanced / LyricsV2 report it through
     // LocalLyricsScrollListener; nothing downstream needs it now.
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
@@ -354,11 +353,9 @@ fun LyricsScreen(
         if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
         // Skip if these lyrics were already AI-translated AND actually contain
         // translation content. The `hasTranslation` guard is important: a previous
-        // translation attempt may have no-op'd (AI returned the same text — a
-        // common failure mode for CJK lyrics that were previously mangled by the
-        // span-joining bug in AiLyricsDocument.readTtmlLineText). Without this
-        // check, those songs would be blocked from retrying forever even after
-        // the parser is fixed.
+        // translation attempt may have no-op'd — the AI returned the same text, a
+        // common failure mode for CJK lyrics. Without this check, those songs
+        // would be blocked from retrying forever.
         if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
             LyricsUtils.hasTranslation(text)
         ) return@LaunchedEffect
@@ -514,8 +511,7 @@ fun LyricsScreen(
 
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
-    // Reveal the bottom controls when the user is scrolling lyrics, regardless of the
-    // Always shown, always expanded — see the note where the old visibility state used to live.
+    // Always shown, always expanded — see the note on the controls bar above.
     val controlsVisible = true
     val controlsExpanded = true
     val onControlsPositionChange: (Long) -> Unit = {
@@ -550,12 +546,10 @@ fun LyricsScreen(
         modifier =
             modifier
                 .fillMaxSize()
-                // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music lyrics
-                // behaviour). This handler sits on the ROOT container so it is an ancestor of
-                // every hit path: Compose delivers pointer events to the hit node and its
-                // ancestors, so taps land here even when the lyrics LazyColumn consumes them
-                // for scrolling. It used to also re-summon the auto-hiding controls; those no
-                // longer hide, so all that remains is the edge-swipe dismiss.
+                // Root-level pointer handler for the edge-swipe dismiss. Sitting on the ROOT
+                // container makes it an ancestor of every hit path: Compose delivers pointer
+                // events to the hit node and its ancestors, so taps land here even when the
+                // lyrics LazyColumn consumes them for scrolling.
                 .pointerInput(
                     swipeStartRegionPx,
                     swipeDismissThresholdPx,
@@ -991,12 +985,11 @@ private fun MovingBlurBackground(
                                 .requiredSize(driftFootprint)
                                 // graphicsLayer OUTSIDE blur: the blur is applied to the
                                 // centered image (inside graphicsLayer), then the scale +
-                                // translation is applied to the blurred result. This prevents
-                                // the blur from sampling transparent areas at the translated
-                                // image's trailing edge — the root cause of the corner flicker.
-                                // The flip side is that the blur clips its result to this
-                                // element's bounds, which is why those bounds are the
-                                // driftFootprint and not the screen.
+                                // translation is applied to the blurred result, so the blur
+                                // never samples transparent areas at the translated image's
+                                // trailing edge. The flip side is that the blur clips its
+                                // result to this element's bounds, which is why those bounds
+                                // are the driftFootprint and not the screen.
                                 .graphicsLayer {
                                     scaleX = MovingBlurDriftScale
                                     scaleY = MovingBlurDriftScale
@@ -1623,9 +1616,9 @@ private fun AppleMusicSlider(
                 trackHeight = trackHeight,
             )
         },
-        // NOTE: do NOT constrain the Slider's height. The Material3 Slider's
-        // internal touch target is 48dp tall; forcing a smaller height clips
-        // the touch area and makes the slider impossible to drag.
+        // Do NOT constrain the Slider's height. The Material3 Slider's internal
+        // touch target is 48dp tall; forcing a smaller height clips the touch
+        // area and makes the slider impossible to drag.
         modifier = modifier,
     )
 }

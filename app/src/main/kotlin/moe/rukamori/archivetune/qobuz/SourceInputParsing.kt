@@ -75,12 +75,9 @@ object SourceInputParsing {
                 subscription != null -> current?.put("subscription", subscription)
                 // A plain line with no field markers/separators becomes the label for the next block
                 // (e.g. "Qobuz - JP"). Lines like "Lossless Streaming ➠ ✅" carry a separator and are
-                // ignored so they don't get mistaken for a label.
-                // `current == null` used to guard this, which meant only the very first block
-                // could take a label: current is set by startBlock() and never cleared, so in the
-                // multi-account paste this parser exists for, accounts 2..N lost their names.
-                // startBlock() consumes pendingLabel, so each plain line simply labels the block
-                // that follows it.
+                // ignored so they don't get mistaken for a label. startBlock() consumes pendingLabel,
+                // so each plain line labels the block that follows it: do NOT gate this on
+                // `current == null`, which would leave accounts 2..N of a multi-account paste unnamed.
                 !line.contains(FieldSeparatorRegex) && !line.contains("app_") ->
                     pendingLabel = line.take(40)
                 else -> {}

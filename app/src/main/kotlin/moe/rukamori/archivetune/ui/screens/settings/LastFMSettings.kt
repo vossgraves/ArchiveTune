@@ -128,12 +128,11 @@ fun LastFMSettings(
             onTimingDelayPercentChange = viewModel::updateTimingDelayPercent,
             onTimingDelaySecondsChange = viewModel::updateTimingDelaySeconds,
             onSaveTimingEditor = viewModel::saveTimingEditor,
-            // (Task 4) The custom-endpoint dialog is wired straight to the
-            // repository via a coroutine — it persists the entered endpoint /
-            // api key / secret directly into DataStore (under the CUSTOM
-            // provider keys), bypassing the view model's service-editor
-            // state machine (which we're phasing out in favour of the
-            // simpler WebView + custom-dialog flows).
+            // The custom-endpoint dialog is wired straight to the repository
+            // via a coroutine — it persists the entered endpoint / api key /
+            // secret directly into DataStore (under the CUSTOM provider keys)
+            // rather than through the view model's service-editor state
+            // machine.
             onSaveCustomEndpoint = { endpoint, apiKey, secret ->
                 viewModel.saveCustomEndpoint(endpoint, apiKey, secret)
             },
@@ -171,7 +170,7 @@ private fun LastFmSettingsContent(
             .asPaddingValues()
             .calculateBottomPadding()
 
-    // (Task 4) Custom-endpoint dialog state — hoisted here so it survives
+    // Custom-endpoint dialog state — hoisted here so it survives
     // recompositions of the inner Column (e.g. when the model updates).
     var showCustomEndpointDialog by remember { mutableStateOf(false) }
 
@@ -226,13 +225,8 @@ private fun LastFmSettingsContent(
             onPasswordChange = onLoginPasswordChange,
             onLogin = onLogin,
         )
-        // (Task 4) The legacy LastFmServiceEditorDialog invocation has
-        // been removed — its opening affordances (the service provider /
-        // API credentials PreferenceGroup) were removed in Task 3, so the
-        // dialog could never be opened from the UI. The composable
-        // function itself is kept in the file as dead code (it's harmless
-        // and removing it would touch the LastFmServiceEditorUiModel /
-        // viewModel.openServiceEditor chain — left for a future cleanup).
+        // LastFmServiceEditorDialog has no live entry point; the composable is
+        // kept as dead code pending a separate cleanup.
         LastFmCustomEndpointDialog(
             visible = showCustomEndpointDialog,
             onDismiss = { showCustomEndpointDialog = false },
@@ -296,15 +290,6 @@ private fun LastFmSettingsSuccess(
     showCustomEndpointDialog: Boolean,
     onShowCustomEndpointDialog: (Boolean) -> Unit,
 ) {
-    // (Task 3) The "Scrobbling service" PreferenceGroup (service provider +
-    // API credentials entries) has been removed — the user now signs in
-    // via the WebView flow with baked-in credentials (Last.fm + Libre.fm)
-    // or enters custom endpoint credentials in a dedicated dialog. There's
-    // no longer a need to expose the service editor here, and the provider
-    // switch / endpoint / apiKeyOverride / secretOverride state in the
-    // view model is still used internally — it's just driven from the
-    // Libre.fm and Custom-endpoint flows instead of from this settings
-    // group. The `onOpenServiceEditor` callback is no longer passed in.
 
     // Local state for the "Prefer YouTube thumbnails" toggle. When enabled,
     // the Last.fm dashboard skips the Last.fm image array (which can return
@@ -332,7 +317,7 @@ private fun LastFmSettingsSuccess(
             )
         }
 
-        // (Task 4) Libre.fm — opens a parallel WebView login flow that
+        // Libre.fm — opens a parallel WebView login flow that
         // uses libre.fm's auth URL and the same baked-in credentials
         // (Libre.fm is API-compatible with Last.fm and accepts any API
         // key for read access). After login, the runtime endpoint is
@@ -349,7 +334,7 @@ private fun LastFmSettingsSuccess(
             )
         }
 
-        // (Task 4) Custom endpoint — opens a dialog where the user
+        // Custom endpoint — opens a dialog where the user
         // enters their own API endpoint URL + API key + shared secret
         // (for self-hosted GNU FM / ListenBrainz-compatible scrobblers
         // that aren't Libre.fm). After saving, the provider is pinned
@@ -760,7 +745,7 @@ private fun LastFmTimingSetting.titleResId(): Int =
     }
 
 /**
- * (Task 4) Custom-endpoint sign-in dialog. Lets the user enter their own API endpoint URL (e.g.
+ * Custom-endpoint sign-in dialog. Lets the user enter their own API endpoint URL (e.g.
  * `https://my-scrobbler.example.com/2.0/`), API key, and shared secret for self-hosted GNU FM /
  * ListenBrainz-compatible scrobblers that aren't Libre.fm.
  */

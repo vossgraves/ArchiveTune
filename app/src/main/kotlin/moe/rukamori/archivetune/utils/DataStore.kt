@@ -82,11 +82,11 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
-            // One-time: the pre-release channel formerly shown as "Canary" was the dev/nightly
-            // build and stored the value "CANARY". It is now "Nightly", and "Canary" names a new,
-            // separate branch. Rewrite any existing stored "CANARY" to "NIGHTLY" once so nobody is
-            // silently moved onto the new (initially empty) Canary feed, then release the "CANARY"
-            // value for real Canary selections. Guarded so a later, deliberate Canary choice sticks.
+            // One-time migration for the pre-release channel: a stored "CANARY" was written while
+            // "Canary" still named the dev/nightly build (now "NIGHTLY"), and "Canary" now names a
+            // new, separate branch. Rewrite it to "NIGHTLY" once so nobody is silently moved onto
+            // the new (initially empty) Canary feed, then release "CANARY" for real Canary
+            // selections. Guarded so a later, deliberate Canary choice sticks.
             object : DataMigration<Preferences> {
                 override suspend fun shouldMigrate(currentData: Preferences): Boolean =
                     currentData[UpdateChannelNightlyRenameMigratedKey] != true
@@ -101,9 +101,9 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
-            // SimpMusic's lyrics renderer used to be a boolean of its own, read only by the
-            // SimpMusic player style's lyrics card. It is a LyricsMode now, so it applies to the
-            // lyrics page under every style — carry anyone who had it switched on across.
+            // SimpMusic's lyrics renderer was a standalone boolean read only by the SimpMusic player
+            // style's lyrics card; as a LyricsMode it now applies to the lyrics page under every
+            // style, so a stored `true` has to be carried across.
             object : DataMigration<Preferences> {
                 override suspend fun shouldMigrate(currentData: Preferences): Boolean =
                     currentData[LEGACY_SIMPMUSIC_LYRICS_KEY] == true
@@ -116,10 +116,9 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
-            // ARCHIVETUNE_EXTRACTOR resolved to ANDROID_MUSIC (with login) or WEB_REMIX
-            // (without). The option has been removed along with the gatekeeper machinery
-            // that conditioned it; rewrite stale values to WEB_REMIX so existing users
-            // don't land on an unknown enum value.
+            // Stored ARCHIVETUNE_EXTRACTOR values resolved to ANDROID_MUSIC (with login) or WEB_REMIX
+            // (without); the option is gone, so rewrite stale values to WEB_REMIX and keep existing
+            // users off an unknown enum value.
             object : DataMigration<Preferences> {
                 override suspend fun shouldMigrate(currentData: Preferences): Boolean =
                     currentData[PlayerStreamClientKey] in

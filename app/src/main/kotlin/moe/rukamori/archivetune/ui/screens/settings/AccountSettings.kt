@@ -513,9 +513,8 @@ fun AccountSettings(
                             count = 3,
                         )
 
-                        // PO Token Generation moved here from the main settings page (Task 9).
-                        // Belongs with the other account-credential rows; opens the existing
-                        // PoTokenScreen route.
+                        // PO Token Generation sits with the other account-credential rows; opens the
+                        // existing PoTokenScreen route.
                         ExpressiveActionRow(
                             icon = painterResource(R.drawable.token),
                             title = stringResource(R.string.po_token_generation),

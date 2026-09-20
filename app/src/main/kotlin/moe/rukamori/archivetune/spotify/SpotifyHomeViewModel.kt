@@ -259,11 +259,10 @@ class SpotifyHomeViewModel @Inject constructor(
 
                 homeResult.onSuccess { feed ->
                     feed.sections.forEach { raw ->
-                        // Recognised by the section URI alone. It used to also match the title
-                        // against "Jump back in", "Recently" and five Russian phrases — which meant
-                        // the shelf was only ever recognised in two of the forty-odd languages the
-                        // app ships, and Spotify returns titles in the account's language. The URI
-                        // is the same string whatever the user reads.
+                        // Recognised by the section URI alone, never the title: Spotify returns
+                        // section titles in the account's language, so a title match only ever
+                        // worked in the languages that were hard-coded. The URI is the same string
+                        // whatever the user reads.
                         if (raw.sectionUri.contains("recent", ignoreCase = true)) {
                             recentItems = raw.items.mapNotNull { item ->
                                 when (item) {

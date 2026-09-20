@@ -1204,7 +1204,7 @@ fun SongMenu(
 
         // "Don't recommend this song again" — blocks the song from the discovery/recommendation
         // feeds without blocking the artist. The user can still play it manually and undo the
-        // block at any time by tapping the same menu item (which now reads "Allow recommendations
+        // block at any time by tapping the same menu item (which then reads "Allow recommendations
         // for this song again"). Excluded from local songs because recommendations never include
         // local tracks anyway.
         if (!song.song.isLocal) item {

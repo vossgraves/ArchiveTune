@@ -400,8 +400,8 @@ fun LyricsV2(
                 return@forEach
             }
 
-            // Off the UI thread: one romanization per line on Main used to queue dozens of
-            // dispatcher hops right as the karaoke animation started.
+            // Off the UI thread: one romanization per line on Main would queue dozens of
+            // dispatcher hops right as the karaoke animation starts.
             launch(Dispatchers.Default) {
                 val romanized =
                     try {
@@ -438,9 +438,8 @@ fun LyricsV2(
     // identity changes between recompositions (e.g. in the Apple Music
     // player where the lyrics overlay sits inside an AnimatedVisibility
     // whose parent recomposes on every position tick), the LaunchedEffect
-    // would keep capturing the OLD lambda and never see new positions —
-    // making the V2 lyrics appear frozen ("don't animate at all").
-    // LyricsEnhanced already does this; V2 was missing it.
+    // would keep capturing the old lambda and never see new positions,
+    // freezing the V2 lyrics in place.
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
 
     var lastRawPositionMs by remember(lyrics) { mutableLongStateOf(0L) }
@@ -491,11 +490,9 @@ fun LyricsV2(
     // Recreated on a repeat/backward-seek for the same reason the item keys below include
     // [playbackResetTick]: that tick changes EVERY item key at once, so the LazyColumn's
     // bookkeeping (its remembered first-visible key, its item animations, the pending
-    // animateScrollToItem target) all refer to items that no longer exist. Carrying the
-    // old state across that swap left the list anchored to a vanished key while the
-    // position loop kept feeding it a new play-through — visible as lyrics that snap back
-    // to the start and then never move. A fresh state starts cleanly at the top, and the
-    // auto-scroll effect takes over from the first active line.
+    // animateScrollToItem target) all refer to items that no longer exist, and carrying the
+    // old state across that swap anchors the list to a vanished key. A fresh state starts
+    // cleanly at the top, and the auto-scroll effect takes over from the first active line.
     val listState = key(playbackResetTick) { rememberLazyListState() }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
@@ -1457,10 +1454,10 @@ private fun AnimatedWordV2(
     val isWordComplete = currentPositionMs >= wordEndMs
     val isWordActive = currentPositionMs in wordStartMs until wordEndMs
 
-    // ── Sweep progress: Animatable-driven for robustness ── Previously, progress was computed
-    // directly from currentPositionMs: progress = (currentPositionMs - wordStartMs) / wordDuration
-    // This broke for very short words (< ~50ms): the 16ms position poll could skip the entire
-    // isWordActive window, causing the word to jump from 0% to 100% with no letter-by-letter sweep.
+    // ── Sweep progress: Animatable-driven for robustness ── Deriving progress directly from
+    // currentPositionMs breaks for very short words (< ~50ms): the 16ms position poll can skip
+    // the entire isWordActive window, making the word jump from 0% to 100% with no
+    // letter-by-letter sweep.
     val sweepAnimatable = remember(word) { androidx.compose.animation.core.Animatable(0f) }
     androidx.compose.runtime.LaunchedEffect(isWordActive, isWordComplete, wordStartMs, wordEndMs) {
         when {

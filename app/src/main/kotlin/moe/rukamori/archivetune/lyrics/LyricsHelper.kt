@@ -454,10 +454,9 @@ class LyricsHelper
 
             // Longer timeout for the "Prioritize Word Synced Lyrics" path. YouLyPlus
             // in particular fans out across 5 mirrors × 2 endpoints (up to 10 HTTP
-            // requests in sequence) and can legitimately take 10–15s. Using the
-            // regular 8s timeout here caused YouLyPlus to be silently skipped even
-            // when it had word-synced lyrics available — exactly the bug the user
-            // reported. Since this path only runs once per song when the toggle is
+            // requests in sequence) and can legitimately take 10–15s, so the regular
+            // 8s timeout silently skipped it even when it had word-synced lyrics
+            // available. Since this path only runs once per song when the toggle is
             // ON (and the user has explicitly opted in for higher-quality lyrics),
             // the extra latency is acceptable.
             private const val WORD_SYNC_PROVIDER_TIMEOUT_MS = 15_000L
