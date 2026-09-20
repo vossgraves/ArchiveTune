@@ -2049,7 +2049,7 @@ private fun CustomAvatarBitmap(userId: String?): Bitmap? {
     val selfBytes = remember(manager, currentUserId) { manager.customAvatarFor(currentUserId) }
     val bytes =
         if (userId == null || userId == currentUserId) selfBytes else customAvatars[userId]
-    return produceState<Bitmap?>(bytes) {
+    return produceState<Bitmap?>(initialValue = null, bytes) {
         value = bytes?.let { encoded ->
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                 runCatching { BitmapFactory.decodeByteArray(encoded, 0, encoded.size) }.getOrNull()
