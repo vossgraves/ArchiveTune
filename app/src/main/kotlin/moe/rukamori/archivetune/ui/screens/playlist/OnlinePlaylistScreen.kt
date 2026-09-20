@@ -271,8 +271,17 @@ fun OnlinePlaylistScreen(
     }
 
     val wrappedSongs =
-        remember(filteredSongs) { filteredSongs.map { item -> ItemWrapper(item) } }
-            .toMutableStateList()
+        // The MutableStateList must be created INSIDE remember: calling
+        // toMutableStateList() on the remembered result rebuilt a fresh list
+        // instance on every recomposition of this screen (playback state,
+        // view counts and download maps all recompose it constantly while a
+        // song plays), which re-invalidated the LazyColumn's items block and
+        // churned allocations every frame — one of the causes of laggy
+        // playlist scrolling. Selection stays observable: ItemWrapper.isSelected
+        // is itself a mutableStateOf.
+        remember(filteredSongs) {
+            filteredSongs.map { item -> ItemWrapper(item) }.toMutableStateList()
+        }
 
     LaunchedEffect(songs) {
         val songIds = songs.map { it.id }
