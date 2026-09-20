@@ -316,7 +316,7 @@ fun FloatingNavigationToolbar(
             canLiquidGlass -> Color.Transparent
             // Apple Music's active tab sits in a tinted pill: the reference shows a solid
             // primary-coloured capsule with the glyph knocked out of it and the label in the accent.
-            isAppleMusic -> MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+            isAppleMusic -> MaterialTheme.colorScheme.primary
             // Tint-frosted: the bar is now a DARK tinted glass (Color.Black at
             // 55% alpha), so the pill uses a translucent white blob — the
             // selected icon stands out against the dark bar without being a
@@ -560,7 +560,17 @@ fun FloatingNavigationToolbar(
             modifier =
                 Modifier
                     .widthIn(max = if (isFloating || isAppleMusic) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
-                    .fillMaxWidth(if (isFloating || isAppleMusic) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
+                    .fillMaxWidth(
+                        when {
+                            // Apple Music's bar is inset, but only slightly: its five labels have to
+                            // fit, so the floating style's 0.8 default (which is a fraction for a
+                            // four-item bar) would squash them. A stored fraction still applies
+                            // upwards, so someone who wants it wider gets it.
+                            isAppleMusic -> navBarWidthFraction.coerceIn(0.9f, 1f)
+                            isFloating -> navBarWidthFraction.coerceIn(0.5f, 1f)
+                            else -> 1f
+                        },
+                    )
                     .height(resolvedBarHeight),
             contentAlignment = Alignment.CenterStart,
         ) {
