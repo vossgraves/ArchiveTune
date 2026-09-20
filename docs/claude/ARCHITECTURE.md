@@ -12,9 +12,16 @@ Stream errors are handled through bounded URL/cache invalidation, source re-reso
 
 ## Sources
 
-The shared `audiosource` contract resolves Tidal, Qobuz, Deezer, and YouTube streams. Spotify remains catalog-only. Telegram uses independent `telegram://` routing. Tidal progressive DASH uses `tidal-dash://`. YouTube is the final fallback.
+The shared `audiosource` contract resolves Tidal, Qobuz (plus its backup), Deezer, Apple Music,
+Amazon, QQ Music, JioSaavn and YouTube streams. Amazon plays through a self-hosted instance — the
+user's own, then any the pool serves, each host carrying only its own authorization material — and
+QQ plays from the user's own signed-in account. Spotify remains catalog-only. Telegram uses
+independent `telegram://` routing. Tidal progressive DASH uses `tidal-dash://`. YouTube is the final
+fallback and is itself a toggle: turning it off leaves the resolver with no terminal fallback beyond
+the standard no-stream error.
 
-No new provider may bypass `resolveMultiSourceDataSpec`, replace the source priority contract, or introduce a REST/WS path to koiverse domains.
+No new provider may bypass `resolveMultiSourceDataSpec`, replace the source priority contract, or
+introduce a REST/WS path to koiverse domains.
 
 ## Performance
 

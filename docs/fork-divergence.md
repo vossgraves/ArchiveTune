@@ -120,3 +120,29 @@ That one is a real gap, and small.
 `echo/`. It is the only item on either list that changes what the app can still play after
 YouTube ships a player change, and it is the only one that cannot be reconstructed from a
 screenshot.
+
+## Ported 2026-09-20 (Listen Together + playlist UI)
+
+Taken from their `dev` onto `canary`, after the shared base had grown 1310 commits apart — so this
+was a scoped port, not a merge:
+
+- **Listen Together**: their room-code fix for the Metrolist server (`31ef54d64`), the protobuf half
+  of `d0b8b86f2` (the `proguard-rules.pro` keep rules), `d184d6984` (guest song changes reaching
+  everyone, custom profile pictures, room queue + suggest UI, the chat composer overlap) and the
+  Listen Together and notification halves of `865e1de72`.
+- **A real bug in our own codec**, found because their tests are the contract: our
+  `decodeProtobufPayload` only had arms for server→client messages, so every payload the *client*
+  sends — create-room, playback-action, suggest-track, buffer-ready — decoded as `null`. Twelve arms
+  added; the four round-trip tests in `listentogether/ProtoWireTest.kt` are the regression net.
+- **Playlist UI, the self-contained parts**: CSV export (`9b42c9176`) and the online-playlist
+  list-state fix.
+
+**Deliberately not taken**: their playlist-screen rework. On their side the six playlist screens
+render `AppleMusicPlaylistHero` with a canvas slot and a `ScreenHeaderHaze`/glass subsystem (~41
+files) *instead of* our `MediaDetailHero` (thumbnail, bookmark, download actions, its LiquidGlass
+backdrop). Swapping it is a rewrite of the library's visual language rather than a port, and it
+would take the Apple Music playlist header with it. If it is ever wanted, it is one decision —
+adopt the hero *and* the haze subsystem together, on all six screens.
+
+Also not taken: their `echo/` extraction stack (still the largest genuine gap, see above), and any
+TikTok/lyrics/AOD work, which is theirs alone.
