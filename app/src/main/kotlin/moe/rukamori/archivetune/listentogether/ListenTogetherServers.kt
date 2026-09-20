@@ -14,12 +14,24 @@ package moe.rukamori.archivetune.listentogether
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+/**
+ * Wire protocol a Listen Together server speaks. All vivi-derived servers are
+ * JSON; Metrolist's metroserver (The Meowery) is protobuf-only and rejects JSON
+ * frames with an `invalid_message` error.
+ */
+@Serializable
+enum class ListenTogetherProtocol {
+    JSON,
+    PROTOBUF,
+}
+
 @Serializable
 data class ListenTogetherServer(
     val name: String,
     val url: String,
     val location: String,
-    val operator: String
+    val operator: String,
+    val protocol: ListenTogetherProtocol = ListenTogetherProtocol.JSON,
 )
 
 object ListenTogetherServers {
@@ -41,7 +53,8 @@ object ListenTogetherServers {
             "name": "The Meowery",
             "url": "wss://metroserverx.meowery.eu/ws",
             "location": "Poland",
-            "operator": "Nyx"
+            "operator": "Nyx",
+            "protocol": "PROTOBUF"
           }
         ]
     """

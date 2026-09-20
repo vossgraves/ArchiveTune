@@ -126,6 +126,9 @@ import moe.rukamori.archivetune.constants.ListenTogetherUsernameKey
 import moe.rukamori.archivetune.listentogether.ConnectionState
 import moe.rukamori.archivetune.listentogether.JoinRequestPayload
 import moe.rukamori.archivetune.listentogether.ListenTogetherEvent
+import moe.rukamori.archivetune.listentogether.ListenTogetherProtocol
+import moe.rukamori.archivetune.listentogether.ListenTogetherServers
+import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.listentogether.SuggestionReceivedPayload
@@ -735,14 +738,24 @@ private fun RoomStatusCard(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
-            // Action Row
-            // PORT-NOTE: vivi's public Listen Together server share URL, kept verbatim — the
-            // link only needs to resolve for humans pasting it; joining happens by room code.
-            val inviteLink = remember(roomCode) {
-                "https://vivimusic-listen-together.onrender.com/listen?code=$roomCode"
-            }
-            
-            // Fixed width for equal sizing horizontally
+            val serverUrl by rememberPreference(ListenTogetherServerUrlKey, ListenTogetherServers.defaultServerUrl)
+
+            // The invite link must point at the server the room actually lives on —
+            // only the vivi servers serve a web client at /listen. metroserver
+            // (The Meowery) has no web client, so the link button is hidden there.
+            val webInviteSupported =
+                remember(serverUrl) {
+                    ListenTogetherServers.findByUrl(serverUrl)?.protocol != ListenTogetherProtocol.PROTOBUF
+                }
+            val inviteLink =
+                remember(roomCode, serverUrl) {
+                    val host = ListenTogetherServers.findByUrl(serverUrl)?.url
+                        ?.removePrefix("wss://")
+                        ?.removePrefix("ws://")
+                        ?.substringBefore('/')
+                        ?: "vivimusic-listen-together.onrender.com"
+                    "https://$host/listen?code=$roomCode"
+                }
             val modifier = Modifier.weight(1f)
 
             Row(
@@ -785,35 +798,36 @@ private fun RoomStatusCard(
                     )
                 }
 
-                // Copy Link Action
-                FilledTonalButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Listen Together Link", inviteLink)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
-                    modifier = modifier
-                ) {
-                    Icon(
-                        painterResource(R.drawable.link),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.copy_link),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                if (webInviteSupported) {
+                    FilledTonalButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Listen Together Link", inviteLink)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
+                        modifier = modifier
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.link),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.copy_link),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 // Copy Code Action
