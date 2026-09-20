@@ -73,6 +73,7 @@ import moe.rukamori.archivetune.ui.screens.settings.ExportDownloadedSongsScreen
 import moe.rukamori.archivetune.ui.screens.settings.HiddenPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.settings.IconScreen
 import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
+import moe.rukamori.archivetune.ui.screens.settings.ListenTogetherSettings
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalSettings
 import moe.rukamori.archivetune.ui.screens.settings.QobuzSettings
@@ -169,6 +170,17 @@ fun NavGraphBuilder.navigationBuilder(
         Screens.Library.route,
     ) {
         LibraryScreen(navController)
+    }
+    composable("listen_together") {
+        ListenTogetherScreen(navController, showTopBar = false)
+    }
+    composable(
+        route = "listen_together_from_topbar",
+    ) {
+        ListenTogetherScreen(navController, showTopBar = true)
+    }
+    composable("listen_together/chat") {
+        CommentTogetherScreen(navController)
     }
     composable(Screens.Search.route) {
         SearchScreen(
@@ -598,6 +610,9 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         IntegrationScreen(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable(route = "settings/integrations/listen_together") {
+        ListenTogetherSettings(navController, scrollBehavior)
     }
     composable(
         route = "settings/tidal?scrollTo={scrollTo}",

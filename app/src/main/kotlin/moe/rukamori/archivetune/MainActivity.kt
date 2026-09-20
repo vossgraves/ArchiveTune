@@ -358,6 +358,9 @@ import moe.rukamori.archivetune.utils.SyncUtils
 import moe.rukamori.archivetune.utils.Updater
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.LocalListenTogetherManager
+import moe.rukamori.archivetune.listentogether.ListenTogetherManager
+import moe.rukamori.archivetune.utils.isLowRamDevice
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.isLowRamDevice
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -385,6 +388,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncUtils: SyncUtils
 
+    @Inject
+    lateinit var listenTogetherManager: ListenTogetherManager
+
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
     private var pendingDeepLinkQueue: Queue? = null
@@ -410,6 +416,8 @@ class MainActivity : ComponentActivity() {
                 if (service is MusicBinder) {
                     playerConnection =
                         PlayerConnection(this@MainActivity, service, database, lifecycleScope)
+                    // Connect the Listen Together manager to the player
+                    listenTogetherManager.setPlayerConnection(playerConnection)
                     playPendingDeepLinkQueueIfReady()
                     playPendingVoiceSearchIfReady()
                     openPendingAodModeIfReady()
@@ -418,6 +426,7 @@ class MainActivity : ComponentActivity() {
 
             override fun onServiceDisconnected(name: ComponentName?) {
                 isMusicServiceBound = false
+                listenTogetherManager.setPlayerConnection(null)
                 disposePlayerConnection()
             }
         }
@@ -639,6 +648,10 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { downloadUtil.prewarmDownloadConnections() }
         }
+
+        // Listen Together: restores a persisted room session (reconnect flow)
+        // and wires preference observers before any screen renders.
+        runCatching { listenTogetherManager.initialize() }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
@@ -1172,6 +1185,12 @@ class MainActivity : ComponentActivity() {
                     val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
+                    // Listen Together top-bar entry gate (vivi's pattern).
+                    val (listenTogetherInTopBar) =
+                        rememberPreference(
+                            moe.rukamori.archivetune.constants.ListenTogetherInTopBarKey,
+                            defaultValue = true,
+                        )
                     // Hoisted profile-menu state.
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -2042,6 +2061,7 @@ class MainActivity : ComponentActivity() {
                         LocalDensity provides scaledDensity,
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
+                        LocalListenTogetherManager provides listenTogetherManager,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                         LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
@@ -2490,6 +2510,21 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate(MusicRecognitionRoute)
                                                                     },
                                                                 ),
+                                                                // Listen Together — top-bar entry, gated
+                                                                // by the ListenTogetherInTopBarKey toggle
+                                                                // in its settings screen (vivi's pattern).
+                                                                if (listenTogetherInTopBar) {
+                                                                    ProfileMenuItem(
+                                                                        icon = R.drawable.diversity_listen_together,
+                                                                        label = stringResource(R.string.listen_together),
+                                                                        onClick = {
+                                                                            profileMenuExpanded = false
+                                                                            navController.navigate("listen_together_from_topbar")
+                                                                        },
+                                                                    )
+                                                                } else {
+                                                                    null
+                                                                },
                                                                 // Settings entry removed — the Home route's
                                                                 // top-end settings icon in liquid glass is
                                                                 // now the sole entry point, and it carries
@@ -2504,6 +2539,7 @@ class MainActivity : ComponentActivity() {
                                                                     },
                                                                 ),
                                                             ),
+                                                            ).filterNotNull(),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
                                                     }
@@ -3235,6 +3271,26 @@ class MainActivity : ComponentActivity() {
 
         if (uri.scheme.equals("archivetune", ignoreCase = true) && authority == "login") {
             navController.navigate(buildLoginRoute(uri.getQueryParameter(LOGIN_URL_ARGUMENT)))
+            return
+        }
+
+        // Listen Together invite links: the share URL from the room screen
+        // (https://vivimusic-listen-together.onrender.com/listen?code=X) and
+        // the direct custom scheme (archivetune://listen?code=X) — joins the
+        // room with the stored username.
+        val listenCode =
+            uri.getQueryParameter("code")
+                ?: uri.getQueryParameter("room")
+                ?: uri.pathSegments.getOrNull(1)
+        val isListenLink =
+            uri.pathSegments.firstOrNull() == "listen" ||
+                uri.host?.equals("listen", ignoreCase = true) == true ||
+                uri.host?.equals("vivimusic-listen-together.onrender.com", ignoreCase = true) == true
+        if (!listenCode.isNullOrBlank() && isListenLink) {
+            val username =
+                dataStore.get(moe.rukamori.archivetune.constants.ListenTogetherUsernameKey, "")
+                    .ifBlank { "Guest" }
+            listenTogetherManager.joinRoom(listenCode, username)
             return
         }
 

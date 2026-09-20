@@ -146,6 +146,28 @@
             </intent-filter>
 
             <!-- Share filter -->
+            <!-- Listen Together invite links: the share URL handed out by the
+                 room screen, and the direct custom scheme for browser opens. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="vivimusic-listen-together.onrender.com" />
+                <data android:pathPrefix="/listen" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="archivetune" />
+                <data android:host="listen" />
+            </intent-filter>
+
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
 
@@ -267,6 +289,11 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+
+        <!-- Receiver for Listen Together notification actions (Approve/Reject) -->
+        <receiver
+            android:name=".listentogether.ListenTogetherActionReceiver"
+            android:exported="false" />
 <receiver
     android:name=".widget.MusicWidgetReceiver"
     android:exported="true">

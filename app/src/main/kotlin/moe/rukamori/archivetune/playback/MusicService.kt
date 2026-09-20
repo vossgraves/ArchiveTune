@@ -413,6 +413,12 @@ class MusicService :
     lateinit var equalizerPlaybackController: EqualizerPlaybackController
 
     @Inject
+    @Inject
+    lateinit var listenTogetherManager: moe.rukamori.archivetune.listentogether.ListenTogetherManager
+
+    /** Beat-driven music haptics engine (SpatialFlow port), fed from the PCM tap. */
+    @Volatile
+
     lateinit var sponsorBlockPlaybackController: SponsorBlockPlaybackController
 
     private lateinit var audioManager: AudioManager
@@ -1316,6 +1322,12 @@ class MusicService :
                     durationSeconds = durationSeconds,
                     gapless = gapless,
                 )
+            }
+            // Disable crossfade while in a Listen Together room — the guest
+            // side of the sync needs deterministic track starts, and a fade
+            // tail delays them (mirrors vivi's gating).
+            .combine(listenTogetherManager.roomState) { config, roomState ->
+                config.copy(enabled = config.enabled && roomState == null)
             }
             .distinctUntilChanged()
             .collectLatest(scope) { config ->
