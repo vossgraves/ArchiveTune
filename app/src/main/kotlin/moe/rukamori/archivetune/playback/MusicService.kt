@@ -240,8 +240,8 @@ import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
-import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.AmazonInstances
+import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
@@ -7352,7 +7352,7 @@ class MusicService :
             if (!match.accepted) continue
             Timber
                 .tag("MusicService")
-                .i("Amazon Music resolved \"%s\" via %s", query.title, base)
+                .i("Amazon Music resolved \"%s\" via %s", query.title, instance.baseUrl)
             return stream
         }
         return null

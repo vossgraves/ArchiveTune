@@ -15,7 +15,6 @@ import moe.rukamori.archivetune.constants.AmazonBypassTokenKey
 import moe.rukamori.archivetune.constants.AmazonInstancesKey
 import moe.rukamori.archivetune.constants.AmazonTurnstileJwtExpiryMsKey
 import moe.rukamori.archivetune.constants.AmazonTurnstileJwtKey
-import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.qqmusic.QqMusicProvider
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
