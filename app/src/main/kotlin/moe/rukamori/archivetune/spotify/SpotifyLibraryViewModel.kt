@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.spotify
 
-import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -165,6 +164,16 @@ internal fun isSpotifyRateLimitMessage(message: String?): Boolean =
                 message.contains("Rate limit", ignoreCase = true)
         )
 
+/**
+ * Monotonic milliseconds for the retry cooldown.
+ *
+ * Deliberately not `android.os.SystemClock`: nothing here needs the Android clock, and reaching for
+ * it made the whole function untestable off-device — the stub android.jar throws on every unmocked
+ * call, so `SpotifyLibraryViewModelTest` failed with a "not mocked" RuntimeException instead of
+ * asserting anything about the cooldown it exists to pin.
+ */
+private fun monotonicMillis(): Long = System.nanoTime() / 1_000_000
+
 @androidx.annotation.MainThread
 internal suspend fun <T> loadSpotifySection(
     target: MutableStateFlow<SpotifyLibrarySectionState<T>>,
@@ -177,7 +186,7 @@ internal suspend fun <T> loadSpotifySection(
     if (!force) {
         val failedAt = previous.failedAtMillis
         val cooldown = if (isSpotifyRateLimitMessage(previous.errorMessage)) SpotifyRetryCooldownMs * 5 else SpotifyRetryCooldownMs
-        if (failedAt != null && SystemClock.elapsedRealtime() - failedAt < cooldown) return
+        if (failedAt != null && monotonicMillis() - failedAt < cooldown) return
     }
     val loading = previous.copy(isLoading = true, errorMessage = null, failedAtMillis = null)
     target.value = loading
@@ -192,7 +201,7 @@ internal suspend fun <T> loadSpotifySection(
         target.value =
             previous.copy(
                 errorMessage = error.message ?: error.javaClass.simpleName,
-                failedAtMillis = SystemClock.elapsedRealtime(),
+                failedAtMillis = monotonicMillis(),
             )
     } finally {
         // An account change may already have reset the state or started its replacement request.
