@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.statToPeriod
+import moe.rukamori.archivetune.constants.statsUntilPeriod
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.db.entities.Artist
@@ -39,7 +40,6 @@ import moe.rukamori.archivetune.ui.screens.OptionStats
 import moe.rukamori.archivetune.utils.reportException
 import java.time.Duration
 import java.time.LocalDateTime
-import java.time.ZoneOffset
 import javax.inject.Inject
 
 sealed interface StatsScreenState {
@@ -58,20 +58,30 @@ sealed interface StatsScreenState {
 
 @Immutable
 data class StatsUiData(
-    val selectedOption: OptionStats,
-    val selectedPeriodIndex: Int,
+    val rankedSongs: List<SongWithStats>,
     val mostPlayedSongs: List<Song>,
-    val visibleRankedSongs: List<SongWithStats>,
-    val rankedSongCount: Int,
     val mostPlayedArtists: List<Artist>,
     val mostPlayedAlbums: List<Album>,
     val listeningByHour: List<ListeningBySlot>,
     val listeningByDayOfWeek: List<ListeningBySlot>,
     val listeningSummary: ListeningSummary,
     val firstEvent: EventWithSong?,
-    val isSongListExpanded: Boolean,
-    val canExpandSongList: Boolean,
 )
+
+/**
+ * The time range the stats screen is on: the control's option and the chip it has selected.
+ *
+ * Both the local queries and a remote feed are bounded by the same selection, so [windowMillis] is
+ * the one definition of what that selection covers.
+ */
+@Immutable
+data class StatsPeriodSelection(
+    val option: OptionStats,
+    val index: Int,
+) {
+    /** The half-open window this chip covers, in epoch millis. */
+    fun windowMillis(chip: Int = index): LongRange = statToPeriod(option, chip) until statsUntilPeriod(option, chip)
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -82,27 +92,29 @@ class StatsViewModel
     ) : ViewModel() {
         private val selectedOption = MutableStateFlow(OptionStats.CONTINUOUS)
         private val indexChips = MutableStateFlow(0)
-        private val isSongListExpanded = MutableStateFlow(false)
         private val isYearPickerOpen = MutableStateFlow(false)
         private val refreshRequest = MutableStateFlow(0L)
 
         val yearPickerOpen: StateFlow<Boolean> = isYearPickerOpen
 
+        /** The range the screen's time control is on; both the local queries and the remote feeds use it. */
+        val periodSelection: StateFlow<StatsPeriodSelection> =
+            combine(selectedOption, indexChips) { option, index -> StatsPeriodSelection(option, index) }
+                .stateIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.Eagerly,
+                    initialValue = StatsPeriodSelection(selectedOption.value, indexChips.value),
+                )
+
         fun onOptionSelected(option: OptionStats) {
             if (selectedOption.value == option) return
             selectedOption.value = option
             indexChips.value = 0
-            isSongListExpanded.value = false
         }
 
         fun onChipIndexChanged(index: Int) {
             if (indexChips.value == index) return
             indexChips.value = index
-            isSongListExpanded.value = false
-        }
-
-        fun toggleSongListExpanded() {
-            isSongListExpanded.value = !isSongListExpanded.value
         }
 
         fun showYearPicker() {
@@ -119,23 +131,13 @@ class StatsViewModel
 
         private fun periodPair() = combine(selectedOption, indexChips) { opt, idx -> Pair(opt, idx) }
 
-        private fun toTimestamp(
-            selection: OptionStats,
-            t: Int,
-        ): Long =
-            if (selection == OptionStats.CONTINUOUS || t == 0) {
-                LocalDateTime.now().toInstant(ZoneOffset.UTC).toEpochMilli()
-            } else {
-                statToPeriod(selection, t - 1)
-            }
-
         private val mostPlayedSongsStats =
             periodPair()
                 .flatMapLatest { (selection, t) ->
                     database.mostPlayedSongsStats(
                         fromTimeStamp = statToPeriod(selection, t),
                         limit = -1,
-                        toTimeStamp = toTimestamp(selection, t),
+                        toTimeStamp = statsUntilPeriod(selection, t),
                     )
                 }
 
@@ -146,7 +148,7 @@ class StatsViewModel
                         .mostPlayedSongs(
                             fromTimeStamp = statToPeriod(selection, t),
                             limit = -1,
-                            toTimeStamp = toTimestamp(selection, t),
+                            toTimeStamp = statsUntilPeriod(selection, t),
                         ).map { songs -> songs.filter { song -> song.artists.none { it.blockedAt != null } } }
                 }
 
@@ -157,7 +159,7 @@ class StatsViewModel
                         .mostPlayedArtists(
                             statToPeriod(selection, t),
                             limit = -1,
-                            toTimeStamp = toTimestamp(selection, t),
+                            toTimeStamp = statsUntilPeriod(selection, t),
                         ).map { artists ->
                             artists.filter { it.artist.blockedAt == null && it.artist.isYouTubeArtist }
                         }
@@ -170,7 +172,7 @@ class StatsViewModel
                         .mostPlayedAlbums(
                             statToPeriod(selection, t),
                             limit = -1,
-                            toTimeStamp = toTimestamp(selection, t),
+                            toTimeStamp = statsUntilPeriod(selection, t),
                         ).map { albums -> albums.filter { album -> album.artists.none { it.blockedAt != null } } }
                 }
 
@@ -179,7 +181,7 @@ class StatsViewModel
                 .flatMapLatest { (selection, t) ->
                     database.listeningByHour(
                         fromTimestamp = statToPeriod(selection, t),
-                        toTimestamp = toTimestamp(selection, t),
+                        toTimestamp = statsUntilPeriod(selection, t),
                     )
                 }
 
@@ -188,7 +190,7 @@ class StatsViewModel
                 .flatMapLatest { (selection, t) ->
                     database.listeningByDayOfWeek(
                         fromTimestamp = statToPeriod(selection, t),
-                        toTimestamp = toTimestamp(selection, t),
+                        toTimestamp = statsUntilPeriod(selection, t),
                     )
                 }
 
@@ -197,7 +199,7 @@ class StatsViewModel
                 .flatMapLatest { (selection, t) ->
                     database.listeningTotals(
                         fromTimestamp = statToPeriod(selection, t),
-                        toTimestamp = toTimestamp(selection, t),
+                        toTimestamp = statsUntilPeriod(selection, t),
                     )
                 }
 
@@ -241,10 +243,7 @@ class StatsViewModel
                     combine(
                         primaryStats,
                         listeningStats,
-                        selectedOption,
-                        indexChips,
-                        isSongListExpanded,
-                    ) { primary, listening, option, periodIndex, expanded ->
+                    ) { primary, listening ->
                         val summary =
                             ListeningSummary(
                                 totalPlayCount = listening.totals.totalPlayCount,
@@ -258,24 +257,14 @@ class StatsViewModel
                         } else {
                             StatsScreenState.Success(
                                 StatsUiData(
-                                    selectedOption = option,
-                                    selectedPeriodIndex = periodIndex,
+                                    rankedSongs = primary.rankedSongs,
                                     mostPlayedSongs = primary.songs,
-                                    visibleRankedSongs =
-                                        if (expanded) {
-                                            primary.rankedSongs
-                                        } else {
-                                            primary.rankedSongs.take(COLLAPSED_SONG_COUNT)
-                                        },
-                                    rankedSongCount = primary.rankedSongs.size,
                                     mostPlayedArtists = primary.artists,
                                     mostPlayedAlbums = primary.albums,
                                     listeningByHour = listening.byHour,
                                     listeningByDayOfWeek = listening.byDay,
                                     listeningSummary = summary,
                                     firstEvent = listening.firstEvent,
-                                    isSongListExpanded = expanded,
-                                    canExpandSongList = primary.rankedSongs.size > COLLAPSED_SONG_COUNT,
                                 ),
                             )
                         }
@@ -347,8 +336,4 @@ class StatsViewModel
             val totals: ListeningTotals,
             val firstEvent: EventWithSong?,
         )
-
-        private companion object {
-            const val COLLAPSED_SONG_COUNT = 5
-        }
     }
