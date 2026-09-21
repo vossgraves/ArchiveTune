@@ -103,17 +103,22 @@ class InnerTuneXStreamRepository
             )
         }
 
-        /** Warming the visitor data and player config is an optimisation: never let it fail the tier. */
+        /**
+         * Warming the visitor data and player config is an optimisation: never let it fail the tier.
+         * The flag is set only after a warm that actually ran, so a cancelled or failed attempt is
+         * retried by the next resolve instead of leaving the singleton flagged for a warm it never got.
+         */
         private suspend fun prewarmOnce() {
             if (prewarmed) return
-            prewarmed = true
             try {
                 extractor.prewarm()
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
                 Timber.tag(TAG).d(t, "InnerTuneX prewarm failed")
+                return
             }
+            prewarmed = true
         }
 
         private fun createExtractor(): InnerTubeExtractor {
