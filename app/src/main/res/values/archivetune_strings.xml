@@ -980,4 +980,7 @@
     <string name="android_auto_app_permissions">App permissions</string>
     <string name="android_auto_settings_load_failed">Could not load Android Auto settings</string>
     <string name="android_auto_settings_update_failed">Could not update Android Auto settings</string>
+    <string name="media_info_empty">No information available</string>
+    <string name="media_info_load_error">Couldn’t load this information</string>
+    <string name="media_info_itag" translatable="false">Itag</string>
 </resources>
