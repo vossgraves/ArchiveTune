@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -86,14 +87,10 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.ListenTogetherServerUrlKey
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
-import moe.rukamori.archivetune.listentogether.ListenTogetherServers
-import moe.rukamori.archivetune.listentogether.ListenTogetherProtocol
 import moe.rukamori.archivetune.listentogether.RepliedMessage
 import moe.rukamori.archivetune.listentogether.TrackInfo
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
-import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,15 +108,7 @@ fun CommentTogetherScreen(navController: NavController) {
     var editingMessage by remember { mutableStateOf<ChatMessagePayload?>(null) }
     var actionTarget by remember { mutableStateOf<MessageActionTarget?>(null) }
     var showEmojiPicker by remember { mutableStateOf(false) }
-    var showSongPicker by remember { mutableStateOf(false) }
     var jumpTargetKey by remember { mutableStateOf<String?>(null) }
-
-    // metroserver (The Meowery) speaks a protobuf protocol with no chat message
-    // type at all — the composer is replaced by an explanatory notice there.
-    val serverUrl by rememberPreference(ListenTogetherServerUrlKey, ListenTogetherServers.defaultServerUrl)
-    val chatSupported by remember(serverUrl) {
-        mutableStateOf(ListenTogetherServers.findByUrl(serverUrl)?.protocol != ListenTogetherProtocol.PROTOBUF)
-    }
 
     val lazyListState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
@@ -168,22 +157,7 @@ fun CommentTogetherScreen(navController: NavController) {
         jumpTargetKey = null
     }
 
-    val pinnedMessages = remember(messages) { messages.filter { it.pinned } }
-
-    // Host role from the live room state (recomposes on host transfer) — drives
-    // the "delete for everyone" moderation action on other people's messages.
-    val iAmHost = roomState?.hostId != null && roomState?.hostId == userId
-
-    // Own-message detection: session user id first, username as the fallback —
-    // restored history from a previous session carries the OLD session's user
-    // ids, and those messages must still land on the right side.
-    val myUsername = manager.currentUsername
-    fun isOwnMessage(message: ChatMessagePayload): Boolean =
-        message.userId == userId || (myUsername != null && message.username == myUsername)
-
-    // Where the restored (persisted) history ends — the divider between the
-    // older messages and this session's live conversation sits right after it.
-    val lastRestoredIndex = remember(messages) { messages.indexOfLast { it.restored } }
+    val latestPinned = messages.lastOrNull { it.pinned }
 
     fun sendMessage() {
         if (textInput.isBlank()) return
@@ -217,10 +191,6 @@ fun CommentTogetherScreen(navController: NavController) {
             Toast.makeText(context, R.string.listen_together_chat_nothing_playing, Toast.LENGTH_SHORT).show()
             return
         }
-        manager.shareTrackToChat(track)
-    }
-
-    fun sharePickedTrack(track: TrackInfo) {
         manager.shareTrackToChat(track)
     }
 
@@ -371,42 +341,15 @@ fun CommentTogetherScreen(navController: NavController) {
                     TypingIndicatorRow(typingUsers = typingUsers)
                 }
 
-                if (chatSupported) {
-                    ChatInputArea(
-                        text = textInput,
-                        onTextChange = { newText ->
-                            textInput = newText
-                            if (newText.isNotBlank()) manager.notifyTyping()
-                        },
-                        onSend = ::sendMessage,
-                        onShareTrack = { showSongPicker = true },
-                    )
-                } else {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(28.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.chat_msg),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = stringResource(R.string.listen_together_chat_unsupported_server),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+                ChatInputArea(
+                    text = textInput,
+                    onTextChange = { newText ->
+                        textInput = newText
+                        if (newText.isNotBlank()) manager.notifyTyping()
+                    },
+                    onSend = ::sendMessage,
+                    onShareTrack = ::shareCurrentTrack,
+                )
             }
         },
         contentWindowInsets = windowInsets
@@ -417,15 +360,12 @@ fun CommentTogetherScreen(navController: NavController) {
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            if (pinnedMessages.isNotEmpty()) {
-                PinnedMessagesStack(
-                    messages = pinnedMessages,
-                    onUnpin = { pinned -> manager.setPinned(pinned, false) },
-                    onJumpTo = { pinned ->
-                        val index =
-                            messages.indexOfFirst {
-                                it.timestamp == pinned.timestamp && it.userId == pinned.userId
-                            }
+            latestPinned?.let { pinned ->
+                PinnedBanner(
+                    message = pinned,
+                    onUnpin = { manager.setPinned(pinned, false) },
+                    onJumpTo = {
+                        val index = messages.indexOfFirst { it.pinned && it.timestamp == pinned.timestamp && it.userId == pinned.userId }
                         if (index >= 0) {
                             jumpTargetKey = "${pinned.userId}:${pinned.timestamp}"
                             coroutineScope.launch {
@@ -448,28 +388,24 @@ fun CommentTogetherScreen(navController: NavController) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    messages.forEachIndexed { index, message ->
-                        item(key = message.timestamp.toString() + message.userId) {
-                            MessageItem(
-                                message = message,
-                                isMe = isOwnMessage(message),
-                                myUsername = myUsername,
-                                onReply = { replyingTo = it },
-                                onLongPress = { pressed, bounds ->
-                                    actionTarget = MessageActionTarget(pressed, bounds, isOwnMessage(pressed), iAmHost)
-                                },
-                                onToggleReaction = { msg, emoji ->
-                                    manager.toggleReaction(msg, emoji)
-                                },
-                                onPlayTrack = ::playSharedTrack,
-                                highlighted = jumpTargetKey == "${message.userId}:${message.timestamp}",
-                            )
-                        }
-                        if (index == lastRestoredIndex) {
-                            item(key = "older_messages_divider") {
-                                OlderMessagesDivider()
-                            }
-                        }
+                    items(
+                        items = messages,
+                        key = { it.timestamp.toString() + it.userId }
+                    ) { message ->
+                        MessageItem(
+                            message = message,
+                            isMe = message.userId == userId,
+                            myUsername = manager.currentUsername,
+                            onReply = { replyingTo = it },
+                            onLongPress = { pressed, bounds ->
+                                actionTarget = MessageActionTarget(pressed, bounds, pressed.userId == userId)
+                            },
+                            onToggleReaction = { msg, emoji ->
+                                manager.toggleReaction(msg, emoji)
+                            },
+                            onPlayTrack = ::playSharedTrack,
+                            highlighted = jumpTargetKey == "${message.userId}:${message.timestamp}",
+                        )
                     }
                 }
             }
@@ -501,8 +437,7 @@ fun CommentTogetherScreen(navController: NavController) {
                 textInput = target.message.message
             },
             onPinToggle = { manager.setPinned(target.message, !target.message.pinned) },
-            onDeleteForMe = { manager.deleteMessageForMe(target.message) },
-            onDeleteForEveryone = { manager.deleteMessageForEveryone(target.message) },
+            onDelete = { manager.deleteMessage(target.message) },
             onDismiss = { actionTarget = null },
         )
     }
@@ -518,24 +453,6 @@ fun CommentTogetherScreen(navController: NavController) {
                 actionTarget = null
             },
             onDismiss = { showEmojiPicker = false },
-        )
-    }
-
-    // Song picker opened from the composer's music-note button: search YouTube
-    // Music and share any result as a rich tappable card, with the room's
-    // current song offered as a quick action on top.
-    if (showSongPicker) {
-        ShareSongPickerSheet(
-            currentTrack = roomState?.currentTrack ?: manager.currentLocalTrack(),
-            onShareTrack = { track ->
-                sharePickedTrack(track)
-                showSongPicker = false
-            },
-            onShareCurrent = {
-                shareCurrentTrack()
-                showSongPicker = false
-            },
-            onDismiss = { showSongPicker = false },
         )
     }
     }
@@ -561,7 +478,7 @@ private fun ChatInputArea(
             IconButton(onClick = onShareTrack) {
                 Icon(
                     painter = painterResource(R.drawable.music_note),
-                    contentDescription = stringResource(R.string.listen_together_chat_pick_song_title),
+                    contentDescription = stringResource(R.string.listen_together_chat_share_song),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(24.dp),
                 )

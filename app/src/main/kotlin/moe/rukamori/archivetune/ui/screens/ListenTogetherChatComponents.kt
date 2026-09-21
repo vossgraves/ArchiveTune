@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -103,6 +104,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import coil3.compose.AsyncImage
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -113,54 +115,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
 import moe.rukamori.archivetune.listentogether.ChatMessagePayload
 import moe.rukamori.archivetune.listentogether.RepliedMessage
+import moe.rukamori.archivetune.listentogether.TrackInfo
 import moe.rukamori.archivetune.listentogether.TypingUser
-import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
+import moe.rukamori.archivetune.utils.rememberPreference
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.sin
+import androidx.compose.animation.core.animateFloatAsState
 
 /** Quick-reaction strip shown first in the anchored popup. */
 internal val QuickReactionEmojis = listOf("❤️", "👍", "😂", "😮", "😢", "🔥")
 
-/** Full emoji catalogue for the picker sheet, grouped for headers. */
-internal val EmojiCategories: List<Pair<String, List<String>>> = listOf(
-    "Smileys" to listOf(
-        "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇",
-        "🥰", "😍", "🤩", "😘", "😗", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝",
-        "🤗", "🤭", "🤫", "🤔", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "😌",
-        "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🥵", "🥶", "🥴", "😵", "🤯", "🤠",
-        "🥳", "🥸", "😎", "🤓", "🧐", "😕", "😟", "🙁", "😮", "😯", "😲", "😳", "🥺",
-        "😢", "😭", "😱", "😖", "😣", "😞", "😩", "😫", "🥱",
-    ),
-    "Gestures" to listOf(
-        "👍", "👎", "👌", "✌️", "🤞", "🤟", "🤘", "🤙", "👋", "🤚", "🖐", "✋", "🖖",
-        "👏", "🙌", "👐", "🤲", "🤝", "🙏", "💪", "🦾", "✍️", "🤳", "👀", "🧠", "🫶",
-    ),
-    "Hearts" to listOf(
-        "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞",
-        "💓", "💗", "💖", "💘", "💝", "💟", "🌈",
-    ),
-    "Fun" to listOf(
-        "🔥", "⭐", "✨", "💫", "⚡", "☄️", "💥", "🌸", "🎉", "🎊", "🎈", "🎁", "🏆",
-        "🥇", "👑", "💎", "🎵", "🎶", "🎤", "🎸", "🥁", "🎧", "💿", "🕺", "💃",
-    ),
-    "Food & Nature" to listOf(
-        "🍕", "🍔", "🍟", "🌭", "🍿", "🧂", "🥓", "🥚", "🍳", "🥞", "🧇", "🥨", "🍰",
-        "🎂", "🍫", "🍩", "🍪", "☕", "🍵", "🧋", "🥤", "🍺", "🍷", "🥂", "🌺", "🌻",
-        "🌹", "🥀", "🍀", "🌿", "🌙", "🌞", "🌝", "🌜",
-    ),
-    "Objects" to listOf(
-        "📱", "💻", "⌨️", "🖥", "🖨", "🖱", "💾", "💿", "📀", "📷", "🎥", "📞", "☎️",
-        "📟", "📠", "📺", "📻", "⏰", "⌛", "⏳", "🔋", "🔌", "💡", "🔦", "🕯", "🧸",
-        "🎁", "🎯", "🎲", "🧩", "♠️", "♥️", "♦️", "♣️", "🃏", "🀄",
-    ),
-)
-
-// Direct emoji glyphs throughout; no substitutions needed.
-private fun emojiGlyph(raw: String): String = raw
+// The full emoji keyboard lives in EmojiCatalog.kt (generated from the official
+// Unicode emoji-test.txt: 3781 fully-qualified emoji across 9 CLDR groups).
 
 private val ChatAvatarOptions = listOf(
     R.drawable.person, R.drawable.man, R.drawable.woman, R.drawable.man_1, R.drawable.man_2,
@@ -186,10 +157,21 @@ internal fun ChatAvatar(
     val currentUserId = manager?.userId?.collectAsState()?.value
     val customAvatars = manager?.customAvatars?.collectAsState()?.value ?: emptyMap()
 
+    // The avatar preference participates in the key so picking a new custom
+    // profile picture refreshes the self avatar live (and falling back from a
+    // custom picture to an index asset does too).
+    val (selfAvatarPref) = rememberPreference(ListenTogetherAvatarIndexKey, 0)
+
     val bytes =
-        if (manager == null) null
-        else if (userId == currentUserId) remember(manager, currentUserId) { manager.customAvatarFor(currentUserId) }
-        else customAvatars[userId]
+        if (manager == null) {
+            null
+        } else if (userId == currentUserId) {
+            remember(manager, currentUserId, selfAvatarPref) {
+                manager.customAvatarFor(currentUserId)
+            }
+        } else {
+            customAvatars[userId]
+        }
     val bitmap: Bitmap? =
         produceState<Bitmap?>(initialValue = null, bytes) {
             value =
@@ -354,11 +336,20 @@ internal data class MessageActionTarget(
  * quick reactions, the full-emoji entry and reply/copy/edit/pin/delete, opening
  * with the lyrics-popup morph (spring scale + fade from the bubble edge) over a
  * liquid-glass backdrop.
+ *
+ * The glass backdrop is a LOCAL one recorded from the chat content only (see
+ * CommentTogetherScreen): drawing from the app-wide LocalLiquidGlassBackdrop
+ * here would make the popup — which lives inside the NavHost subtree that the
+ * global backdrop records — sample a layer that is still being recorded into
+ * itself. That circular rendering crashes the RenderThread with SIGSEGV. The
+ * popup is composed as a SIBLING of the recorded box, so sampling the local
+ * layer is a plain one-way read.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MessageActionsPopup(
     target: MessageActionTarget,
+    backdrop: LayerBackdrop?,
     myUsername: String?,
     onReact: (String) -> Unit,
     onOpenEmojiPicker: () -> Unit,
@@ -369,10 +360,8 @@ internal fun MessageActionsPopup(
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val backdrop: LayerBackdrop? = LocalLiquidGlassBackdrop.current
 
     var dismissed by remember { mutableStateOf(false) }
     val scaleAnim = remember { Animatable(0.35f) }
@@ -429,6 +418,12 @@ internal fun MessageActionsPopup(
 
     val scrimAlpha = 0.25f * alphaAnim.value
 
+    // Both looks share the same rounded menu chrome: an 18dp rounded sheet with
+    // divider rules between the reaction strip and the action row. With glass
+    // the surface samples and refracts the chat behind it; without glass it is
+    // a clean elevated dark menu (never an unclipped black square).
+    val popupShape = RoundedCornerShape(18.dp)
+
     val frostedBlurModifier =
         remember(backdrop) {
             if (backdrop != null) {
@@ -443,10 +438,17 @@ internal fun MessageActionsPopup(
                         )
                     },
                     onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
-                    shape = { RoundedCornerShape(18.dp) },
+                    onDrawSurface = {
+                        // A light tint keeps the white icons/labels legible over
+                        // bright chat content behind the glass.
+                        drawRect(Color.Black.copy(alpha = 0.30f))
+                    },
+                    shape = { popupShape },
                 )
             } else {
-                null
+                Modifier
+                    .background(Color(0xF226262B), popupShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), popupShape)
             }
         }
 
@@ -486,15 +488,11 @@ internal fun MessageActionsPopup(
                                 if (opensBelow) 0f else 1f,
                             )
                         this.shadowElevation = 18.dp.toPx()
-                        this.shape = RoundedCornerShape(18.dp)
+                        this.shape = popupShape
                         this.clip = false
                     }
-                    .then(
-                        frostedBlurModifier
-                            ?: Modifier.background(Color(0xFF1C1C1E).copy(alpha = alphaAnim.value)),
-                    )
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(popupShape)
+                    .then(frostedBlurModifier)
                     .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -538,11 +536,11 @@ internal fun MessageActionsPopup(
                             .padding(6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = stringResource(R.string.listen_together_chat_all_emojis),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                    Icon(
+                        painter = painterResource(R.drawable.add),
+                        contentDescription = stringResource(R.string.listen_together_chat_all_emojis),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -553,7 +551,7 @@ internal fun MessageActionsPopup(
                         .padding(vertical = 6.dp)
                         .fillMaxWidth()
                         .height(1.dp)
-                        .background(Color.White.copy(alpha = 0.12f)),
+                        .background(Color.White.copy(alpha = 0.14f)),
             )
 
             // Action row
@@ -628,23 +626,26 @@ private fun PopupActionChip(
     }
 }
 
-/** Full emoji picker sheet opened from the anchored popup's "All emojis" chip. */
+/** Full emoji picker sheet opened from the anchored popup's "+" chip: every
+ * emoji an Android keyboard offers (3781 fully-qualified sequences from the
+ * Unicode emoji-test data), grouped with headers. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun EmojiPickerSheet(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(44.dp),
-            modifier = Modifier.fillMaxWidth().height(420.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(max = screenHeight * 0.72f),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            EmojiCategories.forEach { (category, emojis) ->
+            EmojiCatalog.forEach { (category, emojis) ->
                 item(key = "header_$category") {
                     Text(
                         text = category,
@@ -655,7 +656,7 @@ internal fun EmojiPickerSheet(
                     )
                 }
                 gridItems(
-                    items = emojis.map(::emojiGlyph),
+                    items = emojis,
                     key = { emoji -> "$category$emoji" },
                 ) { emoji ->
                     Box(
@@ -731,9 +732,12 @@ internal fun ReactionsRow(
 }
 
 /**
- * One chat message: the sender's avatar before their name (incoming), a
+ * One chat message: the sender's avatar before their name (incoming) and the
+ * local user's own avatar at the trailing edge (own messages — their custom
+ * profile picture is visible to themselves, exactly as others' are), a
  * swipe-to-reply bubble with a long-press action popup trigger, reply preview,
- * edited/pinned marks and the reaction chips.
+ * shared-song cards, edited/pinned marks, deleted tombstones, the reaction
+ * chips and a highlight flash when jumped to from the pinned banner.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -744,6 +748,8 @@ internal fun MessageItem(
     onReply: (ChatMessagePayload) -> Unit,
     onLongPress: (ChatMessagePayload, Rect) -> Unit,
     onToggleReaction: (ChatMessagePayload, String) -> Unit,
+    onPlayTrack: (TrackInfo) -> Unit,
+    highlighted: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -751,6 +757,12 @@ internal fun MessageItem(
     val swipeOffset = remember { Animatable(0f) }
     val replyThresholdPx = with(density) { 72.dp.toPx() }
     val maxSwipePx = with(density) { 130.dp.toPx() }
+
+    val highlightAlpha by animateFloatAsState(
+        targetValue = if (highlighted) 0.35f else 0f,
+        animationSpec = tween(durationMillis = 400),
+        label = "chat-jump-highlight",
+    )
 
     val bubbleColor =
         if (isMe) MaterialTheme.colorScheme.primaryContainer
@@ -828,7 +840,8 @@ internal fun MessageItem(
                             .graphicsLayer {
                                 translationX = if (isMe) -swipeOffset.value else swipeOffset.value
                             }
-                            .pointerInput(isMe) {
+                            .pointerInput(isMe, message.deleted) {
+                                if (message.deleted) return@pointerInput
                                 detectHorizontalDragGestures(
                                     onHorizontalDrag = { change, dragAmount ->
                                         change.consume()
@@ -854,8 +867,11 @@ internal fun MessageItem(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = {},
+                                enabled = !message.deleted,
                                 onLongClick = {
-                                    onLongPress(message, bubbleBounds.value)
+                                    if (!message.deleted) {
+                                        onLongPress(message, bubbleBounds.value)
+                                    }
                                 },
                             ),
                 ) {
@@ -865,11 +881,44 @@ internal fun MessageItem(
                             Spacer(modifier = Modifier.height(6.dp))
                         }
 
-                        Text(
-                            text = formatMessageWithLinks(message.message),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = textColor,
-                        )
+                        if (message.deleted) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.delete),
+                                    contentDescription = null,
+                                    tint = textColor.copy(alpha = 0.45f),
+                                    modifier = Modifier.size(13.dp),
+                                )
+                                Text(
+                                    text = stringResource(R.string.listen_together_chat_message_deleted),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                    color = textColor.copy(alpha = 0.5f),
+                                )
+                            }
+                        } else {
+                            message.sharedTrack?.let { track ->
+                                SharedTrackCard(
+                                    track = track,
+                                    bubbleColor = bubbleColor,
+                                    onPlay = { onPlayTrack(track) },
+                                )
+                                if (message.message.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                            }
+
+                            if (message.message.isNotBlank()) {
+                                Text(
+                                    text = formatMessageWithLinks(message.message),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = textColor,
+                                )
+                            }
+                        }
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -904,20 +953,128 @@ internal fun MessageItem(
                         }
                     }
                 }
+
+                // Jump-to-message highlight flash (from the pinned banner).
+                if (highlightAlpha > 0f) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .graphicsLayer { alpha = highlightAlpha }
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)),
+                    )
+                }
             }
 
-            ReactionsRow(
-                message = message,
-                myUsername = myUsername,
-                onToggle = { emoji -> onToggleReaction(message, emoji) },
-                modifier =
-                    Modifier.padding(
-                        top = 3.dp,
-                        start = if (isMe) 0.dp else 4.dp,
-                        end = if (isMe) 4.dp else 0.dp,
-                    ),
+            if (!message.deleted) {
+                ReactionsRow(
+                    message = message,
+                    myUsername = myUsername,
+                    onToggle = { emoji -> onToggleReaction(message, emoji) },
+                    modifier =
+                        Modifier.padding(
+                            top = 3.dp,
+                            start = if (isMe) 0.dp else 4.dp,
+                            end = if (isMe) 4.dp else 0.dp,
+                        ),
+                )
+            }
+        }
+
+        if (isMe) {
+            Spacer(modifier = Modifier.width(8.dp))
+            ChatAvatar(
+                userId = message.userId,
+                fallbackName = message.username,
+                size = 28.dp,
+                modifier = Modifier.align(Alignment.Top),
             )
         }
+    }
+}
+
+/**
+ * Instagram-style shared-song card inside a chat bubble: thumbnail, title,
+ * artist and duration on a rounded tile; tapping it starts the song in the room
+ * (host applies it directly, guests suggest it).
+ */
+@Composable
+internal fun SharedTrackCard(
+    track: TrackInfo,
+    bubbleColor: Color,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onPlay,
+        shape = RoundedCornerShape(12.dp),
+        color = bubbleColor.copy(alpha = 0.65f),
+        border =
+            androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+            ),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(8.dp),
+        ) {
+            AsyncImage(
+                model = track.thumbnail,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = formatTrackDuration(track.duration),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                painter = painterResource(R.drawable.solar_play_linear),
+                contentDescription = stringResource(R.string.listen_together_chat_play_song),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+    }
+}
+
+/** mm:ss for a track duration in milliseconds (blank when unknown). */
+internal fun formatTrackDuration(durationMs: Long): String {
+    if (durationMs <= 0L) return ""
+    val totalSeconds = durationMs / 1000L
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return if (minutes >= 60L) {
+        val hours = minutes / 60L
+        "%d:%02d:%02d".format(Locale.ROOT, hours, minutes % 60L, seconds)
+    } else {
+        "%d:%02d".format(Locale.ROOT, minutes, seconds)
     }
 }
 
@@ -999,8 +1156,14 @@ internal fun PinnedBanner(
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
+                val preview =
+                    when {
+                        message.deleted -> stringResource(R.string.listen_together_chat_message_deleted)
+                        message.sharedTrack != null -> "♪ ${message.sharedTrack.title} • ${message.sharedTrack.artist}"
+                        else -> message.message
+                    }
                 Text(
-                    text = "${message.username}: ${message.message}",
+                    text = "${message.username}: $preview",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -1022,8 +1185,10 @@ internal fun PinnedBanner(
 @Composable
 internal fun formatMessageWithLinks(text: String): AnnotatedString {
     val context = LocalContext.current
-    val ytMusicRegex = Regex("(https?://music\\.youtube\\.com/[\\w\\-\\.\\?&=\\%/]*)")
-    val matches = ytMusicRegex.findAll(text)
+    // Any http(s) link is tappable. YouTube Music song links open in-app; every
+    // other URL opens directly through the system's default handler.
+    val urlRegex = Regex("(https?://[^\\s<>\\\"]+)")
+    val matches = urlRegex.findAll(text)
 
     if (matches.none()) return AnnotatedString(text)
 
@@ -1044,13 +1209,20 @@ internal fun formatMessageWithLinks(text: String): AnnotatedString {
                 ),
                 linkInteractionListener = {
                     try {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                            `package` = context.packageName
+                        if (url.contains("music.youtube.com")) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                `package` = context.packageName
+                            }
+                            context.startActivity(intent)
+                        } else {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                         }
-                        context.startActivity(intent)
-                        Toast.makeText(context, "Playing now", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        } catch (e2: Exception) {
+                            Toast.makeText(context, url, Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             )

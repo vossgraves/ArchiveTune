@@ -309,7 +309,16 @@ data class ChatMessagePayload(
     // cross-device they travel as ChatControlEvent over the chat relay.
     val reactions: Map<String, List<String>> = emptyMap(),
     val pinned: Boolean = false,
-    val edited: Boolean = false
+    val edited: Boolean = false,
+    // Tombstone flag: deleted messages stay in the list (for everyone in the
+    // room and in the persisted history) rendered as "message deleted", the
+    // WhatsApp/Instagram convention, instead of vanishing.
+    val deleted: Boolean = false,
+    // A song shared into the chat: rendered as a rich card (thumbnail, title,
+    // artist, duration); tapping it plays the song in the room. Carried in the
+    // payload JSON so it persists with the history; cross-device it travels in
+    // an [LTS:...] envelope on the chat relay, like replies and avatars.
+    @SerialName("shared_track") val sharedTrack: TrackInfo? = null
 )
 
 /**

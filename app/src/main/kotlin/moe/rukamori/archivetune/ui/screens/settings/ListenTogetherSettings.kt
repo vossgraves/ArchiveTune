@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.constants.ListenTogetherUsernameKey
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
+import moe.rukamori.archivetune.LocalListenTogetherManager
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -366,11 +367,16 @@ fun ListenTogetherSettings(
         )
     }
 
+    val listenTogetherManager = LocalListenTogetherManager.current
+
     val customAvatarPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null) {
                 if (ListenTogetherAvatar.saveCustomAvatar(context, uri)) {
                     avatarIndex = ListenTogetherAvatar.CUSTOM_AVATAR_INDEX
+                    // Re-broadcast immediately so members of the current room see
+                    // the new profile picture without waiting for a rejoin.
+                    listenTogetherManager?.broadcastCustomAvatar()
                 } else {
                     Toast.makeText(context, context.getString(R.string.listen_together_custom_avatar_failed), Toast.LENGTH_SHORT).show()
                 }

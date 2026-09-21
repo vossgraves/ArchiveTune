@@ -168,6 +168,15 @@ class ListenTogetherManager @Inject constructor(
     private val chatHistoryJson = Json { ignoreUnknownKeys = true }
     private var lastTypingSentAt = 0L
 
+    /** (userId, timestamp) keys of messages the local user sent while ALONE in the
+ * room — self-chatter that must never reach the persisted history. */
+    private val soloChatMessageKeys = mutableSetOf<Pair<String, Long>>()
+
+    private fun hasOtherRoomMembers(): Boolean {
+        val myId = userId.value ?: return false
+        return (roomState.value?.users?.count { it.userId != myId } ?: 0) > 0
+    }
+
     private val _unreadMessageCount = MutableStateFlow(0)
     val unreadMessageCount: kotlinx.coroutines.flow.StateFlow<Int> = _unreadMessageCount
 
@@ -763,39 +772,7 @@ class ListenTogetherManager @Inject constructor(
             }
 
             is ListenTogetherEvent.LocalSuggestionApproved -> {
-                try {
-                    val connection = playerConnection
-                    if (connection == null) {
-                        Timber.tag(TAG).w("Cannot apply approved suggestion - no player connection")
-                        return
-                    }
-                    val mediaMetadata = event.payload.trackInfo.toMediaMetadata()
-                    val mediaItem = mediaMetadata.toMediaItem()
-                    connection.playNext(mediaItem)
-                    if (event.playImmediately) {
-                        val player = connection.player
-                        val nextIndex = player.currentMediaItemIndex + 1
-                        if (nextIndex < player.mediaItemCount &&
-                            player.getMediaItemAt(nextIndex).mediaId == mediaItem.mediaId
-                        ) {
-                            // Full manual-skip semantics: an in-flight crossfade (or its
-                            // pauseAtEnd handoff) would otherwise keep the OLD song's
-                            // audio playing through the secondary player while the
-                            // queue already moved on, so cancel it first — exactly what
-                            // a tap on the skip button does.
-                            val wasPlaying = player.playWhenReady
-                            runCatching { connection.service.prepareForManualSkip() }
-                            player.seekToNext()
-                            player.prepare()
-                            player.playWhenReady = wasPlaying
-                        } else {
-                            Timber.tag(TAG).w("Approved suggestion not adjacent after queue insert; leaving it queued")
-                        }
-                    }
-                    Timber.tag(TAG).d("Approved suggestion applied: ${mediaMetadata.title} (playImmediately=${event.playImmediately})")
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Error applying approved suggestion")
-                }
+                applyApprovedSuggestion(event.payload.trackInfo, event.playImmediately)
             }
 
             is ListenTogetherEvent.ConnectionError -> {
@@ -812,6 +789,12 @@ class ListenTogetherManager @Inject constructor(
                     _chatMessages.value = _chatMessages.value + event.payload
                     if (event.payload.userId != userId.value) {
                         _unreadMessageCount.value++
+                    }
+                    // A message the user sent while ALONE in the room is a chat with
+                    // themselves — those never persist. Only messages exchanged with
+                    // other members survive reconnects/rejoins.
+                    if (event.payload.userId == userId.value && !hasOtherRoomMembers()) {
+                        soloChatMessageKeys += event.payload.userId to event.payload.timestamp
                     }
                     scheduleChatPersist()
                 } else {
@@ -852,6 +835,7 @@ class ListenTogetherManager @Inject constructor(
         _chatMessages.value = emptyList() // Clear chat on room leave
         _unreadMessageCount.value = 0
         _typingUsers.value = emptyList()
+        soloChatMessageKeys.clear()
     }
 
     // PORT-NOTE: vivi's PlayerConnection/MusicService carried a mute state
@@ -1826,6 +1810,26 @@ class ListenTogetherManager @Inject constructor(
     fun suggestTrack(track: TrackInfo) = client.suggestTrack(track)
 
     /**
+     * The track the local player is on right now (host-side source for sharing the current song
+     * into the chat when the room state's currentTrack is stale or absent).
+     */
+    fun currentLocalTrack(): TrackInfo? {
+        if (!isInRoom) return null
+        return try {
+            val player = playerConnection?.player ?: return null
+            val window =
+                player.currentTimeline.getWindow(
+                    player.currentMediaItemIndex,
+                    androidx.media3.common.Timeline.Window(),
+                )
+            window.toTrackInfo()
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Failed to read the current local track")
+            null
+        }
+    }
+
+    /**
      * Approve a suggestion (host only)
      */
     fun approveSuggestion(suggestionId: String) {
@@ -1884,11 +1888,71 @@ class ListenTogetherManager @Inject constructor(
     }
 
     /**
-     * Send a chat message to the room
+     * Applies an approved suggestion (or a locally shared song on the host) through the full
+     * manual-skip path: playNext + prepareForManualSkip so an in-flight crossfade never keeps
+     * streaming the previous song.
      */
+    private fun applyApprovedSuggestion(trackInfo: TrackInfo, playImmediately: Boolean) {
+        try {
+            val connection = playerConnection
+            if (connection == null) {
+                Timber.tag(TAG).w("Cannot apply approved suggestion - no player connection")
+                return
+            }
+            val mediaMetadata = trackInfo.toMediaMetadata()
+            val mediaItem = mediaMetadata.toMediaItem()
+            connection.playNext(mediaItem)
+            if (playImmediately) {
+                val player = connection.player
+                val nextIndex = player.currentMediaItemIndex + 1
+                if (nextIndex < player.mediaItemCount &&
+                    player.getMediaItemAt(nextIndex).mediaId == mediaItem.mediaId
+                ) {
+                    // Full manual-skip semantics: an in-flight crossfade (or its
+                    // pauseAtEnd handoff) would otherwise keep the OLD song's
+                    // audio playing through the secondary player while the
+                    // queue already moved on, so cancel it first — exactly what
+                    // a tap on the skip button does.
+                    val wasPlaying = player.playWhenReady
+                    runCatching { connection.service.prepareForManualSkip() }
+                    player.seekToNext()
+                    player.prepare()
+                    player.playWhenReady = wasPlaying
+                } else {
+                    Timber.tag(TAG).w("Approved suggestion not adjacent after queue insert; leaving it queued")
+                }
+            }
+            Timber.tag(TAG).d("Approved suggestion applied: ${mediaMetadata.title} (playImmediately=$playImmediately)")
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error applying approved suggestion")
+        }
+    }
+
     fun sendChatMessage(message: String, replyTo: RepliedMessage? = null) {
         if (message.isBlank()) return
         client.sendChatMessage(message, replyTo)
+    }
+
+    /**
+     * Shares a song into the chat as a rich tappable card (sent as an [LTS:] envelope on the chat
+     * relay, optionally with a caption).
+     */
+    fun shareTrackToChat(track: TrackInfo, caption: String = "") {
+        client.sendChatMessage(caption.trim(), null, sharedTrack = track)
+    }
+
+    /**
+     * Plays a song shared in the chat: the host applies it directly through the
+     * approved-suggestion path; a guest suggests it (auto-approved by default) so the song starts
+     * in the room for everyone.
+     */
+    fun playSharedTrack(track: TrackInfo) {
+        if (!isInRoom) return
+        if (isHost) {
+            applyApprovedSuggestion(track, playImmediately = true)
+        } else {
+            suggestTrack(track)
+        }
     }
 
     /**
@@ -1941,10 +2005,11 @@ class ListenTogetherManager @Inject constructor(
                 val targetTimestamp = control.targetTimestamp ?: return
                 val targetUserId = control.targetUserId ?: return
                 if (targetUserId != fromUserId) return
-                val before = _chatMessages.value
-                _chatMessages.value =
-                    before.filterNot { it.userId == targetUserId && it.timestamp == targetTimestamp }
-                if (before.size != _chatMessages.value.size) scheduleChatPersist()
+                // Tombstone, not removal: everyone (and the persisted history)
+                // keeps seeing that a message existed and was deleted.
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    message.copy(deleted = true, message = "", sharedTrack = null)
+                }
             }
 
             ChatControlEvent.ACTION_PIN,
@@ -2034,13 +2099,21 @@ class ListenTogetherManager @Inject constructor(
         client.sendChatControl(ChatControlEvent(action = ChatControlEvent.ACTION_TYPING))
     }
 
-    /** Debounced persistence of the chat list, keyed by the local username. */
+    /** Debounced persistence of the chat list, keyed by the local username. Only
+ * messages exchanged while other members were present are written — solo
+ * chatter (the user talking to an empty room) is deliberately dropped. */
     private fun scheduleChatPersist() {
         chatPersistJob?.cancel()
         chatPersistJob = scope.launch(Dispatchers.IO) {
             delay(600)
             val username = client.currentUsername ?: return@launch
-            val trimmed = _chatMessages.value.takeLast(MAX_PERSISTED_CHAT_MESSAGES)
+            val myId = userId.value
+            val trimmed =
+                _chatMessages.value
+                    .takeLast(MAX_PERSISTED_CHAT_MESSAGES)
+                    .filterNot { message ->
+                        message.userId == myId && (message.userId to message.timestamp) in soloChatMessageKeys
+                    }
             if (trimmed.isEmpty()) return@launch
             runCatching {
                 context.dataStore.edit { prefs ->

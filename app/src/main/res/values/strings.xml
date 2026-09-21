@@ -1734,6 +1734,10 @@
     <string name="listen_together_chat_all_emojis">All emojis</string>
     <string name="listen_together_chat_edit_message">Edit message</string>
     <string name="listen_together_chat_message_copied">Message copied</string>
+    <string name="listen_together_chat_message_deleted">This message was deleted</string>
+    <string name="listen_together_chat_share_song">Share the current song in the chat</string>
+    <string name="listen_together_chat_play_song">Play song in the room</string>
+    <string name="listen_together_chat_nothing_playing">Nothing is playing right now</string>
     <string name="listen_together_room_created">Room created: %s</string>
     <string name="listen_together_cannot_edit_username_in_room">Cannot edit username while in a room</string>
     <string name="listen_together_settings_desc">Configure server, username, and more</string>

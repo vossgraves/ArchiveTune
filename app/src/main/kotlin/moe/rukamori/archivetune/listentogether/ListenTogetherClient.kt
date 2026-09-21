@@ -212,7 +212,17 @@ class ListenTogetherClient @Inject constructor(
         const val ChatControlEnvelopePrefix = "\u200B[LTC:"
         const val ChatControlEnvelopeSuffix = "]\u200B"
 
+        // Wire envelope for a song shared into the chat (an [LTS:base64 TrackInfo]
+        // prefix on the message text, mirroring LTC/LTA).
+        const val SharedTrackEnvelopePrefix = "\u200B[LTS:"
+        const val SharedTrackEnvelopeSuffix = "]\u200B"
+
         private val chatControlJson = kotlinx.serialization.json.Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = false
+        }
+
+        private val sharedTrackJson = kotlinx.serialization.json.Json {
             ignoreUnknownKeys = true
             encodeDefaults = false
         }
@@ -229,6 +239,25 @@ class ListenTogetherClient @Inject constructor(
                     ),
                 )
                 chatControlJson.decodeFromString(ChatControlEvent.serializer(), json)
+            } catch (e: Exception) {
+                null
+            }
+
+        /** Splits a leading [LTS:base64] song-share envelope off a chat message.
+         * Returns null when the message carries no envelope. */
+        fun decodeSharedTrack(message: String): Pair<TrackInfo, String>? =
+            try {
+                if (!message.startsWith(SharedTrackEnvelopePrefix)) return null
+                val endIdx = message.indexOf(SharedTrackEnvelopeSuffix, SharedTrackEnvelopePrefix.length)
+                if (endIdx <= SharedTrackEnvelopePrefix.length) return null
+                val json = String(
+                    Base64.decode(
+                        message.substring(SharedTrackEnvelopePrefix.length, endIdx),
+                        Base64.NO_WRAP,
+                    ),
+                )
+                val track = sharedTrackJson.decodeFromString(TrackInfo.serializer(), json)
+                track to message.substring(endIdx + SharedTrackEnvelopeSuffix.length)
             } catch (e: Exception) {
                 null
             }
@@ -1516,6 +1545,12 @@ class ListenTogetherClient @Inject constructor(
                         }
                     }
 
+                    // A shared song rides in an [LTS:base64 TrackInfo] envelope in
+                    // front of the (possibly empty) message text.
+                    decodeSharedTrack(payload.message)?.let { (track, remainingText) ->
+                        payload = payload.copy(message = remainingText, sharedTrack = track)
+                    }
+
                     log(LogLevel.INFO, "Chat message received", "From: ${payload.username}")
 
                     val isSelfEcho = payload.userId == _userId.value
@@ -1714,9 +1749,16 @@ class ListenTogetherClient @Inject constructor(
     }
 
     /**
-     * Send a chat message to the room
+     * Send a chat message to the room, optionally carrying a shared track
      */
-    fun sendChatMessage(message: String, replyTo: RepliedMessage? = null) {
+    fun sendChatMessage(
+        message: String,
+        replyTo: RepliedMessage? = null,
+        sharedTrack: TrackInfo? = null,
+    ) {
+        if (message.isBlank() && sharedTrack == null) {
+            return
+        }
         if (!isInRoom) {
             log(LogLevel.ERROR, "Cannot send chat message", "Not in room")
             return
@@ -1729,13 +1771,19 @@ class ListenTogetherClient @Inject constructor(
             return
         }
 
-        // Universal Fix: Embed reply metadata into message string
-        val finalMessage = if (replyTo != null) {
+        var finalMessage = message
+        sharedTrack?.let { track ->
+            val encoded = sharedTrackJson.encodeToString(TrackInfo.serializer(), track)
+            finalMessage =
+                SharedTrackEnvelopePrefix +
+                    Base64.encodeToString(encoded.toByteArray(), Base64.NO_WRAP) +
+                    SharedTrackEnvelopeSuffix +
+                    finalMessage
+        }
+        if (replyTo != null) {
             val metadata = "${replyTo.username}|${replyTo.message}"
             val encoded = Base64.encodeToString(metadata.toByteArray(), Base64.NO_WRAP)
-            "\u200B[RPLY:$encoded]\u200B$message"
-        } else {
-            message
+            finalMessage = "\u200B[RPLY:$encoded]\u200B$finalMessage"
         }
 
         sendMessage(MessageTypes.CHAT, ChatPayload(finalMessage, replyTo))
@@ -1750,6 +1798,7 @@ class ListenTogetherClient @Inject constructor(
                 message = message,
                 timestamp = System.currentTimeMillis(),
                 replyTo = replyTo,
+                sharedTrack = sharedTrack,
             )
         )
         if (chatNotificationActive) postChatNotification(alert = false)
