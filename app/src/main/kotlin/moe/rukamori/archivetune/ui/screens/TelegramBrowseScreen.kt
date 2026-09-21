@@ -7,6 +7,7 @@
  * Telegram channel search. Tapping a result materialises the channel into a local playlist (its
  * audio files become songs) and opens the normal playlist screen, so channels behave exactly like
  * the app's other playlists — same tile, same rich screen, same search / radio / download / menus.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens

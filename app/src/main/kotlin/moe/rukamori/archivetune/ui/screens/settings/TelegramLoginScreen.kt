@@ -8,6 +8,7 @@
  * optional 2FA password) driven by TDLib's authorization state machine. The code step supports
  * editing the phone number and resending the code (gated on TDLib's resend timeout so it never
  * fails with "code can't be resent").
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

@@ -9,6 +9,7 @@
  * "more" chips, a thin scrubber with elapsed/-remaining times, bare oversized transport glyphs, a
  * flat volume slider, and a bottom lyrics / output / queue icon row. Everything is tinted by the
  * artwork itself (no palette extraction needed — the blur provides the color).
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.player

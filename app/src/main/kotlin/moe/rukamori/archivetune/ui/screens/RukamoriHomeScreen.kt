@@ -16,6 +16,7 @@
  *
  * Only public components from HomeScreenComponents.kt are used, so the two
  * home styles always render shelves identically.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens

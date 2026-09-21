@@ -5,6 +5,7 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * Glass values adapted from YumaPlayer (2026) by MuwMix, GPL-3.0.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

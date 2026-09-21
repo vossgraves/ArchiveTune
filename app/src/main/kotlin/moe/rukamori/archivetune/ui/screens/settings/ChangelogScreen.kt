@@ -13,6 +13,7 @@
  *
  * Data layer (Updater.kt) is ArchiveTune's existing GitHub-releases-backed
  * implementation; only the rendering is vivi-music-style.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 @file:OptIn(ExperimentalMaterial3ExpressiveApi::class)

@@ -8,6 +8,7 @@
  * (durable refresh token, can unlock HiRes); if that fails it falls back to capturing the live
  * Bearer token that the Tidal web player (listen.tidal.com) sends to the API. Mirrors the
  * YouTube [LoginScreen] WebView pattern but persists the Tidal session directly to DataStore.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

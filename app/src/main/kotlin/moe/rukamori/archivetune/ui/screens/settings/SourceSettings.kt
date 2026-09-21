@@ -7,6 +7,7 @@
  * Top-level "Sources" settings screen. Hosts independent catalog-source selectors (metadata and
  * search) plus the streaming-source preference groups (priority, toggles and quality). Manual
  * account/instance sign-in still lives in Integration (gated).
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

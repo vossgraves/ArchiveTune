@@ -15,6 +15,7 @@
  * Each provider returns a list of translated lines aligned to the input. When the
  * configured provider fails, the helper returns null so the caller can fall back to
  * displaying the original lyrics.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.lyrics

@@ -1,4 +1,11 @@
 /*
+ * ArchiveTune (2026)
+ * © vossgraves — github.com/vossgraves
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
+/*
  * Echo-Music stream resolution (2026-09-05 port).
  *
  * This is a port of Echo-Music's `YTPlayerUtils.playerResponseForPlayback`

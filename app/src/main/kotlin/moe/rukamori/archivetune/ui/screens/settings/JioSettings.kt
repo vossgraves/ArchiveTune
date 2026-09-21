@@ -11,6 +11,7 @@
  * bitrate picker (96 / 160 / 320 kbps AAC). JioSaavn is unauthenticated: streams
  * come from the public JioSaavn API, with the encrypted_media_url decrypted
  * locally via DES-ECB.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

@@ -6,6 +6,7 @@
  *
  * Telegram channel streaming settings: account sign-in state (phone + code, no API credentials
  * to enter — they are baked into the build) and the channel browser entry point.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

@@ -8,6 +8,7 @@
  * immediately (it's embedded in the chat object, so zero network latency), then upgrades to the
  * full-resolution small photo once TDLib finishes downloading it. Falls back to a generic chat
  * icon when the chat has no photo at all.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.component

@@ -9,6 +9,7 @@
  * Opening a channel creates (or reuses) a playlist with a deterministic id, then pages through the
  * channel's audio files in the background, inserting each as a song + playlist membership and
  * seeding its format row. The playlist screen updates reactively as songs arrive.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.telegram
