@@ -38,7 +38,7 @@ class SpotifyAccountViewModel
             // screen's count right too, and the cache restored below shows up without a network call.
             viewModelScope.launch {
                 repository.playlists.collect { playlists ->
-                    _uiState.update { it.copy(playlistCount = playlists.size) }
+                    _uiState.update { it.copy(playlistCount = playlists.orEmpty().size) }
                 }
             }
         }

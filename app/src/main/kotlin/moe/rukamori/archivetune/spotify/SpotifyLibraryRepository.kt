@@ -63,8 +63,12 @@ class SpotifyLibraryRepository
     constructor(
         @ApplicationContext private val context: Context,
     ) {
-        private val _playlists = MutableStateFlow<List<SpotifyPlaylist>>(emptyList())
-        val playlists: StateFlow<List<SpotifyPlaylist>> = _playlists.asStateFlow()
+        // Null until the cache or a fetch has answered, the same not-read state
+        // SpotifyLibrarySectionState gives its items. Empty must keep meaning "answered and had
+        // none": the Library's empty states are claims about the account, and `isRefreshing` cannot
+        // carry that on its own because it turns true only once the read reaches the IO dispatcher.
+        private val _playlists = MutableStateFlow<List<SpotifyPlaylist>?>(null)
+        val playlists: StateFlow<List<SpotifyPlaylist>?> = _playlists.asStateFlow()
 
         private val _isRefreshing = MutableStateFlow(false)
         val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -132,7 +136,7 @@ class SpotifyLibraryRepository
 
         suspend fun restoreCachedPlaylists() {
             withContext(Dispatchers.IO) {
-                if (_playlists.value.isNotEmpty()) return@withContext
+                if (!_playlists.value.isNullOrEmpty()) return@withContext
                 val cached =
                     context.dataStore.data
                         .first()[SpotifyLibraryPlaylistsCacheKey]
@@ -249,7 +253,7 @@ class SpotifyLibraryRepository
                     clearCatalogCaches()
                     clearRecentlyPlayed()
                 }
-                _playlists.value = emptyList()
+                _playlists.value = null
                 _errorMessage.value = null
                 refreshAccessToken(spDc = spDc, spKey = spKey).getOrThrow()
                 val prefs = context.dataStore.data.first()
@@ -271,7 +275,7 @@ class SpotifyLibraryRepository
                     prefs.remove(SpotifyAccountAvatarUrlKey)
                     prefs.remove(SpotifyLibraryPlaylistsCacheKey)
                 }
-                _playlists.value = emptyList()
+                _playlists.value = null
                 _errorMessage.value = null
                 Spotify.accessToken = null
                 clearCatalogCaches()
@@ -303,7 +307,7 @@ class SpotifyLibraryRepository
                 } catch (error: Throwable) {
                     reportException(error)
                     _errorMessage.value = error.message
-                    _playlists.value
+                    _playlists.value.orEmpty()
                 } finally {
                     _isRefreshing.value = false
                 }
@@ -317,7 +321,7 @@ class SpotifyLibraryRepository
             withContext(Dispatchers.IO) {
                 if (_isRefreshing.value) return@withContext
                 restoreCachedPlaylists()
-                if (_playlists.value.isNotEmpty()) return@withContext
+                if (!_playlists.value.isNullOrEmpty()) return@withContext
                 refreshPlaylists()
             }
         }

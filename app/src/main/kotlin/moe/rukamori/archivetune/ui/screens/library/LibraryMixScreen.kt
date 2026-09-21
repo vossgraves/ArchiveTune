@@ -181,7 +181,7 @@ fun LibraryMixScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val mostPlayedAlbumUiState by viewModel.mostPlayedAlbumUiState.collectAsStateWithLifecycle()
     val topMixesUiState by viewModel.topMixesUiState.collectAsStateWithLifecycle()
-    val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
+    val spotifyPlaylistsState by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
     val spotifyArtistsState by spotifyLibraryViewModel.artists.collectAsStateWithLifecycle()
     val spotifyRefreshing by spotifyLibraryViewModel.isRefreshing.collectAsStateWithLifecycle()
     val spotifyAccountRevision by spotifyLibraryViewModel.accountRevision.collectAsStateWithLifecycle()
@@ -207,6 +207,7 @@ fun LibraryMixScreen(
             }
         }
     val spotifyArtists = spotifyArtistsState.items.orEmpty()
+    val spotifyPlaylists = spotifyPlaylistsState.orEmpty()
 
     // What the active source has for the rails below, and the reads that fill them. Spotify's
     // playlists and artists come from the same Spotify library path the Playlists, Artists and
@@ -215,11 +216,14 @@ fun LibraryMixScreen(
     //
     // Empty means the source answered and had nothing, the rule SpotifySectionList follows: a
     // remote list that has not come back yet is not an empty library, and claiming it is would put
-    // "nothing here yet" on screen for the length of the fetch.
+    // "nothing here yet" on screen for the length of the fetch. A null list is that not-read state,
+    // because isRefreshing only turns true once the read reaches the IO dispatcher, a frame after
+    // the one that would otherwise have drawn the empty state.
     val sourcePlaylistsEmpty =
         when (librarySource) {
             LibrarySource.YTM -> visiblePlaylists.isEmpty()
-            LibrarySource.SPOTIFY -> spotifyPlaylists.isEmpty() && !spotifyRefreshing
+            LibrarySource.SPOTIFY ->
+                spotifyPlaylistsState != null && spotifyPlaylists.isEmpty() && !spotifyRefreshing
         }
     val sourceArtistsEmpty =
         when (librarySource) {
@@ -227,7 +231,6 @@ fun LibraryMixScreen(
             LibrarySource.SPOTIFY ->
                 spotifyArtistsState.items != null && spotifyArtists.isEmpty() && !spotifyArtistsState.isLoading
         }
-
     // Re-asked on an account change too: signing in to another Spotify account clears the sections
     // this rail previews, so a rail that only watched the source would keep the old account's
     // answer — the sections themselves key on the revision for the same reason.

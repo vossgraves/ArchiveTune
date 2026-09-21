@@ -40,7 +40,8 @@ fun LibrarySpotifyPlaylistsScreen(
     navController: NavController,
     viewModel: SpotifyLibraryViewModel = hiltViewModel(),
 ) {
-    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val playlistsState by viewModel.playlists.collectAsStateWithLifecycle()
+    val playlists = playlistsState.orEmpty()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val accountRevision by viewModel.accountRevision.collectAsStateWithLifecycle()
 
@@ -75,8 +76,10 @@ fun LibrarySpotifyPlaylistsScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             // "No Spotify playlists found" is a claim about the account, so it waits for the read
-            // that answers it: the first visit fetches, and the list is empty until it returns.
-            if (playlists.isEmpty() && !isRefreshing) {
+            // that answers it: a null list is that not-read state, as a null items is for the other
+            // Spotify sections. isRefreshing cannot stand in for it, because it only turns true
+            // once the read reaches the IO dispatcher, a frame after the one that drew this.
+            if (playlistsState != null && playlists.isEmpty() && !isRefreshing) {
                 item(key = "spotify_empty", contentType = "spotify_empty") {
                     Text(
                         text = stringResource(R.string.spotify_no_sources),
