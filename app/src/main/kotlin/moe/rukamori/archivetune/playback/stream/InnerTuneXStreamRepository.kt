@@ -35,9 +35,11 @@ import timber.log.Timber
  * `StreamExtractor` is adapted here, never forked — and brings its own InnerTube client, SABR/cipher
  * stack and client-fallback strategy, so the tier takes nothing from `:core` but its proxy setting.
  *
- * The player consumes plain media URLs, so a segmented SABR or byte-range-only result is refused
- * rather than handed on: it would fail at fetch time inside the player, which is worse than falling
- * through to the next tier.
+ * The player consumes plain media URLs, so a segmented SABR, byte-range-only or HLS-manifest result
+ * is refused rather than handed on: it would fail at fetch time inside the player, which is worse
+ * than falling through to the next tier. The capability hints below are what refuse them — the
+ * library then picks a client whose response carries a plain URL — and the guards after `extract`
+ * catch a library regression that hands such a stream through anyway.
  */
 @Singleton
 class InnerTuneXStreamRepository
@@ -57,10 +59,14 @@ class InnerTuneXStreamRepository
                 extractor.extract(
                     videoId = request.mediaId,
                     // Tells the library which transports this host can fetch: the player takes plain
-                    // media URLs, so neither segmented SABR nor byte-range paging is available. That
-                    // only saves the work of building them — the guards below are the enforcement.
+                    // media URLs, so segmented SABR, byte-range paging and HLS manifests are all
+                    // unavailable. These hints are the enforcement — the library skips those clients
+                    // and reselects, so the tier succeeds on a fetchable client rather than building a
+                    // stream that the guards below then reject. Deleting the hints regresses that;
+                    // the guards are defence-in-depth against a library regression.
                     hints =
                         ContentHints(wantVideo = false).withStreamCapabilities(
+                            allowHls = false,
                             allowSabr = false,
                             allowBoundedRange = false,
                         ),

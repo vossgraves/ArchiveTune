@@ -16,8 +16,8 @@ requests for the same key into one in-flight resolution, and tries:
    Fast, no Python. This is the hot path.
 2. Fallback tiers, in order, each tried only after the previous one throws:
    **`InnerTuneXStreamRepository`** (the `com.github.MetrolistGroup.innertubex` library's own
-   extraction stack, adapted — not forked; it refuses SABR and byte-range-only results, which the
-   player cannot fetch), then **`NewPipeStreamRepository`** (an anonymous player response minted
+   extraction stack, adapted — not forked; it refuses SABR, byte-range-only and HLS-manifest results,
+   which the player cannot fetch), then **`NewPipeStreamRepository`** (an anonymous player response minted
    through MetrolistExtractor's JavaScript player, so no plugin APK and no session), then
    **`YtdlnisStreamRepository`** (an external yt-dlp plugin APK through `ytdlp/CompactYtDlp.kt`, the
    way YTDLnis does).
