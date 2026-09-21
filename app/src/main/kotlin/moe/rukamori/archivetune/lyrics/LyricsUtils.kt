@@ -926,26 +926,50 @@ object LyricsUtils {
         return listOf(LyricsEntry(time, text))
     }
 
+    /**
+     * Folds the second row of a translation-annotated line-synced document into
+     * [LyricsEntry.providerTranslationText]. Such a document repeats a line's timestamp and puts
+     * the translation on the following row — that is how an AI translation is stored back
+     * ([moe.rukamori.archivetune.ai.AiLyricsDocument]) and how bilingual providers ship lyrics.
+     *
+     * The fold is only valid when the first row at that timestamp is real text. A blank row is not
+     * the original half of a translation pair: LRCLIB carries empty spacer rows (e.g.
+     * `[00:21.50]` with no text followed by `[00:21.50] Respiravo una cosa`). Folding one of those
+     * left an empty entry holding the only text as its "translation", so neither row was rendered
+     * and both lines vanished from the lyrics. Blank rows and any row beyond the single translation
+     * are kept as their own entries, so a genuine second line at a shared timestamp survives.
+     */
     private fun mergeLineSyncedTranslations(entries: List<LyricsEntry>): List<LyricsEntry> {
-        val mergedByTime = linkedMapOf<Long, LyricsEntry>()
-        entries.forEach { entry ->
-            val existing = mergedByTime[entry.time]
-            if (existing == null) {
-                mergedByTime[entry.time] = entry
+        val rowsByTime = linkedMapOf<Long, MutableList<LyricsEntry>>()
+        entries.forEach { entry -> rowsByTime.getOrPut(entry.time) { mutableListOf() }.add(entry) }
+
+        val merged = mutableListOf<LyricsEntry>()
+        rowsByTime.values.forEach { rows ->
+            val original = rows.first()
+            if (original.text.isBlank()) {
+                merged.addAll(rows)
                 return@forEach
             }
 
-            val translatedText =
-                entry.text
-                    .replace(WHITESPACE_REGEX, " ")
-                    .trim()
-                    .takeIf { it.isNotEmpty() && !it.equals(existing.text.trim(), ignoreCase = true) }
+            var head = original
+            val extras = mutableListOf<LyricsEntry>()
+            rows.drop(1).forEach { row ->
+                val translatedText =
+                    row.text
+                        .replace(WHITESPACE_REGEX, " ")
+                        .trim()
+                        .takeIf { it.isNotEmpty() && !it.equals(head.text.trim(), ignoreCase = true) }
 
-            if (translatedText != null && existing.providerTranslationText == null) {
-                mergedByTime[entry.time] = existing.copy(providerTranslationText = translatedText)
+                if (translatedText != null && head.providerTranslationText == null) {
+                    head = head.copy(providerTranslationText = translatedText)
+                } else {
+                    extras.add(row)
+                }
             }
+            merged.add(head)
+            merged.addAll(extras)
         }
-        return mergedByTime.values.toList()
+        return merged
     }
 
     private fun cleanInlineWordTimingText(text: String): String =
