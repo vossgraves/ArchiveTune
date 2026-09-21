@@ -59,8 +59,8 @@ const val SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS = 30 * 60 * 1000L
 /**
  * Epoch millis of the newest play in the list, or null when no entry carries a usable timestamp.
  *
- * This is the endpoint's `after` cursor: it turns "re-read the last 50 plays" into "ask for the
- * plays since what we already hold", which is what makes a refresh one delta read.
+ * This is the endpoint's `after` cursor: it turns "re-read the last [SPOTIFY_HISTORY_WINDOW] plays"
+ * into "ask for the plays since what we already hold", which is what makes a refresh one delta read.
  */
 fun List<SpotifyPlayHistory>.newestPlayedAtMillis(): Long? =
     asSequence()
@@ -149,12 +149,16 @@ fun rateLimitCooldownMillis(retryAfterSec: Long?): Long {
  * How long the one retry of a rate-limited history read should wait, or null when it must not be
  * retried at all.
  *
- * Only a usable `Retry-After` earns that retry: it is Spotify naming the moment the endpoint reopens,
- * and a read with nothing to show is better off waiting for it than reporting "rate limited" while
- * the plays are seconds away. What is waited out is the cooldown, not the header verbatim, so the
- * retry cannot be turned away by the same gate — see [rateLimitCooldownMillis] for the floor and
- * [SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS] for the cap. Rows already on screen are never waited for: they
- * are the reader's answer, so holding the refresh open gains nothing.
+ * Every REST 429 earns that retry, header or no header: [retryAfterSec] is the app-wide gate's own
+ * remaining seconds rather than a raw `Retry-After` — [Spotify]'s REST core reports them on both the
+ * gate-skip and the 429 path — so a headerless 429 arrives as the documented 30-second floor and is
+ * waited out and retried once like any other. A read with nothing to show is better off waiting than
+ * reporting "rate limited" while the plays are at most that far away, and waiting the gate out is
+ * what lets the retry back in: it cannot be turned away by the window it just armed. See
+ * [rateLimitCooldownMillis] for the floor and [SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS] for the cap. Null
+ * or non-positive [retryAfterSec] means no window was reported at all, which no REST path produces.
+ * Rows already on screen are never waited for: they are the reader's answer, so holding the refresh
+ * open gains nothing.
  */
 fun historyRetryWaitMillis(
     retryAfterSec: Long?,

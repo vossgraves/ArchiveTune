@@ -476,15 +476,17 @@ class SpotifyLibraryRepository
         }
 
         /**
-         * One history read, plus the single retry a `Retry-After`-bearing 429 earns.
+         * One history read, plus the single retry a 429 earns.
          *
-         * A 429 that names its window is an instruction, not a verdict: the plays are that many
-         * seconds away, so giving up on a screen with nothing on it turns a short wait into a
-         * permanent empty state. [historyRetryWaitMillis] decides when that retry is owed and how
-         * long it waits; what matters here is the bound. It runs at most once — [retriesLeft] is 1 on
-         * the way in and 0 on the way back — so no header value can make this spin, and a 429 with no
-         * window is not retried at all. The cooldown is written before the wait, so a concurrent read
-         * sees it and cannot slip in ahead of the retry.
+         * A 429 names a window, not a verdict: the plays are at most that many seconds away, so
+         * giving up on a screen with nothing on it turns a short wait into a permanent empty state.
+         * [historyRetryWaitMillis] decides when that retry is owed and how long it waits; what
+         * matters here is the bound. It runs at most once — [retriesLeft] is 1 on the way in and 0 on
+         * the way back — so no reported value can make this spin. That window is the app-wide gate's
+         * own remaining seconds, which every REST 429 reports and the documented 30-second floor
+         * backs, so a headerless 429 is waited out at that floor and retried once rather than
+         * dropped. The cooldown is written before the wait, so a concurrent read sees it and cannot
+         * slip in ahead of the retry.
          *
          * The wait is a [delay], so a screen that leaves cancels the read where it stands instead of
          * leaving a timer behind to fire against a token the user may already have dropped.

@@ -317,6 +317,10 @@ object Spotify {
      * cannot succeed; GraphQL (`api-partner`) is unaffected, which is why everything with a GQL
      * equivalent uses it.
      *
+     * The docs also admit a few endpoints carry a custom limit of their own: a 429 does not say which
+     * limit it hit, so this gate can occasionally be broader than necessary — which is the safe
+     * direction.
+     *
      * The gate is the only 429 retry policy there is: a request that finds the gate armed is not
      * sent, and a 429 arms it for at least the documented window, so retrying inside the window
      * cannot succeed and is not attempted.
