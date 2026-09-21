@@ -146,3 +146,55 @@ adopt the hero *and* the haze subsystem together, on all six screens.
 
 Also not taken: their `echo/` extraction stack (still the largest genuine gap, see above), and any
 TikTok/lyrics/AOD work, which is theirs alone.
+
+## Ported 2026-09-21 (their Listen Together chat suite, TikTok captions)
+
+Second scoped port from their `dev` onto `canary`, again by patch rather than merge: the sha they
+forked from and our rewrite-era history make a merge meaningless, and the shared base has grown
+~1000 commits on each side since. Authorship is preserved on each commit, with
+`(cherry picked from commit …)` trailers.
+
+- **Listen Together — the chat suite** (`b5ee2b94a`, `4d5f880b1`, `408920ecd`): reactions, edits,
+  deletes (local + host "delete for everyone"), pins with a carousel, typing indicators, the
+  Instagram-style anchored action popup over the glass backdrop, the full Unicode 16 emoji keyboard
+  (`EmojiCatalog.kt`), per-username persisted history with a `solo`-message wipe
+  (`PersistedChatHistory` version 2), avatars before names, swipe-to-reply, and song sharing —
+  `ListenTogetherSongPicker.kt` plus the `[LTS:…]` relay envelope and the in-room
+  `playSharedTrack` path. Their build fixes came along: the emoji-grid key lambda (`dbd624f9b`).
+- **Listen Together — scoping and protocol** (`1d4ddb74d`, `27fa4e7fb`): no chat UI at all on the
+  protobuf server (the Meowery's Go server rejects unknown message types), scoped chat-history
+  restore (nothing while alone, only with members actually present, ids remapped to the current
+  session, `restored` flag + "older messages" divider) and guest song-change propagation (the
+  player listener is attached on `JoinApproved`).
+- **TikTok player — the karaoke caption strip** (`c0e18ca9d`, `d0b8b86f2`, `4d5f880b1`,
+  `1d4ddb74d`): `TikTokMainLyrics.kt` renders only the active line under the artwork, and the page
+  reserves a constant 168dp slot whenever the preference is on so the artwork never shifts. Their
+  renderer is app-side on purpose: the library's `KaraokeLyricsView` paints a permanent 20dp/100dp
+  vertical `DstIn` fade mask that dimmed wrapped second rows in a strip this short. Gated on
+  `TikTokMainLyricsEnabledKey` (off by default), with a row in Appearance settings and an entry in
+  the settings search index.
+- **Canvas aspect fix** (`27fa4e7fb`): `CanvasArtworkPlayer` tracks `onVideoSizeChanged` and lays
+  the frame at cover geometry inside a `clipToBounds` wrapper for the ZOOM path, so a stalled
+  `videoSizeDp` can no longer leave a canvas stretched.
+
+**Adapted, not copied:** their `LyricsEnhanced` carries a provider-header/composer-footer
+plumbing (`lyricsProviderLabel`, `composerFooter`) from their own 2026-08 work that this tree never
+had, and its romanisation rides inside the translation string (`compactTranslation`). Ours rides as
+`phonetic` on karaoke syllables, so their compact-translation hunks do not apply and the strip uses
+our renderer unchanged. Their `MessageCodec` is protobuf-javalite; ours is the hand-rolled
+`ProtoWire`, and because chat travels only on the JSON-format servers (the protobuf server has no
+chat relay) no codec arms were needed.
+
+**Deliberately not taken:** the video half of `865e1de72`/`4d5f880b1` — the both-streams
+`mainAudioReady` start barrier, `declareVideoFailure`, `MaxVideoRecoveryAttempts = 1` 1080p
+recovery and the poisoned-cache eviction. This tree's `VideoArtworkPlayer` has since been rebuilt
+(201 lines of divergence against their base, plus its own tiered sync/drift model in
+`docs/video-sync.md`), so their patch is a rewrite of a working pipeline rather than a delta, and
+it needs a device pass to validate. Also not taken, as before: `worklog.md` and `changelogs.md`,
+which do not exist here.
+
+**Gate residue removed** (not from them — our own leftovers): the `gatekeeper_connection_blocked`
+string, whose only consumer was the deleted `GatekeeperViewModel`, and the four bearer/token
+secrets the workflows still exported into the Gradle environment
+(`API_BEARER_TOKEN`, `TOGETHER_BEARER_TOKEN`, `CANVAS_BEARER_TOKEN`, `EXTRACTOR_BEARER`) that no
+build script or source file reads.
