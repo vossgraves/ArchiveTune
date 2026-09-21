@@ -1642,7 +1642,6 @@
     <string name="spotify_new_releases">New Releases</string>
     <string name="spotify_recently_played">Recently played</string>
     <string name="spotify_frequently_listened">Frequently listened</string>
-    <string name="home_screen_style_spotify">Spotify</string>
     <string name="home_source_youtube">YouTube</string>
     <string name="home_source_spotify">Spotify</string>
     <string name="home_source_qq">QQ Music</string>
@@ -1673,8 +1672,6 @@
     <string name="sponsor_block_category_music_offtopic">Non-music section</string>
     <string name="sponsor_block_category_filler">Filler tangent</string>
     <string name="apple_music_experience_desc">Replaces the artwork header on playlist, album and library pages with Apple Music\u2019s: a large title over the page, pink accent pills, no backdrop. Turning it on also moves the player style, the bottom bar and the library style to Apple Music; turning it off gives the player style back and returns the library to the stock layout.</string>
-    <string name="spotify_home_style">Spotify home style</string>
-    <string name="spotify_home_style_desc">Layout of the Spotify home page</string>
 
     <!-- Listen Together (ported from vivi-music beta) -->
     <string name="listen_together">Listen Together</string>
