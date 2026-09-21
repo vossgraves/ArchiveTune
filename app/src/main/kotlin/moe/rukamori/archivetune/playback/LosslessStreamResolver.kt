@@ -53,6 +53,7 @@ object LosslessStreamResolver {
         album: String?,
         durationMs: Long?,
         formatId: Int,
+        directTrackId: String? = null,
     ): DirectStream? {
         val userInstances = parseMultiline(context, QobuzInstancesKey)
         val discoveredInstances = runCatching { QobuzAudioProvider.discoverInstances() }
@@ -92,6 +93,7 @@ object LosslessStreamResolver {
                         artists = artists,
                         album = album,
                         durationMs = durationMs,
+                        directTrackId = directTrackId,
                     ),
                     formatId = formatId,
                 )
