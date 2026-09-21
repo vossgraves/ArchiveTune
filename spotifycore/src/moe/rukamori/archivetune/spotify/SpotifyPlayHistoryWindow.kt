@@ -40,6 +40,16 @@ const val SPOTIFY_RATE_LIMIT_FALLBACK_MS = 30_000L
 const val SPOTIFY_RATE_LIMIT_MAX_MS = 24 * 60 * 60 * 1000L
 
 /**
+ * Longest wait a history read will sit out before asking again.
+ *
+ * A `Retry-After` is an instruction, and a short one is worth obeying: waiting it out is the
+ * difference between an empty screen and a filled one. A day-long one is not — no read is worth
+ * holding a screen's coroutine open for hours — so a block past this leaves the read to its cached
+ * window and its error, which is what a block that long deserves.
+ */
+const val SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS = 60_000L
+
+/**
  * How stale a delta read's cursor may get before the next read takes the whole window instead.
  *
  * A delta read is only as good as its cursor: a play Spotify inserts *behind* one we already returned
@@ -137,4 +147,27 @@ fun rateLimitCooldownMillis(retryAfterSec: Long?): Long {
         fromHeader > SPOTIFY_RATE_LIMIT_MAX_MS -> SPOTIFY_RATE_LIMIT_MAX_MS
         else -> maxOf(fromHeader, SPOTIFY_RATE_LIMIT_FALLBACK_MS)
     }
+}
+
+/**
+ * How long the one retry of a rate-limited history read should wait, or null when it must not be
+ * retried at all.
+ *
+ * Only a usable `Retry-After` earns that retry: it is Spotify naming the moment the endpoint
+ * reopens, and a read with nothing to show is better off waiting for it than surfacing "rate
+ * limited" while the plays are seconds away. What is waited out is the *cooldown*, not the header
+ * verbatim, so the wait is the same window the rest of the app is gated on and the retry cannot be
+ * turned away by that gate — see [rateLimitCooldownMillis] for why the header is floored and
+ * [SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS] for what a longer block does instead. A read that already has
+ * rows to show is never retried — those rows are on screen, and holding the reader open for a
+ * refresh gains nothing — and neither is one whose 429 named no usable window, because guessing at
+ * the window is what turns one 429 into a loop.
+ */
+fun historyRetryWaitMillis(
+    retryAfterSec: Long?,
+    hasCachedRows: Boolean,
+): Long? {
+    if (hasCachedRows) return null
+    if (retryAfterSec == null || retryAfterSec <= 0) return null
+    return rateLimitCooldownMillis(retryAfterSec).takeIf { it <= SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS }
 }
