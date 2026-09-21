@@ -233,7 +233,11 @@ object ComposeToImage {
                             .allowHardware(false)
                             .build()
                     val result = imageLoader.execute(request)
-                    coverArtBitmap = result.image?.toBitmap()
+                    // The canvas below is software, and Coil's memory cache may still hand back a
+                    // hardware bitmap decoded for another screen — convert it before anything
+                    // draws it, or the draw throws "Software rendering doesn't support hardware
+                    // bitmaps" (API 26+).
+                    coverArtBitmap = result.image?.toBitmap()?.let(::ensureSoftwareBitmap)
                 } catch (e: Exception) {
                     reportException(e)
                 }
@@ -783,7 +787,7 @@ object ComposeToImage {
                         .size(canvasSize / 2)
                         .allowHardware(false)
                         .build()
-                    coverArtBitmap = imageLoader.execute(request).image?.toBitmap()
+                    coverArtBitmap = imageLoader.execute(request).image?.toBitmap()?.let(::ensureSoftwareBitmap)
                 }
             }
 

@@ -75,7 +75,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -97,7 +96,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -108,19 +106,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clipToBounds
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.graphics.Bitmap
 import coil3.compose.AsyncImage
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.size.Size as CoilSize
-import coil3.toBitmap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.LyricsMode
@@ -143,6 +131,7 @@ import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.player.blurBackdropFootprint
 import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
+import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
@@ -996,8 +985,6 @@ private fun SpatialFlowLyricsMovingBlur(
     modifier: Modifier = Modifier,
 ) {
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-    val context = LocalContext.current
-    val imageLoader = context.imageLoader
     val blurWander = rememberBlurWanderDrift(active = !isPreS)
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
@@ -1029,33 +1016,12 @@ private fun SpatialFlowLyricsMovingBlur(
 
         if (artUrl != null) {
             if (isPreS) {
-                val preBlurredBitmap by produceState<Bitmap?>(null, artUrl) {
-                    value =
-                        withContext(Dispatchers.IO) {
-                            runCatching {
-                                val request =
-                                    ImageRequest
-                                        .Builder(context)
-                                        .data(artUrl)
-                                        .allowHardware(false)
-                                        .memoryCacheKey("$artUrl#sflyricsblur")
-                                        .diskCacheKey("$artUrl#sflyricsblur")
-                                        .size(CoilSize(720, 720))
-                                        .build()
-                                val result = imageLoader.execute(request)
-                                if (result is SuccessResult) {
-                                    val bitmap =
-                                        result.image
-                                            .toBitmap()
-                                            .copy(Bitmap.Config.ARGB_8888, true)
-                                    val density = context.resources.displayMetrics.density
-                                    ImageBlurUtils.blur(bitmap, SfLyricsBlurRadius.value * density)
-                                } else {
-                                    null
-                                }
-                            }.getOrNull()
-                        }
-                }
+                val preBlurredBitmap =
+                    rememberPreBlurredBitmap(
+                        imageUrl = artUrl,
+                        radiusDp = SfLyricsBlurRadius,
+                        cacheKey = "$artUrl#sflyricsblur",
+                    )
                 preBlurredBitmap?.let { bmp ->
                     Box(
                         modifier = Modifier.fillMaxSize(),
