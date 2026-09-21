@@ -127,6 +127,41 @@ class SpotifyPlayHistoryWindowTest {
     }
 
     @Test
+    fun aNamedWindowWithNothingToShowEarnsOneRetry() {
+        // The measured failure: a first, uncached read answers 429 with Retry-After: 14. The plays
+        // are a window away, so the read waits that window out instead of reporting the limit.
+        assertEquals(
+            SPOTIFY_RATE_LIMIT_FALLBACK_MS,
+            historyRetryWaitMillis(retryAfterSec = 14, hasCachedRows = false),
+        )
+        assertEquals(50_000L, historyRetryWaitMillis(retryAfterSec = 50, hasCachedRows = false))
+    }
+
+    @Test
+    fun rowsAlreadyOnScreenAreNeverWorthWaitingFor() {
+        assertNull(historyRetryWaitMillis(retryAfterSec = 14, hasCachedRows = true))
+        assertNull(historyRetryWaitMillis(retryAfterSec = 50, hasCachedRows = true))
+    }
+
+    @Test
+    fun a429WithNoUsableWindowIsNotRetried() {
+        assertNull(historyRetryWaitMillis(retryAfterSec = null, hasCachedRows = false))
+        assertNull(historyRetryWaitMillis(retryAfterSec = 0, hasCachedRows = false))
+        assertNull(historyRetryWaitMillis(retryAfterSec = -5, hasCachedRows = false))
+    }
+
+    @Test
+    fun aBlockPastTheRetryCapIsNotWaitedOut() {
+        // A day-long block is honoured as a cooldown but never sat out by a read; the cap itself is
+        // the last window still worth waiting for.
+        assertNull(historyRetryWaitMillis(retryAfterSec = 86_400, hasCachedRows = false))
+        assertEquals(
+            SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS,
+            historyRetryWaitMillis(retryAfterSec = 60, hasCachedRows = false),
+        )
+    }
+
+    @Test
     fun aNewHolderTakesTheWholeWindow() {
         // No cursor to speak of, and no full read behind it: the only read that can be correct.
         assertTrue(needsFullHistoryRead(newestPlayedAtMillis = null, lastFullReadAtMillis = 0L, nowMillis = 1_000L))

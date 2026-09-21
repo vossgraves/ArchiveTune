@@ -16,6 +16,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -396,10 +397,12 @@ class SpotifyLibraryRepository
          *    all 50. A full window read happens with nothing cached to anchor on, and at least every
          *    [SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS] besides — see [needsFullHistoryRead] for why a
          *    delta alone would slowly lose plays.
-         *  - **Stale beats an error.** A failure with rows cached returns them, and a 429 records its
-         *    `Retry-After` so nothing can call again until Spotify's window has cleared. Only a
-         *    failure with an empty cache throws, and then the message says how long the wait is —
-         *    that is the one case where the limit is genuinely unavoidable.
+         *  - **Stale beats an error, and a wait beats an empty screen.** A failure with rows cached
+         *    returns them, and a 429 records its `Retry-After` so nothing can call again until
+         *    Spotify's window has cleared. A read with no rows to fall back on and a short named
+         *    window waits that window out and asks once more — see [readRecentlyPlayed] — rather
+         *    than spending the one case that has no cache showing "rate limited". Only a read whose
+         *    retry also failed throws, and then the message says how long the wait is.
          *
          * [force] (pull-to-refresh) skips the expiry, never the gate: refreshing into an active rate
          * limit is what turns one 429 into a loop, so a forced read during a cooldown still returns
@@ -426,19 +429,13 @@ class SpotifyLibraryRepository
                     val fullRead = needsFullHistoryRead(cursorMillis, recentlyPlayedFullReadAtMs, now)
                     val fetched =
                         try {
-                            spotifyCallWithTokenRetry {
-                                Spotify
-                                    .recentlyPlayed(afterMillis = cursorMillis.takeUnless { fullRead })
-                                    .getOrThrow()
-                            }.items
+                            readRecentlyPlayed(
+                                afterMillis = cursorMillis.takeUnless { fullRead },
+                                hasCachedRows = cached != null,
+                            )
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Throwable) {
-                            if (isSpotifyRateLimitMessage(error.message)) {
-                                val retryAfterSec = (error as? Spotify.SpotifyException)?.retryAfterSec
-                                recentlyPlayedBlockedUntilMs =
-                                    System.currentTimeMillis() + rateLimitCooldownMillis(retryAfterSec)
-                            }
                             cached?.let { return@withLock it.items }
                             throw error
                         }
@@ -491,6 +488,46 @@ class SpotifyLibraryRepository
                 retryAfterSec = waitSec,
             )
         }
+
+        /**
+         * One history read, plus the single retry a `Retry-After`-bearing 429 earns.
+         *
+         * A 429 that names its window is an instruction, not a verdict: the plays are that many
+         * seconds away, so giving up on a screen with nothing on it turns a short wait into a
+         * permanent empty state. [historyRetryWaitMillis] decides when that retry is owed and how
+         * long it waits; what matters here is the bounds. It runs at most once — [retriesLeft] is 1
+         * on the way in and 0 on the way back — so no header value can make this spin, and a 429
+         * that arrives without a window is not retried at all. The cooldown is written before the
+         * wait, so it stays shared across it: a concurrent read still sees it and cannot slide in
+         * ahead of the retry.
+         *
+         * The wait is a [delay], so a screen that leaves cancels the read where it stands instead of
+         * leaving a timer behind to fire against a token the user may already have dropped.
+         */
+        private suspend fun readRecentlyPlayed(
+            afterMillis: Long?,
+            hasCachedRows: Boolean,
+            retriesLeft: Int = 1,
+        ): List<SpotifyPlayHistory> =
+            try {
+                readRecentlyPlayedOnce(afterMillis)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (!isSpotifyRateLimitMessage(error.message)) throw error
+                val retryAfterSec = (error as? Spotify.SpotifyException)?.retryAfterSec
+                recentlyPlayedBlockedUntilMs =
+                    System.currentTimeMillis() + rateLimitCooldownMillis(retryAfterSec)
+                val waitMs = if (retriesLeft > 0) historyRetryWaitMillis(retryAfterSec, hasCachedRows) else null
+                if (waitMs == null) throw error
+                delay(waitMs)
+                readRecentlyPlayed(afterMillis, hasCachedRows, retriesLeft = retriesLeft - 1)
+            }
+
+        private suspend fun readRecentlyPlayedOnce(afterMillis: Long?): List<SpotifyPlayHistory> =
+            spotifyCallWithTokenRetry {
+                Spotify.recentlyPlayed(afterMillis = afterMillis).getOrThrow()
+            }.items
 
         /**
          * Drops the history snapshot and its expiry, plus any in-flight rate-limit gate.
