@@ -328,8 +328,8 @@ import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.component.StarDialog
 import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.TvNavigationRail
+import moe.rukamori.archivetune.ui.component.rememberAppleMusicExperience
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
-import moe.rukamori.archivetune.ui.component.rememberForcedAppleMusicExperience
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
 import moe.rukamori.archivetune.ui.component.splash.SplashConfig
 import moe.rukamori.archivetune.ui.component.splash.SplashOverlay
@@ -962,7 +962,7 @@ class MainActivity : ComponentActivity() {
             // iOS page headers. Written as a read-side override so turning the switch back off
             // restores whichever bar the user had chosen instead of overwriting that choice.
             val navigationBarStyle =
-                if (rememberForcedAppleMusicExperience()) {
+                if (rememberAppleMusicExperience()) {
                     NavigationBarStyle.APPLE_MUSIC
                 } else {
                     navigationBarStyleStored
