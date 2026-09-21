@@ -233,8 +233,8 @@ object AppleMusicProvider {
      * search and lyrics resolve against the right catalog and pass the
      * token's subscription check.
      *
-     * Public because the app's Apple Music lyrics provider resolves the same account's storefront:
-     * one caller, one cached answer for the account rather than one lookup per lyrics request.
+     * Public because callers outside this module resolve the same account's storefront: one cached
+     * answer for the account rather than one lookup per request.
      */
     suspend fun resolveStorefront(): String {
         val media = mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() } ?: return "us"

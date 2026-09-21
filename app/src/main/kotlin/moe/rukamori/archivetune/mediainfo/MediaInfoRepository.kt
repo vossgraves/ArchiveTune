@@ -45,9 +45,7 @@ class MediaInfoRepository @Inject constructor(private val database: MusicDatabas
             )
         }.flowOn(Dispatchers.IO)
 
-    // Upstream reads the two halves through YouTube.getMediaMetadata and YouTube.getMediaStatistics,
-    // which rukamori/core declares separately; this fork's core exposes one getMediaInfo carrying the
-    // same fields, so the panel reads it once and maps both halves out of that answer.
+    // Our core exposes one getMediaInfo returning both halves, so the panel reads it once.
     suspend fun mediaInfo(videoId: String): RemoteMediaInfo =
         withContext(Dispatchers.IO) {
             val info = YouTube.getMediaInfo(videoId).getOrThrow()
