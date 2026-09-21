@@ -138,8 +138,9 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
             if (!resp.status.isSuccess()) continue
             val payload = resp.bodyAsText().trimStart()
             // A body that is not markup is the JSON envelope; a body that is markup is the TTML
-            // document itself. Matching "<tt" inside JSON would hand the envelope back as lyrics.
-            if (payload.startsWith("<")) return payload
+            // document itself. Matching "<tt" inside JSON would hand the envelope back as lyrics,
+            // but so would accepting any "<": an HTML error page served 2xx is not lyrics.
+            if (payload.startsWith("<tt") || payload.startsWith("<?xml")) return payload
             val body = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: continue
             val ttml =
                 body["data"]
