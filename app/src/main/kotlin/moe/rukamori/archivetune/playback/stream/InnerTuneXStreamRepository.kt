@@ -22,6 +22,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.constants.AudioQuality
@@ -34,9 +35,9 @@ import timber.log.Timber
  * `StreamExtractor` is adapted here, never forked — and brings its own InnerTube client, SABR/cipher
  * stack and client-fallback strategy, so this tier needs no `:core` involvement at all.
  *
- * The player consumes plain media URLs, so a segmented SABR result is refused rather than handed
- * on: it would fail at fetch time inside the player, which is worse than falling through to the
- * next tier.
+ * The player consumes plain media URLs, so a segmented SABR or byte-range-only result is refused
+ * rather than handed on: it would fail at fetch time inside the player, which is worse than falling
+ * through to the next tier.
  */
 @Singleton
 class InnerTuneXStreamRepository
@@ -55,12 +56,24 @@ class InnerTuneXStreamRepository
             val stream =
                 extractor.extract(
                     videoId = request.mediaId,
-                    hints = ContentHints(wantVideo = false),
+                    // Tells the library which transports this host can fetch: the player takes plain
+                    // media URLs, so neither segmented SABR nor byte-range paging is available. That
+                    // only saves the work of building them — the guards below are the enforcement.
+                    hints =
+                        ContentHints(wantVideo = false).withStreamCapabilities(
+                            allowSabr = false,
+                            allowBoundedRange = false,
+                        ),
                     audioQuality = request.quality.toInnerTuneXQuality(),
                 ) ?: throw InnerTuneXExtractionException("InnerTuneX returned no stream for ${request.mediaId}")
             if (stream.sabrBootstrap != null) {
                 throw InnerTuneXExtractionException(
                     "InnerTuneX returned a segmented SABR stream for ${request.mediaId}",
+                )
+            }
+            if (stream.requireBoundedRange) {
+                throw InnerTuneXExtractionException(
+                    "InnerTuneX returned a byte-range-only stream for ${request.mediaId}",
                 )
             }
             return ResolvedAudioStream(
@@ -88,8 +101,13 @@ class InnerTuneXStreamRepository
         private suspend fun prewarmOnce() {
             if (prewarmed) return
             prewarmed = true
-            runCatching { extractor.prewarm() }
-                .onFailure { Timber.tag(TAG).d(it, "InnerTuneX prewarm failed") }
+            try {
+                extractor.prewarm()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Timber.tag(TAG).d(t, "InnerTuneX prewarm failed")
+            }
         }
 
         private fun createExtractor(): InnerTubeExtractor {
