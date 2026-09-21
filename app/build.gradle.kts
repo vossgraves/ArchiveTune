@@ -539,6 +539,10 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.json)
+    // InnerTubeX — first extractor tier behind playback/stream/AudioStreamRepository. Its own
+    // InnerTube client and cipher stack sit beside :core's; they share no package namespace, so
+    // the NewPipe extractor classes are unaffected.
+    implementation(libs.innertubex)
     implementation(libs.kotlinx.serialization.protobuf)
     implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.server.core)

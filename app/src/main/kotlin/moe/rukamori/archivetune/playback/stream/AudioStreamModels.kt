@@ -26,6 +26,7 @@ enum class StreamSource {
     YT_DLP,
     NATIVE_INNERTUBE,
     NEWPIPE,
+    INNERTUBE_X,
 }
 
 data class AudioStreamRequest(
