@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+
 import android.graphics.Color as AndroidColor
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -59,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,7 +73,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -107,11 +107,11 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.StatPeriod
+import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.ListeningBySlot
 import moe.rukamori.archivetune.db.entities.ListeningSummary
 import moe.rukamori.archivetune.db.entities.Song
-import moe.rukamori.archivetune.db.entities.SongWithStats
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
@@ -121,6 +121,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
+import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.isSpotifyRateLimitMessage
 import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.ui.component.ChoiceChipsRow
@@ -141,8 +142,16 @@ import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.viewmodels.HistoryViewModel
 import moe.rukamori.archivetune.viewmodels.RemoteHistoryUiState
+import moe.rukamori.archivetune.viewmodels.StatsPeriodSelection
 import moe.rukamori.archivetune.viewmodels.StatsScreenState
+import moe.rukamori.archivetune.viewmodels.StatsUiData
 import moe.rukamori.archivetune.viewmodels.StatsViewModel
+
+/** How many ranked songs the list shows before it offers the rest; the "Show top 5" string matches it. */
+private const val COLLAPSED_SONG_COUNT = 5
+
+/** How many artists the breakdown chart and its count cover. */
+private const val TOP_ARTIST_COUNT = 5
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -155,11 +164,18 @@ fun StatsScreen(
     viewModel: StatsViewModel = hiltViewModel(),
 ) {
     var selectedSource by rememberSaveable { mutableStateOf(StatsSource.LOCAL) }
+    var songsExpanded by rememberSaveable { mutableStateOf(false) }
     val historyViewModel: HistoryViewModel = hiltViewModel()
     val spotifyViewModel: SpotifyLibraryViewModel = hiltViewModel()
+    val localState by viewModel.screenState.collectAsStateWithLifecycle()
     val remoteHistoryState by historyViewModel.remoteHistoryState.collectAsStateWithLifecycle()
     val spotifyHistory by spotifyViewModel.recentlyPlayed.collectAsStateWithLifecycle()
+    val period by viewModel.periodSelection.collectAsStateWithLifecycle()
+    val isYearPickerOpen by viewModel.yearPickerOpen.collectAsStateWithLifecycle()
     val rateLimitedMessage = stringResource(R.string.stats_remote_rate_limited)
+    val unknownArtistLabel = stringResource(R.string.stats_unknown_artist)
+    val remoteFailureMessage = stringResource(R.string.stats_remote_load_failed)
+    val currentDate = remember { LocalDateTime.now() }
 
     LaunchedEffect(selectedSource) {
         when (selectedSource) {
@@ -169,36 +185,159 @@ fun StatsScreen(
         }
     }
 
-    if (selectedSource != StatsSource.LOCAL) {
-        RemoteStatsScreen(
-            navController = navController,
-            source = selectedSource,
-            onSourceSelected = { selectedSource = it },
-            remoteHistoryState = remoteHistoryState,
-            spotifyHistory = spotifyHistory.items,
-            spotifyLoading = spotifyHistory.isLoading ||
-                (spotifyHistory.items == null && spotifyHistory.errorMessage == null),
-            spotifyError =
-                spotifyHistory.errorMessage?.let { message ->
-                    // Spotify's raw 429 body is not something to put in front of a reader, and the
-                    // retry cooldown means waiting is the actual remedy.
-                    if (isSpotifyRateLimitMessage(message)) {
-                        rateLimitedMessage
-                    } else {
-                        message
-                    }
-                },
-            onRetry = {
-                when (selectedSource) {
-                    StatsSource.YOUTUBE -> historyViewModel.fetchRemoteHistory()
-                    StatsSource.SPOTIFY -> spotifyViewModel.loadRecentlyPlayed(force = true)
-                    StatsSource.LOCAL -> Unit
-                }
-            },
-        )
-        return
+    // A new period ranks a different set of songs, so the list returns to its collapsed top.
+    LaunchedEffect(period) { songsExpanded = false }
+
+    val onRetry: () -> Unit = {
+        when (selectedSource) {
+            StatsSource.LOCAL -> viewModel.retry()
+            StatsSource.YOUTUBE -> historyViewModel.fetchRemoteHistory()
+            StatsSource.SPOTIFY -> spotifyViewModel.loadRecentlyPlayed(force = true)
+        }
     }
 
+    // The only place that knows which source is showing. Each one normalises its own feed into the
+    // same dashboard, so everything below draws one layout and switching sources moves no card: a
+    // source that cannot fill a card leaves it to draw its empty state.
+    val content =
+        when (selectedSource) {
+            StatsSource.LOCAL ->
+                when (val state = localState) {
+                    StatsScreenState.Loading -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            loading = true,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+
+                    StatsScreenState.Empty -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+
+                    is StatsScreenState.Error -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            errorMessage = stringResource(state.messageResId),
+                            onRetry = onRetry,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+
+                    is StatsScreenState.Success -> {
+                        val dashboard = state.data.toDashboard()
+                        StatsScreenContent(
+                            dashboard = dashboard,
+                            // The local library bounds its own range chips; nothing here has changed.
+                            rangeChips = StatsRangeChips(period.option, dashboard.firstPlay, currentDate),
+                            rangeIndex = period.index,
+                        )
+                    }
+                }
+
+            StatsSource.YOUTUBE ->
+                when (val state = remoteHistoryState) {
+                    RemoteHistoryUiState.Loading -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            loading = true,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+
+                    RemoteHistoryUiState.Empty -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+
+                    RemoteHistoryUiState.Error -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            errorMessage = remoteFailureMessage,
+                            onRetry = onRetry,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+
+                    is RemoteHistoryUiState.Success -> {
+                        val plays = remember(state.page) { state.page.historyPlays(unknownArtistLabel) }
+                        val history = rememberStatsScreenContent(plays, period, currentDate)
+                        if (history == null) {
+                            StatsStatusScreen(
+                                navController = navController,
+                                selectedSource = selectedSource,
+                                onSourceSelected = { selectedSource = it },
+                            )
+                            return
+                        }
+                        history
+                    }
+                }
+
+            StatsSource.SPOTIFY -> {
+                val recentlyPlayed = spotifyHistory.items
+                when {
+                    recentlyPlayed != null -> {
+                        val plays = remember(recentlyPlayed) { recentlyPlayed.spotifyPlays(unknownArtistLabel) }
+                        val history = rememberStatsScreenContent(plays, period, currentDate)
+                        if (history == null) {
+                            StatsStatusScreen(
+                                navController = navController,
+                                selectedSource = selectedSource,
+                                onSourceSelected = { selectedSource = it },
+                            )
+                            return
+                        }
+                        history
+                    }
+
+                    spotifyHistory.errorMessage != null -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            // Spotify's raw 429 body is not something to put in front of a reader, and the
+                            // retry cooldown means waiting is the actual remedy.
+                            errorMessage =
+                                spotifyHistory.errorMessage?.let { message ->
+                                    if (isSpotifyRateLimitMessage(message)) rateLimitedMessage else message
+                                },
+                            onRetry = onRetry,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+
+                    else -> {
+                        StatsStatusScreen(
+                            navController = navController,
+                            loading = true,
+                            selectedSource = selectedSource,
+                            onSourceSelected = { selectedSource = it },
+                        )
+                        return
+                    }
+                }
+            }
+        }
+
+    val dashboard = content.dashboard
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current
@@ -209,107 +348,18 @@ fun StatsScreen(
     val isPlaying by isPlayingFlow.collectAsStateWithLifecycle(initialValue = false)
     val mediaMetadata by mediaMetadataFlow.collectAsStateWithLifecycle(initialValue = null)
     val context = LocalContext.current
-
-    val screenState by viewModel.screenState.collectAsStateWithLifecycle()
-    val isYearPickerOpen by viewModel.yearPickerOpen.collectAsStateWithLifecycle()
-
-    val data =
-        when (val state = screenState) {
-            StatsScreenState.Loading -> {
-                StatsStatusScreen(
-                    navController = navController,
-                    loading = true,
-                    selectedSource = selectedSource,
-                    onSourceSelected = { selectedSource = it },
-                )
-                return
-            }
-
-            StatsScreenState.Empty -> {
-                StatsStatusScreen(
-                    navController = navController,
-                    selectedSource = selectedSource,
-                    onSourceSelected = { selectedSource = it },
-                )
-                return
-            }
-
-            is StatsScreenState.Error -> {
-                StatsStatusScreen(
-                    navController = navController,
-                    errorMessage = stringResource(state.messageResId),
-                    onRetry = viewModel::retry,
-                    selectedSource = selectedSource,
-                    onSourceSelected = { selectedSource = it },
-                )
-                return
-            }
-
-            is StatsScreenState.Success -> {
-                state.data
-            }
-        }
-
-    val indexChips = data.selectedPeriodIndex
-    val mostPlayedSongs = data.mostPlayedSongs
-    val mostPlayedSongsStats = data.visibleRankedSongs
-    val mostPlayedArtists = data.mostPlayedArtists
-    val mostPlayedAlbums = data.mostPlayedAlbums
-    val firstEvent = data.firstEvent
-    val selectedOption = data.selectedOption
-    val listeningByHour = data.listeningByHour
-    val listeningByDayOfWeek = data.listeningByDayOfWeek
-    val listeningSummary = data.listeningSummary
-    val songsById = remember(mostPlayedSongs) { mostPlayedSongs.associateBy { it.id } }
-
     val coroutineScope = rememberCoroutineScope()
-    val currentDate = remember { LocalDateTime.now() }
 
     val availableYears =
-        remember(currentDate, firstEvent) {
-            val startYear = firstEvent?.event?.timestamp?.year ?: currentDate.year
+        remember(currentDate, dashboard.firstPlay) {
+            val startYear = dashboard.firstPlay?.year ?: currentDate.year
             (currentDate.year downTo startYear).toList()
         }
 
-    val weeklyDates =
-        remember(currentDate, firstEvent) {
-            val first = firstEvent ?: return@remember emptyList<Pair<Int, String>>()
-            generateSequence(currentDate) { it.minusWeeks(1) }
-                .takeWhile { it.isAfter(first.event.timestamp.minusWeeks(1)) }
-                .mapIndexed { index, date ->
-                    val endDate = date.plusWeeks(1).minusDays(1).coerceAtMost(currentDate)
-                    val formatter = DateTimeFormatter.ofPattern("dd MMM")
-                    val startDateFormatted = formatter.format(date)
-                    val endDateFormatted = formatter.format(endDate)
-                    val text =
-                        when {
-                            date.year != currentDate.year -> "$startDateFormatted, ${date.year} - $endDateFormatted, ${endDate.year}"
-                            date.month != endDate.month -> "$startDateFormatted - $endDateFormatted"
-                            else -> "${date.dayOfMonth} - $endDateFormatted"
-                        }
-                    Pair(index, text)
-                }.toList()
-        }
-
-    val monthlyDates =
-        remember(currentDate, firstEvent) {
-            val first = firstEvent ?: return@remember emptyList<Pair<Int, String>>()
-            generateSequence(currentDate.plusMonths(1).withDayOfMonth(1).minusDays(1)) { it.minusMonths(1) }
-                .takeWhile { it.isAfter(first.event.timestamp.withDayOfMonth(1)) }
-                .mapIndexed { index, date ->
-                    val formatter = DateTimeFormatter.ofPattern("MMM")
-                    val text = if (date.year != currentDate.year) "${formatter.format(date)} ${date.year}" else formatter.format(date)
-                    Pair(index, text)
-                }.toList()
-        }
-
-    val yearlyDates =
-        remember(currentDate, firstEvent) {
-            val first = firstEvent ?: return@remember emptyList<Pair<Int, String>>()
-            generateSequence(currentDate.plusYears(1).withDayOfYear(1).minusDays(1)) { it.minusYears(1) }
-                .takeWhile { it.isAfter(first.event.timestamp) }
-                .mapIndexed { index, date -> Pair(index, "${date.year}") }
-                .toList()
+    val visibleSongs = if (songsExpanded) dashboard.songs else dashboard.songs.take(COLLAPSED_SONG_COUNT)
+    val queueItems =
+        remember(dashboard.songs) {
+            dashboard.songs.mapNotNull { song -> song.entity?.toMediaMetadata()?.toMediaItem() }
         }
 
     val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -381,31 +431,7 @@ fun StatsScreen(
                 item(key = "rangeControls", contentType = "controls") {
                     StatsFilterPanel(modifier = Modifier.animateItem()) {
                         ChoiceChipsRow(
-                            chips =
-                                when (selectedOption) {
-                                    OptionStats.WEEKS -> {
-                                        weeklyDates
-                                    }
-
-                                    OptionStats.MONTHS -> {
-                                        monthlyDates
-                                    }
-
-                                    OptionStats.YEARS -> {
-                                        yearlyDates
-                                    }
-
-                                    OptionStats.CONTINUOUS -> {
-                                        listOf(
-                                            StatPeriod.WEEK_1.ordinal to pluralStringResource(R.plurals.n_week, 1, 1),
-                                            StatPeriod.MONTH_1.ordinal to pluralStringResource(R.plurals.n_month, 1, 1),
-                                            StatPeriod.MONTH_3.ordinal to pluralStringResource(R.plurals.n_month, 3, 3),
-                                            StatPeriod.MONTH_6.ordinal to pluralStringResource(R.plurals.n_month, 6, 6),
-                                            StatPeriod.YEAR_1.ordinal to pluralStringResource(R.plurals.n_year, 1, 1),
-                                            StatPeriod.ALL.ordinal to stringResource(R.string.filter_all),
-                                        )
-                                    }
-                                },
+                            chips = content.rangeChips,
                             options =
                                 listOf(
                                     OptionStats.CONTINUOUS to stringResource(R.string.continuous),
@@ -413,9 +439,9 @@ fun StatsScreen(
                                     OptionStats.MONTHS to stringResource(R.string.months),
                                     OptionStats.YEARS to stringResource(R.string.years),
                                 ),
-                            selectedOption = selectedOption,
+                            selectedOption = period.option,
                             onSelectionChange = viewModel::onOptionSelected,
-                            currentValue = indexChips,
+                            currentValue = content.rangeIndex,
                             onValueUpdate = viewModel::onChipIndexChanged,
                         )
                     }
@@ -423,21 +449,28 @@ fun StatsScreen(
 
                 item(key = "overview", contentType = "overview") {
                     StatsSummarySection(
-                        summary = listeningSummary,
+                        summary = dashboard.summary,
                         modifier = Modifier.animateItem(),
                     )
                 }
 
                 item(key = "artistDistribution", contentType = "insights") {
-                    if (mostPlayedArtists.isNotEmpty()) {
-                        Column(modifier = Modifier.animateItem()) {
-                            StatsSectionHeader(
-                                title = stringResource(R.string.stats_artist_breakdown),
-                                supportingText = mostPlayedArtists.take(5).size.toString(),
+                    Column(modifier = Modifier.animateItem()) {
+                        StatsSectionHeader(
+                            title = stringResource(R.string.stats_artist_breakdown),
+                            supportingText = dashboard.artists.take(TOP_ARTIST_COUNT).size.toString(),
+                        )
+                        if (dashboard.artists.isEmpty()) {
+                            StatsEmptyCard(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
                             )
+                        } else {
                             SegmentedArtistChart(
-                                slices = mostPlayedArtists.take(5).map(Artist::toArtistSlice),
-                                totalTimeListened = listeningSummary.totalTimeListened,
+                                slices = dashboard.artists.take(TOP_ARTIST_COUNT),
+                                totalTimeListened = dashboard.summary.totalTimeListened,
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
@@ -448,14 +481,9 @@ fun StatsScreen(
                 }
 
                 item(key = "spotlights", contentType = "spotlights") {
-                    val topSong = mostPlayedSongsStats.firstOrNull()
                     StatsHighlightsSection(
-                        topArtist = mostPlayedArtists.firstOrNull(),
-                        topSong = topSong,
-                        topSongEntity =
-                            topSong?.let { rankedSong ->
-                                mostPlayedSongs.firstOrNull { it.id == rankedSong.id }
-                            },
+                        topArtist = dashboard.artists.firstOrNull(),
+                        topSong = dashboard.songs.firstOrNull(),
                         navController = navController,
                         modifier = Modifier.animateItem(),
                     )
@@ -463,8 +491,8 @@ fun StatsScreen(
 
                 item(key = "listeningPatterns", contentType = "insights") {
                     StatsListeningPatterns(
-                        daySlots = listeningByDayOfWeek,
-                        hourSlots = listeningByHour,
+                        daySlots = dashboard.daySlots,
+                        hourSlots = dashboard.hourSlots,
                         currentDayOfWeek = remember { LocalDateTime.now().dayOfWeek.value % 7 },
                         modifier = Modifier.animateItem(),
                     )
@@ -473,13 +501,13 @@ fun StatsScreen(
                 item(key = "mostPlayedSongsHeader", contentType = "sectionHeader") {
                     StatsSongsHeader(
                         title = stringResource(R.string.stats_top_songs),
-                        count = data.rankedSongCount,
-                        shuffleEnabled = playerConnection != null && mostPlayedSongs.isNotEmpty(),
+                        count = dashboard.rankedSongCount,
+                        shuffleEnabled = playerConnection != null && queueItems.isNotEmpty(),
                         onShuffle = {
                             playerConnection?.playQueue(
                                 ListQueue(
                                     title = context.getString(R.string.most_played_songs),
-                                    items = mostPlayedSongs.map { it.toMediaMetadata().toMediaItem() }.shuffled(),
+                                    items = queueItems.shuffled(),
                                 ),
                             )
                         },
@@ -487,50 +515,51 @@ fun StatsScreen(
                     )
                 }
 
-                val visibleRankedSongs = mostPlayedSongsStats
-
                 itemsIndexed(
-                    items = visibleRankedSongs,
+                    items = visibleSongs,
                     key = { _, song -> song.id },
                     contentType = { _, _ -> "ranked_song" },
                 ) { index, song ->
-                    val songEntity = songsById[song.id] ?: return@itemsIndexed
-                    RankedSongItem(
+                    StatsRankedRow(
                         song = song,
                         rank = index + 1,
-                        count = visibleRankedSongs.size,
+                        count = visibleSongs.size,
                         isActive = song.id == mediaMetadata?.id,
                         isPlaying = isPlaying,
                         onClick = {
+                            val entity = song.entity
                             if (song.id == mediaMetadata?.id) {
                                 playerConnection?.player?.togglePlayPause()
-                            } else {
+                            } else if (entity != null) {
                                 playerConnection?.playQueue(
                                     YouTubeQueue(
                                         endpoint = WatchEndpoint(song.id),
-                                        preloadItem = songEntity.toMediaMetadata(),
+                                        preloadItem = entity.toMediaMetadata(),
                                     ),
                                 )
                             }
                         },
                         onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show {
-                                SongMenu(
-                                    originalSong = songEntity,
-                                    navController = navController,
-                                    onDismiss = menuState::dismiss,
-                                )
+                            val entity = song.entity
+                            if (entity != null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuState.show {
+                                    SongMenu(
+                                        originalSong = entity,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier.animateItem(),
                     )
                 }
 
-                if (data.canExpandSongList) {
+                if (dashboard.rankedSongCount > COLLAPSED_SONG_COUNT) {
                     item(key = "songListExpansion", contentType = "sectionAction") {
                         TextButton(
-                            onClick = viewModel::toggleSongListExpanded,
+                            onClick = { songsExpanded = !songsExpanded },
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
@@ -540,7 +569,7 @@ fun StatsScreen(
                             Icon(
                                 painter =
                                     painterResource(
-                                        if (data.isSongListExpanded) {
+                                        if (songsExpanded) {
                                             R.drawable.expand_less
                                         } else {
                                             R.drawable.expand_more
@@ -551,10 +580,10 @@ fun StatsScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text =
-                                    if (data.isSongListExpanded) {
+                                    if (songsExpanded) {
                                         stringResource(R.string.stats_show_top_songs)
                                     } else {
-                                        stringResource(R.string.stats_show_all_songs, data.rankedSongCount)
+                                        stringResource(R.string.stats_show_all_songs, dashboard.rankedSongCount)
                                     },
                             )
                         }
@@ -564,46 +593,58 @@ fun StatsScreen(
                 item(key = "mostPlayedArtists", contentType = "sectionHeader") {
                     StatsSectionHeader(
                         title = stringResource(R.string.artists),
-                        supportingText = mostPlayedArtists.size.toString(),
+                        supportingText = dashboard.artists.size.toString(),
                         modifier = Modifier.animateItem(),
                     )
                 }
 
                 item(key = "artistsShelf", contentType = "artists_shelf") {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(
-                            items = mostPlayedArtists,
-                            key = { artist -> artist.id },
-                            contentType = { "artist" },
-                        ) { artist ->
-                            LocalArtistsGrid(
-                                title = artist.artist.name,
-                                subtitle =
-                                    joinByBullet(
-                                        pluralStringResource(R.plurals.n_time, artist.songCount, artist.songCount),
-                                        makeTimeString(artist.timeListened?.toLong()),
-                                    ),
-                                thumbnailUrl = artist.artist.thumbnailUrl,
-                                modifier =
-                                    Modifier
-                                        .width(164.dp)
-                                        .combinedClickable(
-                                            onClick = { navController.navigate("artist/${artist.id}") },
-                                            onLongClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                menuState.show {
-                                                    ArtistMenu(
-                                                        originalArtist = artist,
-                                                        coroutineScope = coroutineScope,
-                                                        onDismiss = menuState::dismiss,
-                                                    )
-                                                }
-                                            },
+                    if (dashboard.artists.isEmpty()) {
+                        StatsEmptyCard(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
+                    } else {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(
+                                items = dashboard.artists,
+                                key = { artist -> artist.id },
+                                contentType = { "artist" },
+                            ) { artist ->
+                                LocalArtistsGrid(
+                                    title = artist.name,
+                                    subtitle =
+                                        joinByBullet(
+                                            pluralStringResource(R.plurals.n_time, artist.songCount, artist.songCount),
+                                            makeTimeString(artist.timeListenedMs),
                                         ),
-                            )
+                                    thumbnailUrl = artist.thumbnailUrl,
+                                    modifier =
+                                        Modifier
+                                            .width(164.dp)
+                                            .combinedClickable(
+                                                // A remote feed names artists without a library row, so
+                                                // there is nothing to open and the item stays inert.
+                                                enabled = artist.entity != null,
+                                                onClick = { navController.navigate("artist/${artist.id}") },
+                                                onLongClick = {
+                                                    val entity = artist.entity
+                                                    if (entity != null) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        menuState.show {
+                                                            ArtistMenu(
+                                                                originalArtist = entity,
+                                                                coroutineScope = coroutineScope,
+                                                                onDismiss = menuState::dismiss,
+                                                            )
+                                                        }
+                                                    }
+                                                },
+                                            ),
+                                )
+                            }
                         }
                     }
                 }
@@ -611,46 +652,53 @@ fun StatsScreen(
                 item(key = "mostPlayedAlbumsHeader", contentType = "sectionHeader") {
                     StatsSectionHeader(
                         title = stringResource(R.string.albums),
-                        supportingText = mostPlayedAlbums.size.toString(),
+                        supportingText = dashboard.albums.size.toString(),
                         modifier = Modifier.animateItem(),
                     )
                 }
 
                 item(key = "albumsRow", contentType = "albums_row") {
-                    if (mostPlayedAlbums.isNotEmpty()) {
+                    if (dashboard.albums.isEmpty()) {
+                        StatsEmptyCard(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
+                    } else {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             itemsIndexed(
-                                items = mostPlayedAlbums,
+                                items = dashboard.albums,
                                 key = { _, album -> album.id },
                                 contentType = { _, _ -> "album_grid" },
                             ) { index, album ->
-                                val playCount = album.songCountListened ?: 0
                                 LocalAlbumsGrid(
-                                    title = "${index + 1}. ${album.album.title}",
+                                    title = "${index + 1}. ${album.title}",
                                     subtitle =
                                         joinByBullet(
-                                            pluralStringResource(R.plurals.n_time, playCount, playCount),
-                                            makeTimeString(album.timeListened?.toLong()),
+                                            pluralStringResource(R.plurals.n_time, album.playCount, album.playCount),
+                                            makeTimeString(album.timeListenedMs),
                                         ),
-                                    thumbnailUrl = album.album.thumbnailUrl,
+                                    thumbnailUrl = album.thumbnailUrl,
                                     isActive = album.id == mediaMetadata?.album?.id,
                                     isPlaying = isPlaying,
                                     modifier =
                                         Modifier
                                             .width(172.dp)
                                             .combinedClickable(
+                                                enabled = album.entity != null,
                                                 onClick = { navController.navigate("album/${album.id}") },
                                                 onLongClick = {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    menuState.show {
-                                                        AlbumMenu(
-                                                            originalAlbum = album,
-                                                            navController = navController,
-                                                            onDismiss = menuState::dismiss,
-                                                        )
+                                                    val entity = album.entity
+                                                    if (entity != null) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        menuState.show {
+                                                            AlbumMenu(
+                                                                originalAlbum = entity,
+                                                                navController = navController,
+                                                                onDismiss = menuState::dismiss,
+                                                            )
+                                                        }
                                                     }
                                                 },
                                             ).animateItem(),
@@ -787,47 +835,6 @@ private enum class StatsSource(
     SPOTIFY(R.string.stats_source_spotify),
 }
 
-private data class RemoteStatsData(
-    val source: StatsSource,
-    val plays: Int = 0,
-    val uniqueTracks: Int = 0,
-    val uniqueArtists: Int = 0,
-    val totalDurationMillis: Long = 0,
-    val tracks: List<RemoteStatsTrack> = emptyList(),
-    val artists: List<RemoteStatsRank> = emptyList(),
-    // Fed to the same day/hour charts the local stats draw, so the three sources read as one screen
-    // rather than as three. Slot indexing matches the local SQL: %w for the day (0 = Sunday) and %H
-    // for the hour, with timeListened in milliseconds.
-    val daySlots: List<ListeningBySlot> = emptyList(),
-    val hourSlots: List<ListeningBySlot> = emptyList(),
-)
-
-private data class RemoteStatsTrack(
-    val id: String,
-    val title: String,
-    val artist: String,
-    val durationMillis: Long,
-    val playCount: Int = 1,
-)
-
-private data class RemoteStatsRank(
-    val label: String,
-    val count: Int,
-    // Summed from the plays' own durations, the same quantity the local chart measures. Play
-    // counts alone would draw a skip and a full listen as the same slice.
-    val timeListenedMs: Long = 0,
-)
-
-private enum class RemoteStatsRange(
-    @StringRes val labelRes: Int,
-) {
-    DAYS_7(R.string.stats_range_7d),
-    DAYS_30(R.string.stats_range_30d),
-    DAYS_90(R.string.stats_range_90d),
-    YEAR_1(R.string.stats_range_1y),
-    ALL(R.string.stats_range_all),
-}
-
 @Composable
 private fun StatsSourceSelector(
     selectedSource: StatsSource,
@@ -873,516 +880,447 @@ private fun StatsSourceSelector(
     }
 }
 
+/**
+ * One artist the dashboard ranks, with the local library row behind it when the source has one.
+ *
+ * A remote feed carries artists as names, so [entity] stays null there and the artist's cards draw
+ * without opening anything: there is no library row behind the name.
+ */
+@Immutable
+private data class StatsArtistRank(
+    val id: String,
+    val name: String,
+    val thumbnailUrl: String?,
+    val songCount: Int,
+    val timeListenedMs: Long,
+    val entity: Artist? = null,
+)
+
+/** One album the dashboard ranks; [entity] is present only for the local library's own rows. */
+@Immutable
+private data class StatsAlbumRank(
+    val id: String,
+    val title: String,
+    val thumbnailUrl: String?,
+    val playCount: Int,
+    val timeListenedMs: Long,
+    val entity: Album? = null,
+)
+
+/** One song the dashboard ranks; [entity] is what makes a row playable and its menu reachable. */
+@Immutable
+private data class StatsSongRank(
+    val id: String,
+    val title: String,
+    val thumbnailUrl: String?,
+    val playCount: Int,
+    val timeListenedMs: Long,
+    val entity: Song? = null,
+)
+
+/**
+ * Everything the one dashboard draws, whichever source filled it.
+ *
+ * A card a source cannot fill keeps whatever that source did supply — usually an empty list — and
+ * draws its own empty state, so no card appears, moves or disappears with the source.
+ */
+@Immutable
+private data class StatsDashboardData(
+    val summary: ListeningSummary,
+    val songs: List<StatsSongRank>,
+    /** What the top-songs header counts: the local list drops ranks whose song has no library row. */
+    val rankedSongCount: Int,
+    val artists: List<StatsArtistRank>,
+    val albums: List<StatsAlbumRank>,
+    val daySlots: List<ListeningBySlot>,
+    val hourSlots: List<ListeningBySlot>,
+    /** The earliest play the source knows about, before any range filter bounds the range chips. */
+    val firstPlay: LocalDateTime?,
+)
+
+/**
+ * A source's dashboard and the range controls that produced it.
+ *
+ * The chips are bound by the source's own earliest play, so the row always has something to select;
+ * [rangeIndex] is that selection clamped to them, which keeps the highlighted chip and the numbers
+ * below it describing one window after a source switch.
+ */
+@Immutable
+private data class StatsScreenContent(
+    val dashboard: StatsDashboardData,
+    val rangeChips: List<Pair<Int, String>>,
+    val rangeIndex: Int,
+)
+
+/**
+ * Composes one remote source's plays into the dashboard: the feed's own earliest play bounds the
+ * range chips, the selection clamps to them, and only what that window covers is ranked.
+ *
+ * Returns null when the window holds nothing, which is the same empty screen the local library puts
+ * up for a period it was not listened to in.
+ */
 @Composable
-private fun RemoteStatsScreen(
-    navController: NavController,
-    source: StatsSource,
-    onSourceSelected: (StatsSource) -> Unit,
-    remoteHistoryState: RemoteHistoryUiState,
-    spotifyHistory: List<SpotifyPlayHistory>?,
-    spotifyLoading: Boolean,
-    spotifyError: String?,
-    onRetry: () -> Unit,
-) {
-    var selectedRange by rememberSaveable { mutableStateOf(RemoteStatsRange.ALL) }
-    val unknownArtistLabel = stringResource(R.string.stats_unknown_artist)
-    val data =
-        when (source) {
-            StatsSource.LOCAL -> null
-            StatsSource.YOUTUBE ->
-                when (remoteHistoryState) {
-                    RemoteHistoryUiState.Loading -> null
-                    RemoteHistoryUiState.Empty -> RemoteStatsData(source = StatsSource.YOUTUBE)
-                    RemoteHistoryUiState.Error -> null
-                    is RemoteHistoryUiState.Success ->
-                        remoteHistoryStats(
-                            page = remoteHistoryState.page,
-                            range = selectedRange,
-                            unknownArtistLabel = unknownArtistLabel,
-                        )
-                }
-            StatsSource.SPOTIFY ->
-                spotifyHistory?.let {
-                    spotifyHistoryStats(
-                        history = it,
-                        range = selectedRange,
-                        unknownArtistLabel = unknownArtistLabel,
-                    )
-                }
-        }
-
-    Scaffold(
-        topBar = {
-            LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.stats)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-                    }
-                },
-            )
-        },
-    ) { contentPadding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(contentPadding),
-        ) {
-            StatsSourceSelector(selectedSource = source, onSourceSelected = onSourceSelected)
-            RemoteStatsRangeSelector(
-                selectedRange = selectedRange,
-                onRangeSelected = { selectedRange = it },
-            )
-            when {
-                source == StatsSource.YOUTUBE && remoteHistoryState == RemoteHistoryUiState.Loading ||
-                    source == StatsSource.SPOTIFY && spotifyLoading -> {
-                    RemoteStatsMessage(loading = true)
-                }
-
-                source == StatsSource.YOUTUBE && remoteHistoryState == RemoteHistoryUiState.Error -> {
-                    RemoteStatsMessage(
-                        message = stringResource(R.string.stats_remote_load_failed),
-                        onRetry = onRetry,
-                    )
-                }
-
-                source == StatsSource.SPOTIFY && spotifyError != null && data == null -> {
-                    RemoteStatsMessage(message = spotifyError, onRetry = onRetry)
-                }
-
-                data == null || data.plays == 0 -> {
-                    RemoteStatsMessage(
-                        message =
-                            stringResource(
-                                R.string.stats_remote_empty,
-                                stringResource(source.labelRes),
-                            ),
-                    )
-                }
-
-                else -> {
-                    Column(modifier = Modifier.weight(1f)) {
-                        if (source == StatsSource.SPOTIFY && spotifyError != null) {
-                            Text(
-                                text = spotifyError,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                        RemoteStatsDashboard(data, modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-    }
+private fun rememberStatsScreenContent(
+    plays: List<StatsPlay>,
+    period: StatsPeriodSelection,
+    currentDate: LocalDateTime,
+): StatsScreenContent? {
+    val firstPlay = remember(plays) { plays.firstPlay() }
+    val rangeChips = StatsRangeChips(period.option, firstPlay ?: currentDate, currentDate)
+    val rangeIndex = period.index.coerceIn(0, (rangeChips.size - 1).coerceAtLeast(0))
+    val window = remember(period.option, rangeIndex) { period.windowMillis(rangeIndex) }
+    val dashboard = remember(plays, window) { plays.toDashboard(window) }
+    if (dashboard.summary.totalPlayCount == 0) return null
+    return StatsScreenContent(
+        dashboard = dashboard,
+        rangeChips = rangeChips,
+        rangeIndex = rangeIndex,
+    )
 }
 
+/**
+ * The range chips for one selection, from the earliest play the source knows about.
+ *
+ * A source's own feed bounds these rather than the local library: the chips have to describe the
+ * feed the dashboard is drawing, or a remote source would offer windows it can never fill.
+ */
 @Composable
-private fun RemoteStatsRangeSelector(
-    selectedRange: RemoteStatsRange,
-    onRangeSelected: (RemoteStatsRange) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        RemoteStatsRange.entries.forEach { range ->
-            val selected = range == selectedRange
-            Surface(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onRangeSelected(range) },
-                shape = RoundedCornerShape(12.dp),
-                color =
-                    if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        Color.Transparent
-                    },
-            ) {
-                Text(
-                    text = stringResource(range.labelRes),
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelMedium,
-                    color =
-                        if (selected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                )
-            }
-        }
+private fun StatsRangeChips(
+    option: OptionStats,
+    firstPlay: LocalDateTime?,
+    currentDate: LocalDateTime,
+): List<Pair<Int, String>> =
+    when (option) {
+        OptionStats.CONTINUOUS ->
+            listOf(
+                StatPeriod.WEEK_1.ordinal to pluralStringResource(R.plurals.n_week, 1, 1),
+                StatPeriod.MONTH_1.ordinal to pluralStringResource(R.plurals.n_month, 1, 1),
+                StatPeriod.MONTH_3.ordinal to pluralStringResource(R.plurals.n_month, 3, 3),
+                StatPeriod.MONTH_6.ordinal to pluralStringResource(R.plurals.n_month, 6, 6),
+                StatPeriod.YEAR_1.ordinal to pluralStringResource(R.plurals.n_year, 1, 1),
+                StatPeriod.ALL.ordinal to stringResource(R.string.filter_all),
+            )
+
+        OptionStats.WEEKS -> remember(firstPlay, currentDate) { weeklyRangeChips(firstPlay, currentDate) }
+        OptionStats.MONTHS -> remember(firstPlay, currentDate) { monthlyRangeChips(firstPlay, currentDate) }
+        OptionStats.YEARS -> remember(firstPlay, currentDate) { yearlyRangeChips(firstPlay, currentDate) }
     }
+
+/** The week windows, newest first, back to the week [firstPlay] fell in. */
+private fun weeklyRangeChips(
+    firstPlay: LocalDateTime?,
+    currentDate: LocalDateTime,
+): List<Pair<Int, String>> {
+    val first = firstPlay ?: return emptyList()
+    return generateSequence(currentDate) { it.minusWeeks(1) }
+        .takeWhile { it.isAfter(first.minusWeeks(1)) }
+        .mapIndexed { index, date ->
+            val endDate = date.plusWeeks(1).minusDays(1).coerceAtMost(currentDate)
+            val formatter = DateTimeFormatter.ofPattern("dd MMM")
+            val startDateFormatted = formatter.format(date)
+            val endDateFormatted = formatter.format(endDate)
+            val text =
+                when {
+                    date.year != currentDate.year -> "$startDateFormatted, ${date.year} - $endDateFormatted, ${endDate.year}"
+                    date.month != endDate.month -> "$startDateFormatted - $endDateFormatted"
+                    else -> "${date.dayOfMonth} - $endDateFormatted"
+                }
+            Pair(index, text)
+        }.toList()
 }
 
-@Composable
-private fun ColumnScope.RemoteStatsMessage(
-    loading: Boolean = false,
-    message: String? = null,
-    onRetry: (() -> Unit)? = null,
-) {
-    Box(
-        modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (loading) {
-            LoadingIndicator(modifier = Modifier.size(48.dp))
-        } else {
-            Column(
-                modifier = Modifier.widthIn(max = 420.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = message.orEmpty(),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (onRetry != null) {
-                    Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
-                }
-            }
-        }
-    }
+/** The month windows, newest first, back to the month [firstPlay] fell in. */
+private fun monthlyRangeChips(
+    firstPlay: LocalDateTime?,
+    currentDate: LocalDateTime,
+): List<Pair<Int, String>> {
+    val first = firstPlay ?: return emptyList()
+    return generateSequence(currentDate.plusMonths(1).withDayOfMonth(1).minusDays(1)) { it.minusMonths(1) }
+        .takeWhile { it.isAfter(first.withDayOfMonth(1)) }
+        .mapIndexed { index, date ->
+            val formatter = DateTimeFormatter.ofPattern("MMM")
+            val text = if (date.year != currentDate.year) "${formatter.format(date)} ${date.year}" else formatter.format(date)
+            Pair(index, text)
+        }.toList()
 }
 
+/** The year windows, newest first, back to the year [firstPlay] fell in. */
+private fun yearlyRangeChips(
+    firstPlay: LocalDateTime?,
+    currentDate: LocalDateTime,
+): List<Pair<Int, String>> {
+    val first = firstPlay ?: return emptyList()
+    return generateSequence(currentDate.plusYears(1).withDayOfYear(1).minusDays(1)) { it.minusYears(1) }
+        .takeWhile { it.isAfter(first) }
+        .mapIndexed { index, date -> Pair(index, "${date.year}") }
+        .toList()
+}
+
+/** The muted line a card shows in place of content its source had none of. */
 @Composable
-private fun RemoteStatsDashboard(
-    data: RemoteStatsData,
-    modifier: Modifier = Modifier,
-) {
-    val sourceLabel = stringResource(data.source.labelRes)
-    LazyColumn(
-        modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            StatsGlassCard(cornerRadius = 24.dp) {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                                        MaterialTheme.colorScheme.surfaceContainerLow,
-                                    ),
-                                ),
-                            ).padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.stats_remote_heading, sourceLabel),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = stringResource(R.string.stats_remote_subheading, sourceLabel),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (data.totalDurationMillis > 0) {
-                        Text(
-                            text = makeTimeString(data.totalDurationMillis),
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RemoteMetricCard(
-                    stringResource(R.string.stats_metric_plays),
-                    data.plays.toString(),
-                    Modifier.weight(1f),
-                )
-                RemoteMetricCard(
-                    stringResource(R.string.stats_metric_tracks),
-                    data.uniqueTracks.toString(),
-                    Modifier.weight(1f),
-                )
-                RemoteMetricCard(
-                    stringResource(R.string.stats_metric_artists),
-                    data.uniqueArtists.toString(),
-                    Modifier.weight(1f),
-                )
-            }
-        }
-        item {
-            RemoteRankChart(
-                title = stringResource(R.string.stats_top_artists),
-                ranks = data.artists,
-                gradient = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary),
-            )
-        }
-        if (data.artists.any { it.timeListenedMs > 0L }) {
-            item {
-                Column {
-                    StatsSectionHeader(
-                        title = stringResource(R.string.stats_artist_breakdown),
-                        supportingText = data.artists.take(5).size.toString(),
-                    )
-                    SegmentedArtistChart(
-                        slices =
-                            data.artists.take(5).map { rank ->
-                                ArtistSlice(
-                                    id = rank.label,
-                                    name = rank.label,
-                                    timeListenedMs = rank.timeListenedMs,
-                                )
-                            },
-                        totalTimeListened = data.totalDurationMillis,
-                    )
-                }
-            }
-        }
-        item {
-            RemoteStatsHighlights(
-                topArtist = data.artists.firstOrNull(),
-                topTrack = data.tracks.firstOrNull(),
-            )
-        }
-        if (data.daySlots.isNotEmpty() || data.hourSlots.isNotEmpty()) {
-            item {
-                // The same component the local stats use, so all three sources draw one chart rather
-                // than local getting real day/hour charts and the remote ones a generic bar list.
-                // Each chart omits itself when its slots are empty, which is how YouTube ends up
-                // with a day chart and no hour chart.
-                StatsListeningPatterns(
-                    daySlots = data.daySlots,
-                    hourSlots = data.hourSlots,
-                    currentDayOfWeek = remember { LocalDateTime.now().dayOfWeek.value % 7 },
-                    // The LazyColumn already insets this list; the section's own gutter would double it.
-                    horizontalPadding = 0.dp,
-                )
-            }
-        }
-        item {
-            StatsSectionHeader(
-                title = stringResource(R.string.stats_top_tracks),
-                supportingText = data.tracks.size.toString(),
-            )
-        }
-        items(data.tracks.take(10), key = { it.id }) { track ->
-            RemoteTrackRow(track = track)
+private fun StatsEmptyText() {
+    Text(
+        text = stringResource(R.string.stats_card_empty),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * A whole card standing in for a list its source has none of.
+ *
+ * Cards that a source cannot fill keep their place in the dashboard and show this, so a source
+ * switch never moves the layout — it only swaps the numbers.
+ */
+@Composable
+private fun StatsEmptyCard(modifier: Modifier = Modifier) {
+    StatsGlassCard(modifier = modifier, cornerRadius = 22.dp) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            StatsEmptyText()
         }
     }
 }
 
 /**
- * The remote sources' version of the local "spotlights" pair.
+ * One listen as a remote feed reports it: the track, its artist and album, how long it lasted and
+ * when it happened.
  *
- * The local cards open the library entity behind them; a history feed carries no such entity, so
- * these are informational and deliberately not clickable rather than navigating to a row that does
- * not exist for this source.
+ * A YouTube history section names the day of a whole shelf and nothing finer, so [hasClockTime] is
+ * false there and the hour chart is left empty rather than filled with a midnight no play claimed.
  */
-@Composable
-private fun RemoteStatsHighlights(
-    topArtist: RemoteStatsRank?,
-    topTrack: RemoteStatsTrack?,
-    modifier: Modifier = Modifier,
-) {
-    if (topArtist == null && topTrack == null) return
+@Immutable
+private data class StatsPlay(
+    val trackId: String,
+    val title: String,
+    val thumbnailUrl: String?,
+    val artistName: String,
+    val album: StatsPlayAlbum?,
+    val durationMs: Long,
+    val playedAt: Instant?,
+    val hasClockTime: Boolean = true,
+)
 
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (topArtist != null) {
-            StatsHighlightCard(
-                title = stringResource(R.string.stats_favourite_artist),
-                mainText = topArtist.label,
-                subText = "${topArtist.count} ${
-                    stringResource(R.string.stats_metric_plays)
-                } • ${makeTimeString(topArtist.timeListenedMs) ?: "-"}",
-                imageUrl = null,
-                useCircleShape = true,
-                onClick = {},
-            )
-        }
-        if (topTrack != null) {
-            StatsHighlightCard(
-                title = stringResource(R.string.stats_favourite_song),
-                mainText = topTrack.title,
-                subText = "${
-                    pluralStringResource(
-                        R.plurals.n_time,
-                        topTrack.playCount,
-                        topTrack.playCount,
-                    )
-                } • ${makeTimeString(topTrack.durationMillis) ?: "-"}",
-                imageUrl = null,
-                useCircleShape = false,
-                onClick = {},
-            )
-        }
-    }
-}
+/** An album as a feed reports it: what to group its plays by, and what an album row shows. */
+@Immutable
+private data class StatsPlayAlbum(
+    val id: String,
+    val title: String,
+    val thumbnailUrl: String?,
+)
 
-@Composable
-private fun RemoteMetricCard(label: String, value: String, modifier: Modifier = Modifier) {
-    StatsGlassCard(modifier = modifier, cornerRadius = 18.dp) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun RemoteRankChart(title: String, ranks: List<RemoteStatsRank>, gradient: List<Color>) {
-    if (ranks.isEmpty()) return
-    StatsGlassCard(cornerRadius = 22.dp) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            val maximum = ranks.maxOf { it.count }.coerceAtLeast(1)
-            ranks.take(5).forEach { rank ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text(rank.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-                        Text(rank.count.toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    ) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth(rank.count.toFloat() / maximum)
-                                    .fillMaxHeight()
-                                    .background(Brush.horizontalGradient(gradient)),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RemoteTrackRow(track: RemoteStatsTrack) {
-    StatsGlassCard(cornerRadius = 16.dp) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(36.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(track.playCount.toString(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                }
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (track.durationMillis > 0) {
-                Text(makeTimeString(track.durationMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-private fun remoteHistoryStats(
-    page: HistoryPage,
-    range: RemoteStatsRange,
-    unknownArtistLabel: String,
-): RemoteStatsData {
-    val sections = page.sections.orEmpty().filter { it.isWithin(range) }
-    val tracks = sections.flatMap { section ->
+/**
+ * The YouTube history page as a play feed.
+ *
+ * Its sections carry the songs and date the whole shelf to a day, which is all the day chart needs
+ * and all the hour chart must not use.
+ */
+private fun HistoryPage.historyPlays(unknownArtistLabel: String): List<StatsPlay> =
+    sections.orEmpty().flatMap { section ->
+        val playedAt = section.playedAt()
         section.songs.map { song ->
-            RemoteStatsTrack(
-                id = song.id,
+            StatsPlay(
+                trackId = song.id,
                 title = song.title,
-                artist = song.artists.joinToString { it.name },
-                durationMillis = (song.duration ?: 0).toLong() * 1_000,
+                thumbnailUrl = song.thumbnail,
+                artistName = song.artists.joinToString { it.name }.ifBlank { unknownArtistLabel },
+                album =
+                    song.album
+                        ?.takeIf { it.name.isNotBlank() }
+                        ?.let { album ->
+                            // A song's own artwork is its album cover on YouTube Music; the album
+                            // node nested in the item carries no artwork of its own.
+                            StatsPlayAlbum(
+                                id = album.id.ifBlank { album.name },
+                                title = album.name,
+                                thumbnailUrl = song.thumbnail,
+                            )
+                        },
+                durationMs = (song.duration ?: 0).toLong() * 1_000L,
+                playedAt = playedAt,
+                hasClockTime = false,
             )
         }
     }
-    // YouTube dates its history by section title ("Today", "Yesterday", a date) and never by clock
-    // time, so the day chart can be filled and the hour chart cannot. The hour chart is left empty
-    // rather than faked, and StatsListeningPatterns simply omits a chart with no slots.
-    val dayPlays =
-        sections.flatMap { section ->
-            val day = parseHistoryDate(section.title)?.dayOfWeek?.value?.rem(7)
-            section.songs.map { song -> day to (song.duration ?: 0).toLong() * 1_000 }
-        }
-    return remoteStats(
-        source = StatsSource.YOUTUBE,
-        unknownArtistLabel = unknownArtistLabel,
-        tracks = tracks,
-        daySlots = slotsOf(dayPlays, slot = { it.first }, millis = { it.second }),
-    )
-}
 
-private fun spotifyHistoryStats(
-    history: List<SpotifyPlayHistory>,
-    range: RemoteStatsRange,
-    unknownArtistLabel: String,
-): RemoteStatsData {
-    val filteredHistory = history.filter { it.isWithin(range) }
-    val tracks = filteredHistory.mapNotNull { play ->
-        play.track?.let { track ->
-            RemoteStatsTrack(
-                id = track.id,
-                title = track.name,
-                artist = track.artists.joinToString { it.name },
-                durationMillis = track.durationMs.toLong(),
-            )
-        }
+/** Spotify's recently played as a play feed. Every entry is stamped with a wall-clock instant. */
+private fun List<SpotifyPlayHistory>.spotifyPlays(unknownArtistLabel: String): List<StatsPlay> =
+    mapNotNull { played ->
+        val track = played.track ?: return@mapNotNull null
+        val artwork = SpotifyMapper.getTrackThumbnail(track)
+        StatsPlay(
+            trackId = track.id,
+            title = track.name,
+            thumbnailUrl = artwork,
+            artistName = track.artists.joinToString { it.name }.ifBlank { unknownArtistLabel },
+            album =
+                track.album
+                    ?.takeIf { it.name.isNotBlank() }
+                    ?.let { album ->
+                        StatsPlayAlbum(
+                            id = album.id.ifBlank { album.name },
+                            title = album.name,
+                            thumbnailUrl = artwork,
+                        )
+                    },
+            durationMs = track.durationMs.toLong(),
+            playedAt = played.playedAt?.let { stamp -> runCatching { Instant.parse(stamp) }.getOrNull() },
+        )
     }
-    // Spotify stamps every play with a wall-clock instant, so both charts can be filled honestly.
-    val playedPlays =
-        filteredHistory.mapNotNull { play ->
-            val at =
-                play.playedAt
-                    ?.let { runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()) }.getOrNull() }
-                    ?: return@mapNotNull null
-            at to (play.track?.durationMs?.toLong() ?: 0L)
-        }
-    return remoteStats(
-        source = StatsSource.SPOTIFY,
-        unknownArtistLabel = unknownArtistLabel,
-        tracks = tracks,
-        daySlots = slotsOf(playedPlays, slot = { it.first.dayOfWeek.value % 7 }, millis = { it.second }),
-        hourSlots = slotsOf(playedPlays, slot = { it.first.hour }, millis = { it.second }),
-    )
-}
 
-private fun SpotifyPlayHistory.isWithin(range: RemoteStatsRange): Boolean {
-    if (range == RemoteStatsRange.ALL) return true
-    val playedAt = playedAt?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return false
-    val cutoff = Instant.now().minusSeconds(range.cutoffDays * 24L * 60L * 60L)
-    return !playedAt.isBefore(cutoff)
-}
-
-private fun HistoryPage.HistorySection.isWithin(range: RemoteStatsRange): Boolean {
-    if (range == RemoteStatsRange.ALL) return true
+/** The day a history section's title names, or null when it names one this code cannot read. */
+private fun HistoryPage.HistorySection.sectionDate(): LocalDate? {
     val title = title.trim().lowercase(Locale.getDefault())
-    val date =
-        when {
-            title == "today" -> LocalDate.now()
-            title == "yesterday" -> LocalDate.now().minusDays(1)
-            title.contains("this week") -> LocalDate.now()
-            title.contains("last week") -> LocalDate.now().minusDays(7)
-            else -> parseHistoryDate(title)
-        } ?: return false
-    val cutoff = LocalDate.now().minusDays((range.cutoffDays - 1).coerceAtLeast(0).toLong())
-    return !date.isBefore(cutoff)
+    return when {
+        title == "today" -> LocalDate.now()
+        title == "yesterday" -> LocalDate.now().minusDays(1)
+        title.contains("this week") -> LocalDate.now()
+        title.contains("last week") -> LocalDate.now().minusDays(7)
+        else -> parseHistoryDate(title)
+    }
+}
+
+/** A section dates its songs to the day it names, which is what midnight of that day marks. */
+private fun HistoryPage.HistorySection.playedAt(): Instant? =
+    sectionDate()?.atStartOfDay(ZoneId.systemDefault())?.toInstant()
+
+/** The earliest play the feed knows about; it bounds the range chips. */
+private fun List<StatsPlay>.firstPlay(): LocalDateTime? =
+    mapNotNull { it.playedAt }.minOrNull()?.let { earliest -> LocalDateTime.ofInstant(earliest, ZoneId.systemDefault()) }
+
+/**
+ * The local library's ranking as the dashboard model.
+ *
+ * Room has already windowed and ordered these, so this only carries each row's library entity
+ * across — which is what lets a local card open, queue or menu what it is showing.
+ */
+private fun StatsUiData.toDashboard(): StatsDashboardData {
+    val songsById = mostPlayedSongs.associateBy(Song::id)
+    // A rank the entity query left out is a blocked artist's song: nothing behind it could be
+    // opened or queued, so it is not a row the local list can draw.
+    val songs =
+        rankedSongs.mapNotNull { ranked ->
+            songsById[ranked.id]?.let { entity ->
+                StatsSongRank(
+                    id = ranked.id,
+                    title = ranked.title,
+                    thumbnailUrl = ranked.thumbnailUrl,
+                    playCount = ranked.songCountListened,
+                    timeListenedMs = ranked.timeListened ?: 0L,
+                    entity = entity,
+                )
+            }
+        }
+    return StatsDashboardData(
+        summary = listeningSummary,
+        songs = songs,
+        rankedSongCount = rankedSongs.size,
+        artists =
+            mostPlayedArtists.map { artist ->
+                StatsArtistRank(
+                    id = artist.id,
+                    name = artist.artist.name,
+                    thumbnailUrl = artist.artist.thumbnailUrl,
+                    songCount = artist.songCount,
+                    timeListenedMs = artist.timeListened?.toLong() ?: 0L,
+                    entity = artist,
+                )
+            },
+        albums =
+            mostPlayedAlbums.map { album ->
+                StatsAlbumRank(
+                    id = album.id,
+                    title = album.album.title,
+                    thumbnailUrl = album.album.thumbnailUrl,
+                    playCount = album.songCountListened ?: 0,
+                    timeListenedMs = album.timeListened?.toLong() ?: 0L,
+                    entity = album,
+                )
+            },
+        daySlots = listeningByDayOfWeek,
+        hourSlots = listeningByHour,
+        firstPlay = firstEvent?.event?.timestamp,
+    )
+}
+
+/**
+ * Ranks a remote feed into the dashboard model, keeping only the plays [window] covers.
+ *
+ * Ordering matches the local queries: songs by plays then time, artists and albums by time. A play
+ * the feed cannot date is kept for the unbounded window and dropped by any other, because a range
+ * with a start has nowhere to put a listen that never said when it happened.
+ */
+private fun List<StatsPlay>.toDashboard(window: LongRange): StatsDashboardData {
+    val inWindow = filter { play -> play.playedAt?.let { it.toEpochMilli() in window } ?: (window.first == 0L) }
+    val songs =
+        inWindow
+            .groupBy(StatsPlay::trackId)
+            .map { (id, plays) ->
+                val first = plays.first()
+                StatsSongRank(
+                    id = id,
+                    title = first.title,
+                    thumbnailUrl = first.thumbnailUrl,
+                    playCount = plays.size,
+                    timeListenedMs = plays.sumOf(StatsPlay::durationMs),
+                )
+            }
+            .sortedWith(compareByDescending<StatsSongRank> { it.playCount }.thenByDescending { it.timeListenedMs })
+    val artists =
+        inWindow
+            .groupBy(StatsPlay::artistName)
+            .map { (name, plays) ->
+                StatsArtistRank(
+                    id = name,
+                    name = name,
+                    // A history feed names an artist without an id or artwork to show.
+                    thumbnailUrl = null,
+                    songCount = plays.map(StatsPlay::trackId).distinct().size,
+                    timeListenedMs = plays.sumOf(StatsPlay::durationMs),
+                )
+            }
+            .sortedWith(compareByDescending<StatsArtistRank> { it.timeListenedMs }.thenByDescending { it.songCount })
+    val albums =
+        inWindow
+            .mapNotNull { play -> play.album?.let { album -> album to play } }
+            .groupBy { (album, _) -> album.id }
+            .map { (id, entries) ->
+                val album = entries.first().first
+                StatsAlbumRank(
+                    id = id,
+                    title = album.title,
+                    thumbnailUrl = album.thumbnailUrl,
+                    playCount = entries.size,
+                    timeListenedMs = entries.sumOf { (_, play) -> play.durationMs },
+                )
+            }
+            .sortedWith(compareByDescending<StatsAlbumRank> { it.timeListenedMs }.thenByDescending { it.playCount })
+    return StatsDashboardData(
+        summary =
+            ListeningSummary(
+                totalPlayCount = inWindow.size,
+                totalTimeListened = inWindow.sumOf(StatsPlay::durationMs),
+                uniqueSongsCount = songs.size,
+                uniqueArtistsCount = artists.size,
+                uniqueAlbumsCount = albums.size,
+            ),
+        songs = songs,
+        rankedSongCount = songs.size,
+        artists = artists,
+        albums = albums,
+        daySlots =
+            slotsOf(
+                plays = inWindow,
+                slot = { play -> play.playedAt?.atZone(ZoneId.systemDefault())?.dayOfWeek?.value?.rem(7) },
+                millis = StatsPlay::durationMs,
+            ),
+        hourSlots =
+            slotsOf(
+                plays = inWindow.filter(StatsPlay::hasClockTime),
+                slot = { play -> play.playedAt?.atZone(ZoneId.systemDefault())?.hour },
+                millis = StatsPlay::durationMs,
+            ),
+        firstPlay = firstPlay(),
+    )
 }
 
 private fun parseHistoryDate(title: String): LocalDate? {
@@ -1403,55 +1341,6 @@ private fun parseHistoryDate(title: String): LocalDate? {
             )
         }.getOrNull()
     }?.let { parsed -> if (parsed.isAfter(LocalDate.now())) parsed.minusYears(1) else parsed }
-}
-
-private val RemoteStatsRange.cutoffDays: Int
-    get() =
-        when (this) {
-            RemoteStatsRange.DAYS_7 -> 7
-            RemoteStatsRange.DAYS_30 -> 30
-            RemoteStatsRange.DAYS_90 -> 90
-            RemoteStatsRange.YEAR_1 -> 365
-            RemoteStatsRange.ALL -> Int.MAX_VALUE
-        }
-
-private fun remoteStats(
-    source: StatsSource,
-    unknownArtistLabel: String,
-    tracks: List<RemoteStatsTrack>,
-    daySlots: List<ListeningBySlot> = emptyList(),
-    hourSlots: List<ListeningBySlot> = emptyList(),
-): RemoteStatsData {
-    val rankedTracks =
-        tracks.groupBy { it.id }
-            .map { (id, plays) ->
-                plays.first().copy(
-                    id = id,
-                    playCount = plays.size,
-                )
-            }
-            .sortedByDescending(RemoteStatsTrack::playCount)
-    val artists =
-        tracks.groupBy { it.artist.ifBlank { unknownArtistLabel } }
-            .map { (artist, plays) ->
-                RemoteStatsRank(
-                    label = artist,
-                    count = plays.size,
-                    timeListenedMs = plays.sumOf(RemoteStatsTrack::durationMillis),
-                )
-            }
-            .sortedByDescending(RemoteStatsRank::count)
-    return RemoteStatsData(
-        source = source,
-        plays = tracks.size,
-        uniqueTracks = rankedTracks.size,
-        uniqueArtists = artists.size,
-        totalDurationMillis = tracks.sumOf(RemoteStatsTrack::durationMillis),
-        tracks = rankedTracks,
-        artists = artists,
-        daySlots = daySlots,
-        hourSlots = hourSlots,
-    )
 }
 
 /**
@@ -1540,21 +1429,24 @@ private fun StatsSongsHeader(
     }
 }
 
+/**
+ * The day and hour charts, both always drawn.
+ *
+ * A source that cannot fill one — YouTube's history carries no clock time — gets that chart's empty
+ * state instead, so switching sources never takes a card away.
+ */
 @Composable
 private fun StatsListeningPatterns(
     daySlots: List<ListeningBySlot>,
     hourSlots: List<ListeningBySlot>,
     currentDayOfWeek: Int,
     modifier: Modifier = Modifier,
-    horizontalPadding: Dp = 16.dp,
 ) {
-    if (daySlots.isEmpty() && hourSlots.isEmpty()) return
-
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = horizontalPadding, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
@@ -1578,19 +1470,15 @@ private fun StatsListeningPatterns(
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (daySlots.isNotEmpty()) {
-                        ListeningByDayChart(
-                            slots = daySlots,
-                            currentDayOfWeek = currentDayOfWeek,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (hourSlots.isNotEmpty()) {
-                        ListeningByHourChart(
-                            slots = hourSlots,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    ListeningByDayChart(
+                        slots = daySlots,
+                        currentDayOfWeek = currentDayOfWeek,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    ListeningByHourChart(
+                        slots = hourSlots,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
         }
@@ -1624,9 +1512,16 @@ private fun StatsSectionHeader(
     }
 }
 
+/**
+ * One row of the top-songs list for any source.
+ *
+ * The row draws only what the dashboard model carries, so a remote feed's ranking looks like the
+ * local one. Playing the song, and the menu behind a long press, need the library row the local
+ * source has and a remote feed does not, and simply do nothing without it.
+ */
 @Composable
-private fun RankedSongItem(
-    song: SongWithStats,
+private fun StatsRankedRow(
+    song: StatsSongRank,
     rank: Int,
     count: Int,
     isActive: Boolean,
@@ -1685,10 +1580,10 @@ private fun RankedSongItem(
                     joinByBullet(
                         pluralStringResource(
                             R.plurals.n_time,
-                            song.songCountListened,
-                            song.songCountListened,
+                            song.playCount,
+                            song.playCount,
                         ),
-                        makeTimeString(song.timeListened),
+                        makeTimeString(song.timeListenedMs),
                     ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1882,11 +1777,16 @@ private fun StatMetricCard(
     }
 }
 
+/**
+ * The spotlights pair, for any source.
+ *
+ * The local cards open the library row behind them; a history feed carries no such row, so a remote
+ * artist's card is informational and simply does not navigate. The card itself is drawn either way.
+ */
 @Composable
 private fun StatsHighlightsSection(
-    topArtist: Artist?,
-    topSong: SongWithStats?,
-    topSongEntity: Song?,
+    topArtist: StatsArtistRank?,
+    topSong: StatsSongRank?,
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
@@ -1902,24 +1802,26 @@ private fun StatsHighlightsSection(
         if (topArtist != null) {
             StatsHighlightCard(
                 title = stringResource(R.string.stats_favourite_artist),
-                mainText = topArtist.artist.name,
+                mainText = topArtist.name,
                 subText = "${topArtist.songCount} ${stringResource(
                     R.string.songs,
-                ).lowercase()} • ${makeTimeString(topArtist.timeListened?.toLong())}",
-                imageUrl = topArtist.artist.thumbnailUrl,
+                ).lowercase()} • ${makeTimeString(topArtist.timeListenedMs)}",
+                imageUrl = topArtist.thumbnailUrl,
                 useCircleShape = true,
-                onClick = { navController.navigate("artist/${topArtist.id}") },
+                onClick = {
+                    topArtist.entity?.let { artist -> navController.navigate("artist/${artist.id}") }
+                },
             )
         }
-        if (topSong != null && topSongEntity != null) {
+        if (topSong != null) {
             StatsHighlightCard(
                 title = stringResource(R.string.stats_favourite_song),
                 mainText = topSong.title,
                 subText = "${pluralStringResource(
                     R.plurals.n_time,
-                    topSong.songCountListened,
-                    topSong.songCountListened,
-                )} • ${makeTimeString(topSong.timeListened)}",
+                    topSong.playCount,
+                    topSong.playCount,
+                )} • ${makeTimeString(topSong.timeListenedMs)}",
                 imageUrl = topSong.thumbnailUrl,
                 useCircleShape = false,
                 onClick = {},
@@ -1981,33 +1883,13 @@ private fun StatsHighlightCard(
     }
 }
 
-/**
- * One slice of the artist breakdown.
- *
- * The chart reads only an id, a name and a listening time, so it takes this rather than the Room
- * [Artist] entity. That is what lets the remote sources — whose artists are plain names carried by
- * the history feed — draw the same chart as the local ones instead of a second, worse one.
- */
-private data class ArtistSlice(
-    val id: String,
-    val name: String,
-    val timeListenedMs: Long,
-)
-
-private fun Artist.toArtistSlice(): ArtistSlice =
-    ArtistSlice(
-        id = id,
-        name = artist.name,
-        timeListenedMs = timeListened?.toLong() ?: 0L,
-    )
-
 @Composable
 private fun SegmentedArtistChart(
-    slices: List<ArtistSlice>,
+    slices: List<StatsArtistRank>,
     totalTimeListened: Long,
     modifier: Modifier = Modifier,
 ) {
-    val visibleArtistTime = remember(slices) { slices.sumOf(ArtistSlice::timeListenedMs) }
+    val visibleArtistTime = remember(slices) { slices.sumOf(StatsArtistRank::timeListenedMs) }
     val displayTotalTime =
         remember(totalTimeListened, visibleArtistTime) {
             totalTimeListened.takeIf { it > 0L } ?: visibleArtistTime
@@ -2199,47 +2081,51 @@ private fun ListeningByDayChart(
                 color = MaterialTheme.colorScheme.secondary,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                for (day in 0..6) {
-                    val time = slotMap[day]?.timeListened ?: 0L
-                    val fraction = time.toFloat() / maxTime
-                    val barColor = if (day == currentDayOfWeek) primaryColor else containerColor
-                    val animatedFraction by animateFloatAsState(
-                        targetValue = fraction,
-                        animationSpec = tween(400),
-                        label = "bar_$day",
-                    )
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .width(24.dp)
-                                    .height(80.dp),
-                            contentAlignment = Alignment.BottomCenter,
+            if (slots.isEmpty()) {
+                StatsEmptyText()
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    for (day in 0..6) {
+                        val time = slotMap[day]?.timeListened ?: 0L
+                        val fraction = time.toFloat() / maxTime
+                        val barColor = if (day == currentDayOfWeek) primaryColor else containerColor
+                        val animatedFraction by animateFloatAsState(
+                            targetValue = fraction,
+                            animationSpec = tween(400),
+                            label = "bar_$day",
+                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.weight(1f),
                         ) {
                             Box(
                                 modifier =
                                     Modifier
                                         .width(24.dp)
-                                        .height((80 * animatedFraction).dp.coerceAtLeast(2.dp))
-                                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                        .background(barColor),
+                                        .height(80.dp),
+                                contentAlignment = Alignment.BottomCenter,
+                            ) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .width(24.dp)
+                                            .height((80 * animatedFraction).dp.coerceAtLeast(2.dp))
+                                            .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                            .background(barColor),
+                                )
+                            }
+                            Text(
+                                text = stringResource(dayLabels[day]),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (day == currentDayOfWeek) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = if (day == currentDayOfWeek) FontWeight.Bold else FontWeight.Normal,
                             )
                         }
-                        Text(
-                            text = stringResource(dayLabels[day]),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (day == currentDayOfWeek) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = if (day == currentDayOfWeek) FontWeight.Bold else FontWeight.Normal,
-                        )
                     }
                 }
             }
@@ -2292,50 +2178,54 @@ private fun ListeningByHourChart(
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                for (hour in 0..23) {
-                    val time = slotMap[hour]?.timeListened ?: 0L
-                    val fraction = time.toFloat() / maxTime
-                    val isPeak = hour == peakSlot
-                    val barColor = if (isPeak) primaryColor else containerColor.copy(alpha = 0.6f + fraction * 0.4f)
-                    val animatedFraction by animateFloatAsState(
-                        targetValue = fraction,
-                        animationSpec = tween(400),
-                        label = "hour_$hour",
-                    )
-                    Box(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .height(48.dp),
-                        contentAlignment = Alignment.BottomCenter,
-                    ) {
+            if (slots.isEmpty()) {
+                StatsEmptyText()
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    for (hour in 0..23) {
+                        val time = slotMap[hour]?.timeListened ?: 0L
+                        val fraction = time.toFloat() / maxTime
+                        val isPeak = hour == peakSlot
+                        val barColor = if (isPeak) primaryColor else containerColor.copy(alpha = 0.6f + fraction * 0.4f)
+                        val animatedFraction by animateFloatAsState(
+                            targetValue = fraction,
+                            animationSpec = tween(400),
+                            label = "hour_$hour",
+                        )
                         Box(
                             modifier =
                                 Modifier
-                                    .fillMaxWidth()
-                                    .height((48 * animatedFraction).dp.coerceAtLeast(2.dp))
-                                    .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                                    .background(barColor),
-                        )
+                                    .weight(1f)
+                                    .height(48.dp),
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height((48 * animatedFraction).dp.coerceAtLeast(2.dp))
+                                        .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                                        .background(barColor),
+                            )
+                        }
                     }
                 }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                timeLabels.forEach { label ->
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    timeLabels.forEach { label ->
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }

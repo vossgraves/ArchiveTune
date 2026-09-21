@@ -107,3 +107,20 @@ fun statToPeriod(
             StatPeriod.entries[index].toTimeMillis()
         }
     }
+
+/**
+ * The exclusive upper bound of the window [statToPeriod] opens.
+ *
+ * That is now, except for a chip older than the newest one: such a window ends where the chip
+ * nearer to now begins. These are the bounds the stats queries are asked for, so a remote feed
+ * filtered in memory covers exactly what the local library was queried for.
+ */
+fun statsUntilPeriod(
+    selection: OptionStats,
+    test: Int,
+): Long =
+    if (selection == OptionStats.CONTINUOUS || test == 0) {
+        LocalDateTime.now().toInstant(ZoneOffset.UTC).toEpochMilli()
+    } else {
+        statToPeriod(selection, test - 1)
+    }
