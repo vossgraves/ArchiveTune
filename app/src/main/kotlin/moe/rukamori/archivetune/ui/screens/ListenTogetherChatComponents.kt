@@ -16,6 +16,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -24,6 +25,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -324,11 +330,14 @@ internal fun TypingIndicatorRow(
     }
 }
 
-/** Data of the message whose anchored action popup is open. */
+/** Data of the message whose anchored action popup is open. [isHost] is the
+ * LOCAL user's host status (drives "delete for everyone" availability), as
+ * opposed to [isMe] which is about the pressed message's author. */
 internal data class MessageActionTarget(
     val message: ChatMessagePayload,
     val bounds: Rect,
     val isMe: Boolean,
+    val isHost: Boolean = false,
 )
 
 /**
@@ -345,7 +354,7 @@ internal data class MessageActionTarget(
  * popup is composed as a SIBLING of the recorded box, so sampling the local
  * layer is a plain one-way read.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun MessageActionsPopup(
     target: MessageActionTarget,
@@ -357,7 +366,8 @@ internal fun MessageActionsPopup(
     onCopy: () -> Unit,
     onEdit: () -> Unit,
     onPinToggle: () -> Unit,
-    onDelete: () -> Unit,
+    onDeleteForMe: () -> Unit,
+    onDeleteForEveryone: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -554,10 +564,11 @@ internal fun MessageActionsPopup(
                         .background(Color.White.copy(alpha = 0.14f)),
             )
 
-            // Action row
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            // Action row — a FlowRow so the extra delete chips wrap onto a
+            // second line instead of overflowing the 320dp-wide popup.
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 PopupActionChip(icon = R.drawable.reply, label = stringResource(R.string.listen_together_chat_reply_label)) {
                     onReply()
@@ -584,9 +595,26 @@ internal fun MessageActionsPopup(
                     if (!dismissed) dismissed = true
                 }
                 if (target.isMe) {
+                    // One's own messages only ever delete room-wide.
                     PopupActionChip(icon = R.drawable.delete, label = stringResource(R.string.delete)) {
-                        onDelete()
+                        onDeleteForEveryone()
                         if (!dismissed) dismissed = true
+                    }
+                } else {
+                    // Other people's messages: a private hide plus, for the
+                    // host, a room-wide moderation delete.
+                    PopupActionChip(icon = R.drawable.delete, label = stringResource(R.string.delete)) {
+                        onDeleteForMe()
+                        if (!dismissed) dismissed = true
+                    }
+                    if (target.isHost) {
+                        PopupActionChip(
+                            icon = R.drawable.delete_forever,
+                            label = stringResource(R.string.listen_together_chat_delete_for_everyone),
+                        ) {
+                            onDeleteForEveryone()
+                            if (!dismissed) dismissed = true
+                        }
                     }
                 }
             }
@@ -1120,11 +1148,12 @@ internal fun RepliedMessagePreview(
 }
 
 /**
- * Banner block over the chat list with EVERY pinned message stacked — not just
- * the most recent one. Rows keep chronological order; each row jumps to its
- * message in the history and carries its own unpin button. When more than
- * [PINNED_STACK_COLLAPSED_LIMIT] messages are pinned the stack collapses to
- * the most recent rows behind a "show all" header.
+ * Banner bar over the chat list showing the pinned messages as a stacked
+ * carousel — ONE constant-height row no matter how many messages are pinned.
+ * The latest pin always displays first; tapping the bar steps to the pin
+ * before it (wrapping around to the latest at the end) and jumps the chat to
+ * that message, while swiping horizontally browses older/newer pins without
+ * scrolling the list. The trailing button unpins the message on display.
  */
 @Composable
 internal fun PinnedMessagesStack(
@@ -1135,109 +1164,100 @@ internal fun PinnedMessagesStack(
 ) {
     if (messages.isEmpty()) return
 
-    var expanded by remember { mutableStateOf(false) }
-    val visible =
-        if (expanded) {
-            messages
-        } else {
-            messages.takeLast(PINNED_STACK_COLLAPSED_LIMIT)
-        }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val swipeThresholdPx = with(density) { 48.dp.toPx() }
+    val maxSwipePx = with(density) { 96.dp.toPx() }
+    val dragOffset = remember { Animatable(0f) }
 
-    Column(
+    // Latest pin first: recency of the pin itself, falling back to the message
+    // timestamp for history pinned before the stamp existed.
+    val ordered = remember(messages) {
+        messages.sortedByDescending { if (it.pinnedAt > 0) it.pinnedAt else it.timestamp }
+    }
+
+    var displayedKey by remember { mutableStateOf<String?>(null) }
+    var previousKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var slideDirection by remember { mutableIntStateOf(1) }
+
+    // Follow the pinned set: a freshly pinned message takes over the bar (the
+    // "latest pin displays first" rule), the shown pin is kept while it stays
+    // pinned, and a shown pin that vanishes falls back to the latest.
+    LaunchedEffect(ordered) {
+        val keys = ordered.map { pinnedKeyOf(it) }
+        val added = keys.toSet() - previousKeys
+        when {
+            displayedKey == null -> displayedKey = keys.firstOrNull()
+            added.isNotEmpty() -> displayedKey = keys.firstOrNull()
+            displayedKey !in keys -> displayedKey = keys.firstOrNull()
+        }
+        previousKeys = keys.toSet()
+    }
+
+    val index = ordered.indexOfFirst { pinnedKeyOf(it) == displayedKey }.takeIf { it >= 0 } ?: 0
+    val displayed = ordered.getOrNull(index) ?: ordered.first()
+
+    fun showOlder() {
+        if (ordered.size < 2) return
+        slideDirection = 1
+        displayedKey = pinnedKeyOf(ordered[(index + 1) % ordered.size])
+    }
+
+    fun showNewer() {
+        if (ordered.size < 2) return
+        slideDirection = -1
+        displayedKey = pinnedKeyOf(ordered[(index - 1 + ordered.size) % ordered.size])
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = RoundedCornerShape(12.dp),
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        if (messages.size > PINNED_STACK_COLLAPSED_LIMIT && !expanded) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier =
-                        Modifier
-                            .clickable { expanded = true }
-                            .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.push_pin),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = stringResource(R.string.listen_together_chat_pinned_count, messages.size),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        painter = painterResource(R.drawable.expand_more),
-                        contentDescription = stringResource(R.string.listen_together_chat_pinned_show_all),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-        }
-
-        visible.forEach { pinned ->
-            PinnedBannerRow(
-                message = pinned,
-                onUnpin = { onUnpin(pinned) },
-                onJumpTo = { onJumpTo(pinned) },
-            )
-        }
-
-        if (expanded) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { expanded = false }
-                        .padding(vertical = 2.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.listen_together_chat_pinned_show_less),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Icon(
-                    painter = painterResource(R.drawable.expand_less),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
-    }
-}
-
-/** One row of the pinned stack: the sender and a one-line preview. */
-@Composable
-private fun PinnedBannerRow(
-    message: ChatMessagePayload,
-    onUnpin: () -> Unit,
-    onJumpTo: () -> Unit,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier =
                 Modifier
-                    .clickable(onClick = onJumpTo)
+                    // Keyed on the displayed pin as well: browsing via tap changes
+                    // the shown message without changing the pinned set, and a
+                    // stale closure would then swipe-navigate from an old index.
+                    .pointerInput(ordered, displayedKey) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                scope.launch {
+                                    dragOffset.snapTo(
+                                        (dragOffset.value + dragAmount).coerceIn(-maxSwipePx, maxSwipePx),
+                                    )
+                                }
+                            },
+                            onDragEnd = {
+                                scope.launch {
+                                    if (dragOffset.value <= -swipeThresholdPx) {
+                                        showOlder()
+                                    } else if (dragOffset.value >= swipeThresholdPx) {
+                                        showNewer()
+                                    }
+                                    dragOffset.snapTo(0f)
+                                }
+                            },
+                        )
+                    }
+                    .clickable {
+                        if (ordered.size > 1) {
+                            // Tapping walks back through the pin history — and
+                            // lands the chat on the message it lands on.
+                            slideDirection = 1
+                            val next = ordered[(index + 1) % ordered.size]
+                            displayedKey = pinnedKeyOf(next)
+                            onJumpTo(next)
+                        } else {
+                            onJumpTo(displayed)
+                        }
+                    }
                     .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
         ) {
             Icon(
@@ -1247,29 +1267,75 @@ private fun PinnedBannerRow(
                 modifier = Modifier.size(15.dp),
             )
             Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
+
+            if (ordered.size > 1) {
                 Text(
-                    text = message.username,
+                    text = stringResource(
+                        R.string.listen_together_chat_pinned_position,
+                        index + 1,
+                        ordered.size,
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1,
+                    modifier =
+                        Modifier
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                                RoundedCornerShape(8.dp),
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
-                val preview =
-                    when {
-                        message.deleted -> stringResource(R.string.listen_together_chat_message_deleted)
-                        message.sharedTrack != null -> "♪ ${message.sharedTrack.title} • ${message.sharedTrack.artist}"
-                        else -> message.message
-                    }
-                Text(
-                    text = preview,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Spacer(modifier = Modifier.width(8.dp))
             }
-            IconButton(onClick = onUnpin) {
+
+            // The carousel slot: exactly one preview at a time, sliding in the
+            // direction of travel and dragged along with the finger mid-gesture.
+            Box(modifier = Modifier.weight(1f)) {
+                AnimatedContent(
+                    targetState = displayedKey,
+                    transitionSpec = {
+                        if (slideDirection >= 0) {
+                            (slideInHorizontally(tween(220)) { it / 2 } + fadeIn(tween(220))) togetherWith
+                                (slideOutHorizontally(tween(220)) { -it / 2 } + fadeOut(tween(160)))
+                        } else {
+                            (slideInHorizontally(tween(220)) { -it / 2 } + fadeIn(tween(220))) togetherWith
+                                (slideOutHorizontally(tween(220)) { it / 2 } + fadeOut(tween(160)))
+                        }
+                    },
+                    label = "pinned-carousel",
+                    modifier =
+                        Modifier.graphicsLayer {
+                            translationX = dragOffset.value
+                        },
+                ) { key ->
+                    val pinned = ordered.firstOrNull { pinnedKeyOf(it) == key } ?: displayed
+                    Column {
+                        Text(
+                            text = pinned.username,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                        val preview =
+                            when {
+                                pinned.deleted -> stringResource(R.string.listen_together_chat_message_deleted)
+                                pinned.sharedTrack != null -> "♪ ${pinned.sharedTrack.title} • ${pinned.sharedTrack.artist}"
+                                else -> pinned.message
+                            }
+                        Text(
+                            text = preview,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            IconButton(onClick = { onUnpin(displayed) }) {
                 Icon(
                     painter = painterResource(R.drawable.close),
                     contentDescription = stringResource(R.string.listen_together_chat_unpin),
@@ -1281,8 +1347,8 @@ private fun PinnedBannerRow(
     }
 }
 
-/** How many pinned rows stay visible when the stack is collapsed. */
-private const val PINNED_STACK_COLLAPSED_LIMIT = 3
+/** Stable identity of a chat message across list updates. */
+private fun pinnedKeyOf(message: ChatMessagePayload): String = "${message.userId}:${message.timestamp}"
 
 @Composable
 internal fun formatMessageWithLinks(text: String): AnnotatedString {

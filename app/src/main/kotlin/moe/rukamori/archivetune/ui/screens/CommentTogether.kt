@@ -171,6 +171,10 @@ fun CommentTogetherScreen(navController: NavController) {
 
     val pinnedMessages = remember(messages) { messages.filter { it.pinned } }
 
+    // Host role from the live room state (recomposes on host transfer) — drives
+    // the "delete for everyone" moderation action on other people's messages.
+    val iAmHost = roomState?.hostId != null && roomState?.hostId == userId
+
     fun sendMessage() {
         if (textInput.isBlank()) return
         when {
@@ -444,7 +448,7 @@ fun CommentTogetherScreen(navController: NavController) {
                             myUsername = manager.currentUsername,
                             onReply = { replyingTo = it },
                             onLongPress = { pressed, bounds ->
-                                actionTarget = MessageActionTarget(pressed, bounds, pressed.userId == userId)
+                                actionTarget = MessageActionTarget(pressed, bounds, pressed.userId == userId, iAmHost)
                             },
                             onToggleReaction = { msg, emoji ->
                                 manager.toggleReaction(msg, emoji)
@@ -483,7 +487,8 @@ fun CommentTogetherScreen(navController: NavController) {
                 textInput = target.message.message
             },
             onPinToggle = { manager.setPinned(target.message, !target.message.pinned) },
-            onDelete = { manager.deleteMessage(target.message) },
+            onDeleteForMe = { manager.deleteMessageForMe(target.message) },
+            onDeleteForEveryone = { manager.deleteMessageForEveryone(target.message) },
             onDismiss = { actionTarget = null },
         )
     }

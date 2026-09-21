@@ -309,6 +309,13 @@ data class ChatMessagePayload(
     // cross-device they travel as ChatControlEvent over the chat relay.
     val reactions: Map<String, List<String>> = emptyMap(),
     val pinned: Boolean = false,
+    // Wall-clock of the most recent pin, so the pinned bar can order itself
+    // latest-pin-first (a carousel, not a list). Zero = pinned before this
+    // field existed or currently unpinned; the message timestamp is the
+    // fallback sort key then. Never travels on the wire — each client stamps
+    // its own clock when the pin control event arrives, and it persists with
+    // the local history.
+    @SerialName("pinned_at") val pinnedAt: Long = 0L,
     val edited: Boolean = false,
     // Tombstone flag: deleted messages stay in the list (for everyone in the
     // room and in the persisted history) rendered as "message deleted", the
