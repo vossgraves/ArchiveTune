@@ -54,6 +54,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -231,6 +232,14 @@ fun LibraryMixScreen(
             LibrarySource.SPOTIFY ->
                 spotifyArtistsState.items != null && spotifyArtists.isEmpty() && !spotifyArtistsState.isLoading
         }
+    // A failed read leaves the state's items null, so the rail would draw a bare header. Say what
+    // went wrong instead, the shape SpotifySectionList gives the sections this rail previews.
+    val sourceArtistsError =
+        when (librarySource) {
+            LibrarySource.YTM -> null
+            LibrarySource.SPOTIFY -> spotifyArtistsState.errorMessage
+        }
+
     // Re-asked on an account change too: signing in to another Spotify account clears the sections
     // this rail previews, so a rail that only watched the source would keep the old account's
     // answer — the sections themselves key on the revision for the same reason.
@@ -762,7 +771,12 @@ fun LibraryMixScreen(
                                 },
                             onSeeAll = { onTabSelected(LibraryFilter.ARTISTS) },
                         )
-                        if (sourceArtistsEmpty) {
+                        if (sourceArtistsError != null) {
+                            LibraryRailErrorText(
+                                message = sourceArtistsError,
+                                onRetry = { spotifyLibraryViewModel.loadArtists(force = true) },
+                            )
+                        } else if (sourceArtistsEmpty) {
                             LibraryRailEmptyText(stringResource(R.string.library_source_artists_empty))
                         } else {
                             LazyRow(
@@ -1020,6 +1034,27 @@ private fun LibraryRailEmptyText(text: String) {
         modifier = Modifier.padding(horizontal = 24.dp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+/**
+ * A rail's failure, drawn in the section's own place: what the read said went wrong and the call
+ * that asks again, laid out as SpotifySectionList lays out a section's error.
+ */
+@Composable
+private fun LibraryRailErrorText(
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onRetry) {
+            Text(stringResource(R.string.retry))
+        }
+    }
 }
 
 @Composable
