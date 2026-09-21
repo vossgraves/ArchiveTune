@@ -117,6 +117,7 @@ import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.LocalItem
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.db.entities.lazyKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.home.HomeAction
@@ -1196,15 +1197,6 @@ private fun RemoteQuickPicksSection(
 private const val DiscoveryDeckMaxItems = 4
 private const val DiscoveryDeckColumns = 2
 
-/** One entry per deck in the rail: type-prefixed so two shelves with equal ids cannot clash. */
-private fun LocalItem.deckKey(): String =
-    when (this) {
-        is Song -> "song_$id"
-        is Album -> "album_$id"
-        is Artist -> "artist_$id"
-        is Playlist -> "playlist_$id"
-    }
-
 /** A playlist's cover lives in its song thumbnails; the other item kinds carry their own. */
 private fun LocalItem.deckThumbnailUrl(): String? =
     when (this) {
@@ -1227,7 +1219,7 @@ private fun SimilarRecommendationsDecks(
     modifier: Modifier = Modifier,
 ) {
     val distinctRecommendations =
-        remember(recommendations) { recommendations.distinctBy { recommendation -> recommendation.title.deckKey() } }
+        remember(recommendations) { recommendations.distinctBy { recommendation -> recommendation.title.lazyKey() } }
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         // A deck is two shelf cards wide plus its own gutter, so the cards land exactly on the
@@ -1242,7 +1234,7 @@ private fun SimilarRecommendationsDecks(
         ) {
             items(
                 items = distinctRecommendations,
-                key = { recommendation -> recommendation.title.deckKey() },
+                key = { recommendation -> recommendation.title.lazyKey() },
                 contentType = { "similar_discovery_deck" },
             ) { recommendation ->
                 SimilarDiscoveryDeck(
@@ -1276,7 +1268,7 @@ private fun SimilarDiscoveryDeck(
     val source = recommendation.title
     val deckItems =
         remember(recommendation.items) {
-            recommendation.items.distinctBy { item -> item.id }.take(DiscoveryDeckMaxItems)
+            recommendation.items.distinctBy { item -> item.lazyKey() }.take(DiscoveryDeckMaxItems)
         }
     val deckRows = remember(deckItems) { deckItems.chunked(DiscoveryDeckColumns) }
     val songsInDeck = remember(deckItems) { deckItems.filterIsInstance<SongItem>() }

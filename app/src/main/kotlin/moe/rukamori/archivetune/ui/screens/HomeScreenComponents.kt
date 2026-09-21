@@ -86,6 +86,7 @@ import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.LocalItem
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.db.entities.lazyKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.AlbumItem
@@ -225,14 +226,8 @@ fun SpeedDialSection(
     val distinctSpeedDial =
         remember(speedDialItems) {
             speedDialItems
-                .distinctBy {
-                    when (it) {
-                        is Song -> "song_${it.id}"
-                        is Album -> "album_${it.id}"
-                        is Artist -> "artist_${it.id}"
-                        is Playlist -> "playlist_${it.id}"
-                    }
-                }.take(24)
+                .distinctBy { it.lazyKey() }
+                .take(24)
         }
     val speedDialSongs = remember(distinctSpeedDial) { distinctSpeedDial.filterIsInstance<Song>() }
     val speedDialSongIndexById =
@@ -245,13 +240,7 @@ fun SpeedDialSection(
         remember(distinctSpeedDial) {
             buildList {
                 distinctSpeedDial.forEach { localItem ->
-                    val key =
-                        when (localItem) {
-                            is Song -> "song_${localItem.id}"
-                            is Album -> "album_${localItem.id}"
-                            is Artist -> "artist_${localItem.id}"
-                            is Playlist -> "playlist_${localItem.id}"
-                        }
+                    val key = localItem.lazyKey()
                     val ytItem =
                         when (localItem) {
                             is Song -> {
@@ -639,14 +628,7 @@ fun KeepListeningSection(
     ) {
         items(
             items = keepListening,
-            key = { item ->
-                when (item) {
-                    is Song -> "song_${item.id}"
-                    is Album -> "album_${item.id}"
-                    is Artist -> "artist_${item.id}"
-                    is Playlist -> "playlist_${item.id}"
-                }
-            },
+            key = { item -> item.lazyKey() },
             contentType = { item -> item::class },
         ) { item ->
             HomeFeedLocalItemCard(
