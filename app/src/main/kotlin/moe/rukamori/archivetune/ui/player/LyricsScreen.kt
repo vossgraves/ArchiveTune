@@ -10,7 +10,6 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.res.Configuration
-import android.graphics.Bitmap
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
@@ -69,7 +68,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -110,12 +108,12 @@ import androidx.media3.common.Player.STATE_READY
 import androidx.navigation.NavController
 import androidx.palette.graphics.Palette
 import coil3.compose.AsyncImage
-import coil3.imageLoader
 import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
 import coil3.size.Size
 import coil3.toBitmap
+import coil3.request.allowHardware
+import coil3.request.SuccessResult
+import coil3.imageLoader
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -155,12 +153,12 @@ import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
-import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import kotlin.coroutines.cancellation.CancellationException
@@ -876,8 +874,6 @@ private fun MovingBlurBackground(
         )
     }
 
-    val context = LocalContext.current
-    val imageLoader = context.imageLoader
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
     // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
@@ -928,28 +924,14 @@ private fun MovingBlurBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-                    val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
-                        value = withContext(Dispatchers.IO) {
-                            try {
-                                val request = ImageRequest.Builder(context)
-                                    .data(thumbnailUrl)
-                                    .allowHardware(false)
-                                    .memoryCacheKey(thumbnailUrl)
-                                    .diskCacheKey(thumbnailUrl)
-                                    .size(Size(720, 720))
-                                    .build()
-                                val result = imageLoader.execute(request)
-                                if (result is SuccessResult) {
-                                    val bitmap = result.image.toBitmap()
-                                        .copy(Bitmap.Config.ARGB_8888, true)
-                                    val density = context.resources.displayMetrics.density
-                                    ImageBlurUtils.blur(bitmap, 64f * density)
-                                } else null
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-                    }
+                    // Bare-URL cache key: this blur deliberately shares the decoded artwork with
+                    // the other requests for the song instead of caching a second copy of it.
+                    val blurredBitmap =
+                        rememberPreBlurredBitmap(
+                            imageUrl = thumbnailUrl,
+                            radiusDp = 64.dp,
+                            cacheKey = thumbnailUrl,
+                        )
                     blurredBitmap?.let { bm ->
                         Image(
                             bitmap = bm.asImageBitmap(),
@@ -1059,8 +1041,6 @@ private fun AppleMusicBackground(
                 .fillMaxSize()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
-        val context = LocalContext.current
-        val imageLoader = context.imageLoader
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
@@ -1069,31 +1049,12 @@ private fun AppleMusicBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-
-                    
-                    
-                    val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
-                        value = withContext(Dispatchers.IO) {
-                            try {
-                                val request = ImageRequest.Builder(context)
-                                    .data(thumbnailUrl)
-                                    .allowHardware(false)
-                                    .memoryCacheKey("$thumbnailUrl#lyricsbg")
-                                    .diskCacheKey("$thumbnailUrl#lyricsbg")
-                                    .size(Size(720, 720))
-                                    .build()
-                                val result = imageLoader.execute(request)
-                                if (result is SuccessResult) {
-                                    val bitmap = result.image.toBitmap()
-                                        .copy(Bitmap.Config.ARGB_8888, true)
-                                    val density = context.resources.displayMetrics.density
-                                    ImageBlurUtils.blur(bitmap, 46f * density)
-                                } else null
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-                    }
+                    val blurredBitmap =
+                        rememberPreBlurredBitmap(
+                            imageUrl = thumbnailUrl,
+                            radiusDp = 46.dp,
+                            cacheKey = "$thumbnailUrl#lyricsbg",
+                        )
                     blurredBitmap?.let { bm ->
                         Image(
                             bitmap = bm.asImageBitmap(),

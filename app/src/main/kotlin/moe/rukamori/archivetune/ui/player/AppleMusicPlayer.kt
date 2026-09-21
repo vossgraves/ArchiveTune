@@ -14,7 +14,6 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
-import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -77,7 +76,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -125,15 +123,7 @@ import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.size.Size as CoilSize
-import coil3.toBitmap
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -165,7 +155,7 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.utils.ImageBlurUtils
+import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -652,40 +642,22 @@ fun AppleMusicPlayerContent(
         // efficiently isn't possible).
         val useCanvasBackdrop = canvasActive && !videoShowing && !isPreS
         val context = LocalContext.current
-        val imageLoader = context.imageLoader
-        val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            // Pre-S has no RenderEffect, so Modifier.blur is a no-op there and the
-            // blur has to be baked into a bitmap off the main thread instead.
-            // Gated on useCanvasBackdrop rather than canvasActive: pre-S never
-            // uses the canvas as its backdrop (blurring a video surface without
-            // RenderEffect isn't possible), so a canvas song still needs the
-            // blurred artwork — without this it fell through to an unblurred
-            // AsyncImage and showed a sharp backdrop.
-            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || useCanvasBackdrop) {
-                value = null
-                return@produceState
+        val preBlurredBitmap =
+            if (videoShowing || useCanvasBackdrop) {
+                null
+            } else {
+                // Pre-S has no RenderEffect, so Modifier.blur is a no-op there and the blur has to
+                // be baked into a bitmap off the main thread instead. Gated on useCanvasBackdrop
+                // rather than canvasActive: pre-S never uses the canvas as its backdrop (blurring a
+                // video surface without RenderEffect isn't possible), so a canvas song still needs
+                // the blurred artwork — without this it fell through to an unblurred AsyncImage and
+                // showed a sharp backdrop.
+                rememberPreBlurredBitmap(
+                    imageUrl = artworkUrl,
+                    radiusDp = 72.dp,
+                    cacheKey = "$artworkUrl#amplayer",
+                )
             }
-            value = withContext(Dispatchers.IO) {
-                try {
-                    val request = ImageRequest.Builder(context)
-                        .data(artworkUrl)
-                        .allowHardware(false)
-                        .memoryCacheKey("$artworkUrl#amplayer")
-                        .diskCacheKey("$artworkUrl#amplayer")
-                        .size(CoilSize(720, 720))
-                        .build()
-                    val result = imageLoader.execute(request)
-                    if (result is SuccessResult) {
-                        val bitmap = result.image.toBitmap()
-                            .copy(Bitmap.Config.ARGB_8888, true)
-                        val density = context.resources.displayMetrics.density
-                        ImageBlurUtils.blur(bitmap, 72f * density)
-                    } else null
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        }
 
         if (!videoShowing) {
             // Backdrop rendering — one blurred-artwork node for every state, plus (on canvas songs)
