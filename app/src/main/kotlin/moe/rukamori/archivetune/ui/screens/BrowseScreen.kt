@@ -104,7 +104,6 @@ fun BrowseScreen(
         menuState,
         coroutineScope,
         snackbarHostState,
-        context,
     ) {
         viewModel.events.collect { event ->
             when (event) {
