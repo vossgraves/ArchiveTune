@@ -105,11 +105,7 @@ class NewPipeStreamRepository
                     requestHeaders = emptyMap(),
                     formatId = candidate.itag,
                     mimeType = candidate.mimeType.substringBefore(';'),
-                    codecs =
-                        candidate.mimeType
-                            .substringAfter("codecs=", "")
-                            .removeSurrounding("\"")
-                            .substringBefore("\""),
+                    codecs = candidate.mimeType.codecsFromMimeType(),
                     bitrate = candidate.bitrate,
                     sampleRate = candidate.audioSampleRate,
                     contentLength = candidate.contentLength ?: 0L,
@@ -133,9 +129,8 @@ class NewPipeStreamRepository
             const val TAG = "NewPipeStreamRepository"
 
             /**
-             * Visitor-capable clients only, most likely first. NewPipe's deobfuscation is what makes
-             * a cipher-only response usable here, so this favours clients that still hand back
-             * ciphered formats over the ones the native tier's login recovery needs.
+             * Visitor-capable clients only, most likely first: NewPipe's deobfuscation is what makes a
+             * cipher-only response usable here, so this avoids the ones that demand a login.
              */
             val ANONYMOUS_CLIENTS = listOf(ANDROID_MUSIC, IOS, WEB_REMIX)
 

@@ -22,6 +22,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.constants.AudioQuality
@@ -32,11 +33,13 @@ import timber.log.Timber
  * The InnerTuneX tier of [ResolveAudioStreamUseCase], and the first extractor tried after the native
  * path. InnerTuneX (`com.github.MetrolistGroup.innertubex`, GPL-3.0) is used as a library — its
  * `StreamExtractor` is adapted here, never forked — and brings its own InnerTube client, SABR/cipher
- * stack and client-fallback strategy, so this tier needs no `:core` involvement at all.
+ * stack and client-fallback strategy, so the tier takes nothing from `:core` but its proxy setting.
  *
- * The player consumes plain media URLs, so a segmented SABR result is refused rather than handed
- * on: it would fail at fetch time inside the player, which is worse than falling through to the
- * next tier.
+ * The player consumes plain media URLs, so a segmented SABR, byte-range-only or HLS-manifest result
+ * is refused rather than handed on: it would fail at fetch time inside the player, which is worse
+ * than falling through to the next tier. The capability hints below are what refuse them — the
+ * library then picks a client whose response carries a plain URL — and the guards after `extract`
+ * catch a library regression that hands such a stream through anyway.
  */
 @Singleton
 class InnerTuneXStreamRepository
@@ -55,12 +58,28 @@ class InnerTuneXStreamRepository
             val stream =
                 extractor.extract(
                     videoId = request.mediaId,
-                    hints = ContentHints(wantVideo = false),
+                    // Tells the library which transports this host can fetch: the player takes plain
+                    // media URLs, so segmented SABR, byte-range paging and HLS manifests are all
+                    // unavailable. These hints are the enforcement — the library skips those clients
+                    // and reselects, so the tier succeeds on a fetchable client rather than building a
+                    // stream that the guards below then reject. Deleting the hints regresses that;
+                    // the guards are defence-in-depth against a library regression.
+                    hints =
+                        ContentHints(wantVideo = false).withStreamCapabilities(
+                            allowHls = false,
+                            allowSabr = false,
+                            allowBoundedRange = false,
+                        ),
                     audioQuality = request.quality.toInnerTuneXQuality(),
                 ) ?: throw InnerTuneXExtractionException("InnerTuneX returned no stream for ${request.mediaId}")
             if (stream.sabrBootstrap != null) {
                 throw InnerTuneXExtractionException(
                     "InnerTuneX returned a segmented SABR stream for ${request.mediaId}",
+                )
+            }
+            if (stream.requireBoundedRange) {
+                throw InnerTuneXExtractionException(
+                    "InnerTuneX returned a byte-range-only stream for ${request.mediaId}",
                 )
             }
             return ResolvedAudioStream(
@@ -84,12 +103,22 @@ class InnerTuneXStreamRepository
             )
         }
 
-        /** Warming the visitor data and player config is an optimisation: never let it fail the tier. */
+        /**
+         * Warming the visitor data and player config is an optimisation: never let it fail the tier.
+         * The flag is set only after a warm that actually ran, so a cancelled or failed attempt is
+         * retried by the next resolve instead of leaving the singleton flagged for a warm it never got.
+         */
         private suspend fun prewarmOnce() {
             if (prewarmed) return
+            try {
+                extractor.prewarm()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Timber.tag(TAG).d(t, "InnerTuneX prewarm failed")
+                return
+            }
             prewarmed = true
-            runCatching { extractor.prewarm() }
-                .onFailure { Timber.tag(TAG).d(it, "InnerTuneX prewarm failed") }
         }
 
         private fun createExtractor(): InnerTubeExtractor {

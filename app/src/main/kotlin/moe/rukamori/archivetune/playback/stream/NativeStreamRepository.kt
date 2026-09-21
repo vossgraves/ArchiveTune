@@ -57,11 +57,7 @@ class NativeStreamRepository
                     }
                 }.getOrThrow()
             val format = playbackData.format
-            val codecs =
-                format.mimeType
-                    .substringAfter("codecs=", "")
-                    .removeSurrounding("\"")
-                    .substringBefore("\"")
+            val codecs = format.mimeType.codecsFromMimeType()
             return ResolvedAudioStream(
                 url = playbackData.streamUrl,
                 requestHeaders = emptyMap(),

@@ -5,18 +5,22 @@ Qobuz or Telegram track. See [AGENTS.md](../AGENTS.md) for the multi-source cont
 
 ## The chain
 
-`ResolveAudioStreamUseCase` (`playback/stream/`) is the entry point. It caches by
-`(mediaId, quality, metered, purpose, authFingerprint, pinnedFormatId)`, collapses
-concurrent requests for the same key into one in-flight resolution, and tries:
+`ResolveAudioStreamUseCase` (`playback/stream/`) is the entry point. Nothing in `MusicService`'s
+multi-source chain calls it yet — playback still reaches YouTube through
+`YTPlayerUtils.playerResponseForPlayback` — so this stack is groundwork, and a change here is not
+live until that wiring lands. It caches by
+`(mediaId, quality, metered, purpose, authFingerprint, pinnedFormatId)`, collapses concurrent
+requests for the same key into one in-flight resolution, and tries:
 
 1. **`NativeStreamRepository`** — the compiled InnerTube core, via `YTPlayerUtils`.
    Fast, no Python. This is the hot path.
 2. Fallback tiers, in order, each tried only after the previous one throws:
    **`InnerTuneXStreamRepository`** (the `com.github.MetrolistGroup.innertubex` library's own
-   extraction stack, adapted — not forked), then **`NewPipeStreamRepository`** (an anonymous
-   player response minted through MetrolistExtractor's JavaScript player, so no plugin APK and
-   no session), then **`YtdlnisStreamRepository`** (an external yt-dlp plugin APK through
-   `ytdlp/CompactYtDlp.kt`, the way YTDLnis does).
+   extraction stack, adapted — not forked; it refuses SABR, byte-range-only and HLS-manifest results,
+   which the player cannot fetch), then **`NewPipeStreamRepository`** (an anonymous player response minted
+   through MetrolistExtractor's JavaScript player, so no plugin APK and no session), then
+   **`YtdlnisStreamRepository`** (an external yt-dlp plugin APK through `ytdlp/CompactYtDlp.kt`, the
+   way YTDLnis does).
 
 The order lives in `ResolveAudioStreamUseCase.fallbackTiers` and nowhere else;
 `ResolvedAudioStream.source` records which tier won (`NATIVE_INNERTUBE`, `INNERTUBE_X`,
