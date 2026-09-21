@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
+import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.LocalItem
@@ -99,6 +100,8 @@ import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.utils.preferredThumbnailRatio
+import moe.rukamori.archivetune.utils.rememberPreference
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
@@ -400,10 +403,13 @@ private fun Modifier.headerClickable(onClick: () -> Unit): Modifier =
     }
 
 /**
- * The compact square card every non-hero shelf renders (BitChord ShelfCard):
+ * The compact card every non-hero shelf renders (BitChord ShelfCard):
  * artwork with the hairline border, the title one line below, the subtitle
  * under that. Interactions (tap to open / play, hold for the menu) and the
- * active-track visuals come from the fork's existing components.
+ * active-track visuals come from the fork's existing components. The artwork
+ * is square unless [thumbnailAspectRatio] says otherwise — only a source that
+ * is not square itself (a video still, a podcast episode) has any business
+ * being anything else.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -417,9 +423,14 @@ fun HomeFeedShelfCard(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     isCircular: Boolean = false,
+    thumbnailAspectRatio: Float = 1f,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val shape = if (isCircular) CircleShape else RoundedCornerShape(HomeShelfCardCorner)
+    // A frame that is not square — a video still, a podcast episode — keeps its own proportions
+    // and loses the hairline border: that border exists to pull a square sleeve off the page, and
+    // on a wide frame it would draw a line through the middle of the picture instead.
+    val isWideFrame = !isCircular && kotlin.math.abs(thumbnailAspectRatio - 1f) > 0.001f
     Column(
         modifier =
             modifier
@@ -437,11 +448,12 @@ fun HomeFeedShelfCard(
             isActive = isActive,
             isPlaying = isPlaying,
             shape = shape,
+            thumbnailRatio = thumbnailAspectRatio,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .homeFeedThumbnailBorder(shape),
+                    .aspectRatio(thumbnailAspectRatio)
+                    .let { m -> if (isWideFrame) m else m.homeFeedThumbnailBorder(shape) },
         )
         Spacer(Modifier.height(10.dp))
         Row(
@@ -606,7 +618,7 @@ fun HomeFeedSongCard(
     )
 }
 
-/** A compact shelf card for a remote YouTube item (song/album/artist/playlist). */
+/** A compact shelf card for a remote YouTube item (song/album/artist/playlist/episode). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedYTItemCard(
@@ -627,7 +639,53 @@ fun HomeFeedYTItemCard(
             is ArtistItem -> item.subscriberCountText.orEmpty()
             is PlaylistItem -> item.songCountText.orEmpty()
             is PodcastItem -> item.author?.name.orEmpty()
-            is EpisodeItem -> item.podcast?.name.orEmpty()
+            is EpisodeItem -> listOfNotNull(item.podcast?.name, item.dateText, item.durationText).joinToString(" • ")
+        }
+
+    val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
+    val resolvedThumbnailRatio = item.preferredThumbnailRatio(cropThumbnailToSquare)
+    // Neither type has a menu to open, and the sheet would come up empty; the artwork is what the
+    // card is for, so there is nothing to hold for.
+    val hasMenu = item !is PodcastItem && item !is EpisodeItem
+    val longClickHandler: (() -> Unit)? =
+        if (hasMenu) {
+            {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuState.show {
+                    when (item) {
+                        is SongItem ->
+                            YouTubeSongMenu(
+                                song = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+
+                        is AlbumItem ->
+                            YouTubeAlbumMenu(
+                                albumItem = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+
+                        is ArtistItem ->
+                            YouTubeArtistMenu(
+                                artist = item,
+                                onDismiss = menuState::dismiss,
+                            )
+
+                        is PlaylistItem ->
+                            YouTubePlaylistMenu(
+                                playlist = item,
+                                coroutineScope = scope,
+                                onDismiss = menuState::dismiss,
+                            )
+
+                        is PodcastItem, is EpisodeItem -> Unit
+                    }
+                }
+            }
+        } else {
+            null
         }
     HomeFeedShelfCard(
         thumbnailUrl = item.thumbnail,
@@ -636,6 +694,7 @@ fun HomeFeedYTItemCard(
         isCircular = item is ArtistItem,
         isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
         isPlaying = isPlaying,
+        thumbnailAspectRatio = if (item is ArtistItem) 1f else resolvedThumbnailRatio,
         onClick = {
             when (item) {
                 is SongItem -> onPlaySongFromSection(item.id)
@@ -645,41 +704,7 @@ fun HomeFeedYTItemCard(
                 is PodcastItem, is EpisodeItem -> Unit
             }
         },
-        onLongClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            menuState.show {
-                when (item) {
-                    is SongItem ->
-                        YouTubeSongMenu(
-                            song = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is AlbumItem ->
-                        YouTubeAlbumMenu(
-                            albumItem = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is ArtistItem ->
-                        YouTubeArtistMenu(
-                            artist = item,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is PlaylistItem ->
-                        YouTubePlaylistMenu(
-                            playlist = item,
-                            coroutineScope = scope,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is PodcastItem, is EpisodeItem -> Unit
-                }
-            }
-        },
+        onLongClick = longClickHandler,
         modifier = modifier,
     )
 }
