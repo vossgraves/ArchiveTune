@@ -946,15 +946,24 @@ fun HomeTopFadeBlur(
 }
 
 /**
- * The Home route's backdrop: three soft colour pools over the theme's own surface, so the page
+ * The Home route's backdrop: three soft colour pools over a base the theme owns, so the page
  * reads as a place rather than as a flat sheet the feed happens to sit on. Drawn full-bleed behind
  * everything, loading and empty states included, and only where the blur it sits under is wanted —
  * it is atmosphere for the glass, and on its own it would just be a tinted page.
  */
 @Composable
 fun HomeAtmosphereBackground(modifier: Modifier = Modifier) {
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val base = if (dark) Color(0xFF0D0E12) else MaterialTheme.colorScheme.surface
+    val surface = MaterialTheme.colorScheme.surface
+    val dark = surface.luminance() < 0.5f
+    // The page base is drawn from the theme rather than being a colour of its own, so the top-fade
+    // scrim — keyed to the colour of the page underneath it — keeps matching, and a pure-black
+    // page has nothing to mismatch with either.
+    val base =
+        if (dark && surface != Color.Black) {
+            MaterialTheme.colorScheme.surfaceContainerLowest
+        } else {
+            surface
+        }
     val glow = if (dark) 0.17f else 0.12f
     Box(
         modifier =
