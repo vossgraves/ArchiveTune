@@ -107,19 +107,16 @@ import moe.rukamori.archivetune.ui.component.pressScaleClickable
 import moe.rukamori.archivetune.utils.joinByBullet
 
 /**
- * The Spotify home's geometry. It used to be one of three sets behind a style preference; the page
- * is a single layout now, and it takes the YouTube home's own numbers — single-row carousels, 12dp
- * gutters, GridThumbnailHeight cards — so the two pages read as one app rather than as two.
+ * The Spotify home's geometry: the removed DEFAULT preset's own dp, held over as the single set —
+ * one row of track tiles per carousel, 12dp gutters, 128dp cards.
  *
- * Holding it as one value rather than repeating the dp inside each row keeps the four section rows
+ * Holding them as one value rather than repeating the dp inside each row keeps the four section rows
  * to a single implementation apiece; copies of each would drift the first time one is touched.
  */
 @androidx.compose.runtime.Immutable
 private data class SpotifyHomeMetrics(
-    /** Rows deep the track grid runs. One, matching the YouTube home's carousels. */
-    val trackRows: Int,
     val trackItemWidth: Dp,
-    /** Height of one row of the track grid; total grid height is this times [trackRows]. */
+    /** Height of the track row; the grid is always one row deep. */
     val trackRowHeight: Dp,
     /** Width of an album/playlist card. */
     val cardWidth: Dp,
@@ -130,7 +127,6 @@ private data class SpotifyHomeMetrics(
 
 private val spotifyHomeMetrics =
     SpotifyHomeMetrics(
-        trackRows = 1,
         trackItemWidth = 300.dp,
         trackRowHeight = 72.dp,
         cardWidth = 128.dp,
@@ -308,9 +304,7 @@ fun SpotifyHomeScreen(
                                         )
                                     }
                                 }
-                                // The swipeable hero. It was once gated on the Rukamori style; it is
-                                // Spotify's own shelf rather than a layout of it, so it now shows
-                                // for every Spotify home.
+                                // Spotify's own shelf; shown for every Spotify home.
                                 SpotifyQuickPicksCarousel(
                                     tracks = quickPicks.tracks,
                                     activeTrackId = mediaMetadata?.spotifyTrackId,
@@ -423,14 +417,13 @@ private fun SpotifyTrackSectionRow(
     resolvingItemKey: String? = null,
 ) {
     if (tracks.isEmpty()) return
-    val rowCount = spotifyHomeMetrics.trackRows.coerceAtMost(tracks.size).coerceAtLeast(1)
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
-        rows = GridCells.Fixed(rowCount),
+        rows = GridCells.Fixed(1),
         contentPadding = PaddingValues(horizontal = spotifyHomeMetrics.contentPadding),
         modifier = modifier
             .fillMaxWidth()
-            .height(spotifyHomeMetrics.trackRowHeight * rowCount),
+            .height(spotifyHomeMetrics.trackRowHeight),
     ) {
         itemsIndexed(
             items = tracks,
