@@ -564,6 +564,12 @@ class MusicService :
     private val persistentStateLock = Any()
     private val persistentSaveGeneration = AtomicLong(0L)
 
+    // Persistent files whose contents this process could not read, reported once each. A file
+    // written by an older build stays unreadable after a model change, and the next save replaces
+    // it, so this is routine rather than an error: it says so once, quietly, instead of repeating
+    // a stack trace every time the restore path runs.
+    private val reportedPersistentReadFailures = mutableSetOf<String>()
+
     @Volatile
     private var isRestoringPersistentState = false
 
@@ -9115,8 +9121,10 @@ class MusicService :
                         payload
                     }
                 }
-            }.onFailure {
-                Timber.tag(TAG).w(it, "Failed to read persistent file: $fileName")
+            }.onFailure { error ->
+                if (reportedPersistentReadFailures.add(fileName)) {
+                    Timber.tag(TAG).d("Ignoring unreadable persistent file $fileName (${error::class.java.simpleName})")
+                }
             }.getOrNull()
         }
     }
