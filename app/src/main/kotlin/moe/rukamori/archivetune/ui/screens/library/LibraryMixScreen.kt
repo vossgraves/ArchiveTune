@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.ui.screens.library
 
 import android.content.Intent
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -560,40 +561,15 @@ fun LibraryMixScreen(
                 // a source with none leaves the section in place showing its empty state.
                 item(key = "your_playlists") {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text =
-                                    stringResource(
-                                        if (librarySource == LibrarySource.SPOTIFY) {
-                                            R.string.your_spotify_playlists
-                                        } else {
-                                            R.string.your_youtube_playlists
-                                        },
-                                    ),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onBackground,
-                            )
-                            Text(
-                                text = stringResource(R.string.see_all),
-                                style =
-                                    MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    ),
-                                modifier =
-                                    Modifier
-                                        .clip(CircleShape)
-                                        .clickable { onTabSelected(LibraryFilter.PLAYLISTS) }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
-                        }
+                        LibraryRailHeader(
+                            titleRes =
+                                if (librarySource == LibrarySource.SPOTIFY) {
+                                    R.string.your_spotify_playlists
+                                } else {
+                                    R.string.your_youtube_playlists
+                                },
+                            onSeeAll = { onTabSelected(LibraryFilter.PLAYLISTS) },
+                        )
 
                         if (sourcePlaylistsEmpty) {
                             LibraryRailEmptyText(stringResource(R.string.library_source_playlists_empty))
@@ -774,40 +750,15 @@ fun LibraryMixScreen(
                 // tiles follow the source, and an empty source keeps the row and says so.
                 item(key = "your_artists") {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text =
-                                    stringResource(
-                                        if (librarySource == LibrarySource.SPOTIFY) {
-                                            R.string.your_spotify_artists
-                                        } else {
-                                            R.string.your_youtube_artists
-                                        },
-                                    ),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onBackground,
-                            )
-                            Text(
-                                text = stringResource(R.string.see_all),
-                                style =
-                                    MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    ),
-                                modifier =
-                                    Modifier
-                                        .clip(CircleShape)
-                                        .clickable { onTabSelected(LibraryFilter.ARTISTS) }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
-                        }
+                        LibraryRailHeader(
+                            titleRes =
+                                if (librarySource == LibrarySource.SPOTIFY) {
+                                    R.string.your_spotify_artists
+                                } else {
+                                    R.string.your_youtube_artists
+                                },
+                            onSeeAll = { onTabSelected(LibraryFilter.ARTISTS) },
+                        )
                         if (sourceArtistsEmpty) {
                             LibraryRailEmptyText(stringResource(R.string.library_source_artists_empty))
                         } else {
@@ -820,39 +771,17 @@ fun LibraryMixScreen(
                                 if (librarySource == LibrarySource.YTM) {
                                     items(artists.take(10), key = { it.artist.id }) { item ->
                                         val artist = item.artist
-                                        Column(
-                                            modifier =
-                                                Modifier
-                                                    .width(80.dp)
-                                                    .clickable {
-                                                        navController.navigate("artist/${artist.id}")
-                                                    },
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                        ) {
-                                            AsyncImage(
-                                                model = rememberSizedImageRequest(artist.thumbnailUrl, 72.dp, 72.dp),
-                                                contentDescription = null,
-                                                contentScale = ContentScale.Crop,
-                                                modifier =
-                                                    Modifier
-                                                        .size(72.dp)
-                                                        .clip(CircleShape),
-                                            )
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                text = artist.name,
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                textAlign = TextAlign.Center,
-                                                color = MaterialTheme.colorScheme.onBackground,
-                                            )
-                                        }
+                                        ArtistTile(
+                                            thumbnailUrl = artist.thumbnailUrl,
+                                            name = artist.name,
+                                            onClick = { navController.navigate("artist/${artist.id}") },
+                                        )
                                     }
                                 } else {
                                     items(spotifyArtists.take(10), key = { it.id }) { artist ->
-                                        SpotifyArtistTile(
-                                            artist = artist,
+                                        ArtistTile(
+                                            thumbnailUrl = SpotifyMapper.getArtistThumbnail(artist),
+                                            name = artist.name,
                                             onClick = { openSpotifyArtist(artist) },
                                         )
                                     }
@@ -993,14 +922,15 @@ private fun SpotifyPlaylistCompactCard(
 }
 
 /**
- * One Spotify artist in the Library tab's artists row.
+ * One artist in the Library tab's artists row, for either source.
  *
- * The row it sits in is the local library's, so it uses the same tile the local artists do — the
- * source changes the data and the tap's destination, not the shape of the section.
+ * The row is the local library's shape, so the source changes the data and where a tap goes, not
+ * the tile — which is why YouTube's and Spotify's artists share this one.
  */
 @Composable
-private fun SpotifyArtistTile(
-    artist: SpotifyArtist,
+private fun ArtistTile(
+    thumbnailUrl: String?,
+    name: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1012,7 +942,7 @@ private fun SpotifyArtistTile(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AsyncImage(
-            model = rememberSizedImageRequest(SpotifyMapper.getArtistThumbnail(artist), 72.dp, 72.dp),
+            model = rememberSizedImageRequest(thumbnailUrl, 72.dp, 72.dp),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier =
@@ -1022,12 +952,53 @@ private fun SpotifyArtistTile(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = artist.name,
+            text = name,
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onBackground,
+        )
+    }
+}
+
+/**
+ * A rail's title and its "see all" link — the header both of the Library tab's rails wear.
+ *
+ * The title carries the source ("Your YouTube playlists" / "Your Spotify playlists"), so the rails
+ * differ in their words and where the link goes, not in their shape.
+ */
+@Composable
+private fun LibraryRailHeader(
+    @StringRes titleRes: Int,
+    onSeeAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(titleRes),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = stringResource(R.string.see_all),
+            style =
+                MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                ),
+            modifier =
+                Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onSeeAll)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }
 }
@@ -1139,12 +1110,7 @@ private fun TopMixesMessageSection(
             onRefresh = onRefresh,
             showRefresh = showRefresh,
         )
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = 24.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        LibraryRailEmptyText(message)
     }
 }
 
