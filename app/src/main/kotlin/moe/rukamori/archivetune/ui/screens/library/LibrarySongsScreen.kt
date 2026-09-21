@@ -95,13 +95,14 @@ import moe.rukamori.archivetune.viewmodels.LibrarySongsViewModel
 @Composable
 fun LibrarySongsScreen(
     navController: NavController,
+    librarySource: LibrarySource,
     onDeselect: () -> Unit,
     viewModel: LibrarySongsViewModel = hiltViewModel(),
 ) {
     // The Spotify half of this section is a remote list with none of the sorting, filtering
     // or multi-select below it, so it is its own screen rather than a branch threaded through
-    // this one. Both render the pills.
-    if (rememberLibrarySource() == LibrarySource.SPOTIFY) {
+    // this one. The source arrives from the Library, which owns the selector.
+    if (librarySource == LibrarySource.SPOTIFY) {
         LibrarySpotifySongsScreen()
         return
     }
@@ -182,8 +183,6 @@ fun LibrarySongsScreen(
                     .fillMaxSize()
                     .padding(top = LibraryHeaderContentPadding),
         ) {
-            LibrarySourcePills()
-
             // Sub-Filters Row (All Songs, Downloaded, Liked)
             Row(
                 modifier =

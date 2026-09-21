@@ -109,10 +109,6 @@ private fun SpotifySectionList(
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item(key = "library_source_pills", contentType = "library_source_pills") {
-                LibrarySourcePills(modifier = Modifier.padding(bottom = 4.dp))
-            }
-
             if (errorMessage != null) {
                 item(key = "spotify_section_error", contentType = "spotify_section_error") {
                     Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {

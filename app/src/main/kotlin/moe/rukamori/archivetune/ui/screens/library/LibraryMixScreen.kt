@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.screens.library
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -70,6 +72,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -98,11 +101,11 @@ import moe.rukamori.archivetune.constants.HideLocalFilesCardKey
 import moe.rukamori.archivetune.constants.HideOfflineCardKey
 import moe.rukamori.archivetune.constants.HideTop50CardKey
 import moe.rukamori.archivetune.constants.LibraryFilter
-import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.spotify.SpotifyMapper
+import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -144,6 +147,7 @@ private fun rememberSizedImageRequest(
 @Composable
 fun LibraryMixScreen(
     navController: NavController,
+    librarySource: LibrarySource,
     filterContent: (@Composable () -> Unit)?,
     selectedTagIds: Set<String>,
     onTabSelected: (LibraryFilter) -> Unit,
@@ -176,9 +180,8 @@ fun LibraryMixScreen(
     val mostPlayedAlbumUiState by viewModel.mostPlayedAlbumUiState.collectAsStateWithLifecycle()
     val topMixesUiState by viewModel.topMixesUiState.collectAsStateWithLifecycle()
     val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
-    val (showSpotifyPlaylists) = rememberPreference(ShowSpotifyPlaylistsKey, false)
+    val spotifyArtistsState by spotifyLibraryViewModel.artists.collectAsStateWithLifecycle()
     val (hideAiMix) = rememberPreference(HideAiMixKey, false)
-    val librarySource = rememberLibrarySource()
     val (hideLikedSongsCard) = rememberPreference(HideLikedSongsCardKey, false)
     val (hideOfflineCard) = rememberPreference(HideOfflineCardKey, false)
     val (hideCachedCard) = rememberPreference(HideCachedCardKey, false)
@@ -199,14 +202,41 @@ fun LibraryMixScreen(
                 matchesName && matchesTags
             }
         }
-    val visibleSpotifyPlaylists =
-        remember(showSpotifyPlaylists, spotifyPlaylists) {
-            if (showSpotifyPlaylists) {
-                spotifyPlaylists
-            } else {
-                emptyList()
-            }
+    val spotifyArtists = spotifyArtistsState.items.orEmpty()
+
+    // What the active source has for the rails below, and the two reads that fill them. Spotify's
+    // playlists and artists come from the same Spotify library path the Playlists, Artists and
+    // Albums sections use; nothing else on the Library tab asks for them, so switching to Spotify
+    // is what starts that read.
+    val sourcePlaylistsEmpty =
+        when (librarySource) {
+            LibrarySource.YTM -> visiblePlaylists.isEmpty()
+            LibrarySource.SPOTIFY -> spotifyPlaylists.isEmpty()
         }
+    val sourceArtistsEmpty =
+        when (librarySource) {
+            LibrarySource.YTM -> artists.isEmpty()
+            LibrarySource.SPOTIFY -> spotifyArtists.isEmpty()
+        }
+
+    LaunchedEffect(librarySource, spotifyLibraryViewModel) {
+        if (librarySource == LibrarySource.SPOTIFY) {
+            spotifyLibraryViewModel.ensurePlaylists()
+            spotifyLibraryViewModel.loadArtists()
+        }
+    }
+
+    // Handed to Spotify itself, the same as Spotify search results are: the app has no in-app
+    // Spotify artist page to open, and pretending otherwise would be worse than handing them over.
+    val context = LocalContext.current
+    val openSpotifyArtist: (SpotifyArtist) -> Unit = { artist ->
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/artist/${artist.id}")),
+            )
+        }
+        Unit
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.topMixEvents.collect { message ->
@@ -237,13 +267,8 @@ fun LibraryMixScreen(
                     ),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                // The source pills come first: they decide what the whole screen is showing, and a
-                // control that governs the page belongs above the page, not buried under the first
-                // card. Renders nothing without a usable Spotify session.
-                item(key = "library_source_pills", contentType = "library_source_pills") {
-                    LibrarySourcePills()
-                }
-
+                // The source selector is not here any more: it sits at the top of the Library,
+                // above these section chips, where a switch is one tap instead of a scroll.
                 item(key = "most_played_album_spotlight", contentType = "spotlight") {
                     val state = mostPlayedAlbumUiState
                     if (state is MostPlayedAlbumUiState.Success) {
@@ -295,8 +320,8 @@ fun LibraryMixScreen(
                                     if (!hideLikedSongsCard) {
                                         // Spotify's liked songs sit on the same card as
                                         // everything else called "Liked songs", and follow the
-                                        // source pills: the count is only meaningful for the
-                                        // local library, and Spotify's is named instead.
+                                        // source: the count is only meaningful for the local
+                                        // library, and Spotify's is named instead.
                                         val likedOnSpotify = librarySource == LibrarySource.SPOTIFY
                                         ShortcutCard(
                                             title = stringResource(R.string.liked_songs),
@@ -483,20 +508,32 @@ fun LibraryMixScreen(
                     }
                 }
 
+                // Mixes are built from YouTube listening history, so Spotify cannot fill this one.
+                // The section keeps its place and says so, rather than disappearing and reshuffling
+                // everything under it whenever the source changes.
                 if (!hideAiMix) {
                     item(key = "top_mixes") {
-                        TopMixesForYouSection(
-                            state = topMixesUiState,
-                            onRefresh = viewModel::refreshTopMixes,
-                            onConfigureAi = { navController.navigate("settings/ai_integration") },
-                            onPlayMix = { mix ->
-                                playerConnection.playQueue(
-                                    ListQueue(
-                                        items = mix.tracks.map { it.toMediaItem() },
-                                    ),
-                                )
-                            },
-                        )
+                        if (librarySource == LibrarySource.SPOTIFY) {
+                            TopMixesMessageSection(
+                                message = stringResource(R.string.library_source_mixes_spotify),
+                                isRefreshing = false,
+                                onRefresh = viewModel::refreshTopMixes,
+                                showRefresh = false,
+                            )
+                        } else {
+                            TopMixesForYouSection(
+                                state = topMixesUiState,
+                                onRefresh = viewModel::refreshTopMixes,
+                                onConfigureAi = { navController.navigate("settings/ai_integration") },
+                                onPlayMix = { mix ->
+                                    playerConnection.playQueue(
+                                        ListQueue(
+                                            items = mix.tracks.map { it.toMediaItem() },
+                                        ),
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
 
@@ -507,163 +544,176 @@ fun LibraryMixScreen(
                     }
                 }
 
-                // Playlists Row
-                if (visiblePlaylists.isNotEmpty() || visibleSpotifyPlaylists.isNotEmpty()) {
-                    item(key = "your_playlists") {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
+                // Playlists Row: one section for both sources, so the screen keeps its shape
+                // when the switch moves the data. The label and the cards follow the source, and
+                // a source with none leaves the section in place showing its empty state.
+                item(key = "your_playlists") {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text =
+                                    stringResource(
+                                        if (librarySource == LibrarySource.SPOTIFY) {
+                                            R.string.your_spotify_playlists
+                                        } else {
+                                            R.string.your_youtube_playlists
+                                        },
+                                    ),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onBackground,
+                            )
+                            Text(
+                                text = stringResource(R.string.see_all),
+                                style =
+                                    MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    ),
                                 modifier =
                                     Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.your_playlists),
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                )
-                                Text(
-                                    text = stringResource(R.string.see_all),
-                                    style =
-                                        MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        ),
-                                    modifier =
-                                        Modifier
-                                            .clip(CircleShape)
-                                            .clickable { onTabSelected(LibraryFilter.PLAYLISTS) }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                                )
-                            }
+                                        .clip(CircleShape)
+                                        .clickable { onTabSelected(LibraryFilter.PLAYLISTS) }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
 
+                        if (sourcePlaylistsEmpty) {
+                            LibraryRailEmptyText(stringResource(R.string.library_source_playlists_empty))
+                        } else {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 24.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                items(
-                                    items = visiblePlaylists.take(8),
-                                    key = { playlist -> "playlist_${playlist.id}" },
-                                    contentType = { "library_playlist" },
-                                ) { playlist ->
-                                    val cardBgColor =
-                                        rememberArtworkCardColor(
-                                            thumbnailUrl = playlist.thumbnails.getOrNull(0),
-                                            fallbackColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                if (librarySource == LibrarySource.YTM) {
+                                    items(
+                                        items = visiblePlaylists.take(8),
+                                        key = { playlist -> "playlist_${playlist.id}" },
+                                        contentType = { "library_playlist" },
+                                    ) { playlist ->
+                                        val cardBgColor =
+                                            rememberArtworkCardColor(
+                                                thumbnailUrl = playlist.thumbnails.getOrNull(0),
+                                                fallbackColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                            )
+
+                                        val interactionSource = remember { MutableInteractionSource() }
+                                        val isPressed by interactionSource.collectIsPressedAsState()
+                                        val scale by animateFloatAsState(
+                                            targetValue = if (isPressed) 0.97f else 1.0f,
+                                            animationSpec =
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessLow,
+                                                ),
+                                            label = "MixPlaylistCardScale",
                                         )
 
-                                    val interactionSource = remember { MutableInteractionSource() }
-                                    val isPressed by interactionSource.collectIsPressedAsState()
-                                    val scale by animateFloatAsState(
-                                        targetValue = if (isPressed) 0.97f else 1.0f,
-                                        animationSpec =
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessLow,
-                                            ),
-                                        label = "MixPlaylistCardScale",
-                                    )
-
-                                    Column(
-                                        modifier =
-                                            Modifier
-                                                .width(130.dp)
-                                                .graphicsLayer {
-                                                    scaleX = scale
-                                                    scaleY = scale
-                                                }.clip(RoundedCornerShape(32.dp))
-                                                .background(cardBgColor)
-                                                .clickable(
-                                                    interactionSource = interactionSource,
-                                                    indication = null,
-                                                    onClick = {
-                                                        if (!playlist.playlist.isEditable && playlist.songCount == 0 &&
-                                                            playlist.playlist.remoteSongCount != 0
-                                                        ) {
-                                                            navController.navigate("online_playlist/${playlist.playlist.browseId}")
-                                                        } else {
-                                                            navController.navigate("local_playlist/${playlist.id}")
-                                                        }
-                                                    },
-                                                ).padding(12.dp),
-                                    ) {
-                                        Box(
+                                        Column(
                                             modifier =
                                                 Modifier
-                                                    .size(106.dp)
-                                                    .clip(RoundedCornerShape(24.dp)),
+                                                    .width(130.dp)
+                                                    .graphicsLayer {
+                                                        scaleX = scale
+                                                        scaleY = scale
+                                                    }.clip(RoundedCornerShape(32.dp))
+                                                    .background(cardBgColor)
+                                                    .clickable(
+                                                        interactionSource = interactionSource,
+                                                        indication = null,
+                                                        onClick = {
+                                                            if (!playlist.playlist.isEditable && playlist.songCount == 0 &&
+                                                                playlist.playlist.remoteSongCount != 0
+                                                            ) {
+                                                                navController.navigate("online_playlist/${playlist.playlist.browseId}")
+                                                            } else {
+                                                                navController.navigate("local_playlist/${playlist.id}")
+                                                            }
+                                                        },
+                                                    ).padding(12.dp),
                                         ) {
-                                            AsyncImage(
-                                                model = rememberSizedImageRequest(playlist.thumbnails.getOrNull(0), 106.dp, 106.dp),
-                                                contentDescription = null,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
-                                            // Play Overlay button
                                             Box(
                                                 modifier =
                                                     Modifier
-                                                        .align(Alignment.BottomEnd)
-                                                        .padding(6.dp)
-                                                        .size(28.dp)
-                                                        .clip(CircleShape)
-                                                        .background(MaterialTheme.colorScheme.primary)
-                                                        .clickable {
-                                                            playerConnection.let { conn ->
-                                                                coroutineScope.launch {
-                                                                    database.playlistSongs(playlist.id).firstOrNull()?.let { songs ->
-                                                                        if (songs.isNotEmpty()) {
-                                                                            conn.playQueue(
-                                                                                ListQueue(items = songs.map { it.song.toMediaItem() }),
-                                                                            )
+                                                        .size(106.dp)
+                                                        .clip(RoundedCornerShape(24.dp)),
+                                            ) {
+                                                AsyncImage(
+                                                    model = rememberSizedImageRequest(playlist.thumbnails.getOrNull(0), 106.dp, 106.dp),
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                                // Play Overlay button
+                                                Box(
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomEnd)
+                                                            .padding(6.dp)
+                                                            .size(28.dp)
+                                                            .clip(CircleShape)
+                                                            .background(MaterialTheme.colorScheme.primary)
+                                                            .clickable {
+                                                                playerConnection.let { conn ->
+                                                                    coroutineScope.launch {
+                                                                        database.playlistSongs(playlist.id).firstOrNull()?.let { songs ->
+                                                                            if (songs.isNotEmpty()) {
+                                                                                conn.playQueue(
+                                                                                    ListQueue(items = songs.map { it.song.toMediaItem() }),
+                                                                                )
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
-                                                            }
-                                                        },
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(id = R.drawable.play),
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                                    modifier = Modifier.size(14.dp),
-                                                )
+                                                            },
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Icon(
+                                                        painter = painterResource(id = R.drawable.play),
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                                        modifier = Modifier.size(14.dp),
+                                                    )
+                                                }
                                             }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = playlist.playlist.name,
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                color = MaterialTheme.colorScheme.onBackground,
+                                            )
+                                            Text(
+                                                text = "${playlist.songCount} ${stringResource(R.string.tracks_label)}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                                            )
                                         }
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = playlist.playlist.name,
-                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            color = MaterialTheme.colorScheme.onBackground,
-                                        )
-                                        Text(
-                                            text = "${playlist.songCount} ${stringResource(R.string.tracks_label)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                                    }
+                                } else {
+                                    items(
+                                        items = spotifyPlaylists.take(8),
+                                        key = { playlist -> "spotify_playlist_${playlist.id}" },
+                                        contentType = { "library_spotify_playlist" },
+                                    ) { playlist ->
+                                        SpotifyPlaylistCompactCard(
+                                            playlist = playlist,
+                                            onClick = {
+                                                navController.navigate("spotify_playlist/${playlist.id}")
+                                            },
                                         )
                                     }
-                                }
-
-                                items(
-                                    items = visibleSpotifyPlaylists.take(8),
-                                    key = { playlist -> "spotify_playlist_${playlist.id}" },
-                                    contentType = { "library_spotify_playlist" },
-                                ) { playlist ->
-                                    SpotifyPlaylistCompactCard(
-                                        playlist = playlist,
-                                        onClick = {
-                                            navController.navigate("spotify_playlist/${playlist.id}")
-                                        },
-                                    )
                                 }
 
                                 // Ending "More" card
@@ -709,71 +759,90 @@ fun LibraryMixScreen(
                     }
                 }
 
-                // 5. Your Artists Row
-                if (artists.isNotEmpty()) {
-                    item(key = "your_artists") {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
+                // Your Artists Row: the same section for both sources — the label and the
+                // tiles follow the source, and an empty source keeps the row and says so.
+                item(key = "your_artists") {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text =
+                                    stringResource(
+                                        if (librarySource == LibrarySource.SPOTIFY) {
+                                            R.string.your_spotify_artists
+                                        } else {
+                                            R.string.your_youtube_artists
+                                        },
+                                    ),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onBackground,
+                            )
+                            Text(
+                                text = stringResource(R.string.see_all),
+                                style =
+                                    MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    ),
                                 modifier =
                                     Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.your_artists),
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                )
-                                Text(
-                                    text = stringResource(R.string.see_all),
-                                    style =
-                                        MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        ),
-                                    modifier =
-                                        Modifier
-                                            .clip(CircleShape)
-                                            .clickable { onTabSelected(LibraryFilter.ARTISTS) }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                                )
-                            }
+                                        .clip(CircleShape)
+                                        .clickable { onTabSelected(LibraryFilter.ARTISTS) }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
+                        if (sourceArtistsEmpty) {
+                            LibraryRailEmptyText(stringResource(R.string.library_source_artists_empty))
+                        } else {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 24.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                items(artists.take(10), key = { it.artist.id }) { item ->
-                                    val artist = item.artist
-                                    Column(
-                                        modifier =
-                                            Modifier
-                                                .width(80.dp)
-                                                .clickable {
-                                                    navController.navigate("artist/${artist.id}")
-                                                },
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        AsyncImage(
-                                            model = rememberSizedImageRequest(artist.thumbnailUrl, 72.dp, 72.dp),
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
+                                if (librarySource == LibrarySource.YTM) {
+                                    items(artists.take(10), key = { it.artist.id }) { item ->
+                                        val artist = item.artist
+                                        Column(
                                             modifier =
                                                 Modifier
-                                                    .size(72.dp)
-                                                    .clip(CircleShape),
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = artist.name,
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                            color = MaterialTheme.colorScheme.onBackground,
+                                                    .width(80.dp)
+                                                    .clickable {
+                                                        navController.navigate("artist/${artist.id}")
+                                                    },
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                        ) {
+                                            AsyncImage(
+                                                model = rememberSizedImageRequest(artist.thumbnailUrl, 72.dp, 72.dp),
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Crop,
+                                                modifier =
+                                                    Modifier
+                                                        .size(72.dp)
+                                                        .clip(CircleShape),
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = artist.name,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                textAlign = TextAlign.Center,
+                                                color = MaterialTheme.colorScheme.onBackground,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    items(spotifyArtists.take(10), key = { it.id }) { artist ->
+                                        SpotifyArtistTile(
+                                            artist = artist,
+                                            onClick = { openSpotifyArtist(artist) },
                                         )
                                     }
                                 }
@@ -910,6 +979,62 @@ private fun SpotifyPlaylistCompactCard(
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
         )
     }
+}
+
+/**
+ * One Spotify artist in the Library tab's artists row.
+ *
+ * The row it sits in is the local library's, so it uses the same tile the local artists do — the
+ * source changes the data and the tap's destination, not the shape of the section.
+ */
+@Composable
+private fun SpotifyArtistTile(
+    artist: SpotifyArtist,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .width(80.dp)
+                .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        AsyncImage(
+            model = rememberSizedImageRequest(SpotifyMapper.getArtistThumbnail(artist), 72.dp, 72.dp),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier =
+                Modifier
+                    .size(72.dp)
+                    .clip(CircleShape),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = artist.name,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+    }
+}
+
+/**
+ * A Library rail's empty state, drawn in the section's own place.
+ *
+ * A rail the active source has nothing for keeps its header and shows this, so a source switch
+ * swaps the contents and never the layout. Same gutter and tone as the mixes section's messages.
+ */
+@Composable
+private fun LibraryRailEmptyText(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(horizontal = 24.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

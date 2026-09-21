@@ -16,6 +16,9 @@
  *
  * The sections themselves are the app's existing screens, opened in place rather than duplicated;
  * they render no header of their own, so the compact back row above them is the only chrome.
+ *
+ * The root list carries the YTM/Spotify selector the chip layout has: the sections below read one
+ * source, and this layout is the only Library screen its user ever sees.
  */
 
 package moe.rukamori.archivetune.ui.screens.library
@@ -61,6 +64,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LibraryFilter
+import moe.rukamori.archivetune.constants.LibrarySource
 
 /** Row order is Apple Music's own: playlists first, then the credit lists, then the mix. */
 private enum class AppleMusicLibrarySection(
@@ -81,13 +85,24 @@ private val AppleMusicSectionTileCorner = 6.dp
 fun AppleMusicLibraryScreen(navController: NavController) {
     var section by rememberSaveable { mutableStateOf<AppleMusicLibrarySection?>(null) }
 
+    // The sections below are the app's own, so they follow the same source the Library tab does,
+    // and the root list carries the same selector to change it. Nothing here reads the Apple Music
+    // experience's own style keys: a library layout is not a source.
+    val librarySource = rememberLibrarySource()
+    val librarySourcePreference = rememberLibrarySourcePreference()
+
     // With a section open the system back returns to the section list rather than leaving the tab,
     // which is what the chevron-and-back-row shape promises.
     BackHandler(enabled = section != null) { section = null }
 
     Box(Modifier.fillMaxSize()) {
         when (val open = section) {
-            null -> AppleMusicLibrarySections(onSectionSelected = { section = it })
+            null ->
+                AppleMusicLibrarySections(
+                    source = librarySource,
+                    onSourceSelected = { librarySourcePreference.value = it },
+                    onSectionSelected = { section = it },
+                )
 
             else -> {
                 Column(
@@ -105,19 +120,29 @@ fun AppleMusicLibraryScreen(navController: NavController) {
                         AppleMusicLibrarySection.PLAYLISTS ->
                             LibraryPlaylistsScreen(
                                 navController = navController,
+                                librarySource = librarySource,
                                 filterContent = null,
                                 selectedTagIds = emptySet(),
                             )
 
                         AppleMusicLibrarySection.ARTISTS ->
-                            LibraryArtistsScreen(navController = navController, onDeselect = { section = null })
+                            LibraryArtistsScreen(
+                                navController = navController,
+                                librarySource = librarySource,
+                                onDeselect = { section = null },
+                            )
 
                         AppleMusicLibrarySection.ALBUMS ->
-                            LibraryAlbumsScreen(navController = navController, onDeselect = { section = null })
+                            LibraryAlbumsScreen(
+                                navController = navController,
+                                librarySource = librarySource,
+                                onDeselect = { section = null },
+                            )
 
                         AppleMusicLibrarySection.MIX ->
                             LibraryMixScreen(
                                 navController = navController,
+                                librarySource = librarySource,
                                 filterContent = null,
                                 selectedTagIds = emptySet(),
                                 onTabSelected = { _: LibraryFilter -> },
@@ -129,9 +154,13 @@ fun AppleMusicLibraryScreen(navController: NavController) {
     }
 }
 
-/** The root: the large title, then one entry per section. */
+/** The root: the large title, the source selector, then one entry per section. */
 @Composable
-private fun AppleMusicLibrarySections(onSectionSelected: (AppleMusicLibrarySection) -> Unit) {
+private fun AppleMusicLibrarySections(
+    source: LibrarySource,
+    onSourceSelected: (LibrarySource) -> Unit,
+    onSectionSelected: (AppleMusicLibrarySection) -> Unit,
+) {
     LazyColumn(
         modifier =
             Modifier
@@ -156,6 +185,17 @@ private fun AppleMusicLibrarySections(onSectionSelected: (AppleMusicLibrarySecti
                         top = 0.dp,
                         bottom = 8.dp,
                     ),
+            )
+        }
+
+        // The sections below read one source, so this layout needs the control that picks it: the
+        // section rows are the only other thing here, and it is the same selector the chip layout
+        // uses, at this list's own gutter.
+        item(key = "library_source_selector") {
+            LibrarySourceSelector(
+                source = source,
+                onSourceSelected = onSourceSelected,
+                horizontalPadding = AppleMusicListSidePadding,
             )
         }
 

@@ -941,4 +941,10 @@
     <string name="amazon_bypass_token_description">Operator-provided bypass_token, sent as a query parameter. Alternative to Turnstile.</string>
     <string name="amazon_bypass_token_set">Set · ****%1$s — tap to replace</string>
     <string name="amazon_bypass_token_hint">Paste bypass token</string>
+    <string name="your_spotify_playlists">Your Spotify playlists</string>
+    <string name="your_spotify_artists">Your Spotify artists</string>
+    <string name="your_youtube_artists">Your YouTube artists</string>
+    <string name="library_source_playlists_empty">No playlists on this source yet.</string>
+    <string name="library_source_artists_empty">No artists on this source yet.</string>
+    <string name="library_source_mixes_spotify">Mixes are built from your YouTube listening history, so Spotify has none to show.</string>
 </resources>
