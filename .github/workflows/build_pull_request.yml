@@ -54,9 +54,6 @@ jobs:
           PULL_REQUEST: "true"
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
-          API_BEARER_TOKEN: ${{ secrets.API_BEARER_TOKEN }}
-          CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
-          EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
           # Public ArchivePool base URL. The pool's /api/sources and /api/discovery/*
           # endpoints reject unauthenticated reads with HTTP 401, so without these
           # three values baked into BuildConfig the app silently gets 0 accounts

@@ -1472,7 +1472,6 @@
     <string name="google_drive_sync_provider_unknown">Cloud folder</string>
     <string name="google_drive_sync_provider_suffix_local">(local — not cloud)</string>
     <string name="google_drive_sync_cloud_app_disclaimer">A cloud storage app (Google Drive, Dropbox, Nextcloud, or OneDrive) must be installed on this phone for backups to reach the cloud. Without one, the system folder picker only shows local storage and backups stay on this device.</string>
-    <string name="gatekeeper_connection_blocked">ArchiveTune could not verify network access. Connections are blocked.</string>
     <string name="language_packs">Language packs</string>
     <string name="language_pack_english">English</string>
     <string name="language_pack_japanese">Japanese romanization</string>
