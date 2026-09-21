@@ -444,18 +444,31 @@ fun HomeFeedShelfCard(
                     }
                 },
     ) {
-        ItemThumbnail(
-            thumbnailUrl = thumbnailUrl,
-            isActive = isActive,
-            isPlaying = isPlaying,
-            shape = shape,
-            thumbnailRatio = thumbnailAspectRatio,
+        // The artwork box keeps the square height whatever frame goes in it, so a shelf that mixes
+        // a wide still with square sleeves stays one row high with one title baseline, and the
+        // skeleton standing in for it — which cannot know a frame's proportions before the data
+        // lands — does not have to move anything when the data does. The frame sits centred in
+        // the box; the dead space either side of a wide one is the cost of a single row height.
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(thumbnailAspectRatio)
-                    .let { m -> if (isWideFrame) m else m.homeFeedThumbnailBorder(shape) },
-        )
+                    .height(HomeShelfCardWidth),
+            contentAlignment = Alignment.Center,
+        ) {
+            ItemThumbnail(
+                thumbnailUrl = thumbnailUrl,
+                isActive = isActive,
+                isPlaying = isPlaying,
+                shape = shape,
+                thumbnailRatio = thumbnailAspectRatio,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(thumbnailAspectRatio)
+                        .let { m -> if (isWideFrame) m else m.homeFeedThumbnailBorder(shape) },
+            )
+        }
         Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
