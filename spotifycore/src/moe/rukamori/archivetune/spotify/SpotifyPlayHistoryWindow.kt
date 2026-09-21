@@ -28,11 +28,27 @@ const val SPOTIFY_HISTORY_WINDOW = 50
 const val SPOTIFY_RATE_LIMIT_FALLBACK_MS = 30_000L
 
 /**
- * Longest wait a `Retry-After` may impose. A header past this is clamped rather than obeyed: a
- * misconfigured or stuck value would pin history off for hours, and no observed Spotify 429 has
- * needed minutes for a play-history read.
+ * Longest wait a `Retry-After` may impose, used only as a sanity bound on a broken header.
+ *
+ * Spotify really does send day-long values: Stash (the other Kotlin client that logs in with `sp_dc`
+ * + TOTP, like this one) records `Retry-After: 86400` on the public Web API for exactly this token
+ * class and gates its whole Web API prong on it, noting that "Spotify hands out absurd Retry-Afters
+ * (observed 86400s = 24h)". So a day is honoured, not clamped — retrying inside a block cannot
+ * succeed, and with a cached window waiting costs nothing. Anything past a day is treated as a stuck
+ * value, because nothing observed has ever needed longer.
  */
-const val SPOTIFY_RATE_LIMIT_MAX_MS = 15 * 60 * 1000L
+const val SPOTIFY_RATE_LIMIT_MAX_MS = 24 * 60 * 60 * 1000L
+
+/**
+ * How stale a delta read's cursor may get before the next read takes the whole window instead.
+ *
+ * A delta read is only as good as its cursor: a play Spotify inserts *behind* one we already returned
+ * is invisible to `after` forever. Listory's collector found exactly that and gave up on cursors for
+ * new listens — "the Spotify WEB Api was sometimes not adding the listens in the right order, causing
+ * us to miss some listens" — and a full window read every half hour bounds the damage to that window.
+ * With a five-minute cache expiry that is one window read in six; the other five stay deltas.
+ */
+const val SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS = 30 * 60 * 1000L
 
 /**
  * Epoch millis of the newest play in the list, or null when no entry carries a usable timestamp.
@@ -89,12 +105,30 @@ fun mergePlayHistory(
 }
 
 /**
+ * Whether a read should take the whole window rather than a delta.
+ *
+ * False only when the cursor is both present and recent and a full read has happened recently; see
+ * [SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS] for why the second condition exists. A caller that has
+ * never taken a full read passes 0 for [lastFullReadAtMillis], which reads as "long ago" and asks for
+ * one — the right answer for a cold start, and for a process that restarted with a disk cache.
+ */
+fun needsFullHistoryRead(
+    newestPlayedAtMillis: Long?,
+    lastFullReadAtMillis: Long,
+    nowMillis: Long,
+    intervalMillis: Long = SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS,
+): Boolean =
+    newestPlayedAtMillis == null ||
+        nowMillis - newestPlayedAtMillis > intervalMillis ||
+        nowMillis - lastFullReadAtMillis > intervalMillis
+
+/**
  * How long to stay off the history endpoint after a 429.
  *
  * [retryAfterSec] is Spotify's `Retry-After` and wins whenever it is usable, because only Spotify
  * knows when the window clears. When the header is missing — the docs only promise it "normally" —
- * the documented rolling 30-second window is the floor. See [SPOTIFY_RATE_LIMIT_MAX_MS] for why an
- * absurd value is clamped instead of honoured.
+ * the documented rolling 30-second window is the floor, so a short value cannot shorten the wait.
+ * See [SPOTIFY_RATE_LIMIT_MAX_MS] for the one value that is not honoured.
  */
 fun rateLimitCooldownMillis(retryAfterSec: Long?): Long {
     val fromHeader = retryAfterSec?.takeIf { it > 0 }?.let { it * 1000L }

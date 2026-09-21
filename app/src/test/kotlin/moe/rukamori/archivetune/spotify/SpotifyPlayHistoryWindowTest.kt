@@ -10,7 +10,9 @@ package moe.rukamori.archivetune.spotify
 import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SpotifyPlayHistoryWindowTest {
@@ -114,7 +116,41 @@ class SpotifyPlayHistoryWindowTest {
     }
 
     @Test
-    fun anAbsurdRetryAfterIsClamped() {
-        assertEquals(SPOTIFY_RATE_LIMIT_MAX_MS, rateLimitCooldownMillis(86_400))
+    fun aDayLongRetryAfterIsHonouredRatherThanClamped() {
+        // Observed on the public Web API for sp_dc-minted tokens; see SPOTIFY_RATE_LIMIT_MAX_MS.
+        assertEquals(86_400_000L, rateLimitCooldownMillis(86_400))
+    }
+
+    @Test
+    fun aStuckRetryAfterBeyondADayIsClamped() {
+        assertEquals(SPOTIFY_RATE_LIMIT_MAX_MS, rateLimitCooldownMillis(7 * 24 * 60 * 60))
+    }
+
+    @Test
+    fun aNewHolderTakesTheWholeWindow() {
+        // No cursor to speak of, and no full read behind it: the only read that can be correct.
+        assertTrue(needsFullHistoryRead(newestPlayedAtMillis = null, lastFullReadAtMillis = 0L, nowMillis = 1_000L))
+    }
+
+    @Test
+    fun aRecentCursorSkipsTheWholeWindowWhenOneWasJustTaken() {
+        val now = 10_000_000L
+        assertFalse(
+            needsFullHistoryRead(
+                newestPlayedAtMillis = now - 60_000L,
+                lastFullReadAtMillis = now - 60_000L,
+                nowMillis = now,
+            ),
+        )
+    }
+
+    @Test
+    fun anOldCursorOrAStaleFullReadTakesTheWholeWindow() {
+        val now = 10_000_000L
+        val interval = SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS
+        // The cursor is too old to trust: a play inserted behind it would never come back.
+        assertTrue(needsFullHistoryRead(now - interval - 1, now - 60_000L, now))
+        // The cursor is fresh, but no full read has run for the interval, so healing is due.
+        assertTrue(needsFullHistoryRead(now - 60_000L, now - interval - 1, now))
     }
 }

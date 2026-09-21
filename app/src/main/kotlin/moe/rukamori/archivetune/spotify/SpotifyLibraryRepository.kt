@@ -120,6 +120,14 @@ class SpotifyLibraryRepository
         @Volatile
         private var recentlyPlayedBlockedUntilMs = 0L
 
+        /**
+         * When the history window was last read in full rather than as a delta, epoch millis. Drives
+         * [needsFullHistoryRead]; in memory only, because 0 means "never", and a cold start wanting
+         * one full read is the correct answer either way.
+         */
+        @Volatile
+        private var recentlyPlayedFullReadAtMs = 0L
+
         suspend fun restoreCachedPlaylists() {
             withContext(Dispatchers.IO) {
                 if (_playlists.value.isNotEmpty()) return@withContext
@@ -385,7 +393,9 @@ class SpotifyLibraryRepository
          *    this independently — wait on a single in-flight read instead of each starting one.
          *  - **Ask only for what changed.** A read carries `after` = the newest play already held, so
          *    it fetches the plays since then and merges them into the window rather than re-reading
-         *    all 50. A full window read happens only with nothing cached to anchor on.
+         *    all 50. A full window read happens with nothing cached to anchor on, and at least every
+         *    [SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS] besides — see [needsFullHistoryRead] for why a
+         *    delta alone would slowly lose plays.
          *  - **Stale beats an error.** A failure with rows cached returns them, and a 429 records its
          *    `Retry-After` so nothing can call again until Spotify's window has cleared. Only a
          *    failure with an empty cache throws, and then the message says how long the wait is —
@@ -412,11 +422,14 @@ class SpotifyLibraryRepository
                     }
 
                     ensureAuthenticated()
-                    val afterMillis = cached?.items?.newestPlayedAtMillis()
+                    val cursorMillis = cached?.items?.newestPlayedAtMillis()
+                    val fullRead = needsFullHistoryRead(cursorMillis, recentlyPlayedFullReadAtMs, now)
                     val fetched =
                         try {
                             spotifyCallWithTokenRetry {
-                                Spotify.recentlyPlayed(afterMillis = afterMillis).getOrThrow()
+                                Spotify
+                                    .recentlyPlayed(afterMillis = cursorMillis.takeUnless { fullRead })
+                                    .getOrThrow()
                             }.items
                         } catch (error: CancellationException) {
                             throw error
@@ -437,6 +450,7 @@ class SpotifyLibraryRepository
                         )
                     val fetchedAtMs = System.currentTimeMillis()
                     recentlyPlayedCache = CachedRecentlyPlayed(items = merged, fetchedAtMs = fetchedAtMs)
+                    if (fullRead) recentlyPlayedFullReadAtMs = fetchedAtMs
                     recentlyPlayedBlockedUntilMs = 0L
                     context.dataStore.edit { prefs ->
                         prefs[SpotifyRecentlyPlayedCacheKey] =
@@ -487,6 +501,7 @@ class SpotifyLibraryRepository
         private suspend fun clearRecentlyPlayed() {
             recentlyPlayedCache = null
             recentlyPlayedBlockedUntilMs = 0L
+            recentlyPlayedFullReadAtMs = 0L
             context.dataStore.edit { prefs ->
                 prefs.remove(SpotifyRecentlyPlayedCacheKey)
                 prefs.remove(SpotifyRecentlyPlayedCacheFetchedAtKey)
