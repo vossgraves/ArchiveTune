@@ -80,7 +80,17 @@ class PersistQueueSerialisationTest {
             )
 
         queues.forEach { queue ->
-            assertEquals(queue, roundTrip(queue))
+            val restored = roundTrip(queue)
+
+            // Everything the restore path reads back. QueueExt picks a queue kind by matching
+            // `queueType` by type and casts `queueData`, so those are the restored values that
+            // matter — not whether the deserialised `QueueType` singleton is the same instance.
+            assertEquals(queue.title, restored.title)
+            assertEquals(queue.items, restored.items)
+            assertEquals(queue.mediaItemIndex, restored.mediaItemIndex)
+            assertEquals(queue.position, restored.position)
+            assertEquals(queue.queueType::class, restored.queueType::class)
+            assertEquals(queue.queueData, restored.queueData)
         }
     }
 
