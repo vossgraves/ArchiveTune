@@ -273,6 +273,11 @@ android {
             dimension = "device"
             buildConfigField("String", "DEVICE", "\"tv\"")
         }
+        create("automotive") {
+            dimension = "device"
+            minSdk = 28
+            buildConfigField("String", "DEVICE", "\"automotive\"")
+        }
         create("universal") {
             dimension = "abi"
             // Only the two 64-bit ABIs, so the universal APK stays close to a per-ABI one.
@@ -549,6 +554,9 @@ dependencies {
     testImplementation(libs.coroutines.test)
     implementation(libs.translator)
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
+    // androidx.car.app — CarConnection, which tells the Android Auto settings screen whether
+    // the app is projected through Android Auto or running natively on Android Automotive.
+    implementation(libs.car.app)
     implementation("androidx.compose.material3.adaptive:adaptive:1.3.0-rc01")
     implementation(libs.accompanist.lyrics.ui)
     implementation(libs.accompanist.lyrics.core)
@@ -588,6 +596,9 @@ dependencies {
 
 androidComponents {
     onVariants(selector().all()) { variant ->
+        // The automotive manifest removes MainActivity, so the generated icon-pack manifest —
+        // which launches MainActivity — would point at a component that is not in the APK.
+        if ("automotive" in variant.name) return@onVariants
         val capitalizedVariantName =
             variant.name.replaceFirstChar { character ->
                 if (character.isLowerCase()) character.titlecase() else character.toString()

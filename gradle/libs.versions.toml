@@ -86,6 +86,9 @@ liquid-glass = "2.0.0"
 # a software blur on older devices, so we no longer need the API 31+ gate that
 # the previous Compose BlurEffect approach required.
 haze = "1.7.2"
+# androidx.car.app — CarConnection, which the Android Auto settings screen uses to tell whether
+# the app is projected through Android Auto or running natively on Android Automotive.
+carApp = "1.7.0"
 
 
 [libraries]
@@ -97,6 +100,7 @@ concurrent-futures = { module = "androidx.concurrent:concurrent-futures-ktx", ve
 
 gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+car-app = { module = "androidx.car.app:app", version.ref = "carApp" }
 navigation = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 hilt-navigation = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigation" }
 datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }

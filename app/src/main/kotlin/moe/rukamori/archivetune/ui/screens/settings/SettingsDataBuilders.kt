@@ -798,6 +798,20 @@ fun buildSettingsGroups(
                 SettingsChild("Telegram bots", "telegram_bots_title", listOf("telegram bots", "bot token", "music bot")),
             ),
         )
+    val androidAuto =
+        SettingsItem(
+            key = "android_auto",
+            icon = painterResource(R.drawable.directions_car),
+            title = stringResource(R.string.android_auto),
+            subtitle = stringResource(R.string.android_auto_settings_subtitle),
+            accentColor = MaterialTheme.colorScheme.primary,
+            keywords =
+                listOf(
+                    "android auto", "car", "driving", "automotive", "projection", "car screen",
+                    "metered", "mobile data", "device songs", "voice search", "playback controls",
+                ),
+            onClick = { navController.navigate("settings/android_auto") },
+        )
     val aiIntegration =
         SettingsItem(
             key = "ai_integration",
@@ -1099,6 +1113,7 @@ fun buildSettingsGroups(
             // settings are searchable.
             items =
                 listOf(
+                    androidAuto,
                     integration,
                     aiIntegration,
                     discordExperimental,
