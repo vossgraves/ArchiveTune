@@ -321,8 +321,6 @@ fun SpeedDialSection(
             pageCount = { tilePages.size },
         )
 
-    // Removing pins shrinks the grid under the pager's feet; without this the pager keeps a
-    // page that no longer exists and the tile lookup below reads past the end.
     LaunchedEffect(tilePages.size) {
         if (pagerState.currentPage > tilePages.lastIndex) {
             pagerState.scrollToPage(tilePages.lastIndex.coerceAtLeast(0))

@@ -1187,11 +1187,7 @@ private fun RemoteQuickPicksSection(
 
 // ──────────────────────────────────────────────────────────────────────
 // Discovery decks — the similar-recommendations rail from upstream rukamori
-// HomeScreenComponents.kt (SimilarRecommendationsSection + SimilarDiscoveryDeck).
-// Upstream shows every similar recommendation as one deck in a single rail; the
-// deck carries its own "Similar to <artist>" header and holds up to four of the
-// recommendation's items two-up. This fork renders the rail with its own gutter,
-// spacing and cards so it reads as part of the BitChord home.
+// HomeScreenComponents.kt (SimilarRecommendationsSection).
 // ──────────────────────────────────────────────────────────────────────
 
 private const val DiscoveryDeckMaxItems = 4
@@ -1327,7 +1323,6 @@ private fun SimilarDiscoveryDeck(
                             isPlaying = isPlaying,
                         )
                     }
-                    // A trailing odd item keeps the left column, empty columns stay empty.
                     repeat(DiscoveryDeckColumns - rowItems.size) {
                         Spacer(modifier = Modifier.weight(1f))
                     }
