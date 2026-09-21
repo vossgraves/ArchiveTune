@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -928,5 +929,76 @@ fun HomeTopFadeBlur(
                 .fillMaxWidth()
                 .height(height)
                 .background(scrim),
+    )
+}
+
+/**
+ * The Home route's backdrop: three soft colour pools over the theme's own surface, so the page
+ * reads as a place rather than as a flat sheet the feed happens to sit on. Drawn full-bleed behind
+ * everything, loading and empty states included, and only where the blur it sits under is wanted —
+ * it is atmosphere for the glass, and on its own it would just be a tinted page.
+ */
+@Composable
+fun HomeAtmosphereBackground(modifier: Modifier = Modifier) {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val base = if (dark) Color(0xFF0D0E12) else MaterialTheme.colorScheme.surface
+    val glow = if (dark) 0.17f else 0.12f
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(base)
+                .drawWithCache {
+                    val w = size.width
+                    val h = size.height
+                    val violet = Color(0xFF7B4DFF)
+                    val teal = Color(0xFF00B8A9)
+                    val blue = Color(0xFF2E6BFF)
+                    val topWash =
+                        if (dark) {
+                            Brush.verticalGradient(
+                                colors = listOf(Color.White.copy(alpha = 0.045f), Color.Transparent),
+                                startY = 0f,
+                                endY = h * 0.22f,
+                            )
+                        } else {
+                            Brush.verticalGradient(
+                                colors = listOf(Color.White.copy(alpha = 0.5f), Color.Transparent),
+                                startY = 0f,
+                                endY = h * 0.16f,
+                            )
+                        }
+                    val violetBrush =
+                        Brush.radialGradient(
+                            colors = listOf(violet.copy(alpha = glow), Color.Transparent),
+                            center = Offset(w * 0.12f, h * 0.10f),
+                            radius = w * 0.62f,
+                        )
+                    val tealBrush =
+                        Brush.radialGradient(
+                            colors = listOf(teal.copy(alpha = glow * 0.8f), Color.Transparent),
+                            center = Offset(w * 0.98f, h * 0.30f),
+                            radius = w * 0.55f,
+                        )
+                    val blueBrush =
+                        Brush.radialGradient(
+                            colors = listOf(blue.copy(alpha = glow * 0.85f), Color.Transparent),
+                            center = Offset(w * 0.18f, h * 0.92f),
+                            radius = w * 0.70f,
+                        )
+                    val bottomShade =
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = if (dark) 0.30f else 0.05f)),
+                            startY = h * 0.55f,
+                            endY = h,
+                        )
+                    onDrawBehind {
+                        drawRect(violetBrush)
+                        drawRect(tealBrush)
+                        drawRect(blueBrush)
+                        drawRect(bottomShade)
+                        drawRect(topWash)
+                    }
+                },
     )
 }

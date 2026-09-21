@@ -59,6 +59,7 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
@@ -67,6 +68,7 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 import dev.chrisbanes.haze.hazeSource
 
@@ -145,6 +147,10 @@ fun HomeScreen(
     // the full window area including the strip under the pinned top bar, which is
     // exactly what the blur samples.
     val homeHazeState = LocalHomeHazeState.current
+    // The atmosphere is part of the same glass treatment the progressive top-fade blur belongs to,
+    // so it goes where that goes: a user who has turned the blur off wants a flat page, not a
+    // colourful one with nothing over it.
+    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     Box(
         modifier =
             Modifier
@@ -158,6 +164,9 @@ fun HomeScreen(
                     },
                 ),
     ) {
+        if (!disableBlur) {
+            HomeAtmosphereBackground()
+        }
         when (val state = screenState) {
             HomeScreenState.Loading -> {
                 // The first page of shelves is stood in for by shimmer skeletons laid out to the real
