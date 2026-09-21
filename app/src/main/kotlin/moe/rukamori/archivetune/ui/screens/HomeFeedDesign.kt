@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -75,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
+import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.LocalItem
@@ -99,6 +101,8 @@ import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.utils.preferredThumbnailRatio
+import moe.rukamori.archivetune.utils.rememberPreference
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
@@ -400,7 +404,7 @@ private fun Modifier.headerClickable(onClick: () -> Unit): Modifier =
     }
 
 /**
- * The compact square card every non-hero shelf renders (BitChord ShelfCard):
+ * The compact card every non-hero shelf renders (BitChord ShelfCard):
  * artwork with the hairline border, the title one line below, the subtitle
  * under that. Interactions (tap to open / play, hold for the menu) and the
  * active-track visuals come from the fork's existing components.
@@ -417,9 +421,14 @@ fun HomeFeedShelfCard(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     isCircular: Boolean = false,
+    thumbnailAspectRatio: Float = 1f,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val shape = if (isCircular) CircleShape else RoundedCornerShape(HomeShelfCardCorner)
+    // A frame that is not square — a video still, a podcast episode — keeps its own proportions
+    // and loses the hairline border: that border exists to pull a square sleeve off the page, and
+    // on a wide frame it would draw a line through the middle of the picture instead.
+    val isWideFrame = !isCircular && kotlin.math.abs(thumbnailAspectRatio - 1f) > 0.001f
     Column(
         modifier =
             modifier
@@ -432,17 +441,31 @@ fun HomeFeedShelfCard(
                     }
                 },
     ) {
-        ItemThumbnail(
-            thumbnailUrl = thumbnailUrl,
-            isActive = isActive,
-            isPlaying = isPlaying,
-            shape = shape,
+        // The artwork box keeps the square height whatever frame goes in it, so a shelf that mixes
+        // a wide still with square sleeves stays one row high with one title baseline, and the
+        // skeleton standing in for it — which cannot know a frame's proportions before the data
+        // lands — does not have to move anything when the data does. The frame sits centred in
+        // the box; the dead space either side of a wide one is the cost of a single row height.
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .homeFeedThumbnailBorder(shape),
-        )
+                    .height(HomeShelfCardWidth),
+            contentAlignment = Alignment.Center,
+        ) {
+            ItemThumbnail(
+                thumbnailUrl = thumbnailUrl,
+                isActive = isActive,
+                isPlaying = isPlaying,
+                shape = shape,
+                thumbnailRatio = thumbnailAspectRatio,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(thumbnailAspectRatio)
+                        .let { m -> if (isWideFrame) m else m.homeFeedThumbnailBorder(shape) },
+            )
+        }
         Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -606,7 +629,7 @@ fun HomeFeedSongCard(
     )
 }
 
-/** A compact shelf card for a remote YouTube item (song/album/artist/playlist). */
+/** A compact shelf card for a remote YouTube item (song/album/artist/playlist/episode). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedYTItemCard(
@@ -627,7 +650,50 @@ fun HomeFeedYTItemCard(
             is ArtistItem -> item.subscriberCountText.orEmpty()
             is PlaylistItem -> item.songCountText.orEmpty()
             is PodcastItem -> item.author?.name.orEmpty()
-            is EpisodeItem -> item.podcast?.name.orEmpty()
+            is EpisodeItem -> listOfNotNull(item.podcast?.name, item.dateText, item.durationText).joinToString(" • ")
+        }
+
+    val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
+    val resolvedThumbnailRatio = item.preferredThumbnailRatio(cropThumbnailToSquare)
+    // A sheet for either would come up empty, so neither card has a hold.
+    val hasMenu = item !is PodcastItem && item !is EpisodeItem
+    val longClickHandler: (() -> Unit)? =
+        if (hasMenu) {
+            {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuState.show {
+                    when (item) {
+                        is SongItem ->
+                            YouTubeSongMenu(
+                                song = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+
+                        is AlbumItem ->
+                            YouTubeAlbumMenu(
+                                albumItem = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+
+                        is ArtistItem ->
+                            YouTubeArtistMenu(
+                                artist = item,
+                                onDismiss = menuState::dismiss,
+                            )
+
+                        is PlaylistItem ->
+                            YouTubePlaylistMenu(
+                                playlist = item,
+                                coroutineScope = scope,
+                                onDismiss = menuState::dismiss,
+                            )
+                    }
+                }
+            }
+        } else {
+            null
         }
     HomeFeedShelfCard(
         thumbnailUrl = item.thumbnail,
@@ -636,6 +702,7 @@ fun HomeFeedYTItemCard(
         isCircular = item is ArtistItem,
         isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
         isPlaying = isPlaying,
+        thumbnailAspectRatio = resolvedThumbnailRatio,
         onClick = {
             when (item) {
                 is SongItem -> onPlaySongFromSection(item.id)
@@ -645,41 +712,7 @@ fun HomeFeedYTItemCard(
                 is PodcastItem, is EpisodeItem -> Unit
             }
         },
-        onLongClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            menuState.show {
-                when (item) {
-                    is SongItem ->
-                        YouTubeSongMenu(
-                            song = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is AlbumItem ->
-                        YouTubeAlbumMenu(
-                            albumItem = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is ArtistItem ->
-                        YouTubeArtistMenu(
-                            artist = item,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is PlaylistItem ->
-                        YouTubePlaylistMenu(
-                            playlist = item,
-                            coroutineScope = scope,
-                            onDismiss = menuState::dismiss,
-                        )
-
-                    is PodcastItem, is EpisodeItem -> Unit
-                }
-            }
-        },
+        onLongClick = longClickHandler,
         modifier = modifier,
     )
 }
@@ -903,5 +936,85 @@ fun HomeTopFadeBlur(
                 .fillMaxWidth()
                 .height(height)
                 .background(scrim),
+    )
+}
+
+/**
+ * The Home route's backdrop: three soft colour pools over a base the theme owns, so the page
+ * reads as a place rather than as a flat sheet the feed happens to sit on. Drawn full-bleed behind
+ * everything, loading and empty states included, and only where the blur it sits under is wanted —
+ * it is atmosphere for the glass, and on its own it would just be a tinted page.
+ */
+@Composable
+fun HomeAtmosphereBackground(modifier: Modifier = Modifier) {
+    val surface = MaterialTheme.colorScheme.surface
+    val dark = surface.luminance() < 0.5f
+    // The page base is drawn from the theme rather than being a colour of its own, so the top-fade
+    // scrim — keyed to the colour of the page underneath it — keeps matching, and a pure-black
+    // page has nothing to mismatch with either.
+    val base =
+        if (dark && surface != Color.Black) {
+            MaterialTheme.colorScheme.surfaceContainerLowest
+        } else {
+            surface
+        }
+    val glow = if (dark) 0.17f else 0.12f
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(base)
+                .drawWithCache {
+                    val w = size.width
+                    val h = size.height
+                    val violet = Color(0xFF7B4DFF)
+                    val teal = Color(0xFF00B8A9)
+                    val blue = Color(0xFF2E6BFF)
+                    val topWash =
+                        if (dark) {
+                            Brush.verticalGradient(
+                                colors = listOf(Color.White.copy(alpha = 0.045f), Color.Transparent),
+                                startY = 0f,
+                                endY = h * 0.22f,
+                            )
+                        } else {
+                            Brush.verticalGradient(
+                                colors = listOf(Color.White.copy(alpha = 0.5f), Color.Transparent),
+                                startY = 0f,
+                                endY = h * 0.16f,
+                            )
+                        }
+                    val violetBrush =
+                        Brush.radialGradient(
+                            colors = listOf(violet.copy(alpha = glow), Color.Transparent),
+                            center = Offset(w * 0.12f, h * 0.10f),
+                            radius = w * 0.62f,
+                        )
+                    val tealBrush =
+                        Brush.radialGradient(
+                            colors = listOf(teal.copy(alpha = glow * 0.8f), Color.Transparent),
+                            center = Offset(w * 0.98f, h * 0.30f),
+                            radius = w * 0.55f,
+                        )
+                    val blueBrush =
+                        Brush.radialGradient(
+                            colors = listOf(blue.copy(alpha = glow * 0.85f), Color.Transparent),
+                            center = Offset(w * 0.18f, h * 0.92f),
+                            radius = w * 0.70f,
+                        )
+                    val bottomShade =
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = if (dark) 0.30f else 0.05f)),
+                            startY = h * 0.55f,
+                            endY = h,
+                        )
+                    onDrawBehind {
+                        drawRect(violetBrush)
+                        drawRect(tealBrush)
+                        drawRect(blueBrush)
+                        drawRect(bottomShade)
+                        drawRect(topWash)
+                    }
+                },
     )
 }

@@ -658,19 +658,23 @@ class HomeViewModel
                                     page.copy(
                                         chips = filterHomeChips(page.chips),
                                         sections =
-                                            page.sections.map { section ->
-                                                section.copy(
-                                                    items =
-                                                        filterAiContent(
-                                                            section.items
-                                                                .filterExplicit(hideExplicit)
-                                                                .filterVideo(hideVideo)
-                                                                .filterBlockedArtists(blockedArtistIds)
-                                                                .filterBlockedSongs(blockedSongIds),
-                                                            aiContentFilterPolicy,
-                                                        ),
-                                                )
-                                            },
+                                            page.sections
+                                                .map { section ->
+                                                    section.copy(
+                                                        items =
+                                                            filterAiContent(
+                                                                section.items
+                                                                    .filterExplicit(hideExplicit)
+                                                                    .filterVideo(hideVideo)
+                                                                    .filterBlockedArtists(blockedArtistIds)
+                                                                    .filterBlockedSongs(blockedSongIds),
+                                                                aiContentFilterPolicy,
+                                                            ),
+                                                    )
+                                                }
+                                                // The item filters above can leave a section with nothing in it, and
+                                                // the page counts as content by the sections it hands to the screen.
+                                                .filter { it.items.isNotEmpty() },
                                     )
                                 val (pageWithoutQuickPicks, quickPicksSection) = filteredPage.extractQuickPicks()
                                 remoteQuickPicks.value = quickPicksSection
@@ -906,19 +910,21 @@ class HomeViewModel
                         nextSections.copy(
                             chips = homePage.value?.chips,
                             sections =
-                                mergedSections.map { section ->
-                                    section.copy(
-                                        items =
-                                            filterAiContent(
-                                                section.items
-                                                    .filterExplicit(hideExplicit)
-                                                    .filterVideo(hideVideo)
-                                                    .filterBlockedArtists(blockedArtistIds)
-                                                    .filterBlockedSongs(blockedSongIds),
-                                                aiContentFilterPolicy,
-                                            ),
-                                    )
-                                },
+                                mergedSections
+                                    .map { section ->
+                                        section.copy(
+                                            items =
+                                                filterAiContent(
+                                                    section.items
+                                                        .filterExplicit(hideExplicit)
+                                                        .filterVideo(hideVideo)
+                                                        .filterBlockedArtists(blockedArtistIds)
+                                                        .filterBlockedSongs(blockedSongIds),
+                                                    aiContentFilterPolicy,
+                                                ),
+                                        )
+                                    }
+                                    .filter { it.items.isNotEmpty() },
                         )
                     val (pageWithoutQuickPicks, quickPicksSection) = mergedPage.extractQuickPicks()
                     quickPicksSection?.let { remoteQuickPicks.value = it }
@@ -957,19 +963,21 @@ class HomeViewModel
                         nextSections.copy(
                             chips = homePage.value?.chips,
                             sections =
-                                nextSections.sections.map { section ->
-                                    section.copy(
-                                        items =
-                                            filterAiContent(
-                                                section.items
-                                                    .filterExplicit(hideExplicit)
-                                                    .filterVideo(hideVideo)
-                                                    .filterBlockedArtists(blockedArtistIds)
-                                                    .filterBlockedSongs(blockedSongIds),
-                                                aiContentFilterPolicy,
-                                            ),
-                                    )
-                                },
+                                nextSections.sections
+                                    .map { section ->
+                                        section.copy(
+                                            items =
+                                                filterAiContent(
+                                                    section.items
+                                                        .filterExplicit(hideExplicit)
+                                                        .filterVideo(hideVideo)
+                                                        .filterBlockedArtists(blockedArtistIds)
+                                                        .filterBlockedSongs(blockedSongIds),
+                                                    aiContentFilterPolicy,
+                                                ),
+                                        )
+                                    }
+                                    .filter { it.items.isNotEmpty() },
                         )
                     val (pageWithoutQuickPicks, quickPicksSection) = filteredPage.extractQuickPicks()
                     remoteQuickPicks.value = quickPicksSection

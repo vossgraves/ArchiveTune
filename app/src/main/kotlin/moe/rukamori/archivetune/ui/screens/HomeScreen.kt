@@ -59,6 +59,7 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
@@ -67,6 +68,7 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 import dev.chrisbanes.haze.hazeSource
 
@@ -145,6 +147,8 @@ fun HomeScreen(
     // the full window area including the strip under the pinned top bar, which is
     // exactly what the blur samples.
     val homeHazeState = LocalHomeHazeState.current
+    // A user who asked for no glass gets no tinted page.
+    val (disableBlur) = rememberPreference(DisableBlurKey, false)
     Box(
         modifier =
             Modifier
@@ -158,6 +162,9 @@ fun HomeScreen(
                     },
                 ),
     ) {
+        if (!disableBlur) {
+            HomeAtmosphereBackground()
+        }
         when (val state = screenState) {
             HomeScreenState.Loading -> {
                 // The first page of shelves is stood in for by shimmer skeletons laid out to the real
@@ -290,19 +297,15 @@ private fun HomeContent(
                 // Partition remote sections into Live-performance and other.
                 // Hoisted outside the LazyColumn content lambda (which is NOT a
                 // @Composable scope) so `remember` is valid here. Without this,
-                // the two `.filter` calls would allocate fresh lists on every
-                // recomposition of HomeContent even when the sections hadn't
-                // changed — a measurable contributor to home-screen jank.
+                // the partition would allocate fresh lists on every recomposition
+                // of HomeContent even when the sections hadn't changed — a
+                // measurable contributor to home-screen jank.
                 val allRemoteSections = uiState.homePage?.sections.orEmpty()
                 val (livePerformanceSections, otherRemoteSections) =
                     remember(allRemoteSections) {
-                        val live = allRemoteSections.filter { section ->
+                        allRemoteSections.partition { section ->
                             section.title.contains("Live performance", ignoreCase = true)
                         }
-                        val other = allRemoteSections.filter { section ->
-                            !section.title.contains("Live performance", ignoreCase = true)
-                        }
-                        live to other
                     }
 
                 LazyColumn(
