@@ -35,10 +35,15 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-// Base version. Bump these manually for a big release (e.g. 13.7.x -> 14.0.x). CI derives the
-// per-commit patch/versionCode from the git commit count and injects them via the
-// VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE env vars. Keep each on a single line so the
-// release/canary workflows can grep the base value reliably.
+// Base version. Bump these manually for a big release (e.g. 13.7.x -> 14.0.x). The release workflow
+// greps the base value and derives the per-commit patch and the monotonic versionCode (the git commit
+// count) from it, injecting both via VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE. Keep each on a
+// single line so that grep stays reliable.
+//
+// A pre-release build is named after its release tag instead — "C<yyyyMMddHHmm>" for Canary,
+// "N<yyyyMMddHHmm>" for Nightly, the way rukamori names their nightlies "N<yyyyMMdd>" — so the tag,
+// the release title and the version the app reports are all one string. The versionCode stays the
+// commit count, which is what the updater compares.
 val baseVersionName = "14.0.0"
 val baseVersionCode = 1400
 
