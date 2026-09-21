@@ -86,9 +86,9 @@ import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
-import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
+import moe.rukamori.archivetune.playback.stream.NewPipeStreamUrlExtractor
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -1588,7 +1588,7 @@ private suspend fun resolveVideoStreamUrl(
                 runCatching {
                     val signatureTimestamp =
                         if (client.useSignatureTimestamp) {
-                            NewPipeUtils.getSignatureTimestamp(videoId).getOrNull()
+                            NewPipeStreamUrlExtractor.signatureTimestamp(videoId).getOrNull()
                         } else {
                             null
                         }
@@ -1629,9 +1629,9 @@ private suspend fun resolveVideoStreamUrl(
                             ?.captionTracks
                             .orEmpty()
                     val format = pickVideoFormat(playerResponse, preferredHeight) ?: return@runCatching null
-                    // NewPipeUtils.getStreamUrl already appends the GVS PO token via
+                    // NewPipeStreamUrlExtractor already appends the GVS PO token via
                     // YouTube.appendGvsPoToken, so we just use the URL directly.
-                    val finalUrl = NewPipeUtils.getStreamUrl(format = format, videoId = videoId).getOrThrow()
+                    val finalUrl = NewPipeStreamUrlExtractor.streamUrl(format = format, videoId = videoId).getOrThrow()
                     VideoStreamInfo(
                         streamUrl = finalUrl,
                         availableHeights = availableHeights,

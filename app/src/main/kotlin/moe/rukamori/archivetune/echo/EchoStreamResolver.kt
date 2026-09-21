@@ -22,7 +22,7 @@
  *    ArchiveTune's `YouTube.player(..., setLogin, authState)` — the auth state is
  *    passed straight through.
  *  - Echo's `NewPipeExtractor.getStreamUrl(format, videoId)` maps onto
- *    [moe.rukamori.archivetune.innertube.NewPipeUtils.getStreamUrl] (the same
+ *    [moe.rukamori.archivetune.playback.stream.NewPipeStreamUrlExtractor.streamUrl] (the same
  *    YoutubeJavaScriptPlayerManager deobfuscation) plus the StreamInfo fallback.
  *  - The Fix403 instrumentation is Echo's own object, copied verbatim into
  *    [moe.rukamori.archivetune.echo.utils.Fix403].
@@ -38,7 +38,6 @@ import moe.rukamori.archivetune.echo.utils.cipher.CipherDeobfuscator
 import moe.rukamori.archivetune.echo.utils.potoken.PoTokenGenerator
 import moe.rukamori.archivetune.echo.utils.potoken.PoTokenResult
 import moe.rukamori.archivetune.innertube.YouTube
-import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.models.YouTubeClient
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_43_32
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_65_10
@@ -49,6 +48,7 @@ import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.VISIONO
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
+import moe.rukamori.archivetune.playback.stream.NewPipeStreamUrlExtractor
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.utils.reportException
 import okhttp3.OkHttpClient
@@ -187,7 +187,7 @@ object EchoStreamResolver {
 
             val signatureTimestamp = getSignatureTimestampOrNull(videoId)
             Timber.tag(logTag).d("Signature timestamp: $signatureTimestamp")
-            Fix403.i(fx, "resolve.sts", Fix403.kv("sts" to signatureTimestamp, "source" to "NewPipeUtils"))
+            Fix403.i(fx, "resolve.sts", Fix403.kv("sts" to signatureTimestamp, "source" to "NewPipeStreamUrlExtractor"))
 
             var poToken: PoTokenResult? = null
             val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
@@ -362,7 +362,7 @@ object EchoStreamResolver {
                     // 4nx3b's core re-resolves the player response through NewPipe here and falls
                     // back to the InnerTube one when that returns nothing. This fork's core has no
                     // such entry point, so the fallback is the only branch — the URL is still
-                    // deobfuscated through NewPipeUtils.getStreamUrl further down.
+                    // deobfuscated through NewPipeStreamUrlExtractor.streamUrl further down.
                     val responseToUse = streamPlayerResponse
 
                     format =
@@ -647,8 +647,8 @@ object EchoStreamResolver {
 
     private suspend fun getSignatureTimestampOrNull(videoId: String): Int? {
         Timber.tag(logTag).d("Getting signature timestamp for videoId: $videoId")
-        return NewPipeUtils
-            .getSignatureTimestamp(videoId)
+        return NewPipeStreamUrlExtractor
+            .signatureTimestamp(videoId)
             .onFailure { error ->
                 Timber.tag(logTag).e(error, "Failed to get signature timestamp")
                 reportException(error)
@@ -695,8 +695,8 @@ object EchoStreamResolver {
 
                 try {
                     val deobfuscatedUrl =
-                        NewPipeUtils
-                            .getStreamUrl(format, videoId)
+                        NewPipeStreamUrlExtractor
+                            .streamUrl(format, videoId)
                             .getOrNull()
                     if (deobfuscatedUrl != null) {
                         Timber.tag(logTag).d("Stream URL obtained via NewPipe deobfuscation")
@@ -708,8 +708,8 @@ object EchoStreamResolver {
 
                 // 4nx3b follow this with a StreamInfo pass that lists every (itag, url) pair and
                 // picks one. It needs a core API this fork does not have, and the
-                // NewPipeUtils.getStreamUrl call above already resolves this same format through
-                // NewPipe — so there is nothing a second pass could add.
+                // NewPipeStreamUrlExtractor.streamUrl call above already resolves this same format
+                // through NewPipe — so there is nothing a second pass could add.
             }
         }
 

@@ -32,8 +32,17 @@ class ResolveAudioStreamUseCase
     @Inject
     constructor(
         private val nativeRepository: NativeStreamRepository,
+        private val newPipeRepository: NewPipeStreamRepository,
         private val ytdlnisRepository: YtdlnisStreamRepository,
     ) {
+    /**
+     * The fallback region, in order. Native InnerTube is not in it: it stays the primary path
+     * because it is the fast, in-process one (BotGuard/QuickJS, no JavaScript player fetch).
+     * After it: NewPipe in-process, then the external yt-dlp — the order the old
+     * [YtdlnisStreamRepository] implemented internally, now owned here.
+     */
+    private val fallbackTiers: List<AudioStreamRepository> = listOf(newPipeRepository, ytdlnisRepository)
+
     private data class CacheKey(
         val mediaId: String,
         val quality: String,
@@ -122,28 +131,34 @@ class ResolveAudioStreamUseCase
         }
 
     // Hybrid resolver: InnerTube (native, BotGuard/QuickJS) first — fast, ~30 MB, no Python.
-    // Only on failure (403, age-gate, signature, timeout) does it fall back to Ytdlnis
-    // (NewPipe → external yt-dlp via CompactYtDlp plugin APK, as YTDLnis does). This mirrors
-    // YTDLnis's own switch (NewPipe ↔ yt-dlp) but keeps the hot path native. History can be
-    // returned by both: InnerTube via YouTube.history() (browse), YTDLnis via yt-dlp watch
-    // history with cookies (ytdlp_watch_history), but ArchiveTune's History uses InnerTube.
+    // Only on failure (403, age-gate, signature, timeout) does it fall back through the extractor
+    // tiers: NewPipe in-process (MetrolistExtractor's JavaScript player, no plugin APK), then the
+    // external yt-dlp via CompactYtDlp, exactly the switch YTDLnis makes but with the hot path
+    // native. History can be returned by both: InnerTube via YouTube.history() (browse), YTDLnis
+    // via yt-dlp watch history with cookies (ytdlp_watch_history), but ArchiveTune's History uses
+    // InnerTube.
     private suspend fun resolveUncached(request: AudioStreamRequest): ResolvedAudioStream {
-        val nativeFailure = try {
-            return nativeRepository.resolve(request)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            Timber.tag(TAG).w(t, "Native InnerTube failed for %s, trying Ytdlnis fallback", request.mediaId)
-            t
+        var failure =
+            try {
+                return nativeRepository.resolve(request)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Timber.tag(TAG).w(t, "Native InnerTube failed for %s, trying the extractor tiers", request.mediaId)
+                t
+            }
+        for (tier in fallbackTiers) {
+            try {
+                return tier.resolve(request)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                t.addSuppressed(failure)
+                failure = t
+                Timber.tag(TAG).w(t, "Fallback tier failed for %s, trying the next one", request.mediaId)
+            }
         }
-        return try {
-            ytdlnisRepository.resolve(request)
-        } catch (c: CancellationException) {
-            throw c
-        } catch (ytdlnisFailure: Throwable) {
-            ytdlnisFailure.addSuppressed(nativeFailure)
-            throw ytdlnisFailure
-        }
+        throw failure
     }
 
         private fun AudioStreamRequest.cacheKey(): CacheKey =
