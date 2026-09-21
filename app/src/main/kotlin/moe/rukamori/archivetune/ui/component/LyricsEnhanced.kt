@@ -1859,7 +1859,6 @@ private fun buildSyncedLyrics(
                     romanizedText = romanizationMap[index]?.firstOrNull(),
                     start = entry.time.toInt(),
                     end = lineEnd,
-                    compactTranslation = compactTranslation,
                 ),
             )
         }
@@ -1873,7 +1872,6 @@ private fun buildLineSyncedLrcLine(
     romanizedText: String?,
     start: Int,
     end: Int,
-    compactTranslation: Boolean = false,
 ): ISyncedLine {
     val translation = providedTranslationTextForEntry(entry)
     val normalizedRomanizedText = romanizedText?.trim()?.takeIf { it.isNotEmpty() }
