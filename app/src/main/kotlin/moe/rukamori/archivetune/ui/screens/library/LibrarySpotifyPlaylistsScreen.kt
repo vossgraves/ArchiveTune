@@ -74,7 +74,9 @@ fun LibrarySpotifyPlaylistsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            if (playlists.isEmpty()) {
+            // "No Spotify playlists found" is a claim about the account, so it waits for the read
+            // that answers it: the first visit fetches, and the list is empty until it returns.
+            if (playlists.isEmpty() && !isRefreshing) {
                 item(key = "spotify_empty", contentType = "spotify_empty") {
                     Text(
                         text = stringResource(R.string.spotify_no_sources),
