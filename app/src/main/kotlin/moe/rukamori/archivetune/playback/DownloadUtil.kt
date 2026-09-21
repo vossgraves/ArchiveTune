@@ -73,6 +73,7 @@ import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.playback.stream.codecsFromMimeType
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.StreamClientUtils
@@ -936,11 +937,7 @@ class DownloadUtil
                 runCatching {
                     val format = playbackData.format
                     val contentLength = format.contentLength ?: 0L
-                    val resolvedCodecs =
-                        format.mimeType
-                            .substringAfter("codecs=", "")
-                            .removeSurrounding("\"")
-                            .substringBefore("\"")
+                    val resolvedCodecs = format.mimeType.codecsFromMimeType()
 
                     database.query {
                         upsert(

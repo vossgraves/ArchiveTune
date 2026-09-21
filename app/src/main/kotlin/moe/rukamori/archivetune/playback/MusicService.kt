@@ -331,6 +331,7 @@ import moe.rukamori.archivetune.playback.queues.filterBlockedArtists
 import moe.rukamori.archivetune.playback.queues.filterExplicit
 import moe.rukamori.archivetune.playback.queues.filterVideo
 import moe.rukamori.archivetune.playback.queues.hasBlockedArtist
+import moe.rukamori.archivetune.playback.stream.codecsFromMimeType
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
@@ -8281,11 +8282,7 @@ class MusicService :
         val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb
         val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb
         val resolvedContentLength = format.contentLength ?: 0L
-        val resolvedCodecs =
-            format.mimeType
-                .substringAfter("codecs=", "")
-                .removeSurrounding("\"")
-                .substringBefore("\"")
+        val resolvedCodecs = format.mimeType.codecsFromMimeType()
         resolvedContentLength.takeIf { it > 0L }?.let { contentLengthCache[mediaId] = it }
 
         Timber
