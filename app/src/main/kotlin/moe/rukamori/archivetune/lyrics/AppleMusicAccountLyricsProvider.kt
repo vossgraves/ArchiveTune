@@ -44,7 +44,7 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
 
     override fun isEnabled(context: Context): Boolean {
         // Enabled when the user pasted a Media-User-Token (0.Ap…) OR a shared pool account is
-        // available. The dev JWT is optional because the app has a fallback web token.
+        // available. The dev JWT is optional: without one the web player token is scraped.
         val token = context.dataStore[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
         if (token.isNotBlank()) return true
         return PoolAccountManager.appleMusicAccounts().isNotEmpty()
@@ -91,15 +91,17 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
     private suspend fun fetchTtml(title: String, artist: String, album: String?): String? {
-        // Resolve Apple Music song id via search with the user's tokens.
+        // Resolve Apple Music song id via search with the user's tokens. The bearer is the pasted
+        // dev JWT when there is one, otherwise a scraped web player token — and when neither is
+        // available we return nothing rather than sending a request that can only 401.
         val storefront = resolveStorefront()
-        val devToken = AppleMusicProvider.devTokenProvider?.invoke() ?: fetchFallbackToken()
-        val mediaToken = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim() ?: return null
-        if (mediaToken.isBlank()) return null
+        val token = AppleMusicProvider.ensureTokenFresh() ?: return null
+        val mediaToken = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()
+            ?.takeIf { it.isNotBlank() } ?: return null
 
         val query = if (title.contains(artist, ignoreCase = true)) title else "$artist $title"
         val searchResp = client.get("$AMP_BASE/v1/catalog/$storefront/search") {
-            header("Authorization", "Bearer $devToken")
+            header("Authorization", "Bearer $token")
             header("Media-User-Token", mediaToken)
             header("Origin", "https://music.apple.com")
             header("Referer", "https://music.apple.com/")
@@ -120,7 +122,7 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         // Try syllable-lyrics first (word sync), fall back to lyrics (line sync).
         for (ep in listOf("syllable-lyrics", "lyrics")) {
             val resp = client.get("$AMP_BASE/v1/catalog/$storefront/songs/$songId/$ep") {
-                header("Authorization", "Bearer $devToken")
+                header("Authorization", "Bearer $token")
                 header("Media-User-Token", mediaToken)
                 header("Origin", "https://music.apple.com")
                 header("Referer", "https://music.apple.com/")
@@ -141,14 +143,13 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     }
 
     private suspend fun resolveStorefront(): String {
-        // Reuse AppleMusicProvider's resolved storefront via reflection fallback to "us".
-        // We go through the same /v1/me/storefront so ES token hits "es".
+        // We go through the same /v1/me/storefront as the canvas provider so an ES token hits "es".
         return try {
-            // Access via public method if we expose it; for now duplicate logic:
-            val media = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() } ?: return "us"
-            val dev = AppleMusicProvider.devTokenProvider?.invoke()?.takeIf { it.isNotBlank() } ?: fetchFallbackToken()
+            val media = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()
+                ?.takeIf { it.isNotBlank() } ?: return "us"
+            val token = AppleMusicProvider.ensureTokenFresh() ?: return "us"
             val resp = client.get("$AMP_BASE/v1/me/storefront") {
-                header("Authorization", "Bearer $dev")
+                header("Authorization", "Bearer $token")
                 header("Media-User-Token", media)
                 header("Origin", "https://music.apple.com")
                 header("Referer", "https://music.apple.com/")
@@ -160,14 +161,6 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         } catch (_: Exception) {
             "us"
         }
-    }
-
-    private suspend fun fetchFallbackToken(): String {
-        // Use the fallback from AppleMusicProvider via ensureToken path – simplest is to trigger provider's token.
-        // We can't call private ensureTokenFresh, so scrape fallback directly from AppleMusicProvider's constant via reflection?
-        // Fallback to hardcoded known-good token as last resort (same as canvas fallback).
-        return AppleMusicProvider.devTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
-            ?: "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
     }
 
     private fun ttmlToLrc(ttml: String): String {

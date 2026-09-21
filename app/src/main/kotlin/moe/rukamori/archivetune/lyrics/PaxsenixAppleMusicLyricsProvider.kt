@@ -24,7 +24,14 @@ object PaxsenixAppleMusicLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> = PaxsenixLyrics.getAppleMusicLyrics(title, artist, duration)
+    ): Result<String> {
+        // Nothing to fall back on here: without a token the module spends its only request on a
+        // 401, so say so and let the next provider in the chain answer.
+        if (!PaxsenixAppleMusicToken.install()) {
+            return Result.failure(IllegalStateException("No Apple Music web player token available"))
+        }
+        return PaxsenixLyrics.getAppleMusicLyrics(title, artist, duration)
+    }
 
     override suspend fun getAllLyrics(
         id: String,

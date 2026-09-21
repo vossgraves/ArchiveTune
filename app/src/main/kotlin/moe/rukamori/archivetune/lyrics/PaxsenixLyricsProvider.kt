@@ -24,7 +24,12 @@ object PaxsenixLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> = PaxsenixLyrics.getLyrics(title, artist, duration)
+    ): Result<String> {
+        // The chain tries Apple Music first, so the module needs a live token even though NetEase,
+        // Spotify and Musixmatch can answer without one.
+        PaxsenixAppleMusicToken.install()
+        return PaxsenixLyrics.getLyrics(title, artist, duration)
+    }
 
     override suspend fun getAllLyrics(
         id: String,
@@ -34,6 +39,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         duration: Int,
         callback: (String) -> Unit,
     ) {
+        PaxsenixAppleMusicToken.install()
         PaxsenixLyrics.getAllLyrics(title, artist, duration, callback)
     }
 }

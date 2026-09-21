@@ -44,6 +44,7 @@ import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
+import moe.rukamori.archivetune.lyrics.PaxsenixAppleMusicToken
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
@@ -257,12 +258,12 @@ class App :
         // Pre-warm the Apple Music web player JWT on startup so the first
         // lyrics lookup and canvas resolution don't pay the extra ~300ms scrape
         // latency. The refresh is throttled and mutex-guarded inside the
-        // provider, so this is safe to call fire-and-forget.
+        // provider, so this is safe to call fire-and-forget. The Paxsenix module
+        // keeps its own copy of the token but scrapes a bundle name Apple no
+        // longer serves, so it is handed the validated one rather than refreshing
+        // for itself.
         applicationScope.launch(Dispatchers.IO) {
-            runCatching {
-                AppleMusicProvider.refreshToken()
-                PaxsenixLyrics.refreshAmpToken()
-            }
+            runCatching { PaxsenixAppleMusicToken.install() }
         }
 
         // Only resumes an existing session — see TelegramClient.startIfSessionExists. Starting the
