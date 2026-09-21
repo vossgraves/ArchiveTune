@@ -36,6 +36,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -81,7 +82,7 @@ fun BrowseScreen(
     val state by viewModel.screenState.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val unknownErrorMessage = stringResource(R.string.error_unknown)
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val onBack: () -> Unit = remember(navController) { { navController.navigateUp() } }
     val onBackToMain: () -> Unit = remember(navController) { { navController.backToMain() } }
@@ -103,7 +104,6 @@ fun BrowseScreen(
         menuState,
         coroutineScope,
         snackbarHostState,
-        unknownErrorMessage,
     ) {
         viewModel.events.collect { event ->
             when (event) {
@@ -142,14 +142,7 @@ fun BrowseScreen(
                     }
                 }
 
-                is BrowseEvent.ShowMessage -> {
-                    val message =
-                        when (event.messageResId) {
-                            R.string.error_unknown -> unknownErrorMessage
-                            else -> unknownErrorMessage
-                        }
-                    snackbarHostState.showSnackbar(message)
-                }
+                is BrowseEvent.ShowMessage -> snackbarHostState.showSnackbar(context.getString(event.messageResId))
             }
         }
     }

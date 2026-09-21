@@ -607,7 +607,8 @@ androidComponents {
     onVariants(selector().all()) { variant ->
         // The automotive manifest removes MainActivity, so the generated icon-pack manifest —
         // which launches MainActivity — would point at a component that is not in the APK.
-        if ("automotive" in variant.name) return@onVariants
+        // Match the flavour, not the name.
+        if (variant.productFlavors.any { (_, flavor) -> flavor == "automotive" }) return@onVariants
         val capitalizedVariantName =
             variant.name.replaceFirstChar { character ->
                 if (character.isLowerCase()) character.titlecase() else character.toString()

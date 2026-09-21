@@ -16,6 +16,12 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.innertube.YouTube
 
+/** The panel's remote half: one watch page answers for both of these. */
+data class RemoteMediaInfo(
+    val metadata: MediaInfoMetadata,
+    val statistics: MediaInfoStatistics,
+)
+
 class MediaInfoRepository @Inject constructor(private val database: MusicDatabase) {
     fun observeLocal(videoId: String): Flow<LocalMediaInfo> =
         combine(database.song(videoId), database.format(videoId)) { song, format ->
@@ -39,29 +45,25 @@ class MediaInfoRepository @Inject constructor(private val database: MusicDatabas
             )
         }.flowOn(Dispatchers.IO)
 
-    // Upstream calls YouTube.getMediaMetadata and YouTube.getMediaStatistics, which rukamori/core
-    // declares separately; the core revision this fork compiles against (vossgraves/core
-    // 4d8158fbd5a5) exposes a single getMediaInfo carrying the same fields, so both reads map from
-    // it. The call count is unchanged: upstream also issues one request per read.
-    suspend fun metadata(videoId: String): MediaInfoMetadata =
+    // Our core exposes one getMediaInfo returning both halves, so the panel reads it once.
+    suspend fun mediaInfo(videoId: String): RemoteMediaInfo =
         withContext(Dispatchers.IO) {
             val info = YouTube.getMediaInfo(videoId).getOrThrow()
-            MediaInfoMetadata(
-                title = info.title,
-                author = info.author,
-                artwork = info.authorThumbnail,
-                description = info.description?.takeIf(String::isNotBlank),
-                subscribers = info.subscribers,
-            )
-        }
-
-    suspend fun statistics(videoId: String): MediaInfoStatistics =
-        withContext(Dispatchers.IO) {
-            val info = YouTube.getMediaInfo(videoId).getOrThrow()
-            MediaInfoStatistics(
-                views = info.viewCount,
-                likes = info.like,
-                dislikes = info.dislike,
+            RemoteMediaInfo(
+                metadata =
+                    MediaInfoMetadata(
+                        title = info.title,
+                        author = info.author,
+                        artwork = info.authorThumbnail,
+                        description = info.description?.takeIf(String::isNotBlank),
+                        subscribers = info.subscribers,
+                    ),
+                statistics =
+                    MediaInfoStatistics(
+                        views = info.viewCount,
+                        likes = info.like,
+                        dislikes = info.dislike,
+                    ),
             )
         }
 }

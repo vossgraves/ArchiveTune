@@ -232,8 +232,11 @@ object AppleMusicProvider {
      * `/v1/me/storefront` — using that instead of hardcoded "us" makes
      * search and lyrics resolve against the right catalog and pass the
      * token's subscription check.
+     *
+     * Public because callers outside this module resolve the same account's storefront: one cached
+     * answer for the account rather than one lookup per request.
      */
-    private suspend fun resolveStorefront(): String {
+    suspend fun resolveStorefront(): String {
         val media = mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() } ?: return "us"
         val now = System.currentTimeMillis()
         cachedStorefront?.let { if (now - cachedStorefrontAtMs < STOREFRONT_TTL_MS) return it }

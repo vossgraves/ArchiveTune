@@ -103,7 +103,7 @@ object AppleWebPlayToken {
         return runCatching {
             val normalized = parts[1].replace('-', '+').replace('_', '/')
             val padded = normalized + "=".repeat((4 - normalized.length % 4) % 4)
-            String(java.util.Base64.getDecoder().decode(padded))
+            String(java.util.Base64.getDecoder().decode(padded), Charsets.UTF_8)
         }.getOrNull()
     }
 

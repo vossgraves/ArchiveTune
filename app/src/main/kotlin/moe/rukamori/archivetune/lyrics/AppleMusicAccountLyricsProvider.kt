@@ -20,6 +20,7 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -64,7 +65,8 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): Result<String> = runCatching {
-        val ttml = fetchTtml(title, artist, album) ?: throw IllegalStateException("No Apple Music lyrics for $title — $artist")
+        val ttml = fetchTtml(title, artist)
+            ?: throw IllegalStateException("No Apple Music lyrics for $title — $artist")
         ttmlToLrc(ttml)
     }
 
@@ -90,6 +92,12 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
                 requestTimeoutMillis = 18_000
                 socketTimeoutMillis = 18_000
             }
+            // Shared by every AMP call; the token headers stay per request, where their values are.
+            defaultRequest {
+                header("Origin", "https://music.apple.com")
+                header("Referer", "https://music.apple.com/")
+                header("User-Agent", UA)
+            }
             expectSuccess = false
         }
     }
@@ -97,22 +105,19 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     private const val AMP_BASE = "https://amp-api.music.apple.com"
     private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
-    private suspend fun fetchTtml(title: String, artist: String, album: String?): String? {
+    private suspend fun fetchTtml(title: String, artist: String): String? {
         // Resolve Apple Music song id via search with the user's tokens. The bearer is the pasted
         // dev JWT when there is one, otherwise a scraped web player token — and when neither is
         // available we return nothing rather than sending a request that can only 401.
-        val storefront = resolveStorefront()
         val token = AppleMusicProvider.ensureTokenFresh() ?: return null
         val mediaToken = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()
             ?.takeIf { it.isNotBlank() } ?: return null
+        val storefront = AppleMusicProvider.resolveStorefront()
 
         val query = if (title.contains(artist, ignoreCase = true)) title else "$artist $title"
         val searchResp = client.get("$AMP_BASE/v1/catalog/$storefront/search") {
             header("Authorization", "Bearer $token")
             header("Media-User-Token", mediaToken)
-            header("Origin", "https://music.apple.com")
-            header("Referer", "https://music.apple.com/")
-            header("User-Agent", UA)
             parameter("term", query)
             parameter("types", "songs")
             parameter("limit", "5")
@@ -127,54 +132,37 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         val songId = best["id"]?.jsonPrimitive?.contentOrNull ?: return null
 
         // Try syllable-lyrics first (word sync), fall back to lyrics (line sync).
-        for (ep in listOf("syllable-lyrics", "lyrics")) {
-            val resp = client.get("$AMP_BASE/v1/catalog/$storefront/songs/$songId/$ep") {
+        for (endpoint in listOf("syllable-lyrics", "lyrics")) {
+            val resp = client.get("$AMP_BASE/v1/catalog/$storefront/songs/$songId/$endpoint") {
                 header("Authorization", "Bearer $token")
                 header("Media-User-Token", mediaToken)
-                header("Origin", "https://music.apple.com")
-                header("Referer", "https://music.apple.com/")
-                header("User-Agent", UA)
             }
             if (!resp.status.isSuccess()) continue
-            val body = resp.body<JsonObject>()
-            val ttml = body["data"]?.jsonArray?.firstOrNull()?.jsonObject
-                ?.get("attributes")?.jsonObject?.get("ttml")?.jsonPrimitive?.contentOrNull
-                ?: body["data"]?.jsonArray?.firstOrNull()?.jsonObject?.get("attributes")?.jsonObject
-                    ?.get("ttml")?.jsonPrimitive?.contentOrNull
+            val payload = resp.bodyAsText().trimStart()
+            // A body that is not markup is the JSON envelope; a body that is markup is the TTML
+            // document itself. Matching "<tt" inside JSON would hand the envelope back as lyrics,
+            // but so would accepting any "<": an HTML error page served 2xx is not lyrics.
+            if (payload.startsWith("<tt") || payload.startsWith("<?xml")) return payload
+            val body = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: continue
+            val ttml =
+                body["data"]
+                    ?.jsonArray
+                    ?.firstOrNull()
+                    ?.jsonObject
+                    ?.get("attributes")
+                    ?.jsonObject
+                    ?.get("ttml")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
             if (!ttml.isNullOrBlank()) return ttml
-            // Alternative: body is already TTML string?
-            val raw = resp.bodyAsText()
-            if (raw.contains("<tt")) return raw
         }
         return null
-    }
-
-    private suspend fun resolveStorefront(): String {
-        // We go through the same /v1/me/storefront as the canvas provider so an ES token hits "es".
-        return try {
-            val media = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()
-                ?.takeIf { it.isNotBlank() } ?: return "us"
-            val token = AppleMusicProvider.ensureTokenFresh() ?: return "us"
-            val resp = client.get("$AMP_BASE/v1/me/storefront") {
-                header("Authorization", "Bearer $token")
-                header("Media-User-Token", media)
-                header("Origin", "https://music.apple.com")
-                header("Referer", "https://music.apple.com/")
-                header("User-Agent", UA)
-            }
-            if (!resp.status.isSuccess()) return "us"
-            val root = resp.body<JsonObject>()
-            root["data"]?.jsonArray?.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull ?: "us"
-        } catch (_: Exception) {
-            "us"
-        }
     }
 
     private fun ttmlToLrc(ttml: String): String {
         // TTML <p begin="27.395" end="28.960">I been tryna call</p> -> [00:27.39]I been tryna call
         // Also supports word-level <span> – we flatten to line text.
         val pRegex = Regex("""<p[^>]*begin="([^"]+)"[^>]*>(.*?)</p>""", RegexOption.DOT_MATCHES_ALL)
-        val spanRegex = Regex("""<span[^>]*>.*?</span>""")
         val sb = StringBuilder()
         for (m in pRegex.findAll(ttml)) {
             val begin = m.groupValues[1]

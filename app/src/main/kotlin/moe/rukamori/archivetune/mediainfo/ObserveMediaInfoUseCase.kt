@@ -9,50 +9,71 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 
 class ObserveMediaInfoUseCase @Inject constructor(private val repository: MediaInfoRepository) {
-    operator fun invoke(videoId: String): Flow<MediaInfoData> = flow {
-        val local = repository.observeLocal(videoId)
-            .map<LocalMediaInfo, MediaInfoState<LocalMediaInfo>> { MediaInfoState.Success(it) }
-            .catch { failure -> emit(failure.asMediaInfoError()) }
-        val initialLocal = local.first()
-        val isLocal = (initialLocal as? MediaInfoState.Success)?.data?.isLocal == true
-        val metadata = if (isLocal) {
-            flowOf<MediaInfoState<MediaInfoMetadata>>(MediaInfoState.Empty)
-        } else {
-            load(
-                request = { repository.metadata(videoId) },
-                isEmpty = {
-                    it.title.isNullOrBlank() && it.author.isNullOrBlank() &&
-                        it.description.isNullOrBlank() && it.subscribers.isNullOrBlank()
+    operator fun invoke(videoId: String): Flow<MediaInfoData> =
+        flow {
+            val local =
+                repository.observeLocal(videoId)
+                    .map<LocalMediaInfo, MediaInfoState<LocalMediaInfo>> { MediaInfoState.Success(it) }
+                    .catch { failure -> emit(failure.asMediaInfoError()) }
+            val initialLocal = local.first()
+            val isLocal = (initialLocal as? MediaInfoState.Success)?.data?.isLocal == true
+            emitAll(
+                combine(local.onStart { emit(initialLocal) }, remote(videoId, isLocal)) { details, states ->
+                    MediaInfoData(details, states.metadata, states.statistics)
                 },
             )
         }
-        val statistics = if (isLocal) {
-            flowOf<MediaInfoState<MediaInfoStatistics>>(MediaInfoState.Empty)
-        } else {
-            load(
-                request = { repository.statistics(videoId) },
-                isEmpty = { it.views == null && it.likes == null && it.dislikes == null },
+
+    /**
+     * Metadata and statistics are two views of the same watch page, so they come out of one read and
+     * share a state: a read that fails cannot leave one of them reporting success.
+     */
+    private fun remote(
+        videoId: String,
+        isLocal: Boolean,
+    ): Flow<RemoteMediaStates> =
+        flow {
+            if (isLocal) {
+                // A file on the device has no watch page; the panel shows its own rows alone.
+                emit(RemoteMediaStates(MediaInfoState.Empty, MediaInfoState.Empty))
+                return@flow
+            }
+            emit(RemoteMediaStates(MediaInfoState.Loading, MediaInfoState.Loading))
+            val info = repository.mediaInfo(videoId)
+            emit(
+                RemoteMediaStates(
+                    metadata = info.metadata.stateOrEmpty(),
+                    statistics = info.statistics.stateOrEmpty(),
+                ),
             )
+        }.catch { failure ->
+            val error = failure.asMediaInfoError()
+            emit(RemoteMediaStates(error, error))
         }
-        emitAll(
-            combine(local.onStart { emit(initialLocal) }, metadata, statistics) { details, info, numbers ->
-                MediaInfoData(details, info, numbers)
-            },
-        )
+}
+
+private data class RemoteMediaStates(
+    val metadata: MediaInfoState<MediaInfoMetadata>,
+    val statistics: MediaInfoState<MediaInfoStatistics>,
+)
+
+private fun MediaInfoMetadata.stateOrEmpty(): MediaInfoState<MediaInfoMetadata> =
+    if (title.isNullOrBlank() && author.isNullOrBlank() && description.isNullOrBlank() && subscribers.isNullOrBlank()) {
+        MediaInfoState.Empty
+    } else {
+        MediaInfoState.Success(this)
     }
 
-    private fun <T> load(request: suspend () -> T, isEmpty: (T) -> Boolean): Flow<MediaInfoState<T>> =
-        flow<MediaInfoState<T>> {
-            emit(MediaInfoState.Loading)
-            val data = request()
-            emit(if (isEmpty(data)) MediaInfoState.Empty else MediaInfoState.Success(data))
-        }.catch { failure -> emit(failure.asMediaInfoError()) }
-}
+private fun MediaInfoStatistics.stateOrEmpty(): MediaInfoState<MediaInfoStatistics> =
+    if (views == null && likes == null && dislikes == null) {
+        MediaInfoState.Empty
+    } else {
+        MediaInfoState.Success(this)
+    }
 
 internal fun Throwable.asMediaInfoError(): MediaInfoState.Error {
     if (this is CancellationException) throw this

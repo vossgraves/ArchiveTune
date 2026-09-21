@@ -11,13 +11,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.PODCAST_LIBRARY_BROWSE_ID
 import moe.rukamori.archivetune.innertube.models.YTItem
 import javax.inject.Inject
 import javax.inject.Singleton
-
-// rukamori/core declares this as innertube.models.PODCAST_LIBRARY_BROWSE_ID; the core revision this
-// fork compiles against (vossgraves/core 4d8158fbd5a55e8de9f56578a65322f575c91ce7) does not carry it.
-internal const val PODCAST_LIBRARY_BROWSE_ID = "FEmusic_library_non_music_audio_list"
 
 data class BrowsePage(
     val title: String?,
