@@ -30,6 +30,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.utils.reportException
@@ -138,8 +139,11 @@ class SpotifyHomeViewModel @Inject constructor(
                 val query = listOfNotNull(action.name, action.artist)
                     .filter(String::isNotBlank)
                     .joinToString(" ")
-                searchCatalogItem<AlbumItem>(query, YouTube.SearchFilter.FILTER_ALBUM)
-                    ?.let { SpotifyHomeNavigationEvent.OpenAlbum(it.browseId) }
+                resolveSpotifyReleaseAlbumId(
+                    query = query,
+                    searchAlbum = { searchCatalogItem<AlbumItem>(it, YouTube.SearchFilter.FILTER_ALBUM) },
+                    searchSong = { searchCatalogItem<SongItem>(it, YouTube.SearchFilter.FILTER_SONG) },
+                )?.let { SpotifyHomeNavigationEvent.OpenAlbum(it) }
             }
             is SpotifyHomeAction.ArtistClick -> resolveSelection("artist:${action.id}") {
                 searchCatalogItem<ArtistItem>(action.name, YouTube.SearchFilter.FILTER_ARTIST)
@@ -325,4 +329,22 @@ class SpotifyHomeViewModel @Inject constructor(
         if (feedSection.items.isEmpty()) return null
         return SpotifyHomeSection.Cards(title = title, items = feedSection.items)
     }
+}
+
+/**
+ * The YouTube Music page a tapped Spotify release opens.
+ *
+ * YouTube Music's albums index holds no page for many one-track releases — asked for one, the album
+ * filter answers with no results at all, which is what the album-only lookup turned into a "no
+ * result found" dead end. The release itself is still indexed as a song there, and that song carries
+ * the album page it came from, so the song index resolves exactly the releases the album index
+ * cannot.
+ */
+internal suspend fun resolveSpotifyReleaseAlbumId(
+    query: String,
+    searchAlbum: suspend (String) -> AlbumItem?,
+    searchSong: suspend (String) -> SongItem?,
+): String? {
+    searchAlbum(query)?.browseId?.takeIf(String::isNotBlank)?.let { return it }
+    return searchSong(query)?.album?.id?.takeIf(String::isNotBlank)
 }
