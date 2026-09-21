@@ -1083,27 +1083,6 @@ val HomeSourceKey = stringPreferencesKey("homeSource")
  */
 val ActiveHomeSourcesKey = stringPreferencesKey("activeHomeSources")
 
-/**
- * Layout style for the Spotify home, mirroring [HomeScreenStyle] for the YouTube one.
- *
- * SPOTIFY is the default and is the geometry Spotify itself uses — tracks two rows deep, wide
- * cards. DEFAULT and RUKAMORI render the same Spotify data in the geometry of the two YouTube
- * homes, so the page matches whichever of those the user already prefers.
- */
-enum class SpotifyHomeStyle {
-    SPOTIFY,
-    DEFAULT,
-    RUKAMORI,
-    ;
-
-    companion object {
-        /** Spotify's own geometry, for the same reason [HomeScreenStyle.Default] lives on the enum. */
-        val Default = SPOTIFY
-    }
-}
-
-val SpotifyHomeStyleKey = stringPreferencesKey("spotifyHomeStyle")
-
 val SpotifyHistorySyncEnabledKey = booleanPreferencesKey("spotifyHistorySyncEnabled")
 
 /**

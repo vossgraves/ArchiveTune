@@ -159,7 +159,7 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
         )
         own(
             "appearance_interface", "appearance",
-            "home_screen_style", "spotify_home_style", "minimal_home_mode", "default_open_tab",
+            "home_screen_style", "minimal_home_mode", "default_open_tab",
             "tablet_mode", "navigation_bar_style", "navigation_bar_settings", "hide_scrollbar",
             "grid_layout", "default_lib_chips", "extras", "app_language",
         )

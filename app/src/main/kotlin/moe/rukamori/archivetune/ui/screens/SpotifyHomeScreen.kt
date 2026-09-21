@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,9 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -79,12 +75,8 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.GridThumbnailCornerRadius
-import moe.rukamori.archivetune.constants.SpotifyHomeStyle
-import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
-import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.Artist
-import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.spotify.SPOTIFY_DJ_PLAYLIST_ID
 import moe.rukamori.archivetune.spotify.SpotifyHomeAction
 import moe.rukamori.archivetune.spotify.SpotifyHomeNavigationEvent
@@ -92,37 +84,31 @@ import moe.rukamori.archivetune.spotify.SpotifyHomeScreenState
 import moe.rukamori.archivetune.spotify.SpotifyHomeSection
 import moe.rukamori.archivetune.spotify.SpotifyHomeViewModel
 import moe.rukamori.archivetune.spotify.SpotifyRecentItem
-import moe.rukamori.archivetune.spotify.SpotifyTracksQueue
 import moe.rukamori.archivetune.spotify.isSpotifyDj
-import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem
-import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.GridItem
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
-import moe.rukamori.archivetune.ui.component.YouTubeGridItem
+import moe.rukamori.archivetune.ui.component.glassAwareCardBorder
+import moe.rukamori.archivetune.ui.component.glassAwareCardColor
 import moe.rukamori.archivetune.ui.component.pressScaleClickable
 import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 
 /**
- * The geometry that separates the three [SpotifyHomeStyle] looks. The sections themselves are the
- * same Spotify data in the same order under every style — only how densely they are laid out
- * changes, which is also the only thing that actually differs between the two YouTube homes.
+ * The Spotify home's geometry: the removed DEFAULT preset's own dp, held over as the single set —
+ * one row of track tiles per carousel, 12dp gutters, 128dp cards.
  *
- * Holding it as one value rather than branching inside each row keeps the four section rows to a
- * single implementation apiece; three copies of each would drift the first time one is touched.
+ * Holding them as one value rather than repeating the dp inside each row keeps the four section rows
+ * to a single implementation apiece; copies of each would drift the first time one is touched.
  */
 @androidx.compose.runtime.Immutable
-data class SpotifyHomeMetrics(
-    /** Rows deep the track grid runs. Spotify stacks two; the Rukamori home packs four. */
-    val trackRows: Int,
+private data class SpotifyHomeMetrics(
     val trackItemWidth: Dp,
-    /** Height of one row of the track grid; total grid height is this times [trackRows]. */
+    /** Height of the track row; the grid is always one row deep. */
     val trackRowHeight: Dp,
     /** Width of an album/playlist card. */
     val cardWidth: Dp,
@@ -131,47 +117,15 @@ data class SpotifyHomeMetrics(
     val itemSpacing: Dp,
 )
 
-@Composable
-fun rememberSpotifyHomeMetrics(): SpotifyHomeMetrics {
-    val style by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.Default)
-    return remember(style) {
-        when (style) {
-            // Spotify's own proportions, and the values this screen shipped with.
-            SpotifyHomeStyle.SPOTIFY ->
-                SpotifyHomeMetrics(
-                    trackRows = 2,
-                    trackItemWidth = 240.dp,
-                    trackRowHeight = 128.dp,
-                    cardWidth = 150.dp,
-                    artistSize = 140.dp,
-                    contentPadding = 16.dp,
-                    itemSpacing = 12.dp,
-                )
-            // Matches HomeScreen: single-row carousels, 12dp gutters, GridThumbnailHeight cards.
-            SpotifyHomeStyle.DEFAULT ->
-                SpotifyHomeMetrics(
-                    trackRows = 1,
-                    trackItemWidth = 300.dp,
-                    trackRowHeight = 72.dp,
-                    cardWidth = 128.dp,
-                    artistSize = 128.dp,
-                    contentPadding = 12.dp,
-                    itemSpacing = 8.dp,
-                )
-            // Matches RukamoriHomeScreen: deep grids, small cards, tight gutters.
-            SpotifyHomeStyle.RUKAMORI ->
-                SpotifyHomeMetrics(
-                    trackRows = 4,
-                    trackItemWidth = 280.dp,
-                    trackRowHeight = 64.dp,
-                    cardWidth = 112.dp,
-                    artistSize = 104.dp,
-                    contentPadding = 8.dp,
-                    itemSpacing = 6.dp,
-                )
-        }
-    }
-}
+private val spotifyHomeMetrics =
+    SpotifyHomeMetrics(
+        trackItemWidth = 300.dp,
+        trackRowHeight = 72.dp,
+        cardWidth = 128.dp,
+        artistSize = 128.dp,
+        contentPadding = 12.dp,
+        itemSpacing = 8.dp,
+    )
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 /**
@@ -219,10 +173,6 @@ fun SpotifyHomeScreen(
     val resolvingItemKey by viewModel.resolvingItemKey.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
-    val metrics = rememberSpotifyHomeMetrics()
-    val homeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.Default)
-    val tonalStart = MaterialTheme.colorScheme.primaryContainer
-    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
     val onSwitchToYoutube = rememberSwitchToYouTube()
 
     DisposableEffect(viewModel) {
@@ -252,27 +202,6 @@ fun SpotifyHomeScreen(
                 }
             )
     ) {
-        // Until now the three styles differed only in dp, which is why switching them read as
-        // nothing happening. The Rukamori one is defined by its tonal wash on the YouTube home;
-        // without it here the two Rukamori homes were the same layout under different paint.
-        if (homeStyle == SpotifyHomeStyle.RUKAMORI) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(430.dp)
-                        .align(Alignment.TopCenter)
-                        .drawWithCache {
-                            val brush =
-                                Brush.verticalGradient(
-                                    0f to tonalStart.copy(alpha = 0.30f),
-                                    0.42f to tonalMiddle.copy(alpha = 0.14f),
-                                    1f to Color.Transparent,
-                                )
-                            onDrawBehind { drawRect(brush) }
-                        },
-            )
-        }
         when (val state = screenState) {
             SpotifyHomeScreenState.Loading -> {
                 HomeStatePane(
@@ -363,32 +292,15 @@ fun SpotifyHomeScreen(
                                         )
                                     }
                                 }
-                                // The swipeable hero belongs to the Rukamori look — it is the thing
-                                // that makes that home recognisable, the same way it does on the
-                                // YouTube side. Drawing it under all three styles was why switching
-                                // them only ever looked like the artwork changing size: the one
-                                // structural difference between them was rendered identically
-                                // everywhere, leaving nothing but dp values to tell them apart.
-                                if (homeStyle == SpotifyHomeStyle.RUKAMORI) {
-                                    SpotifyQuickPicksCarousel(
-                                        tracks = quickPicks.tracks,
-                                        activeTrackId = mediaMetadata?.spotifyTrackId,
-                                        isPlaying = isPlaying,
-                                        resolvingItemKey = resolvingItemKey,
-                                        onTrackClick = onQuickPickClick,
-                                        modifier = Modifier.animateItem(),
-                                    )
-                                } else {
-                                    SpotifyTrackSectionRow(
-                                        tracks = quickPicks.tracks,
-                                        metrics = metrics,
-                                        onTrackClick = onQuickPickClick,
-                                        modifier = Modifier.animateItem(),
-                                        activeTrackId = mediaMetadata?.spotifyTrackId,
-                                        isPlaying = isPlaying,
-                                        resolvingItemKey = resolvingItemKey,
-                                    )
-                                }
+                                // Spotify's own shelf; shown for every Spotify home.
+                                SpotifyQuickPicksCarousel(
+                                    tracks = quickPicks.tracks,
+                                    activeTrackId = mediaMetadata?.spotifyTrackId,
+                                    isPlaying = isPlaying,
+                                    resolvingItemKey = resolvingItemKey,
+                                    onTrackClick = onQuickPickClick,
+                                    modifier = Modifier.animateItem(),
+                                )
                             }
                         }
 
@@ -413,7 +325,6 @@ fun SpotifyHomeScreen(
                                         val sectionTitle = resolveSpotifySectionTitle(section)
                                         SpotifyTrackSectionRow(
                                             tracks = section.tracks,
-                                            metrics = metrics,
                                             onTrackClick = { track ->
                                                 if (mediaMetadata?.spotifyTrackId == track.id) {
                                                     viewModel.cancelSelection()
@@ -433,7 +344,6 @@ fun SpotifyHomeScreen(
                                     is SpotifyHomeSection.Cards -> {
                                         SpotifyCardSectionRow(
                                             items = section.items,
-                                            metrics = metrics,
                                             resolvingItemKey = resolvingItemKey,
                                             onAlbumClick = { album ->
                                                 viewModel.onAction(
@@ -486,9 +396,8 @@ private fun resolveSpotifySectionTitle(section: SpotifyHomeSection): String {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SpotifyTrackSectionRow(
+private fun SpotifyTrackSectionRow(
     tracks: List<SpotifyTrack>,
-    metrics: SpotifyHomeMetrics,
     onTrackClick: (SpotifyTrack) -> Unit,
     modifier: Modifier = Modifier,
     activeTrackId: String? = null,
@@ -496,14 +405,13 @@ fun SpotifyTrackSectionRow(
     resolvingItemKey: String? = null,
 ) {
     if (tracks.isEmpty()) return
-    val rowCount = metrics.trackRows.coerceAtMost(tracks.size).coerceAtLeast(1)
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
-        rows = GridCells.Fixed(rowCount),
-        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
+        rows = GridCells.Fixed(1),
+        contentPadding = PaddingValues(horizontal = spotifyHomeMetrics.contentPadding),
         modifier = modifier
             .fillMaxWidth()
-            .height(metrics.trackRowHeight * rowCount),
+            .height(spotifyHomeMetrics.trackRowHeight),
     ) {
         itemsIndexed(
             items = tracks,
@@ -518,7 +426,7 @@ fun SpotifyTrackSectionRow(
                     if (resolvingItemKey == "track:${track.id}") SpotifySelectionIndicator()
                 },
                 modifier = Modifier
-                    .width(metrics.trackItemWidth)
+                    .width(spotifyHomeMetrics.trackItemWidth)
                     .fillMaxHeight()
                     .pressScaleClickable(onClick = { onTrackClick(track) }),
             )
@@ -533,9 +441,8 @@ fun SpotifyTrackSectionRow(
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SpotifyCardSectionRow(
+private fun SpotifyCardSectionRow(
     items: List<SpotifyHomeFeedItem>,
-    metrics: SpotifyHomeMetrics,
     onAlbumClick: (SpotifyHomeFeedItem.Album) -> Unit,
     onArtistClick: (SpotifyHomeFeedItem.Artist) -> Unit,
     onPlaylistClick: (SpotifyHomeFeedItem.Playlist) -> Unit,
@@ -543,8 +450,8 @@ fun SpotifyCardSectionRow(
     resolvingItemKey: String? = null,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
-        horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
+        contentPadding = PaddingValues(horizontal = spotifyHomeMetrics.contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(spotifyHomeMetrics.itemSpacing),
         modifier = modifier,
     ) {
         items(
@@ -560,7 +467,7 @@ fun SpotifyCardSectionRow(
                         thumbnailUrl = item.imageUrl,
                         isResolving = resolvingItemKey == "album:${item.id}",
                         onClick = { onAlbumClick(item) },
-                        modifier = Modifier.width(metrics.cardWidth),
+                        modifier = Modifier.width(spotifyHomeMetrics.cardWidth),
                     )
 
                 is SpotifyHomeFeedItem.Playlist ->
@@ -569,13 +476,13 @@ fun SpotifyCardSectionRow(
                         subtitle = joinByBullet(item.ownerName, item.totalCount.takeIf { it > 0 }?.toString()),
                         thumbnailUrl = item.imageUrl,
                         onClick = { onPlaylistClick(item) },
-                        modifier = Modifier.width(metrics.cardWidth),
+                        modifier = Modifier.width(spotifyHomeMetrics.cardWidth),
                     )
 
                 is SpotifyHomeFeedItem.Artist ->
                     SpotifyArtistCard(
                         artist = item,
-                        size = metrics.artistSize,
+                        size = spotifyHomeMetrics.artistSize,
                         isResolving = resolvingItemKey == "artist:${item.id}",
                         onClick = { onArtistClick(item) },
                     )
@@ -708,7 +615,7 @@ private fun HomeStatePane(
 }
 
 @Composable
-fun SpotifyRecentPanel(
+private fun SpotifyRecentPanel(
     recentItems: List<SpotifyRecentItem>,
     frequentArtists: List<SpotifyArtist>,
     onPlaylistClick: (SpotifyRecentItem.Playlist) -> Unit,
@@ -824,12 +731,18 @@ private fun SpotifyQuickGridCell(
     isArtist: Boolean,
     isResolving: Boolean = false,
 ) {
+    // The plate these cells sit on is the page's one card surface: a translucent tint over the glass
+    // backdrop when Liquid Glass is on, the ordinary Material 3 card colour when it is off. It used
+    // to be a fixed white wash, which read as glass whether or not the app was in that look and left
+    // white-on-white text in a light theme.
+    val cellShape = RoundedCornerShape(8.dp)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(alpha = 0.1f))
+            .clip(cellShape)
+            .background(glassAwareCardColor())
+            .glassAwareCardBorder(cellShape)
             .pressScaleClickable(onClick = onClick)
     ) {
         AsyncImage(
@@ -844,7 +757,7 @@ private fun SpotifyQuickGridCell(
         Text(
             text = title,
             style = MaterialTheme.typography.labelMedium.copy(
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold
             ),
             maxLines = 2,
