@@ -20,6 +20,7 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -91,6 +92,12 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
                 requestTimeoutMillis = 18_000
                 socketTimeoutMillis = 18_000
             }
+            // Shared by every AMP call; the token headers stay per request, where their values are.
+            defaultRequest {
+                header("Origin", "https://music.apple.com")
+                header("Referer", "https://music.apple.com/")
+                header("User-Agent", UA)
+            }
             expectSuccess = false
         }
     }
@@ -111,9 +118,6 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         val searchResp = client.get("$AMP_BASE/v1/catalog/$storefront/search") {
             header("Authorization", "Bearer $token")
             header("Media-User-Token", mediaToken)
-            header("Origin", "https://music.apple.com")
-            header("Referer", "https://music.apple.com/")
-            header("User-Agent", UA)
             parameter("term", query)
             parameter("types", "songs")
             parameter("limit", "5")
@@ -132,9 +136,6 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
             val resp = client.get("$AMP_BASE/v1/catalog/$storefront/songs/$songId/$endpoint") {
                 header("Authorization", "Bearer $token")
                 header("Media-User-Token", mediaToken)
-                header("Origin", "https://music.apple.com")
-                header("Referer", "https://music.apple.com/")
-                header("User-Agent", UA)
             }
             if (!resp.status.isSuccess()) continue
             val payload = resp.bodyAsText().trimStart()
