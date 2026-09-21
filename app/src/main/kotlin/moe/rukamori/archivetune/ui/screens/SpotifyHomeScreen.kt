@@ -622,7 +622,7 @@ private fun HomeStatePane(
 }
 
 @Composable
-fun SpotifyRecentPanel(
+private fun SpotifyRecentPanel(
     recentItems: List<SpotifyRecentItem>,
     frequentArtists: List<SpotifyArtist>,
     onPlaylistClick: (SpotifyRecentItem.Playlist) -> Unit,
