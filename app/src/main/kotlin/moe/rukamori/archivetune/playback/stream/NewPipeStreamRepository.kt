@@ -27,7 +27,9 @@ import timber.log.Timber
  * It deliberately keeps none of the native tier's machinery: no cookie login, no client-health
  * bookkeeping and no per-client login recovery. That is the point of a second tier — a track the
  * signed-in pipeline refuses (403, age gate, a client that demands auth) is often served to a plain
- * visitor, and a tier that reused the failing session would fail with it.
+ * visitor, and a tier that reused the failing session would fail with it. Format selection is the
+ * shared quality-aware [YTPlayerUtils.selectAudioFormatCandidates], so both tiers rank the same
+ * candidates the same way.
  */
 @Singleton
 class NewPipeStreamRepository
