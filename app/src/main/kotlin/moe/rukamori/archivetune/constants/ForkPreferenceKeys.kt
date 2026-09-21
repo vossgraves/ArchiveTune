@@ -62,3 +62,7 @@ val ListenTogetherChatHistoryKey = stringPreferencesKey("listenTogetherChatHisto
 
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")
+
+// TikTok player: the karaoke caption strip under the artwork (ported from
+// 4nx3b/ArchiveTune). Off by default — it reserves 168dp of the page for the strip.
+val TikTokMainLyricsEnabledKey = booleanPreferencesKey("tiktokMainLyricsEnabled")

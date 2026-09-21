@@ -159,4 +159,8 @@
     <string name="paxsenix_check_result_ok">%1$s: available</string>
     <string name="paxsenix_check_result_retired">%1$s: retired upstream (403)</string>
     <string name="paxsenix_check_result_failed">%1$s: unreachable</string>
+
+    <!-- TikTok player: karaoke caption strip under the artwork. -->
+    <string name="tiktok_main_lyrics">Show lyrics on main player</string>
+    <string name="tiktok_main_lyrics_desc">Display a karaoke lyrics strip with word animation, translation and romanisation on the TikTok player screen, aligned with the song info</string>
 </resources>

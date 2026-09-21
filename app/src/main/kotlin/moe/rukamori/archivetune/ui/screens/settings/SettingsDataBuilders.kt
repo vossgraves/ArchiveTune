@@ -53,6 +53,7 @@ import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.constants.SplashOverlayEnabledKey
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
@@ -188,6 +189,7 @@ fun buildSettingsGroups(
                 SettingsChild("Apple Music Experience", "apple_music_experience", listOf("apple music", "apple music experience", "ios style", "ios header", "apple nav bar", "apple tab bar")) { AppleMusicExperienceSearchSwitch() },
                 SettingsChild("Library style", "library_style", listOf("library style", "apple music library", "playlist header", "library layout")),
                 SettingsChild("Player design style", "player_design_style", listOf("player design", "player layout", "player style")),
+                SettingsChild("Show lyrics on main player (TikTok)", "tiktok_main_lyrics", listOf("tiktok lyrics", "main player lyrics", "current line lyrics", "karaoke line", "tiktok player")) { SearchResultSwitch(TikTokMainLyricsEnabledKey, false) },
                 SettingsChild("Player background style", "player_background_style", listOf("player background", "player bg", "background style")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("Mini player background style", "mini_player_background_style", listOf("mini player", "mini player background")),
