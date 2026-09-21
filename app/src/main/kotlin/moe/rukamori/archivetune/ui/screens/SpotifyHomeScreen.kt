@@ -102,7 +102,6 @@ import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.glassAwareCardBorder
 import moe.rukamori.archivetune.ui.component.glassAwareCardColor
-import moe.rukamori.archivetune.ui.component.glassAwareSurface
 import moe.rukamori.archivetune.ui.component.pressScaleClickable
 import moe.rukamori.archivetune.utils.joinByBullet
 
@@ -202,10 +201,6 @@ fun SpotifyHomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // The page's own surface: transparent while Liquid Glass is on so the app backdrop
-            // shows through, the ordinary Material surface otherwise. Nothing in the layout
-            // depends on which of the two is showing.
-            .background(glassAwareSurface())
             .then(
                 if (headerScrollConnection != null) {
                     Modifier.nestedScroll(headerScrollConnection)
