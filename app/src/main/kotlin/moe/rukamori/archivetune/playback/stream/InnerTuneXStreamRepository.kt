@@ -72,7 +72,9 @@ class InnerTuneXStreamRepository
                 bitrate = stream.bitrate ?: 0,
                 sampleRate = stream.sampleRate,
                 contentLength = stream.contentLengthBytes ?: 0L,
-                expiresAtMs = stream.expiresAt?.toEpochMilliseconds() ?: (System.currentTimeMillis() + DEFAULT_EXPIRES_IN_MS),
+                expiresAtMs =
+                    stream.expiresAt?.toEpochMilliseconds()
+                        ?: (System.currentTimeMillis() + DEFAULT_EXPIRES_IN_MS),
                 authFingerprint = request.authState.streamCacheFingerprint,
                 source = StreamSource.INNERTUBE_X,
                 title = stream.mediaMetadata?.title,
