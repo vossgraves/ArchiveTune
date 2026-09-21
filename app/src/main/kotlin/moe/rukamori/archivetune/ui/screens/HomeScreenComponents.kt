@@ -49,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -331,6 +332,14 @@ fun SpeedDialSection(
             pageCount = { tilePages.size },
         )
 
+    // Removing pins shrinks the grid under the pager's feet; without this the pager keeps a
+    // page that no longer exists and the tile lookup below reads past the end.
+    LaunchedEffect(tilePages.size) {
+        if (pagerState.currentPage > tilePages.lastIndex) {
+            pagerState.scrollToPage(tilePages.lastIndex.coerceAtLeast(0))
+        }
+    }
+
     fun playSpeedDialQueue(startIndex: Int) {
         if (speedDialSongs.isEmpty()) return
         playerConnection.playQueue(
@@ -374,18 +383,26 @@ fun SpeedDialSection(
                     state = pagerState,
                     pageSize = PageSize.Fill,
                     pageSpacing = spacing,
-                    key = { page -> tilePages[page].firstOrNull()?.key ?: "speed_dial_page_$page" },
+                    key = { page -> tilePages.getOrNull(page)?.firstOrNull()?.key ?: "stale_speed_dial_page_$page" },
                     verticalAlignment = Alignment.Top,
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .height(gridHeight),
                 ) { page ->
+                    // Pins change while the pager can still be on a vanished page: render an
+                    // empty page for one frame rather than reading past the end of the grid.
+                    val pageTiles = tilePages.getOrNull(page)
+                    if (pageTiles == null) {
+                        Box(modifier = Modifier.fillMaxSize())
+                        return@HorizontalPager
+                    }
+
                     Column(
                         verticalArrangement = Arrangement.spacedBy(spacing),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        tilePages[page]
+                        pageTiles
                             .chunked(SpeedDialGridColumns)
                             .forEach { rowTiles ->
                                 Row(
