@@ -89,6 +89,11 @@ dependencyResolutionManagement {
                 // every sub-module artifact fails to download.
                 includeGroup("com.github.MetrolistGroup")
                 includeGroup("com.github.MetrolistGroup.MetrolistExtractor")
+                // InnerTubeX — the extractor tier behind AudioStreamRepository, a KMP library
+                // (android + jvm + ios) published by the same org under its own group. Its
+                // per-target modules (innertubex-android, innertubex-desktop) live in this group
+                // too, so the one entry covers the root artifact and the variant Gradle selects.
+                includeGroup("com.github.MetrolistGroup.innertubex")
             }
         }
     }

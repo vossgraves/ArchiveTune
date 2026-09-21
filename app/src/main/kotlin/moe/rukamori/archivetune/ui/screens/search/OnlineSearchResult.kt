@@ -75,7 +75,9 @@ import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_VIDEO
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.EpisodeItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.PodcastItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.innertube.models.YTItem
@@ -207,6 +209,8 @@ fun OnlineSearchResult(
                             onDismiss = menuState::dismiss,
                         )
                     }
+
+                    is PodcastItem, is EpisodeItem -> Unit
                 }
             }
         }
@@ -259,6 +263,8 @@ fun OnlineSearchResult(
                                 is PlaylistItem -> {
                                     navController.navigate("online_playlist/${item.id}")
                                 }
+
+                                is PodcastItem, is EpisodeItem -> Unit
                             }
                         },
                         onLongClick = longClick,

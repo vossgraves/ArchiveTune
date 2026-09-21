@@ -301,6 +301,8 @@ fun OnlineSearchScreen(
                                                 },
                                             )
                                         }
+
+                                        is PodcastItem, is EpisodeItem -> Unit
                                     }
                                 }
                             },
@@ -341,6 +343,8 @@ fun OnlineSearchScreen(
                                             navController.navigate("online_playlist/${item.id}")
                                             onDismiss()
                                         }
+
+                                        is PodcastItem, is EpisodeItem -> Unit
                                     }
                                 },
                                 onLongClick = {
@@ -389,6 +393,8 @@ fun OnlineSearchScreen(
                                                     },
                                                 )
                                             }
+
+                                            is PodcastItem, is EpisodeItem -> Unit
                                         }
                                     }
                                 },

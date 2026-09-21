@@ -121,7 +121,9 @@ import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.AlbumReleaseType
 import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.BrowseEndpoint
+import moe.rukamori.archivetune.innertube.models.EpisodeItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.PodcastItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.innertube.pages.ArtistPage
@@ -990,6 +992,8 @@ fun ArtistScreen(
                                                                 is PlaylistItem -> {
                                                                     navController.navigate("online_playlist/${item.id}")
                                                                 }
+
+                                                                is PodcastItem, is EpisodeItem -> Unit
                                                             }
                                                         },
                                                         onLongClick = {
@@ -1026,6 +1030,8 @@ fun ArtistScreen(
                                                                             onDismiss = menuState::dismiss,
                                                                         )
                                                                     }
+
+                                                                    is PodcastItem, is EpisodeItem -> Unit
                                                                 }
                                                             }
                                                         },

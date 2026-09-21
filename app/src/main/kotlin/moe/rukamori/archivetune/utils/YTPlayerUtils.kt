@@ -18,7 +18,6 @@ import kotlinx.coroutines.sync.withLock
 import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.PlayerStreamClient
-import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.PlaybackAuthState
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeClient
@@ -35,6 +34,7 @@ import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_EMB
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_PRIMARY
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
+import moe.rukamori.archivetune.playback.stream.NewPipeStreamUrlExtractor
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
 import moe.rukamori.archivetune.utils.potoken.PoTokenResult
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -1528,7 +1528,12 @@ object YTPlayerUtils {
         ).firstOrNull()
     }
 
-    private fun selectAudioFormatCandidates(
+    /**
+     * The quality-aware audio ranking both playback tiers use:
+     * [moe.rukamori.archivetune.playback.stream.NewPipeStreamRepository] mints URLs for the same
+     * candidates the native cascade walks, so a quality change means the same thing on either path.
+     */
+    internal fun selectAudioFormatCandidates(
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
         networkMetered: Boolean,
@@ -1673,12 +1678,13 @@ object YTPlayerUtils {
     }
 
     /**
-     * Wrapper around the [NewPipeUtils.getSignatureTimestamp] function which reports exceptions
+     * Wrapper around the [NewPipeStreamUrlExtractor.signatureTimestamp] function which reports
+     * exceptions.
      */
     private suspend fun getSignatureTimestampOrNull(videoId: String): Int? {
         Timber.tag(logTag).i("Getting signature timestamp for videoId: $videoId")
-        return NewPipeUtils
-            .getSignatureTimestamp(videoId)
+        return NewPipeStreamUrlExtractor
+            .signatureTimestamp(videoId)
             .onSuccess { Timber.tag(logTag).i("Signature timestamp obtained: $it") }
             .onFailure {
                 Timber.tag(logTag).e(it, "Failed to get signature timestamp")
@@ -1687,7 +1693,7 @@ object YTPlayerUtils {
     }
 
     /**
-     * Wrapper around the [NewPipeUtils.getStreamUrl] function which reports exceptions.
+     * Wrapper around the [NewPipeStreamUrlExtractor.streamUrl] function which reports exceptions.
      */
     private suspend fun findUrl(
         format: PlayerResponse.StreamingData.Format,
@@ -1696,8 +1702,8 @@ object YTPlayerUtils {
         authState: PlaybackAuthState,
     ): Result<String> {
         Timber.tag(logTag).i("Finding stream URL for format: ${format.mimeType}, videoId: $videoId")
-        return NewPipeUtils
-            .getStreamUrl(format, videoId, client, authState)
+        return NewPipeStreamUrlExtractor
+            .streamUrl(format, videoId, client, authState)
             .onSuccess { Timber.tag(logTag).i("Stream URL obtained successfully") }
     }
 

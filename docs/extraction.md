@@ -11,8 +11,27 @@ concurrent requests for the same key into one in-flight resolution, and tries:
 
 1. **`NativeStreamRepository`** — the compiled InnerTube core, via `YTPlayerUtils`.
    Fast, no Python. This is the hot path.
-2. **`YtdlnisStreamRepository`** — only after the native path throws. Goes out to an
-   external yt-dlp plugin APK through `ytdlp/CompactYtDlp.kt`, the way YTDLnis does.
+2. Fallback tiers, in order, each tried only after the previous one throws:
+   **`InnerTuneXStreamRepository`** (the `com.github.MetrolistGroup.innertubex` library's own
+   extraction stack, adapted — not forked), then **`NewPipeStreamRepository`** (an anonymous
+   player response minted through MetrolistExtractor's JavaScript player, so no plugin APK and
+   no session), then **`YtdlnisStreamRepository`** (an external yt-dlp plugin APK through
+   `ytdlp/CompactYtDlp.kt`, the way YTDLnis does).
+
+The order lives in `ResolveAudioStreamUseCase.fallbackTiers` and nowhere else;
+`ResolvedAudioStream.source` records which tier won (`NATIVE_INNERTUBE`, `INNERTUBE_X`,
+`NEWPIPE`, `YT_DLP`).
+
+## The cipher seam
+
+`StreamUrlExtractor` (`playback/stream/`) is the app-side contract for the cipher step:
+mint a playable URL for a format the caller has already chosen, plus the JavaScript player's
+signature timestamp. `NewPipeStreamUrlExtractor` is its implementation and the only file that
+touches core's `NewPipeUtils`; `di/ExtractorModule` binds it for the injectable tiers, and the
+player-response pipelines (`YTPlayerUtils`, `VideoArtworkPlayer`, `EchoStreamResolver`) call it
+directly because they are static call sites. Swapping the extractor backend therefore changes
+one binding and one object — which is also where the `org.schabi.newpipe.extractor` question
+(core's dependency block) is decided.
 
 The embedded Python/Chaquopy yt-dlp layer was removed in 2026-08 and must not come
 back; the external plugin above is a different thing and is fine.
@@ -92,7 +111,7 @@ the submodule along:
 |---|---|
 | `YouTube.newPipePlayer(videoId, response)` re-resolves the player response through NewPipe | No such entry point; the `?: streamPlayerResponse` fallback was already the only outcome, so the response is used directly |
 | `AdaptiveFormat.isOriginal` marks the undubbed audio track | Field absent from this fork's `PlayerResponse`; every audio format stays a candidate |
-| `YouTube.getNewPipeStreamUrls(videoId)` lists every `(itag, url)` pair | `NewPipeUtils.getStreamUrl(format, videoId)` immediately above already resolves the same format through NewPipe, so the second pass had nothing to add |
+| `YouTube.getNewPipeStreamUrls(videoId)` lists every `(itag, url)` pair | `NewPipeStreamUrlExtractor.streamUrl(format, videoId)` immediately above already resolves the same format through NewPipe, so the second pass had nothing to add |
 
 Downloads are not wired to it. `DownloadUtil` resolves through `YTPlayerUtils.playerResponseForDownload`,
 a separate entry point that selects for the best storable format rather than the best playable one,

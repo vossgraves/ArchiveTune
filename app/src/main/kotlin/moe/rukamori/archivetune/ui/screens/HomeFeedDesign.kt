@@ -83,7 +83,9 @@ import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.EpisodeItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
+import moe.rukamori.archivetune.innertube.models.PodcastItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -624,6 +626,8 @@ fun HomeFeedYTItemCard(
             is AlbumItem -> item.artists?.joinToString { it.name } ?: item.year?.toString().orEmpty()
             is ArtistItem -> item.subscriberCountText.orEmpty()
             is PlaylistItem -> item.songCountText.orEmpty()
+            is PodcastItem -> item.author?.name.orEmpty()
+            is EpisodeItem -> item.podcast?.name.orEmpty()
         }
     HomeFeedShelfCard(
         thumbnailUrl = item.thumbnail,
@@ -638,6 +642,7 @@ fun HomeFeedYTItemCard(
                 is AlbumItem -> navController.navigate("album/${item.id}")
                 is ArtistItem -> navController.navigate("artist/${item.id}")
                 is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+                is PodcastItem, is EpisodeItem -> Unit
             }
         },
         onLongClick = {
@@ -670,6 +675,8 @@ fun HomeFeedYTItemCard(
                             coroutineScope = scope,
                             onDismiss = menuState::dismiss,
                         )
+
+                    is PodcastItem, is EpisodeItem -> Unit
                 }
             }
         },
