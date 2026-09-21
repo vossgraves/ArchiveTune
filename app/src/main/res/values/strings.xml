@@ -1738,6 +1738,14 @@
     <string name="listen_together_chat_share_song">Share the current song in the chat</string>
     <string name="listen_together_chat_play_song">Play song in the room</string>
     <string name="listen_together_chat_nothing_playing">Nothing is playing right now</string>
+    <string name="listen_together_chat_unsupported_server">Chat is not supported by this server</string>
+    <string name="listen_together_chat_pinned_count">%d pinned</string>
+    <string name="listen_together_chat_pinned_show_all">Show all</string>
+    <string name="listen_together_chat_pinned_show_less">Show less</string>
+    <string name="listen_together_chat_pick_song_title">Share a song</string>
+    <string name="listen_together_chat_pick_song_hint">Search songs to share</string>
+    <string name="listen_together_chat_pick_song_no_results">No results found</string>
+    <string name="listen_together_chat_now_playing">Now playing</string>
     <string name="listen_together_room_created">Room created: %s</string>
     <string name="listen_together_cannot_edit_username_in_room">Cannot edit username while in a room</string>
     <string name="listen_together_settings_desc">Configure server, username, and more</string>

@@ -1119,28 +1119,126 @@ internal fun RepliedMessagePreview(
     }
 }
 
-/** Banner over the chat list showing the most recent pinned message. */
+/**
+ * Banner block over the chat list with EVERY pinned message stacked — not just
+ * the most recent one. Rows keep chronological order; each row jumps to its
+ * message in the history and carries its own unpin button. When more than
+ * [PINNED_STACK_COLLAPSED_LIMIT] messages are pinned the stack collapses to
+ * the most recent rows behind a "show all" header.
+ */
 @Composable
-internal fun PinnedBanner(
-    message: ChatMessagePayload,
-    onUnpin: () -> Unit,
-    onJumpTo: () -> Unit,
+internal fun PinnedMessagesStack(
+    messages: List<ChatMessagePayload>,
+    onUnpin: (ChatMessagePayload) -> Unit,
+    onJumpTo: (ChatMessagePayload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        shape = RoundedCornerShape(14.dp),
+    if (messages.isEmpty()) return
+
+    var expanded by remember { mutableStateOf(false) }
+    val visible =
+        if (expanded) {
+            messages
+        } else {
+            messages.takeLast(PINNED_STACK_COLLAPSED_LIMIT)
+        }
+
+    Column(
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (messages.size > PINNED_STACK_COLLAPSED_LIMIT && !expanded) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier =
+                        Modifier
+                            .clickable { expanded = true }
+                            .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.push_pin),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(R.string.listen_together_chat_pinned_count, messages.size),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.expand_more),
+                        contentDescription = stringResource(R.string.listen_together_chat_pinned_show_all),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+
+        visible.forEach { pinned ->
+            PinnedBannerRow(
+                message = pinned,
+                onUnpin = { onUnpin(pinned) },
+                onJumpTo = { onJumpTo(pinned) },
+            )
+        }
+
+        if (expanded) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = false }
+                        .padding(vertical = 2.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.listen_together_chat_pinned_show_less),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Icon(
+                    painter = painterResource(R.drawable.expand_less),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+/** One row of the pinned stack: the sender and a one-line preview. */
+@Composable
+private fun PinnedBannerRow(
+    message: ChatMessagePayload,
+    onUnpin: () -> Unit,
+    onJumpTo: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier =
                 Modifier
                     .clickable(onClick = onJumpTo)
-                    .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                    .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.push_pin),
@@ -1151,10 +1249,11 @@ internal fun PinnedBanner(
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.listen_together_chat_pinned_banner),
+                    text = message.username,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                 )
                 val preview =
                     when {
@@ -1163,7 +1262,7 @@ internal fun PinnedBanner(
                         else -> message.message
                     }
                 Text(
-                    text = "${message.username}: $preview",
+                    text = preview,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -1181,6 +1280,9 @@ internal fun PinnedBanner(
         }
     }
 }
+
+/** How many pinned rows stay visible when the stack is collapsed. */
+private const val PINNED_STACK_COLLAPSED_LIMIT = 3
 
 @Composable
 internal fun formatMessageWithLinks(text: String): AnnotatedString {

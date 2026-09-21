@@ -1765,9 +1765,17 @@ class ListenTogetherClient @Inject constructor(
         }
 
         // metroserver (The Meowery) has no chat relay; its codec is protobuf-only
-        // and ChatPayload has no protobuf mapping, so say so instead of throwing.
+        // and ChatPayload has no protobuf mapping. Surfaces as a toast (never a
+        // silent drop) — though the chat entry point is hidden on such servers.
         if (codec.format == MessageFormat.PROTOBUF) {
             log(LogLevel.WARNING, "Chat is not supported by this server", null)
+            scope.launch(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.listen_together_chat_unsupported_server),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
             return
         }
 

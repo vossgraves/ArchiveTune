@@ -318,7 +318,13 @@ data class ChatMessagePayload(
     // artist, duration); tapping it plays the song in the room. Carried in the
     // payload JSON so it persists with the history; cross-device it travels in
     // an [LTS:...] envelope on the chat relay, like replies and avatars.
-    @SerialName("shared_track") val sharedTrack: TrackInfo? = null
+    @SerialName("shared_track") val sharedTrack: TrackInfo? = null,
+    // Set locally on the local user's own messages that arrive while they are
+    // ALONE in the room: self-chatter that must never reach the persisted
+    // history. Travels with the payload so the filter survives a
+    // persist -> restore -> re-persist round trip (a volatile in-memory key set
+    // was lost on restore and let old solo messages back into the store).
+    val solo: Boolean = false,
 )
 
 /**

@@ -168,10 +168,6 @@ class ListenTogetherManager @Inject constructor(
     private val chatHistoryJson = Json { ignoreUnknownKeys = true }
     private var lastTypingSentAt = 0L
 
-    /** (userId, timestamp) keys of messages the local user sent while ALONE in the
- * room — self-chatter that must never reach the persisted history. */
-    private val soloChatMessageKeys = mutableSetOf<Pair<String, Long>>()
-
     private fun hasOtherRoomMembers(): Boolean {
         val myId = userId.value ?: return false
         return (roomState.value?.users?.count { it.userId != myId } ?: 0) > 0
@@ -783,22 +779,26 @@ class ListenTogetherManager @Inject constructor(
             is ListenTogetherEvent.ChatMessageReceived -> {
                 Timber.tag(TAG).d("Chat message received from ${event.payload.username}")
 
-                // Prevent duplicate keys causing LazyColumn crash
-                val exists = _chatMessages.value.any { it.timestamp == event.payload.timestamp && it.userId == event.payload.userId }
-                if (!exists) {
-                    _chatMessages.value = _chatMessages.value + event.payload
-                    if (event.payload.userId != userId.value) {
-                        _unreadMessageCount.value++
-                    }
-                    // A message the user sent while ALONE in the room is a chat with
-                    // themselves — those never persist. Only messages exchanged with
-                    // other members survive reconnects/rejoins.
+                // The local user's own message that arrives while they are ALONE
+                // in the room is a chat with themselves — flagged on the payload so
+                // it never persists (the flag survives restore, unlike a volatile
+                // key set, so restored solo messages can never re-enter the store).
+                val payload =
                     if (event.payload.userId == userId.value && !hasOtherRoomMembers()) {
-                        soloChatMessageKeys += event.payload.userId to event.payload.timestamp
+                        event.payload.copy(solo = true)
+                    } else {
+                        event.payload
+                    }
+
+                val exists = _chatMessages.value.any { it.timestamp == payload.timestamp && it.userId == payload.userId }
+                if (!exists) {
+                    _chatMessages.value = _chatMessages.value + payload
+                    if (payload.userId != userId.value) {
+                        _unreadMessageCount.value++
                     }
                     scheduleChatPersist()
                 } else {
-                    Timber.tag(TAG).w("Ignoring duplicate chat message from ${event.payload.username}")
+                    Timber.tag(TAG).w("Ignoring duplicate chat message from ${payload.username}")
                 }
             }
 
@@ -835,7 +835,6 @@ class ListenTogetherManager @Inject constructor(
         _chatMessages.value = emptyList() // Clear chat on room leave
         _unreadMessageCount.value = 0
         _typingUsers.value = emptyList()
-        soloChatMessageKeys.clear()
     }
 
     // PORT-NOTE: vivi's PlayerConnection/MusicService carried a mute state
@@ -2100,34 +2099,42 @@ class ListenTogetherManager @Inject constructor(
     }
 
     /** Debounced persistence of the chat list, keyed by the local username. Only
- * messages exchanged while other members were present are written — solo
- * chatter (the user talking to an empty room) is deliberately dropped. */
+     * messages exchanged with other members are written — messages flagged
+     * [ChatMessagePayload.solo] (the user talking to an empty room) are
+     * deliberately dropped. When nothing worth keeping remains, the stored
+     * history is CLEARED instead of silently left stale. */
     private fun scheduleChatPersist() {
         chatPersistJob?.cancel()
         chatPersistJob = scope.launch(Dispatchers.IO) {
             delay(600)
             val username = client.currentUsername ?: return@launch
-            val myId = userId.value
+            // Leaving the room wipes the live list before this debounced job
+            // runs — that must never erase a previously stored conversation.
+            if (_chatMessages.value.isEmpty()) return@launch
             val trimmed =
                 _chatMessages.value
                     .takeLast(MAX_PERSISTED_CHAT_MESSAGES)
-                    .filterNot { message ->
-                        message.userId == myId && (message.userId to message.timestamp) in soloChatMessageKeys
-                    }
-            if (trimmed.isEmpty()) return@launch
+                    .filterNot { it.solo }
             runCatching {
                 context.dataStore.edit { prefs ->
-                    prefs[ListenTogetherChatHistoryKey] =
-                        chatHistoryJson.encodeToString(
-                            PersistedChatHistory.serializer(),
-                            PersistedChatHistory(username = username, messages = trimmed),
-                        )
+                    if (trimmed.isEmpty()) {
+                        prefs.remove(ListenTogetherChatHistoryKey)
+                    } else {
+                        prefs[ListenTogetherChatHistoryKey] =
+                            chatHistoryJson.encodeToString(
+                                PersistedChatHistory.serializer(),
+                                PersistedChatHistory(username = username, messages = trimmed),
+                            )
+                    }
                 }
             }.onFailure { Timber.tag(TAG).e(it, "Failed to persist chat history") }
         }
     }
 
-    /** Restores the per-username chat history after a join/create/reconnect. */
+    /** Restores the per-username chat history after a join/create/reconnect.
+     * Histories written by an older persistence scheme (before solo messages
+     * were flagged) are discarded once — they may contain the user's alone-room
+     * chatter, which must never come back. */
     private fun loadPersistedChatHistory() {
         val username = client.currentUsername
         if (username.isNullOrBlank()) return
@@ -2138,6 +2145,13 @@ class ListenTogetherManager @Inject constructor(
                 chatHistoryJson.decodeFromString(PersistedChatHistory.serializer(), raw)
             }.getOrNull() ?: return@launch
             if (stored.username != username) return@launch
+            if (stored.version != PersistedChatHistory.CURRENT_VERSION) {
+                Timber.tag(TAG).d("Discarding chat history from an older persistence scheme")
+                runCatching {
+                    context.dataStore.edit { it.remove(ListenTogetherChatHistoryKey) }
+                }
+                return@launch
+            }
             withContext(Dispatchers.Main) {
                 if (_chatMessages.value.isEmpty()) {
                     _chatMessages.value = stored.messages
@@ -2156,9 +2170,18 @@ data class TypingUser(
     val expiresAt: Long,
 )
 
-/** Locally persisted chat history, keyed by the username that produced it. */
+/** Locally persisted chat history, keyed by the username that produced it.
+ * [version] gates the persistence scheme: bump it whenever the message filter
+ * semantics change, so histories written by older builds (which may contain
+ * entries the new rules would never store) are discarded instead of restored. */
 @kotlinx.serialization.Serializable
 data class PersistedChatHistory(
+    val version: Int = CURRENT_VERSION,
     val username: String,
     val messages: List<ChatMessagePayload>,
-)
+) {
+    companion object {
+        /** 1: unfiltered history. 2: solo messages never persisted. */
+        const val CURRENT_VERSION = 2
+    }
+}
