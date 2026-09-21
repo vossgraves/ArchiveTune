@@ -64,7 +64,8 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): Result<String> = runCatching {
-        val ttml = fetchTtml(title, artist, album) ?: throw IllegalStateException("No Apple Music lyrics for $title — $artist")
+        val ttml = fetchTtml(title, artist)
+            ?: throw IllegalStateException("No Apple Music lyrics for $title — $artist")
         ttmlToLrc(ttml)
     }
 
@@ -97,7 +98,7 @@ object AppleMusicAccountLyricsProvider : LyricsProvider {
     private const val AMP_BASE = "https://amp-api.music.apple.com"
     private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
-    private suspend fun fetchTtml(title: String, artist: String, album: String?): String? {
+    private suspend fun fetchTtml(title: String, artist: String): String? {
         // Resolve Apple Music song id via search with the user's tokens. The bearer is the pasted
         // dev JWT when there is one, otherwise a scraped web player token — and when neither is
         // available we return nothing rather than sending a request that can only 401.
