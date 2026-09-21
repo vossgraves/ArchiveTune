@@ -91,7 +91,9 @@ class SpotifyLibraryRepository
         private data class CachedRecentlyPlayed(
             val items: List<SpotifyPlayHistory>,
             val fetchedAtMs: Long,
-        )
+        ) {
+            fun isFresh(nowMs: Long): Boolean = nowMs - fetchedAtMs < RECENTLY_PLAYED_CACHE_TTL_MS
+        }
 
         private val searchCache =
             object : LinkedHashMap<String, CachedSearch>(SEARCH_CACHE_MAX_SIZE, 0.75f, true) {
@@ -108,25 +110,21 @@ class SpotifyLibraryRepository
         private var recentlyPlayedCache: CachedRecentlyPlayed? = null
 
         /**
-         * Serialises history reads. The History screen and the Stats screen both load this, and
-         * they use separate view models, so without it a cold start fires two identical window
-         * reads within milliseconds of each other — the shape of request that gets a 429.
+         * Serialises history reads. The History and Stats screens each hold their own view model, so
+         * without this a cold start fires two identical window reads milliseconds apart — the shape
+         * of request that gets a 429.
          */
         private val recentlyPlayedMutex = Mutex()
 
         /**
          * Wall-clock instant before which the history endpoint must not be called again, from the
-         * last 429. Persisted nowhere on purpose: it is only useful within the session that hit the
+         * last 429. Deliberately not persisted: it only means anything to the session that hit the
          * limit, and a stored deadline would go wrong the moment the device clock moved.
          */
         @Volatile
         private var recentlyPlayedBlockedUntilMs = 0L
 
-        /**
-         * When the history window was last read in full rather than as a delta, epoch millis. Drives
-         * [needsFullHistoryRead]; in memory only, because 0 means "never", and a cold start wanting
-         * one full read is the correct answer either way.
-         */
+        /** When the window was last read in full rather than as a delta; drives [needsFullHistoryRead]. */
         @Volatile
         private var recentlyPlayedFullReadAtMs = 0L
 
@@ -155,12 +153,9 @@ class SpotifyLibraryRepository
         }
 
         /**
-         * The last play history written to disk, newest first.
-         *
-         * Also seeds the in-memory snapshot, with the fetch time it was stored under, so the cache
-         * expiry covers data that came off disk. Without that seed a screen which restored from disk
-         * looked like a cache miss to [recentlyPlayed] and every cold start re-read the window —
-         * the request that keeps the endpoint's rate limit in force.
+         * The last play history written to disk, newest first, with the fetch time it was stored
+         * under — seeding the in-memory snapshot as well, so the expiry covers data that came off
+         * disk rather than only data this process fetched.
          */
         suspend fun restoreCachedRecentlyPlayed(): List<SpotifyPlayHistory>? =
             withContext(Dispatchers.IO) {
@@ -387,27 +382,18 @@ class SpotifyLibraryRepository
         /**
          * The user's play history, most recent first — cached, delta-read and rate-limit aware.
          *
-         * Three rules keep the endpoint's limit out of the way, and all three are needed because the
-         * limit is per app and per request:
-         *
          *  - **One read per expiry.** Rows younger than [RECENTLY_PLAYED_CACHE_TTL_MS] are served
-         *    as-is, and callers that arrive together — the History screen and the Stats screen load
-         *    this independently — wait on a single in-flight read instead of each starting one.
-         *  - **Ask only for what changed.** A read carries `after` = the newest play already held, so
-         *    it fetches the plays since then and merges them into the window rather than re-reading
-         *    all 50. A full window read happens with nothing cached to anchor on, and at least every
-         *    [SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS] besides — see [needsFullHistoryRead] for why a
-         *    delta alone would slowly lose plays.
+         *    as-is, and callers that arrive together wait on one in-flight read instead of racing.
+         *  - **Ask only for what changed.** A read carries `after` = the newest play already held,
+         *    and merges the plays since into the cached window; only a read with nothing to anchor on
+         *    — or one due to heal the cursor, see [needsFullHistoryRead] — takes the whole window.
          *  - **Stale beats an error, and a wait beats an empty screen.** A failure with rows cached
-         *    returns them, and a 429 records its `Retry-After` so nothing can call again until
-         *    Spotify's window has cleared. A read with no rows to fall back on and a short named
-         *    window waits that window out and asks once more — see [readRecentlyPlayed] — rather
-         *    than spending the one case that has no cache showing "rate limited". Only a read whose
-         *    retry also failed throws, and then the message says how long the wait is.
+         *    returns them; a 429 records its window so nothing calls again until it clears; and a
+         *    429 with nothing cached and a short named window is waited out by [readRecentlyPlayed]
+         *    rather than reported.
          *
          * [force] (pull-to-refresh) skips the expiry, never the gate: refreshing into an active rate
-         * limit is what turns one 429 into a loop, so a forced read during a cooldown still returns
-         * the cached rows.
+         * limit is what turns one 429 into a loop, so a forced read during a cooldown returns cache.
          */
         suspend fun recentlyPlayed(force: Boolean = false): List<SpotifyPlayHistory> =
             withContext(Dispatchers.IO) {
@@ -415,7 +401,7 @@ class SpotifyLibraryRepository
                     if (recentlyPlayedCache == null) restoreCachedRecentlyPlayed()
                     val cached = recentlyPlayedCache
                     val now = System.currentTimeMillis()
-                    if (!force && cached != null && now - cached.fetchedAtMs < RECENTLY_PLAYED_CACHE_TTL_MS) {
+                    if (!force && cached != null && cached.isFresh(now)) {
                         return@withLock cached.items
                     }
 
@@ -466,15 +452,14 @@ class SpotifyLibraryRepository
          * Whether the cached history is young enough that a screen visit need not read the endpoint.
          *
          * The section loader's own guard is "items exist, do not fetch again", which would leave a
-         * history from last week on screen for as long as the process lives. This is the repository's
-         * expiry, asked directly, so a stale window still refreshes — through [recentlyPlayed], which
-         * is where the single-flight and the rate-limit gate live.
+         * history from last week on screen for as long as the process lives; this asks the
+         * repository's expiry instead, and the refresh it allows goes through [recentlyPlayed], where
+         * the single-flight and the rate-limit gate live.
          */
         suspend fun recentlyPlayedIsFresh(): Boolean =
             withContext(Dispatchers.IO) {
                 if (recentlyPlayedCache == null) restoreCachedRecentlyPlayed()
-                val cached = recentlyPlayedCache ?: return@withContext false
-                System.currentTimeMillis() - cached.fetchedAtMs < RECENTLY_PLAYED_CACHE_TTL_MS
+                recentlyPlayedCache?.isFresh(System.currentTimeMillis()) ?: false
             }
 
         /**
@@ -491,16 +476,17 @@ class SpotifyLibraryRepository
         }
 
         /**
-         * One history read, plus the single retry a `Retry-After`-bearing 429 earns.
+         * One history read, plus the single retry a 429 earns.
          *
-         * A 429 that names its window is an instruction, not a verdict: the plays are that many
-         * seconds away, so giving up on a screen with nothing on it turns a short wait into a
-         * permanent empty state. [historyRetryWaitMillis] decides when that retry is owed and how
-         * long it waits; what matters here is the bounds. It runs at most once — [retriesLeft] is 1
-         * on the way in and 0 on the way back — so no header value can make this spin, and a 429
-         * that arrives without a window is not retried at all. The cooldown is written before the
-         * wait, so it stays shared across it: a concurrent read still sees it and cannot slide in
-         * ahead of the retry.
+         * A 429 names a window, not a verdict: the plays are at most that many seconds away, so
+         * giving up on a screen with nothing on it turns a short wait into a permanent empty state.
+         * [historyRetryWaitMillis] decides when that retry is owed and how long it waits; what
+         * matters here is the bound. It runs at most once — [retriesLeft] is 1 on the way in and 0 on
+         * the way back — so no reported value can make this spin. That window is the app-wide gate's
+         * own remaining seconds, which every REST 429 reports and the documented 30-second floor
+         * backs, so a headerless 429 is waited out at that floor and retried once rather than
+         * dropped. The cooldown is written before the wait, so a concurrent read sees it and cannot
+         * slip in ahead of the retry.
          *
          * The wait is a [delay], so a screen that leaves cancels the read where it stands instead of
          * leaving a timer behind to fire against a token the user may already have dropped.
@@ -518,7 +504,10 @@ class SpotifyLibraryRepository
                 if (!isSpotifyRateLimitMessage(error.message)) throw error
                 val retryAfterSec = (error as? Spotify.SpotifyException)?.retryAfterSec
                 recentlyPlayedBlockedUntilMs =
-                    System.currentTimeMillis() + rateLimitCooldownMillis(retryAfterSec)
+                    maxOf(
+                        recentlyPlayedBlockedUntilMs,
+                        System.currentTimeMillis() + rateLimitCooldownMillis(retryAfterSec),
+                    )
                 val waitMs = if (retriesLeft > 0) historyRetryWaitMillis(retryAfterSec, hasCachedRows) else null
                 if (waitMs == null) throw error
                 delay(waitMs)
@@ -531,10 +520,9 @@ class SpotifyLibraryRepository
             }.items
 
         /**
-         * Drops the history snapshot and its expiry, plus any in-flight rate-limit gate.
-         *
-         * Called when the account changes: the plays belong to the old account, and leaving the
-         * cooldown behind would delay the new account's first read for no reason.
+         * Drops the history snapshot and its expiry, and any in-flight rate-limit gate. Called when
+         * the account changes: the plays belong to the old account, and the cooldown would otherwise
+         * delay the new account's first read for no reason.
          */
         private suspend fun clearRecentlyPlayed() {
             recentlyPlayedCache = null

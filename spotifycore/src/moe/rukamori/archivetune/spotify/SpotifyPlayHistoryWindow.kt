@@ -17,75 +17,66 @@ package moe.rukamori.archivetune.spotify
 import java.time.Instant
 import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 
-/**
- * How many plays Spotify's history endpoint will return in one window.
- *
- * `limit` above this is clamped server-side, so it is also the ceiling of any local cache: asking
- * for more cannot happen, and holding more would only be possible by walking `before` backwards
- * into the endpoint's very limit.
- */
+/** The most plays `me/player/recently-played` returns at once, and so the ceiling of the window. */
 const val SPOTIFY_HISTORY_WINDOW = 50
 
 /**
  * How long a 429 keeps us off the history endpoint when Spotify sends no usable `Retry-After`.
  *
- * Spotify documents its Web API limit as a rolling 30-second window, so 30s is the shortest wait
- * that can actually clear it. Retrying inside that window is what turns one 429 into a loop.
+ * Spotify documents its Web API limit as a rolling 30-second window, so a shorter wait cannot clear
+ * it: retrying inside the window is what turns one 429 into a loop.
  */
 const val SPOTIFY_RATE_LIMIT_FALLBACK_MS = 30_000L
 
 /**
- * Longest wait a `Retry-After` may impose, used only as a sanity bound on a broken header.
+ * Longest wait a `Retry-After` may impose; anything past it is a stuck header, not an answer.
  *
- * Spotify really does send day-long values: Stash (the other Kotlin client that logs in with `sp_dc`
- * + TOTP, like this one) records `Retry-After: 86400` on the public Web API for exactly this token
- * class and gates its whole Web API prong on it, noting that "Spotify hands out absurd Retry-Afters
- * (observed 86400s = 24h)". So a day is honoured, not clamped — retrying inside a block cannot
- * succeed, and with a cached window waiting costs nothing. Anything past a day is treated as a stuck
- * value, because nothing observed has ever needed longer.
+ * Spotify does send day-long values: Stash — the other Kotlin client that logs in with `sp_dc` +
+ * TOTP, like this one — records `Retry-After: 86400` on the public Web API for exactly this token
+ * class. A day is therefore honoured rather than clamped, since retrying inside a block cannot
+ * succeed and, with a cached window, waiting costs nothing.
  */
 const val SPOTIFY_RATE_LIMIT_MAX_MS = 24 * 60 * 60 * 1000L
 
 /**
  * Longest wait a history read will sit out before asking again.
  *
- * A `Retry-After` is an instruction, and a short one is worth obeying: waiting it out is the
- * difference between an empty screen and a filled one. A day-long one is not — no read is worth
- * holding a screen's coroutine open for hours — so a block past this leaves the read to its cached
- * window and its error, which is what a block that long deserves.
+ * A short `Retry-After` is worth obeying — the plays are that far away, and the alternative is an
+ * empty screen — but a day-long one is not: no screen should hold a coroutine open for hours, and a
+ * read with a cached window has nothing to gain by it.
  */
 const val SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS = 60_000L
 
 /**
  * How stale a delta read's cursor may get before the next read takes the whole window instead.
  *
- * A delta read is only as good as its cursor: a play Spotify inserts *behind* one we already returned
- * is invisible to `after` forever. Listory's collector found exactly that and gave up on cursors for
- * new listens — "the Spotify WEB Api was sometimes not adding the listens in the right order, causing
- * us to miss some listens" — and a full window read every half hour bounds the damage to that window.
- * With a five-minute cache expiry that is one window read in six; the other five stay deltas.
+ * A play Spotify inserts *behind* a cursor we already returned is invisible to `after` forever —
+ * Listory's collector hit exactly that and stopped trusting cursors for new listens — so the delta
+ * is healed on this interval. Against the five-minute cache that is one window read in six.
  */
 const val SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS = 30 * 60 * 1000L
 
 /**
  * Epoch millis of the newest play in the list, or null when no entry carries a usable timestamp.
  *
- * This is the endpoint's `after` cursor: it turns "re-read the last 50 plays" into "ask for plays
- * newer than what we already hold", which is what lets a cached window be refreshed for one delta
- * read instead of a full one.
+ * This is the endpoint's `after` cursor: it turns "re-read the last [SPOTIFY_HISTORY_WINDOW] plays"
+ * into "ask for the plays since what we already hold", which is what makes a refresh one delta read.
  */
 fun List<SpotifyPlayHistory>.newestPlayedAtMillis(): Long? =
     asSequence()
-        .mapNotNull { it.playedAt?.let(::playedAtMillis) }
+        .mapNotNull { it.playedAtMillis() }
         .maxOrNull()
 
 /**
  * Epoch millis for a `played_at` stamp (`2026-09-20T12:34:56.789Z`), or null when it is absent or
- * unparseable. Null is not an error here: a play without a timestamp still belongs in the history,
- * it just cannot anchor a cursor.
+ * unparseable. Null is not an error: a play with no timestamp still belongs in the history, it just
+ * cannot anchor a cursor.
  */
 fun playedAtMillis(playedAt: String): Long? =
     runCatching { Instant.parse(playedAt).toEpochMilli() }.getOrNull()
+
+/** [playedAtMillis] for this play's own stamp. */
+fun SpotifyPlayHistory.playedAtMillis(): Long? = playedAt?.let { stamp -> playedAtMillis(stamp) }
 
 /**
  * Identifies one play: the track, plus when it happened.
@@ -100,11 +91,10 @@ private fun SpotifyPlayHistory.playKey(): String =
 /**
  * [newer] merged in front of [cached], newest first, deduplicated, capped at [limit].
  *
- * A delta read returns only the plays after the cursor, so this merge is what the caller shows
- * instead: the same 50 rows a full window read would have produced, from a request that carried only
- * the new plays. [newer] wins a tie because it came from Spotify most recently and so carries the
- * fresher track metadata. Entries with no timestamp sort last rather than being dropped — they are
- * still plays.
+ * A delta read returns only the plays after the cursor, so this is what the caller shows instead: the
+ * rows a full window read would have produced, from a request that carried only the new plays.
+ * [newer] wins a tie because it came from Spotify most recently and so carries the fresher track
+ * metadata; an undated play sorts last rather than being dropped.
  */
 fun mergePlayHistory(
     newer: List<SpotifyPlayHistory>,
@@ -117,17 +107,17 @@ fun mergePlayHistory(
         if (seen.add(item.playKey())) merged += item
     }
     return merged
-        .sortedByDescending { it.playedAt?.let(::playedAtMillis) ?: Long.MIN_VALUE }
+        .sortedByDescending { it.playedAtMillis() ?: Long.MIN_VALUE }
         .take(limit)
 }
 
 /**
  * Whether a read should take the whole window rather than a delta.
  *
- * False only when the cursor is both present and recent and a full read has happened recently; see
+ * False only when there is a cursor to delta from and a full read has run recently; see
  * [SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS] for why the second condition exists. A caller that has
- * never taken a full read passes 0 for [lastFullReadAtMillis], which reads as "long ago" and asks for
- * one — the right answer for a cold start, and for a process that restarted with a disk cache.
+ * never taken a full read passes 0 for [lastFullReadAtMillis], which reads as "long ago" — the right
+ * answer for a cold start and for a process that restarted holding a disk cache.
  */
 fun needsFullHistoryRead(
     newestPlayedAtMillis: Long?,
@@ -142,10 +132,9 @@ fun needsFullHistoryRead(
 /**
  * How long to stay off the history endpoint after a 429.
  *
- * [retryAfterSec] is Spotify's `Retry-After` and wins whenever it is usable, because only Spotify
- * knows when the window clears. When the header is missing — the docs only promise it "normally" —
- * the documented rolling 30-second window is the floor, so a short value cannot shorten the wait.
- * See [SPOTIFY_RATE_LIMIT_MAX_MS] for the one value that is not honoured.
+ * A usable `Retry-After` wins, because only Spotify knows when the window clears; the documented
+ * 30-second window is the floor, so a short header cannot shorten the wait. See
+ * [SPOTIFY_RATE_LIMIT_MAX_MS] for the one value that is not honoured.
  */
 fun rateLimitCooldownMillis(retryAfterSec: Long?): Long {
     val fromHeader = retryAfterSec?.takeIf { it > 0 }?.let { it * 1000L }
@@ -160,15 +149,16 @@ fun rateLimitCooldownMillis(retryAfterSec: Long?): Long {
  * How long the one retry of a rate-limited history read should wait, or null when it must not be
  * retried at all.
  *
- * Only a usable `Retry-After` earns that retry: it is Spotify naming the moment the endpoint
- * reopens, and a read with nothing to show is better off waiting for it than surfacing "rate
- * limited" while the plays are seconds away. What is waited out is the *cooldown*, not the header
- * verbatim, so the wait is the same window the rest of the app is gated on and the retry cannot be
- * turned away by that gate — see [rateLimitCooldownMillis] for why the header is floored and
- * [SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS] for what a longer block does instead. A read that already has
- * rows to show is never retried — those rows are on screen, and holding the reader open for a
- * refresh gains nothing — and neither is one whose 429 named no usable window, because guessing at
- * the window is what turns one 429 into a loop.
+ * Every REST 429 earns that retry, header or no header: [retryAfterSec] is the app-wide gate's own
+ * remaining seconds rather than a raw `Retry-After` — [Spotify]'s REST core reports them on both the
+ * gate-skip and the 429 path — so a headerless 429 arrives as the documented 30-second floor and is
+ * waited out and retried once like any other. A read with nothing to show is better off waiting than
+ * reporting "rate limited" while the plays are at most that far away, and waiting the gate out is
+ * what lets the retry back in: it cannot be turned away by the window it just armed. See
+ * [rateLimitCooldownMillis] for the floor and [SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS] for the cap. Null
+ * or non-positive [retryAfterSec] means no window was reported at all, which no REST path produces.
+ * Rows already on screen are never waited for: they are the reader's answer, so holding the refresh
+ * open gains nothing.
  */
 fun historyRetryWaitMillis(
     retryAfterSec: Long?,
