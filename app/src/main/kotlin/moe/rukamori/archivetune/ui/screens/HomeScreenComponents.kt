@@ -49,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -85,6 +86,7 @@ import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.LocalItem
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.db.entities.lazyKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.AlbumItem
@@ -224,14 +226,8 @@ fun SpeedDialSection(
     val distinctSpeedDial =
         remember(speedDialItems) {
             speedDialItems
-                .distinctBy {
-                    when (it) {
-                        is Song -> "song_${it.id}"
-                        is Album -> "album_${it.id}"
-                        is Artist -> "artist_${it.id}"
-                        is Playlist -> "playlist_${it.id}"
-                    }
-                }.take(24)
+                .distinctBy { it.lazyKey() }
+                .take(24)
         }
     val speedDialSongs = remember(distinctSpeedDial) { distinctSpeedDial.filterIsInstance<Song>() }
     val speedDialSongIndexById =
@@ -244,13 +240,7 @@ fun SpeedDialSection(
         remember(distinctSpeedDial) {
             buildList {
                 distinctSpeedDial.forEach { localItem ->
-                    val key =
-                        when (localItem) {
-                            is Song -> "song_${localItem.id}"
-                            is Album -> "album_${localItem.id}"
-                            is Artist -> "artist_${localItem.id}"
-                            is Playlist -> "playlist_${localItem.id}"
-                        }
+                    val key = localItem.lazyKey()
                     val ytItem =
                         when (localItem) {
                             is Song -> {
@@ -331,6 +321,12 @@ fun SpeedDialSection(
             pageCount = { tilePages.size },
         )
 
+    LaunchedEffect(tilePages.size) {
+        if (pagerState.currentPage > tilePages.lastIndex) {
+            pagerState.scrollToPage(tilePages.lastIndex.coerceAtLeast(0))
+        }
+    }
+
     fun playSpeedDialQueue(startIndex: Int) {
         if (speedDialSongs.isEmpty()) return
         playerConnection.playQueue(
@@ -374,18 +370,26 @@ fun SpeedDialSection(
                     state = pagerState,
                     pageSize = PageSize.Fill,
                     pageSpacing = spacing,
-                    key = { page -> tilePages[page].firstOrNull()?.key ?: "speed_dial_page_$page" },
+                    key = { page -> tilePages.getOrNull(page)?.firstOrNull()?.key ?: "stale_speed_dial_page_$page" },
                     verticalAlignment = Alignment.Top,
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .height(gridHeight),
                 ) { page ->
+                    // Pins change while the pager can still be on a vanished page: render an
+                    // empty page for one frame rather than reading past the end of the grid.
+                    val pageTiles = tilePages.getOrNull(page)
+                    if (pageTiles == null) {
+                        Box(modifier = Modifier.fillMaxSize())
+                        return@HorizontalPager
+                    }
+
                     Column(
                         verticalArrangement = Arrangement.spacedBy(spacing),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        tilePages[page]
+                        pageTiles
                             .chunked(SpeedDialGridColumns)
                             .forEach { rowTiles ->
                                 Row(
@@ -592,28 +596,10 @@ fun KeepListeningSection(
     scope: CoroutineScope,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-
-    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
-    // than starting a per-song radio.
-    //
-    // Filter keepListening to songs only (the section is a mix of Song /
-    // Album / Artist / Playlist) so we can build a ListQueue from just the
-    // playable items. When a song is tapped, we look up its index in this
-    // filtered list and pass it to the card as the startIndex.
-    val songsInSection = remember(keepListening) { keepListening.filterIsInstance<Song>() }
-
-    fun playFromSection(songId: String) {
-        val index = songsInSection.indexOfFirst { it.id == songId }
-        if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
-            ListQueue(
-                title = context.getString(R.string.keep_listening),
-                items = songsInSection.map { it.toMediaItem() },
-                startIndex = index,
-            ),
-        )
-    }
+    // The section mixes songs with albums/artists/playlists; only the songs are playable.
+    val shelfSongs =
+        remember(keepListening) { keepListening.filterIsInstance<Song>().map(Song::toMediaItem) }
+    val shelfTitle = stringResource(R.string.keep_listening)
 
     LazyRow(
         contentPadding = PaddingValues(horizontal = HomeFeedGutter),
@@ -622,14 +608,7 @@ fun KeepListeningSection(
     ) {
         items(
             items = keepListening,
-            key = { item ->
-                when (item) {
-                    is Song -> "song_${item.id}"
-                    is Album -> "album_${item.id}"
-                    is Artist -> "artist_${item.id}"
-                    is Playlist -> "playlist_${item.id}"
-                }
-            },
+            key = { item -> item.lazyKey() },
             contentType = { item -> item::class },
         ) { item ->
             HomeFeedLocalItemCard(
@@ -641,7 +620,7 @@ fun KeepListeningSection(
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
-                onPlaySongFromSection = ::playFromSection,
+                onPlaySongFromSection = { playerConnection.playShelfFrom(shelfSongs, it, shelfTitle) },
             )
         }
     }
@@ -805,30 +784,11 @@ fun HomePageSectionContent(
     scope: CoroutineScope,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-
-    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
-    // than starting a per-song radio.
-    //
-    // For remote YouTube home sections (Quick Picks / Live Performances
-    // / Other Remote shelves), build the queue from the section's
-    // SongItem entries only (AlbumItem/ArtistItem/PlaylistItem navigate
-    // to detail pages, not playback) with the tapped song as the
-    // startIndex.
-    val songsInSection = remember(section) { section.items.filterIsInstance<SongItem>() }
-    val sectionTitle = remember(section) { section.title.takeIf { it.isNotBlank() } }
-
-    fun playFromSection(songId: String) {
-        val index = songsInSection.indexOfFirst { it.id == songId }
-        if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
-            ListQueue(
-                title = sectionTitle ?: context.getString(R.string.quick_picks),
-                items = songsInSection.map { it.toMediaItem() },
-                startIndex = index,
-            ),
-        )
-    }
+    // The section mixes songs with albums/artists/playlists; only the songs are playable.
+    val shelfSongs =
+        remember(section) { section.items.filterIsInstance<SongItem>().map(SongItem::toMediaItem) }
+    val shelfTitle =
+        remember(section) { section.title.takeIf { it.isNotBlank() } } ?: stringResource(R.string.quick_picks)
 
     LazyRow(
         contentPadding = PaddingValues(horizontal = HomeFeedGutter),
@@ -848,7 +808,7 @@ fun HomePageSectionContent(
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
-                onPlaySongFromSection = ::playFromSection,
+                onPlaySongFromSection = { playerConnection.playShelfFrom(shelfSongs, it, shelfTitle) },
             )
         }
     }

@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -50,13 +51,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -104,9 +108,16 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListItemHeight
+import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.constants.QuickPicksDisplayMode
+import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
+import moe.rukamori.archivetune.db.entities.Album
+import moe.rukamori.archivetune.db.entities.Artist
+import moe.rukamori.archivetune.db.entities.LocalItem
+import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.db.entities.lazyKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.home.HomeAction
@@ -116,11 +127,13 @@ import moe.rukamori.archivetune.innertube.pages.HomePage
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.SimilarRecommendation
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -566,24 +579,17 @@ private fun RukamoriHomeContent(
                         }
                     }
 
-                    uiState.similarRecommendations.forEach { recommendation ->
-                        rukamoriSectionSpacer("similar_${recommendation.title.id}")
+                    // Upstream renders every similar recommendation as one deck in a single
+                    // "discovery decks" rail rather than a header + shelf per recommendation;
+                    // the deck carries its own "Similar to <artist>" header.
+                    if (uiState.similarRecommendations.isNotEmpty()) {
+                        rukamoriSectionSpacer("similar_recommendations")
                         item(
-                            key = "home_similar_header_${recommendation.title.id}",
-                            contentType = "section_header",
+                            key = "home_similar_recommendations",
+                            contentType = "discovery_decks",
                         ) {
-                            SimilarRecommendationsTitle(
-                                recommendation = recommendation,
-                                navController = navController,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_similar_${recommendation.title.id}",
-                            contentType = "media_shelf",
-                        ) {
-                            SimilarRecommendationsSection(
-                                recommendation = recommendation,
+                            SimilarRecommendationsDecks(
+                                recommendations = uiState.similarRecommendations,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
@@ -1172,6 +1178,153 @@ private fun RemoteQuickPicksSection(
                                         },
                                     ),
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Discovery decks — the similar-recommendations rail from upstream rukamori
+// HomeScreenComponents.kt (SimilarRecommendationsSection).
+// ──────────────────────────────────────────────────────────────────────
+
+private const val DiscoveryDeckMaxItems = 4
+private const val DiscoveryDeckColumns = 2
+
+/** A playlist's cover lives in its song thumbnails; the other item kinds carry their own. */
+private fun LocalItem.deckThumbnailUrl(): String? =
+    when (this) {
+        is Song -> thumbnailUrl
+        is Album -> thumbnailUrl
+        is Artist -> thumbnailUrl
+        is Playlist -> thumbnails.firstOrNull()
+    }
+
+@Composable
+private fun SimilarRecommendationsDecks(
+    recommendations: List<SimilarRecommendation>,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    scope: CoroutineScope,
+    modifier: Modifier = Modifier,
+) {
+    val distinctRecommendations =
+        remember(recommendations) { recommendations.distinctBy { recommendation -> recommendation.title.lazyKey() } }
+
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        // A deck is two shelf cards wide plus its own gutter, so the cards land exactly on the
+        // shelf rhythm; it only shrinks when the screen is narrower than that.
+        val deckWidth =
+            (HomeShelfCardWidth * DiscoveryDeckColumns + HomeShelfCardSpacing + HomeFeedGutter * 2)
+                .coerceAtMost(maxWidth - HomeFeedGutter * 2)
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+            horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+        ) {
+            items(
+                items = distinctRecommendations,
+                key = { recommendation -> recommendation.title.lazyKey() },
+                contentType = { "similar_discovery_deck" },
+            ) { recommendation ->
+                SimilarDiscoveryDeck(
+                    recommendation = recommendation,
+                    mediaMetadata = mediaMetadata,
+                    isPlaying = isPlaying,
+                    navController = navController,
+                    playerConnection = playerConnection,
+                    menuState = menuState,
+                    haptic = haptic,
+                    scope = scope,
+                    modifier = Modifier.width(deckWidth),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimilarDiscoveryDeck(
+    recommendation: SimilarRecommendation,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    scope: CoroutineScope,
+    modifier: Modifier = Modifier,
+) {
+    val source = recommendation.title
+    val deckItems =
+        remember(recommendation.items) {
+            recommendation.items.distinctBy { item -> item.lazyKey() }.take(DiscoveryDeckMaxItems)
+        }
+    val deckRows = remember(deckItems) { deckItems.chunked(DiscoveryDeckColumns) }
+    val deckSongs = remember(deckItems) { deckItems.filterIsInstance<SongItem>().map(SongItem::toMediaItem) }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.extraLarge,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.padding(bottom = 12.dp)) {
+            HomeSectionHeader(
+                title = source.title,
+                label = stringResource(R.string.similar_to),
+                thumbnail = {
+                    ItemThumbnail(
+                        thumbnailUrl = source.deckThumbnailUrl(),
+                        isActive = false,
+                        isPlaying = false,
+                        shape =
+                            if (source is Artist) {
+                                CircleShape
+                            } else {
+                                RoundedCornerShape(ThumbnailCornerRadius)
+                            },
+                        modifier = Modifier.size(ListThumbnailSize),
+                    )
+                },
+                onClick = {
+                    when (source) {
+                        is Song -> source.album?.id?.let { albumId -> navController.navigate("album/$albumId") }
+                        is Album -> navController.navigate("album/${source.id}")
+                        is Artist -> navController.navigate("artist/${source.id}")
+                        is Playlist -> Unit
+                    }
+                },
+            )
+            deckRows.forEach { rowItems ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = HomeFeedGutter),
+                ) {
+                    rowItems.forEach { item ->
+                        HomeFeedYTItemCard(
+                            item = item,
+                            mediaMetadata = mediaMetadata,
+                            navController = navController,
+                            menuState = menuState,
+                            haptic = haptic,
+                            scope = scope,
+                            onPlaySongFromSection = { playerConnection.playShelfFrom(deckSongs, it, source.title) },
+                            modifier = Modifier.weight(1f),
+                            isPlaying = isPlaying,
+                        )
+                    }
+                    repeat(DiscoveryDeckColumns - rowItems.size) {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
