@@ -33,7 +33,7 @@ import timber.log.Timber
  * The InnerTuneX tier of [ResolveAudioStreamUseCase], and the first extractor tried after the native
  * path. InnerTuneX (`com.github.MetrolistGroup.innertubex`, GPL-3.0) is used as a library — its
  * `StreamExtractor` is adapted here, never forked — and brings its own InnerTube client, SABR/cipher
- * stack and client-fallback strategy, so this tier needs no `:core` involvement at all.
+ * stack and client-fallback strategy, so the tier takes nothing from `:core` but its proxy setting.
  *
  * The player consumes plain media URLs, so a segmented SABR or byte-range-only result is refused
  * rather than handed on: it would fail at fetch time inside the player, which is worse than falling
