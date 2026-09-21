@@ -47,6 +47,7 @@ import moe.rukamori.archivetune.extensions.getCurrentQueueIndex
 import moe.rukamori.archivetune.extensions.getQueueWindows
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.MusicService.MusicBinder
+import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.Queue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.player.refetchCanvasArtworkForPlayback
@@ -351,6 +352,16 @@ class PlayerConnection(
 
     fun playQueue(queue: Queue) {
         service.playQueue(queue)
+    }
+
+    /**
+     * Plays one shelf's [songs] as a queue starting at the tapped song, so Next walks that
+     * shelf in order rather than starting a per-song radio.
+     */
+    fun playShelfFrom(songs: List<MediaItem>, tappedSongId: String, title: String) {
+        val index = songs.indexOfFirst { song -> song.mediaId == tappedSongId }
+        if (index < 0) return
+        playQueue(ListQueue(title = title, items = songs, startIndex = index))
     }
 
     fun startRadioSeamlessly() {

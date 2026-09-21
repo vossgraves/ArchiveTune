@@ -1271,20 +1271,7 @@ private fun SimilarDiscoveryDeck(
             recommendation.items.distinctBy { item -> item.lazyKey() }.take(DiscoveryDeckMaxItems)
         }
     val deckRows = remember(deckItems) { deckItems.chunked(DiscoveryDeckColumns) }
-    val songsInDeck = remember(deckItems) { deckItems.filterIsInstance<SongItem>() }
-
-    // Queues the whole deck from the tapped song, so Next walks this deck in order.
-    fun playFromDeck(songId: String) {
-        val index = songsInDeck.indexOfFirst { song -> song.id == songId }
-        if (index < 0) return
-        playerConnection.playQueue(
-            ListQueue(
-                title = source.title,
-                items = songsInDeck.map { song -> song.toMediaItem() },
-                startIndex = index,
-            ),
-        )
-    }
+    val deckSongs = remember(deckItems) { deckItems.filterIsInstance<SongItem>().map(SongItem::toMediaItem) }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1335,7 +1322,7 @@ private fun SimilarDiscoveryDeck(
                             menuState = menuState,
                             haptic = haptic,
                             scope = scope,
-                            onPlaySongFromSection = ::playFromDeck,
+                            onPlaySongFromSection = { playerConnection.playShelfFrom(deckSongs, it, source.title) },
                             modifier = Modifier.weight(1f),
                             isPlaying = isPlaying,
                         )

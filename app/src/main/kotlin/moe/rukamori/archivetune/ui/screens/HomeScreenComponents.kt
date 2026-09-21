@@ -598,28 +598,10 @@ fun KeepListeningSection(
     scope: CoroutineScope,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-
-    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
-    // than starting a per-song radio.
-    //
-    // Filter keepListening to songs only (the section is a mix of Song /
-    // Album / Artist / Playlist) so we can build a ListQueue from just the
-    // playable items. When a song is tapped, we look up its index in this
-    // filtered list and pass it to the card as the startIndex.
-    val songsInSection = remember(keepListening) { keepListening.filterIsInstance<Song>() }
-
-    fun playFromSection(songId: String) {
-        val index = songsInSection.indexOfFirst { it.id == songId }
-        if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
-            ListQueue(
-                title = context.getString(R.string.keep_listening),
-                items = songsInSection.map { it.toMediaItem() },
-                startIndex = index,
-            ),
-        )
-    }
+    // The section mixes songs with albums/artists/playlists; only the songs are playable.
+    val shelfSongs =
+        remember(keepListening) { keepListening.filterIsInstance<Song>().map(Song::toMediaItem) }
+    val shelfTitle = stringResource(R.string.keep_listening)
 
     LazyRow(
         contentPadding = PaddingValues(horizontal = HomeFeedGutter),
@@ -640,7 +622,7 @@ fun KeepListeningSection(
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
-                onPlaySongFromSection = ::playFromSection,
+                onPlaySongFromSection = { playerConnection.playShelfFrom(shelfSongs, it, shelfTitle) },
             )
         }
     }
@@ -804,30 +786,11 @@ fun HomePageSectionContent(
     scope: CoroutineScope,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-
-    // Queues the whole shelf from the tapped song, so Next walks that shelf in order rather
-    // than starting a per-song radio.
-    //
-    // For remote YouTube home sections (Quick Picks / Live Performances
-    // / Other Remote shelves), build the queue from the section's
-    // SongItem entries only (AlbumItem/ArtistItem/PlaylistItem navigate
-    // to detail pages, not playback) with the tapped song as the
-    // startIndex.
-    val songsInSection = remember(section) { section.items.filterIsInstance<SongItem>() }
-    val sectionTitle = remember(section) { section.title.takeIf { it.isNotBlank() } }
-
-    fun playFromSection(songId: String) {
-        val index = songsInSection.indexOfFirst { it.id == songId }
-        if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
-            ListQueue(
-                title = sectionTitle ?: context.getString(R.string.quick_picks),
-                items = songsInSection.map { it.toMediaItem() },
-                startIndex = index,
-            ),
-        )
-    }
+    // The section mixes songs with albums/artists/playlists; only the songs are playable.
+    val shelfSongs =
+        remember(section) { section.items.filterIsInstance<SongItem>().map(SongItem::toMediaItem) }
+    val shelfTitle =
+        remember(section) { section.title.takeIf { it.isNotBlank() } } ?: stringResource(R.string.quick_picks)
 
     LazyRow(
         contentPadding = PaddingValues(horizontal = HomeFeedGutter),
@@ -847,7 +810,7 @@ fun HomePageSectionContent(
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
-                onPlaySongFromSection = ::playFromSection,
+                onPlaySongFromSection = { playerConnection.playShelfFrom(shelfSongs, it, shelfTitle) },
             )
         }
     }
