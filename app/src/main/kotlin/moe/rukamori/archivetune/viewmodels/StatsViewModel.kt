@@ -71,8 +71,8 @@ data class StatsUiData(
 /**
  * The time range the stats screen is on: the control's option and the chip it has selected.
  *
- * Both the local queries and a remote feed are bounded by the same selection, so [windowMillis] is
- * the one definition of what that selection covers.
+ * [windowMillis] is built from the same two bounds the local queries are asked for, so a remote
+ * feed filtered in memory covers exactly what the local library was queried for.
  */
 @Immutable
 data class StatsPeriodSelection(

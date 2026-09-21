@@ -73,7 +73,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -113,7 +112,6 @@ import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.ListeningBySlot
 import moe.rukamori.archivetune.db.entities.ListeningSummary
 import moe.rukamori.archivetune.db.entities.Song
-import moe.rukamori.archivetune.db.entities.SongWithStats
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
@@ -1127,9 +1125,15 @@ private fun HistoryPage.historyPlays(unknownArtistLabel: String): List<StatsPlay
                 artistName = song.artists.joinToString { it.name }.ifBlank { unknownArtistLabel },
                 album =
                     song.album
-                        ?.takeIf { it.title.isNotBlank() }
+                        ?.takeIf { it.name.isNotBlank() }
                         ?.let { album ->
-                            StatsPlayAlbum(id = album.id, title = album.title, thumbnailUrl = album.thumbnail)
+                            // A song's own artwork is its album cover on YouTube Music; the album
+                            // node nested in the item carries no artwork of its own.
+                            StatsPlayAlbum(
+                                id = album.id.ifBlank { album.name },
+                                title = album.name,
+                                thumbnailUrl = song.thumbnail,
+                            )
                         },
                 durationMs = (song.duration ?: 0).toLong() * 1_000L,
                 playedAt = playedAt,
@@ -1181,7 +1185,7 @@ private fun HistoryPage.HistorySection.playedAt(): Instant? =
 
 /** The earliest play the feed knows about; it bounds the range chips. */
 private fun List<StatsPlay>.firstPlay(): LocalDateTime? =
-    minOfOrNull { it.playedAt }?.let { earliest -> LocalDateTime.ofInstant(earliest, ZoneId.systemDefault()) }
+    mapNotNull { it.playedAt }.minOrNull()?.let { earliest -> LocalDateTime.ofInstant(earliest, ZoneId.systemDefault()) }
 
 /**
  * The local library's ranking as the dashboard model.
@@ -1278,14 +1282,15 @@ private fun List<StatsPlay>.toDashboard(window: LongRange): StatsDashboardData {
     val albums =
         inWindow
             .mapNotNull { play -> play.album?.let { album -> album to play } }
-            .groupBy({ it.first.id }, { it.first to it.second })
+            .groupBy { (album, _) -> album.id }
             .map { (id, entries) ->
+                val album = entries.first().first
                 StatsAlbumRank(
                     id = id,
-                    title = entries.first().first.title,
-                    thumbnailUrl = entries.first().first.thumbnailUrl,
+                    title = album.title,
+                    thumbnailUrl = album.thumbnailUrl,
                     playCount = entries.size,
-                    timeListenedMs = entries.sumOf { it.second.durationMs },
+                    timeListenedMs = entries.sumOf { (_, play) -> play.durationMs },
                 )
             }
             .sortedWith(compareByDescending<StatsAlbumRank> { it.timeListenedMs }.thenByDescending { it.playCount })
