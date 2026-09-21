@@ -82,9 +82,9 @@ fun AppleMusicPlaylistRow(
                 thumbnailUrl = playlist.thumbnails.getOrNull(0),
                 isActive = false,
                 isPlaying = false,
-                shape = RoundedCornerShape(AppleMusicRowArtworkCorner),
+                shape = RoundedCornerShape(AppleMusicListArtworkCorner),
                 showPlaceholder = true,
-                modifier = Modifier.size(AppleMusicRowArtworkSize),
+                modifier = Modifier.size(AppleMusicListArtworkSize),
             )
 
             Column(
@@ -125,7 +125,7 @@ fun AppleMusicPlaylistRow(
             Box(
                 modifier =
                     Modifier
-                        .padding(start = AppleMusicRowArtworkSize + 12.dp)
+                        .padding(start = AppleMusicListArtworkSize + 12.dp)
                         .fillMaxWidth()
                         .height(1.dp)
                         .clip(RoundedCornerShape(1.dp))
@@ -149,11 +149,17 @@ private fun playlistSubtitle(playlist: Playlist): String? =
         else -> null
     }
 
-private val AppleMusicRowArtworkSize = 56.dp
-private val AppleMusicRowArtworkCorner = 6.dp
+/**
+ * The artwork column of the Apple Music library lists.
+ *
+ * Shared by the playlist rows and the section rows' glyph tiles: the two lists stack in the same
+ * tab, so their artwork has to line up as one column.
+ */
+val AppleMusicListArtworkSize = 56.dp
+val AppleMusicListArtworkCorner = 6.dp
 
 /** Side padding for the list. Apple Music sits tighter to the edge than the fork's card list does. */
 val AppleMusicListSidePadding = 16.dp
 
 /** Width of the trailing gap the chevron needs, so callers can align a header to the same column. */
-val AppleMusicRowTextInset = AppleMusicRowArtworkSize + 12.dp
+val AppleMusicRowTextInset = AppleMusicListArtworkSize + 12.dp

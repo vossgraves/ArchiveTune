@@ -90,6 +90,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LibrarySource
+import moe.rukamori.archivetune.constants.LibraryStyle
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSortDescendingKey
 import moe.rukamori.archivetune.constants.PlaylistSortType
@@ -104,7 +105,7 @@ import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.CreatePlaylistDialog
-import moe.rukamori.archivetune.ui.component.rememberAppleMusicExperience
+import moe.rukamori.archivetune.ui.component.rememberLibraryStyle
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -177,7 +178,10 @@ fun LibraryPlaylistsScreen(
     // The Apple Music Experience restyles the list rows only. Grid stays the fork's grid: Apple
     // Music's own library has no grid to copy, so inventing one here would be this fork's design
     // wearing an Apple Music label.
-    val appleMusicRows = rememberAppleMusicExperience() && !isGridView
+    //
+    // The rows follow the library style rather than the experience switch: this list is the Library
+    // tab's, and the style is what owns how the tab lays itself out.
+    val appleMusicRows = rememberLibraryStyle().first == LibraryStyle.APPLE_MUSIC && !isGridView
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()

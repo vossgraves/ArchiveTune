@@ -94,6 +94,21 @@ fun LibraryScreen(navController: NavController) {
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
+    // Both the Library and Playlists sections take the same filter row, so it is built once: the
+    // tag chips are the same list either way, and two lambdas could drift.
+    val playlistTagFilterContent: (@Composable () -> Unit)? =
+        if (showTagsInLibrary) {
+            {
+                PlaylistTagFilterRow(
+                    tags = allTags,
+                    selectedTagIds = selectedTagIds,
+                    onSelectedTagIdsChange = onSelectedTagIdsChange,
+                    onManageTagsClick = { showTagsManagementDialog = true },
+                )
+            }
+        } else {
+            null
+        }
     // Spotify is not a tab of its own: it holds playlists and nothing else, which would put a
     // Spotify playlist three taps from a YouTube one and leave Spotify songs, artists and albums
     // with nowhere to live. The Library carries one YTM/Spotify selector for that, above the
@@ -199,7 +214,6 @@ fun LibraryScreen(navController: NavController) {
                         LibraryFilter.SONGS -> 102.dp
                         LibraryFilter.ARTISTS -> 116.dp
                         LibraryFilter.ALBUMS -> 110.dp
-                        else -> 116.dp
                     }
                 val screenWidth = configuration.screenWidthDp.dp
                 val targetOffsetDp = (screenWidth - tabWidth) / 2
@@ -231,19 +245,7 @@ fun LibraryScreen(navController: NavController) {
                         LibraryMixScreen(
                             navController = navController,
                             librarySource = librarySource,
-                            filterContent =
-                                if (showTagsInLibrary) {
-                                    {
-                                        PlaylistTagFilterRow(
-                                            tags = allTags,
-                                            selectedTagIds = selectedTagIds,
-                                            onSelectedTagIdsChange = onSelectedTagIdsChange,
-                                            onManageTagsClick = { showTagsManagementDialog = true },
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
+                            filterContent = playlistTagFilterContent,
                             selectedTagIds = activeSelectedTagIds,
                             onTabSelected = { targetFilter ->
                                 coroutineScope.launch {
@@ -258,19 +260,7 @@ fun LibraryScreen(navController: NavController) {
                         LibraryPlaylistsScreen(
                             navController = navController,
                             librarySource = librarySource,
-                            filterContent =
-                                if (showTagsInLibrary) {
-                                    {
-                                        PlaylistTagFilterRow(
-                                            tags = allTags,
-                                            selectedTagIds = selectedTagIds,
-                                            onSelectedTagIdsChange = onSelectedTagIdsChange,
-                                            onManageTagsClick = { showTagsManagementDialog = true },
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
+                            filterContent = playlistTagFilterContent,
                             selectedTagIds = activeSelectedTagIds,
                         )
                     }

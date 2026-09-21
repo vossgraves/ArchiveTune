@@ -1085,7 +1085,7 @@ class MediaLibrarySessionCallback
         ): List<MediaItem> {
             if (!showSpotifyPlaylists) return emptyList()
             spotifyLibraryRepository.restoreCachedPlaylists()
-            val cached = spotifyLibraryRepository.playlists.value
+            val cached = spotifyLibraryRepository.playlists.value.orEmpty()
             return listOf(
                 browsableMediaItem(
                     MusicService.SPOTIFY_PLAYLIST,
@@ -1105,7 +1105,7 @@ class MediaLibrarySessionCallback
                 emptyList()
             } else {
                 spotifyLibraryRepository.restoreCachedPlaylists()
-                spotifyLibraryRepository.playlists.value.ifEmpty {
+                spotifyLibraryRepository.playlists.value.orEmpty().ifEmpty {
                     spotifyLibraryRepository.refreshPlaylists()
                 }
             }

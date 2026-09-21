@@ -37,7 +37,7 @@ class SpotifyLibraryViewModel
     constructor(
         private val repository: SpotifyLibraryRepository,
     ) : ViewModel() {
-        val playlists: StateFlow<List<SpotifyPlaylist>> = repository.playlists
+        val playlists: StateFlow<List<SpotifyPlaylist>?> = repository.playlists
         val isRefreshing: StateFlow<Boolean> = repository.isRefreshing
         val errorMessage: StateFlow<String?> = repository.errorMessage
 

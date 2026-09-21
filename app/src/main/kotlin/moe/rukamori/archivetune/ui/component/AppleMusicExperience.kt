@@ -33,14 +33,10 @@ import moe.rukamori.archivetune.utils.rememberPreference
  */
 @Composable
 fun rememberLibraryStyle(): Pair<LibraryStyle, (LibraryStyle) -> Unit> {
-    // The two keys are independent: the library style says how the Library tab lays itself out, and
-    // nothing else. It used to also write the experience switch and force the player style, which
-    // meant picking "Apple Music" for the library silently restyled the player, the tab bar and the
-    // headers as well — and left the switch on afterwards, so every later visit to the library row
-    // re-forced the lot. The switch is the one control that turns the whole presentation on.
-    //
-    // The switch still seeds the default for people whose data predates the style key, but it is a
-    // read: choosing a style never writes it back.
+    // The style lays out the Library tab and nothing else. It used to also write the switch and
+    // force the player style, so picking it silently restyled the player, the tab bar and the
+    // headers and left the switch on afterwards. The style reads the switch back only to seed the
+    // default for data that predates the style key; choosing a style never writes it.
     val (legacyEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
     val (style, setStyle) =
         rememberEnumPreference(
@@ -50,23 +46,18 @@ fun rememberLibraryStyle(): Pair<LibraryStyle, (LibraryStyle) -> Unit> {
     return style to setStyle
 }
 
-/** The master Apple Music Experience switch, without the library style folded in. */
-@Composable
-fun rememberForcedAppleMusicExperience(): Boolean {
-    val (enabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
-    return enabled
-}
-
 /**
  * True when the Apple Music presentation is on: the player design, the tab bar, the page headers and
  * the menus all ask this.
  *
- * It is the switch alone. It used to be true whenever the library style was Apple Music as well,
- * which is what made the library row force the rest of the app; a library style is a layout choice
- * for one tab, not a request to restyle everything.
+ * It is the experience switch and nothing else. It used to be true whenever the library style was
+ * Apple Music as well, which is what made a layout choice for one tab restyle the rest of the app.
  */
 @Composable
-fun rememberAppleMusicExperience(): Boolean = rememberForcedAppleMusicExperience()
+fun rememberAppleMusicExperience(): Boolean {
+    val (enabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
+    return enabled
+}
 
 /**
  * Sets the Apple Music Experience: the switch, the library style and the player design style move
