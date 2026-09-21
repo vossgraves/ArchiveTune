@@ -54,14 +54,21 @@ object AiLyricsDocumentParser {
         val lines = rawLyrics.split('\n')
         val templates = ArrayList<LineTemplate>(lines.size)
         val segments = ArrayList<AiLyricsSegment>()
-        val seenSyncedLineKeys = HashSet<String>()
+        // Timestamp prefix → whether an earlier row with that prefix carried text. A repeated
+        // prefix is the translated row the rebuild writes under its original, so it is skipped
+        // (re-translating it would translate a translation). A repeat is only that when the row
+        // above it had text: LRCLIB puts an empty spacer row (`[00:21.50]`) directly above a sung
+        // line sharing its time, and skipping that line dropped it from the rebuilt document
+        // entirely.
+        val syncedPrefixWithText = HashMap<String, Boolean>()
         lines.forEach { line ->
             val syncedMatch = SyncedLineRegex.matchEntire(line)
             if (syncedMatch != null) {
                 val syncedLineKey = syncedMatch.groupValues[1].filterNot { it.isWhitespace() }
-                if (!seenSyncedLineKeys.add(syncedLineKey)) return@forEach
-
                 val content = syncedMatch.groupValues[3]
+                if (syncedPrefixWithText[syncedLineKey] == true) return@forEach
+                syncedPrefixWithText[syncedLineKey] = content.isNotBlank()
+
                 val segmentId =
                     if (content.isBlank()) {
                         null
