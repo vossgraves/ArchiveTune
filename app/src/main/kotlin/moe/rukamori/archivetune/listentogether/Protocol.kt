@@ -225,7 +225,9 @@ data class RejectSuggestionPayload(
 @Serializable
 data class SuggestionApprovedPayload(
     @SerialName("suggestion_id") val suggestionId: String,
-    @SerialName("track_info") val trackInfo: TrackInfo
+    // The vivi server relays the host's bare `approve_suggestion` payload to the
+    // room, which carries only suggestion_id — track_info is absent on the wire.
+    @SerialName("track_info") val trackInfo: TrackInfo? = null
 )
 
 @Serializable
@@ -301,8 +303,40 @@ data class ChatMessagePayload(
     val username: String,
     val message: String,
     val timestamp: Long,
-    @SerialName("reply_to") val replyTo: RepliedMessage? = null
+    @SerialName("reply_to") val replyTo: RepliedMessage? = null,
+    // Emoji reactions applied by room members, keyed by emoji with the reacting
+    // usernames. Carried alongside the payload so reactions survive persistence;
+    // cross-device they travel as ChatControlEvent over the chat relay.
+    val reactions: Map<String, List<String>> = emptyMap(),
+    val pinned: Boolean = false,
+    val edited: Boolean = false
 )
+
+/**
+ * Room-chat control event piggybacked on the chat relay (the only client→room
+ * broadcast the servers offer) inside a "\u200B[LTC:<base64 json>]\u200B"
+ * envelope, exactly like the custom-avatar broadcast. Clients intercept these
+ * and never render them as chat bubbles. Handles emoji reactions, edits,
+ * deletions, pins and typing indicators.
+ */
+@Serializable
+data class ChatControlEvent(
+    val action: String,
+    @SerialName("target_timestamp") val targetTimestamp: Long? = null,
+    @SerialName("target_user_id") val targetUserId: String? = null,
+    val emoji: String? = null,
+    val text: String? = null
+) {
+    companion object {
+        const val ACTION_TYPING = "typing"
+        const val ACTION_REACT = "react"
+        const val ACTION_UNREACT = "unreact"
+        const val ACTION_EDIT = "edit"
+        const val ACTION_DELETE = "delete"
+        const val ACTION_PIN = "pin"
+        const val ACTION_UNPIN = "unpin"
+    }
+}
 
 @Serializable
 data class HostChangedPayload(

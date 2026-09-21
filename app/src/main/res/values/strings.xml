@@ -1725,6 +1725,15 @@
     <string name="listen_together_chat_reply_label">Reply</string>
     <string name="listen_together_chat_you">You</string>
     <string name="listen_together_chat_reply_failed">Reply not delivered — open the app to reconnect</string>
+    <string name="listen_together_chat_copy">Copy</string>
+    <string name="listen_together_chat_pin">Pin</string>
+    <string name="listen_together_chat_unpin">Unpin</string>
+    <string name="listen_together_chat_edited">edited</string>
+    <string name="listen_together_chat_typing">typing…</string>
+    <string name="listen_together_chat_pinned_banner">Pinned</string>
+    <string name="listen_together_chat_all_emojis">All emojis</string>
+    <string name="listen_together_chat_edit_message">Edit message</string>
+    <string name="listen_together_chat_message_copied">Message copied</string>
     <string name="listen_together_room_created">Room created: %s</string>
     <string name="listen_together_cannot_edit_username_in_room">Cannot edit username while in a room</string>
     <string name="listen_together_settings_desc">Configure server, username, and more</string>

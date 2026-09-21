@@ -58,5 +58,7 @@ val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedU
 // UI-side keys (T1-C): same names/types as vivi's PreferenceKeys.kt
 // (stringPreferencesKey "listenTogetherUsername", booleanPreferencesKey "listenTogetherInTopBar").
 val ListenTogetherChatNotificationsKey = booleanPreferencesKey("listenTogetherChatNotifications")
+val ListenTogetherChatHistoryKey = stringPreferencesKey("listenTogetherChatHistory")
+
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")

@@ -21,11 +21,15 @@
 package moe.rukamori.archivetune.listentogether
 
 import android.content.Context
+import androidx.datastore.preferences.core.edit
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
+import moe.rukamori.archivetune.constants.ListenTogetherChatHistoryKey
 import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.extensions.currentMetadata
@@ -51,6 +55,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -75,6 +80,15 @@ class ListenTogetherManager @Inject constructor(
         // Large position tolerance - only seek during playback if difference exceeds this
         // This prevents interrupting active playback for small drifts
         private const val PLAYBACK_POSITION_TOLERANCE_MS = 3000L
+
+        /** Typing indicators stay alive for this long after the last typing event. */
+        private const val TYPING_TTL_MS = 4500L
+
+        /** How often a typing client re-announces itself while composing. */
+        private const val TYPING_THROTTLE_MS = 2500L
+
+        /** Chat history persisted per local username (survives room switches). */
+        private const val MAX_PERSISTED_CHAT_MESSAGES = 150
     }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -90,7 +104,7 @@ class ListenTogetherManager @Inject constructor(
     private var volumeObserverJob: Job? = null
     private var playerListenerRegistered = false
 
-    private val syncHostVolumeEnabled = MutableStateFlow(true)
+    private val syncHostVolumeEnabled = MutableStateFlow(false)
     private val smartResyncEnabled = MutableStateFlow(true)
     private var lastSyncedVolume: Float? = null
 
@@ -145,6 +159,14 @@ class ListenTogetherManager @Inject constructor(
     // Chat state
     private val _chatMessages = MutableStateFlow<List<ChatMessagePayload>>(emptyList())
     val chatMessages = _chatMessages
+
+    /** Room members currently typing, freshest last; expires via [TYPING_TTL_MS]. */
+    private val _typingUsers = MutableStateFlow<List<TypingUser>>(emptyList())
+    val typingUsers: kotlinx.coroutines.flow.StateFlow<List<TypingUser>> = _typingUsers
+
+    private var chatPersistJob: Job? = null
+    private val chatHistoryJson = Json { ignoreUnknownKeys = true }
+    private var lastTypingSentAt = 0L
 
     private val _unreadMessageCount = MutableStateFlow(0)
     val unreadMessageCount: kotlinx.coroutines.flow.StateFlow<Int> = _unreadMessageCount
@@ -354,7 +376,7 @@ class ListenTogetherManager @Inject constructor(
     private fun observePreferences() {
         scope.launch {
             context.dataStore.data
-                .map { it[ListenTogetherSyncVolumeKey] ?: true }
+                .map { it[ListenTogetherSyncVolumeKey] ?: false }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     syncHostVolumeEnabled.value = enabled
@@ -382,6 +404,18 @@ class ListenTogetherManager @Inject constructor(
                     handleEvent(event)
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error handling event: $event")
+                }
+            }
+        }
+
+        // Expire stale typing indicators.
+        scope.launch {
+            while (true) {
+                delay(1000)
+                val now = System.currentTimeMillis()
+                val fresh = _typingUsers.value.filter { it.expiresAt > now }
+                if (fresh.size != _typingUsers.value.size) {
+                    _typingUsers.value = fresh
                 }
             }
         }
@@ -484,6 +518,7 @@ class ListenTogetherManager @Inject constructor(
                     startHeartbeat()
                     startVolumeSyncObservation()
                     broadcastCustomAvatar()
+                    loadPersistedChatHistory()
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error handling RoomCreated event")
                 }
@@ -495,6 +530,8 @@ class ListenTogetherManager @Inject constructor(
                 saveMuteStateOnJoin()
                 broadcastCustomAvatar()
                 // Apply the full initial state including queue
+                loadPersistedChatHistory()
+
                 applyPlaybackState(
                     currentTrack = event.state.currentTrack,
                     isPlaying = event.state.isPlaying,
@@ -581,6 +618,7 @@ class ListenTogetherManager @Inject constructor(
 
             is ListenTogetherEvent.Reconnected -> {
                 Timber.tag(TAG).d("Reconnected to room: ${event.roomCode}, isHost: ${event.isHost}")
+                loadPersistedChatHistory()
                 try {
                     // Re-register player listener
                     val connection = playerConnection
@@ -726,17 +764,37 @@ class ListenTogetherManager @Inject constructor(
 
             is ListenTogetherEvent.LocalSuggestionApproved -> {
                 try {
+                    val connection = playerConnection
+                    if (connection == null) {
+                        Timber.tag(TAG).w("Cannot apply approved suggestion - no player connection")
+                        return
+                    }
                     val mediaMetadata = event.payload.trackInfo.toMediaMetadata()
                     val mediaItem = mediaMetadata.toMediaItem()
-                    playerConnection?.playNext(mediaItem)
+                    connection.playNext(mediaItem)
                     if (event.playImmediately) {
-                        // The suggesting guest has usually already moved on locally —
-                        // jump to the approved track so the room catches up with them.
-                        playerConnection?.player?.seekToNextMediaItem()
+                        val player = connection.player
+                        val nextIndex = player.currentMediaItemIndex + 1
+                        if (nextIndex < player.mediaItemCount &&
+                            player.getMediaItemAt(nextIndex).mediaId == mediaItem.mediaId
+                        ) {
+                            // Full manual-skip semantics: an in-flight crossfade (or its
+                            // pauseAtEnd handoff) would otherwise keep the OLD song's
+                            // audio playing through the secondary player while the
+                            // queue already moved on, so cancel it first — exactly what
+                            // a tap on the skip button does.
+                            val wasPlaying = player.playWhenReady
+                            runCatching { connection.service.prepareForManualSkip() }
+                            player.seekToNext()
+                            player.prepare()
+                            player.playWhenReady = wasPlaying
+                        } else {
+                            Timber.tag(TAG).w("Approved suggestion not adjacent after queue insert; leaving it queued")
+                        }
                     }
-                    Timber.tag(TAG).d("Approved suggestion added to queue: ${mediaMetadata.title} (playImmediately=${event.playImmediately})")
+                    Timber.tag(TAG).d("Approved suggestion applied: ${mediaMetadata.title} (playImmediately=${event.playImmediately})")
                 } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Error adding approved suggestion to queue")
+                    Timber.tag(TAG).e(e, "Error applying approved suggestion")
                 }
             }
 
@@ -755,9 +813,14 @@ class ListenTogetherManager @Inject constructor(
                     if (event.payload.userId != userId.value) {
                         _unreadMessageCount.value++
                     }
+                    scheduleChatPersist()
                 } else {
                     Timber.tag(TAG).w("Ignoring duplicate chat message from ${event.payload.username}")
                 }
+            }
+
+            is ListenTogetherEvent.ChatControlReceived -> {
+                applyChatControl(event.userId, event.username, event.event)
             }
 
             else -> { /* Other events handled by UI */ }
@@ -788,6 +851,7 @@ class ListenTogetherManager @Inject constructor(
         ++currentTrackGeneration  // Increment to invalidate any pending track-change coroutines
         _chatMessages.value = emptyList() // Clear chat on room leave
         _unreadMessageCount.value = 0
+        _typingUsers.value = emptyList()
     }
 
     // PORT-NOTE: vivi's PlayerConnection/MusicService carried a mute state
@@ -1751,6 +1815,9 @@ class ListenTogetherManager @Inject constructor(
      */
     fun clearLogs() = client.clearLogs()
 
+    /** The username this device joined/created the room with (chat bookkeeping). */
+    val currentUsername: String? get() = client.currentUsername
+
     // Suggestions API
 
     /**
@@ -1823,4 +1890,202 @@ class ListenTogetherManager @Inject constructor(
         if (message.isBlank()) return
         client.sendChatMessage(message, replyTo)
     }
+
+    /**
+     * Applies a reactions/edit/delete/pin/typing control event to the local chat
+     * state. All applications are idempotent, so the sender can apply locally and
+     * again through its own server echo without harm. Typing echoes from self are
+     * ignored so the composer never shows their own indicator.
+     */
+    private fun applyChatControl(fromUserId: String, fromUsername: String, control: ChatControlEvent) {
+        when (control.action) {
+            ChatControlEvent.ACTION_TYPING -> {
+                if (fromUserId == userId.value) return
+                val now = System.currentTimeMillis()
+                _typingUsers.value =
+                    _typingUsers.value.filter { it.userId != fromUserId } +
+                        TypingUser(userId = fromUserId, username = fromUsername, expiresAt = now + TYPING_TTL_MS)
+            }
+
+            ChatControlEvent.ACTION_REACT,
+            ChatControlEvent.ACTION_UNREACT -> {
+                val emoji = control.emoji ?: return
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    val current = message.reactions[emoji].orEmpty()
+                    val updated =
+                        if (control.action == ChatControlEvent.ACTION_REACT) {
+                            if (current.contains(fromUsername)) current else current + fromUsername
+                        } else {
+                            current - fromUsername
+                        }
+                    val newReactions =
+                        if (updated.isEmpty()) message.reactions - emoji
+                        else message.reactions + (emoji to updated)
+                    message.copy(reactions = newReactions)
+                }
+            }
+
+            ChatControlEvent.ACTION_EDIT -> {
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                if (targetUserId != fromUserId) return // only one's own messages
+                val newText = control.text?.trim()?.takeIf { it.isNotEmpty() } ?: return
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    message.copy(message = newText, edited = true)
+                }
+            }
+
+            ChatControlEvent.ACTION_DELETE -> {
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                if (targetUserId != fromUserId) return
+                val before = _chatMessages.value
+                _chatMessages.value =
+                    before.filterNot { it.userId == targetUserId && it.timestamp == targetTimestamp }
+                if (before.size != _chatMessages.value.size) scheduleChatPersist()
+            }
+
+            ChatControlEvent.ACTION_PIN,
+            ChatControlEvent.ACTION_UNPIN -> {
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                val pinned = control.action == ChatControlEvent.ACTION_PIN
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    message.copy(pinned = pinned)
+                }
+            }
+        }
+    }
+
+    private inline fun updateChatMessage(
+        targetUserId: String,
+        targetTimestamp: Long,
+        transform: (ChatMessagePayload) -> ChatMessagePayload,
+    ) {
+        val messages = _chatMessages.value
+        val index = messages.indexOfFirst { it.userId == targetUserId && it.timestamp == targetTimestamp }
+        if (index == -1) return
+        val updated = messages.toMutableList()
+        updated[index] = transform(updated[index])
+        _chatMessages.value = updated
+        scheduleChatPersist()
+    }
+
+    /** Toggles the local user's emoji reaction on a message, room-wide. */
+    fun toggleReaction(message: ChatMessagePayload, emoji: String) {
+        val me = client.currentUsername ?: return
+        val action =
+            if (message.reactions[emoji]?.contains(me) == true) ChatControlEvent.ACTION_UNREACT
+            else ChatControlEvent.ACTION_REACT
+        val control = ChatControlEvent(
+            action = action,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+            emoji = emoji,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", me, control)
+    }
+
+    /** Pins or unpins a message for everyone in the room. */
+    fun setPinned(message: ChatMessagePayload, pinned: Boolean) {
+        val control = ChatControlEvent(
+            action = if (pinned) ChatControlEvent.ACTION_PIN else ChatControlEvent.ACTION_UNPIN,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
+    }
+
+    /** Edits one of the local user's own messages, room-wide. */
+    fun editMessage(message: ChatMessagePayload, newText: String) {
+        if (newText.isBlank() || message.userId != userId.value) return
+        val control = ChatControlEvent(
+            action = ChatControlEvent.ACTION_EDIT,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+            text = newText,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
+    }
+
+    /** Deletes one of the local user's own messages, room-wide. */
+    fun deleteMessage(message: ChatMessagePayload) {
+        if (message.userId != userId.value) return
+        val control = ChatControlEvent(
+            action = ChatControlEvent.ACTION_DELETE,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
+    }
+
+    /** Re-announces that the local user is composing, throttled to one frame per 2.5s. */
+    fun notifyTyping() {
+        if (!isInRoom) return
+        val now = System.currentTimeMillis()
+        if (now - lastTypingSentAt < TYPING_THROTTLE_MS) return
+        lastTypingSentAt = now
+        client.sendChatControl(ChatControlEvent(action = ChatControlEvent.ACTION_TYPING))
+    }
+
+    /** Debounced persistence of the chat list, keyed by the local username. */
+    private fun scheduleChatPersist() {
+        chatPersistJob?.cancel()
+        chatPersistJob = scope.launch(Dispatchers.IO) {
+            delay(600)
+            val username = client.currentUsername ?: return@launch
+            val trimmed = _chatMessages.value.takeLast(MAX_PERSISTED_CHAT_MESSAGES)
+            if (trimmed.isEmpty()) return@launch
+            runCatching {
+                context.dataStore.edit { prefs ->
+                    prefs[ListenTogetherChatHistoryKey] =
+                        chatHistoryJson.encodeToString(
+                            PersistedChatHistory.serializer(),
+                            PersistedChatHistory(username = username, messages = trimmed),
+                        )
+                }
+            }.onFailure { Timber.tag(TAG).e(it, "Failed to persist chat history") }
+        }
+    }
+
+    /** Restores the per-username chat history after a join/create/reconnect. */
+    private fun loadPersistedChatHistory() {
+        val username = client.currentUsername
+        if (username.isNullOrBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val raw = runCatching { context.dataStore.data.first()[ListenTogetherChatHistoryKey] }.getOrNull()
+                ?: return@launch
+            val stored = runCatching {
+                chatHistoryJson.decodeFromString(PersistedChatHistory.serializer(), raw)
+            }.getOrNull() ?: return@launch
+            if (stored.username != username) return@launch
+            withContext(Dispatchers.Main) {
+                if (_chatMessages.value.isEmpty()) {
+                    _chatMessages.value = stored.messages
+                    Timber.tag(TAG).d("Restored ${stored.messages.size} persisted chat messages for $username")
+                }
+            }
+        }
+    }
 }
+
+/** A room member that is currently typing; expires after [ListenTogetherManager]'s typing TTL. */
+@kotlinx.serialization.Serializable
+data class TypingUser(
+    val userId: String,
+    val username: String,
+    val expiresAt: Long,
+)
+
+/** Locally persisted chat history, keyed by the username that produced it. */
+@kotlinx.serialization.Serializable
+data class PersistedChatHistory(
+    val username: String,
+    val messages: List<ChatMessagePayload>,
+)
