@@ -407,10 +407,7 @@ private fun Modifier.headerClickable(onClick: () -> Unit): Modifier =
  * The compact card every non-hero shelf renders (BitChord ShelfCard):
  * artwork with the hairline border, the title one line below, the subtitle
  * under that. Interactions (tap to open / play, hold for the menu) and the
- * active-track visuals come from the fork's existing components. The artwork
- * is square unless [thumbnailAspectRatio] says otherwise — only a source that
- * is not square itself (a video still, a podcast episode) has any business
- * being anything else.
+ * active-track visuals come from the fork's existing components.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -658,8 +655,7 @@ fun HomeFeedYTItemCard(
 
     val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
     val resolvedThumbnailRatio = item.preferredThumbnailRatio(cropThumbnailToSquare)
-    // Neither type has a menu to open, and the sheet would come up empty; the artwork is what the
-    // card is for, so there is nothing to hold for.
+    // A sheet for either would come up empty, so neither card has a hold.
     val hasMenu = item !is PodcastItem && item !is EpisodeItem
     val longClickHandler: (() -> Unit)? =
         if (hasMenu) {
@@ -693,8 +689,6 @@ fun HomeFeedYTItemCard(
                                 coroutineScope = scope,
                                 onDismiss = menuState::dismiss,
                             )
-
-                        is PodcastItem, is EpisodeItem -> Unit
                     }
                 }
             }
@@ -708,7 +702,7 @@ fun HomeFeedYTItemCard(
         isCircular = item is ArtistItem,
         isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
         isPlaying = isPlaying,
-        thumbnailAspectRatio = if (item is ArtistItem) 1f else resolvedThumbnailRatio,
+        thumbnailAspectRatio = resolvedThumbnailRatio,
         onClick = {
             when (item) {
                 is SongItem -> onPlaySongFromSection(item.id)

@@ -147,9 +147,7 @@ fun HomeScreen(
     // the full window area including the strip under the pinned top bar, which is
     // exactly what the blur samples.
     val homeHazeState = LocalHomeHazeState.current
-    // The atmosphere is part of the same glass treatment the progressive top-fade blur belongs to,
-    // so it goes where that goes: a user who has turned the blur off wants a flat page, not a
-    // colourful one with nothing over it.
+    // A user who asked for no glass gets no tinted page.
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
     Box(
         modifier =
