@@ -1321,6 +1321,7 @@ private fun SimilarDiscoveryDeck(
             )
             deckRows.forEach { rowItems ->
                 Row(
+                    horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
                     modifier =
                         Modifier
                             .fillMaxWidth()
