@@ -35,8 +35,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 fun rememberLibraryStyle(): Pair<LibraryStyle, (LibraryStyle) -> Unit> {
     // The style lays out the Library tab and nothing else. It used to also write the switch and
     // force the player style, so picking it silently restyled the player, the tab bar and the
-    // headers and left the switch on afterwards. The switch reads it back only to seed the default
-    // for data that predates the style key; choosing a style never writes it.
+    // headers and left the switch on afterwards. The style reads the switch back only to seed the
+    // default for data that predates the style key; choosing a style never writes it.
     val (legacyEnabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
     val (style, setStyle) =
         rememberEnumPreference(
