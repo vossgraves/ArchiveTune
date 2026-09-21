@@ -95,8 +95,14 @@ fun LibraryScreen(navController: NavController) {
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     // Spotify is not a tab of its own: it holds playlists and nothing else, which would put a
     // Spotify playlist three taps from a YouTube one and leave Spotify songs, artists and albums
-    // with nowhere to live. Every section carries the same YTM/Spotify pills instead — see
-    // LibrarySourcePills.
+    // with nowhere to live. The Library carries one YTM/Spotify selector for that, above the
+    // section chips and outside every section's list — see LibrarySourceSelector.
+    //
+    // The active source lives here and nowhere else. Each section is handed this value instead of
+    // reading the preference itself, so a switch re-reads all of them at once; the preference
+    // behind it is written back only by the selector.
+    val librarySource = rememberLibrarySource()
+    val librarySourcePreference = rememberLibrarySourcePreference()
     val libraryFilters =
         remember {
             listOf(
@@ -201,6 +207,14 @@ fun LibraryScreen(navController: NavController) {
                 tabListState.animateScrollToItem(targetPage, scrollOffset = -targetOffsetPx)
             }
 
+            // The source selector sits above the section chips, not inside the list below them:
+            // the control that decides what the whole page is showing belongs above the page, and
+            // it stays reachable however far the section has been scrolled.
+            LibrarySourceSelector(
+                source = librarySource,
+                onSourceSelected = { librarySourcePreference.value = it },
+            )
+
             Box(
                 modifier =
                     Modifier
@@ -215,6 +229,7 @@ fun LibraryScreen(navController: NavController) {
                     LibraryFilter.LIBRARY -> {
                         LibraryMixScreen(
                             navController = navController,
+                            librarySource = librarySource,
                             filterContent =
                                 if (showTagsInLibrary) {
                                     {
@@ -241,6 +256,7 @@ fun LibraryScreen(navController: NavController) {
                     LibraryFilter.PLAYLISTS -> {
                         LibraryPlaylistsScreen(
                             navController = navController,
+                            librarySource = librarySource,
                             filterContent =
                                 if (showTagsInLibrary) {
                                     {
@@ -261,6 +277,7 @@ fun LibraryScreen(navController: NavController) {
                     LibraryFilter.SONGS -> {
                         LibrarySongsScreen(
                             navController = navController,
+                            librarySource = librarySource,
                             onDeselect = {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(0)
@@ -272,6 +289,7 @@ fun LibraryScreen(navController: NavController) {
                     LibraryFilter.ARTISTS -> {
                         LibraryArtistsScreen(
                             navController = navController,
+                            librarySource = librarySource,
                             onDeselect = {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(0)
@@ -283,6 +301,7 @@ fun LibraryScreen(navController: NavController) {
                     LibraryFilter.ALBUMS -> {
                         LibraryAlbumsScreen(
                             navController = navController,
+                            librarySource = librarySource,
                             onDeselect = {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(0)

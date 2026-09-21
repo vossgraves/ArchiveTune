@@ -102,7 +102,7 @@ That one is a real gap, and small.
 - **Video playback.** `VideoSurfaceManager`, `VideoSurfacePolicy`.
 - **The Yuma design system.** `YumaTheme`, `YumaModifiers` — the glass the settings tree is
   built on.
-- **Home and library.** `RukamoriHomeScreen`, `ExploreScreen`, `LibrarySourcePills`,
+- **Home and library.** `RukamoriHomeScreen`, `ExploreScreen`, `LibrarySourceSelector`,
   `LibrarySpotifySections`.
 - **Together's public protocol.** `TogetherPublicProto` (+ codec test); theirs has the online
   transport only.

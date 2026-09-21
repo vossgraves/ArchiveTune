@@ -10,9 +10,10 @@ package moe.rukamori.archivetune.constants
 /**
  * The Library's sections.
  *
- * Spotify is a SOURCE, not a section: every section offers YTM/Spotify pills and shows that
- * service's version of itself. See [LibrarySource]. A stored SPOTIFY value for the default-chip
- * preference falls back to the default, which `toEnum` already does for any unknown name.
+ * Spotify is a SOURCE, not a section: the Library offers one YTM/Spotify selector above these, and
+ * every section shows that service's version of itself. See [LibrarySource]. A stored SPOTIFY value
+ * for the default-chip preference falls back to the default, which `toEnum` already does for any
+ * unknown name.
  */
 enum class LibraryFilter {
     SONGS,

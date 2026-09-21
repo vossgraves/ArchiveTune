@@ -120,14 +120,16 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 fun LibraryPlaylistsScreen(
     navController: NavController,
+    librarySource: LibrarySource,
     filterContent: (@Composable () -> Unit)?,
     selectedTagIds: Set<String>,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
     // The Spotify half of this section is a whole different list — remote playlists, its own
     // refresh, no reordering or tags — so it is a separate screen rather than a branch threaded
-    // through the four hundred lines below. The pills are rendered by both.
-    if (rememberLibrarySource() == LibrarySource.SPOTIFY) {
+    // through the four hundred lines below. The source arrives from the Library, which owns the
+    // selector, so both halves render the section the same switch chose.
+    if (librarySource == LibrarySource.SPOTIFY) {
         LibrarySpotifyPlaylistsScreen(navController = navController)
         return
     }
@@ -233,8 +235,6 @@ fun LibraryPlaylistsScreen(
                     .fillMaxSize()
                     .padding(top = LibraryHeaderContentPadding),
         ) {
-            LibrarySourcePills()
-
             // Control row (Sort dropdown, grid/list layout toggle, + add button)
             Row(
                 modifier =

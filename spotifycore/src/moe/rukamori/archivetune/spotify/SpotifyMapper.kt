@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.spotify
 
+import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyImage
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
@@ -84,6 +85,9 @@ object SpotifyMapper {
 
     /** The best artwork URL Spotify offers for a playlist. */
     fun getPlaylistThumbnail(playlist: SpotifyPlaylist): String? = largestImageUrl(playlist.images)
+
+    /** The best avatar Spotify offers for an artist. Same reasoning as [getPlaylistThumbnail]. */
+    fun getArtistThumbnail(artist: SpotifyArtist): String? = largestImageUrl(artist.images)
 
     /**
      * The best artwork URL from a Spotify track's album art. Same reasoning as
