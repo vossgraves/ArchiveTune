@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.audiosource.AmazonInstance
 import moe.rukamori.archivetune.audiosource.AmazonInstances
+import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -152,8 +153,21 @@ object PoolAccountManager {
     @Volatile
     private var deezerCache: List<DeezerPoolAccount> = emptyList()
 
+    /**
+     * The pooled Apple Music accounts. Replacing them drops the canvas storefront cache whenever
+     * the leased account changes: that cache is keyed on the Media-User-Token, so it would
+     * otherwise keep resolving against the previous account for up to its 24h TTL.
+     */
     @Volatile
     private var appleMusicCache: List<AppleMusicPoolAccount> = emptyList()
+        set(value) {
+            // The account the providers lease is the premium-first one appleMusicAccounts() returns.
+            val leased = appleMusicAccounts().firstOrNull()?.mediaUserToken
+            field = value
+            if (appleMusicAccounts().firstOrNull()?.mediaUserToken != leased) {
+                AppleMusicProvider.clearStorefrontCache()
+            }
+        }
 
     @Volatile
     private var amazonCache: List<AmazonPoolAccount> = emptyList()
