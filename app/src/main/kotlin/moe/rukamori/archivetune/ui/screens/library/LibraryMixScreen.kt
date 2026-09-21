@@ -182,6 +182,8 @@ fun LibraryMixScreen(
     val topMixesUiState by viewModel.topMixesUiState.collectAsStateWithLifecycle()
     val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
     val spotifyArtistsState by spotifyLibraryViewModel.artists.collectAsStateWithLifecycle()
+    val spotifyRefreshing by spotifyLibraryViewModel.isRefreshing.collectAsStateWithLifecycle()
+    val spotifyAccountRevision by spotifyLibraryViewModel.accountRevision.collectAsStateWithLifecycle()
     val (hideAiMix) = rememberPreference(HideAiMixKey, false)
     val (hideLikedSongsCard) = rememberPreference(HideLikedSongsCardKey, false)
     val (hideOfflineCard) = rememberPreference(HideOfflineCardKey, false)
@@ -205,22 +207,30 @@ fun LibraryMixScreen(
         }
     val spotifyArtists = spotifyArtistsState.items.orEmpty()
 
-    // What the active source has for the rails below, and the two reads that fill them. Spotify's
+    // What the active source has for the rails below, and the reads that fill them. Spotify's
     // playlists and artists come from the same Spotify library path the Playlists, Artists and
     // Albums sections use; nothing else on the Library tab asks for them, so switching to Spotify
     // is what starts that read.
+    //
+    // Empty means the source answered and had nothing, the rule SpotifySectionList follows: a
+    // remote list that has not come back yet is not an empty library, and claiming it is would put
+    // "nothing here yet" on screen for the length of the fetch.
     val sourcePlaylistsEmpty =
         when (librarySource) {
             LibrarySource.YTM -> visiblePlaylists.isEmpty()
-            LibrarySource.SPOTIFY -> spotifyPlaylists.isEmpty()
+            LibrarySource.SPOTIFY -> spotifyPlaylists.isEmpty() && !spotifyRefreshing
         }
     val sourceArtistsEmpty =
         when (librarySource) {
             LibrarySource.YTM -> artists.isEmpty()
-            LibrarySource.SPOTIFY -> spotifyArtists.isEmpty()
+            LibrarySource.SPOTIFY ->
+                spotifyArtistsState.items != null && spotifyArtists.isEmpty() && !spotifyArtistsState.isLoading
         }
 
-    LaunchedEffect(librarySource, spotifyLibraryViewModel) {
+    // Re-asked on an account change too: signing in to another Spotify account clears the sections
+    // this rail previews, so a rail that only watched the source would keep the old account's
+    // answer — the sections themselves key on the revision for the same reason.
+    LaunchedEffect(librarySource, spotifyAccountRevision, spotifyLibraryViewModel) {
         if (librarySource == LibrarySource.SPOTIFY) {
             spotifyLibraryViewModel.ensurePlaylists()
             spotifyLibraryViewModel.loadArtists()
