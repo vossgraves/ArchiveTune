@@ -10,6 +10,7 @@
  *   2. the full album cover embedded in the Telegram file (downloaded from TDLib),
  *   3. nothing (Coil shows the placeholder).
  * This keeps the player art crisp without eagerly downloading covers for the whole queue.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.telegram

@@ -9,6 +9,7 @@
  * them on demand, and each result shows an "online — <ping>" (full/premium) or
  * "deprecated — <ping>" (preview-only/non-premium) label.
  * Ported from MetroFuse (github.com/956tris/MetroFuse) under GPL-3.0.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

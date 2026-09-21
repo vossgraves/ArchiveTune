@@ -10,6 +10,7 @@
  * Uses Mistral's chat-completions endpoint (https://api.mistral.ai/v1/chat/completions)
  * to translate or romanize lyric lines. The model is configurable via AiSelectedModelKey;
  * the default is "mistral-small-latest".
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.api

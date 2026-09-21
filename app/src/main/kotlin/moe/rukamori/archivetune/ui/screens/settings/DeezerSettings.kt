@@ -7,6 +7,7 @@
  * Deezer integration settings. Reached from the Integration screen alongside
  * Tidal/Qobuz. Hosts the entry point to the Deezer login flow, which captures
  * an `arl` cookie so the provider can resolve full Premium streams.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

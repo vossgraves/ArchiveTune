@@ -7,6 +7,7 @@
  * WebView-based Deezer sign-in. Deezer has no OAuth flow we can use, so the credential is the `arl`
  * session cookie the site sets on a signed-in browser. Mirrors the [TidalLoginScreen] WebView
  * pattern and persists the cookie to DataStore.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

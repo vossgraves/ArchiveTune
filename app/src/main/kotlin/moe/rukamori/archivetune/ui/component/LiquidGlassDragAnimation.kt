@@ -24,6 +24,7 @@
  * [inspectDragGestures]) so it coexists with the tab items' own `clickable`
  * handlers — a tap still fires the tab's onClick, a drag does not (because
  * `clickable` ignores touches that moved significantly).
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.component

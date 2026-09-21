@@ -8,6 +8,7 @@
  * and manual proxy-instance management. Instances are never auto-fetched — the user taps
  * "Test instances" to probe them on demand, each showing an "online — <ping>" (full),
  * "deprecated — <ping>" (preview/unsubscribed) or "connection failed" label. Mirrors TidalSettings.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

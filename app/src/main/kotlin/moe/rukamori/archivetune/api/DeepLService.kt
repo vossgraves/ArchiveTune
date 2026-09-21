@@ -11,6 +11,7 @@
  * otherwise api.deepl.com. Supports per-line batch translation with optional
  * formality ("default" / "more" / "less"). Returns the same number of lines as
  * the input; pads with empty strings if DeepL returned fewer lines than requested.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.api

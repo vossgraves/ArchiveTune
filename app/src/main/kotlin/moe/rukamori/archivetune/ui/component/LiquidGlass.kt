@@ -9,6 +9,7 @@
  * Android-only ArchiveTune build. The original KMP expect/actual
  * pattern is collapsed into a single file because ArchiveTune does
  * not have a JVM/iOS target.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.component

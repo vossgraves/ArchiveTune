@@ -6,6 +6,7 @@
  *
  * WebView-based Qobuz sign-in. See docs/qobuz-login.md for why the app_secret has to be found by
  * trial rather than by matching.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

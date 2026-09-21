@@ -10,6 +10,7 @@
  *  - and per-source sections (YouTube note, Tidal, Qobuz).
  *
  * Account login / instance / API management lives in the Integration section, not here.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

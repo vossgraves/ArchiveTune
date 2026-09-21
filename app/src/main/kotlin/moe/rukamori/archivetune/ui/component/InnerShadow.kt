@@ -12,6 +12,7 @@
  * Used by the sliding pill during press to add a subtle inner-darkening that
  * makes the pill read as a physical glass element lifted off the bar (the
  * same effect SukiSU-Ultra's FloatingBottomBar uses for the press state).
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.component

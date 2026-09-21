@@ -25,6 +25,7 @@
  * and [clickInlineButton] which sends a [TdApi.GetCallbackQueryAnswer] to simulate tapping a
  * button — after which the bot sends the actual audio file, which the caller collects with
  * another [collectBotReplies] cycle.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.telegram

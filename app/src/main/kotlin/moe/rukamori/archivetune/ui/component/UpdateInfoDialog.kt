@@ -11,6 +11,7 @@
  * downloaded update APKs are cleared automatically and pointing the user at the
  * manual-delete hint. Uses BasicAlertDialog + Surface (Material3 expressive look
  * — block-shaped surfaces with rounded corners, info badge with secondaryContainer).
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.component

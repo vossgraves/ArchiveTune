@@ -22,6 +22,7 @@
  * chips. When the user taps one, the screen calls [TelegramBotClient.clickInlineButton] (which
  * fires a [TdApi.GetCallbackQueryAnswer]) and then re-enters the collector with
  * `afterMessageId = prompt.messageId` so the bot's resulting audio reply is captured.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens

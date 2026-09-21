@@ -12,6 +12,7 @@
  * The chat id is resolved lazily from the username on first use (see TelegramBotClient.resolveBot)
  * and then cached, so a stored bot keeps working even if Telegram's @-lookup is rate-limited at
  * boot. The model intentionally has no Android imports so it can be unit-tested in pure JVM.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.telegram

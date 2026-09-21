@@ -15,6 +15,7 @@
  * hosted inside the Apple Music player's morphing content area — it does
  * NOT manage its own BottomSheet (the player morphs to reveal this content
  * in place, ViviMusic-style).
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 @file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)

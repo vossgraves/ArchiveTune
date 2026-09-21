@@ -10,6 +10,7 @@
  *
  * This screen sits behind the "Telegram bots" pill/entry that lives below the "Browse channels"
  * section in TelegramSettings — see the TelegramBot section in TelegramSettings.kt.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.ui.screens

@@ -12,6 +12,7 @@
  * The user supplies their own api_id/api_hash from https://my.telegram.org (stored in DataStore);
  * the actual session lives in TDLib's own database under filesDir/telegram and survives restarts,
  * so login is a one-time flow.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.telegram

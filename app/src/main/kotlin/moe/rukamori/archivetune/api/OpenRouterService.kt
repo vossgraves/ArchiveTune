@@ -12,6 +12,7 @@
  * "google/gemini-flash-1.5"). The base URL and model are user-configurable so users can point at
  * any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, etc.) — when the base URL is overridden,
  * the request is sent verbatim with a Bearer API key.
+ * Portions © vossgraves — github.com/vossgraves
  */
 
 package moe.rukamori.archivetune.api
