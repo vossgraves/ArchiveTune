@@ -15,9 +15,6 @@
  * yt-dlp via CompactYtDlp (YTDLnis plugin APK) — only if a plugin APK is installed
  * (com.deniscerri.ytdl.python etc). No Python is bundled; the APK's libpython.so is probed at
  * runtime (see CompactYtDlp.kt). This is the YTDLnis fallback path but compact.
- *
- * The in-process NewPipe tier that YTDLnis pairs it with is [NewPipeStreamRepository], a separate
- * [AudioStreamRepository]; ResolveAudioStreamUseCase owns the order between them.
  */
 
 package moe.rukamori.archivetune.playback.stream
@@ -38,9 +35,6 @@ class YtdlnisStreamRepository
     ) : AudioStreamRepository {
 
         override suspend fun resolve(request: AudioStreamRequest): ResolvedAudioStream {
-            // External yt-dlp via CompactYtDlp (YTDLnis plugin model) — only if a plugin APK is
-            // installed (com.deniscerri.ytdl.python etc). The NewPipe tier that used to run before
-            // this one is now NewPipeStreamRepository, ordered by ResolveAudioStreamUseCase.
             if (CompactYtDlp.isAvailable(context)) {
                 try {
                     val ytdlpResult = tryExternalYtDlp(request)

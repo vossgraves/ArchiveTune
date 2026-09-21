@@ -36,12 +36,6 @@ class ResolveAudioStreamUseCase
         private val newPipeRepository: NewPipeStreamRepository,
         private val ytdlnisRepository: YtdlnisStreamRepository,
     ) {
-    /**
-     * The fallback region, in order: InnerTuneX, then NewPipe, then the external yt-dlp — the tail
-     * of the chain that the old [YtdlnisStreamRepository] owned internally, now owned here.
-     * Native InnerTube is not in it: it stays the primary path because it is the fast, in-process
-     * one (BotGuard/QuickJS, no JavaScript player fetch to warm).
-     */
     private val fallbackTiers: List<AudioStreamRepository> =
         listOf(innerTuneXRepository, newPipeRepository, ytdlnisRepository)
 
@@ -132,11 +126,8 @@ class ResolveAudioStreamUseCase
             inFlight.clear()
         }
 
-    // Hybrid resolver: InnerTube (native, BotGuard/QuickJS) first — fast, ~30 MB, no Python.
-    // Only on failure (403, age-gate, signature, timeout) does it fall back through the extractor
-    // tiers in [fallbackTiers]: InnerTuneX, then NewPipe (MetrolistExtractor's JavaScript player, no
-    // plugin APK), then the external yt-dlp via CompactYtDlp — the switch YTDLnis makes, with the
-    // hot path kept native. History can be returned by both native and yt-dlp: InnerTube via
+    // Hybrid resolver: InnerTube (native, BotGuard/QuickJS) first — fast, ~30 MB, no Python — then
+    // the tiers in [fallbackTiers]. History can be returned by both native and yt-dlp: InnerTube via
     // YouTube.history() (browse), YTDLnis via yt-dlp watch history with cookies
     // (ytdlp_watch_history), but ArchiveTune's History uses InnerTube.
     private suspend fun resolveUncached(request: AudioStreamRequest): ResolvedAudioStream {
