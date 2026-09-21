@@ -315,20 +315,21 @@ object Spotify {
      * endpoint means the next call to any of them is likely to be refused too. Gating the whole REST
      * surface on the first 429 is what stops the app spending the rest of its budget on calls that
      * cannot succeed; GraphQL (`api-partner`) is unaffected, which is why everything with a GQL
-     * equivalent uses it. Meld, the closest maintained fork of this client, gates its REST
-     * fallbacks the same way.
+     * equivalent uses it.
      *
-     * The docs also admit a few endpoints carry a custom limit that differs from the app-wide one.
-     * A 429 does not say which it hit, so this gate can occasionally be broader than necessary —
-     * which is the safe direction: every affected call here is a nice-to-have panel whose caller
-     * serves a cached copy meanwhile.
+     * The gate is the only 429 retry policy there is: a request that finds the gate armed is not
+     * sent, and a 429 arms it for at least the documented window, so retrying inside the window
+     * cannot succeed and is not attempted.
      */
     @Volatile
     private var restBlockedUntilMs = 0L
 
+    /** Seconds until [restBlockedUntilMs] clears, rounded up, or 0 when REST may be called. */
+    private fun restCooldownSecondsRemaining(): Long =
+        (restBlockedUntilMs - System.currentTimeMillis() + 999).coerceAtLeast(0) / 1000
+
     private suspend inline fun <reified T> authenticatedGet(
         endpoint: String,
-        failFastOn429: Boolean = false,
         crossinline block: io.ktor.client.request.HttpRequestBuilder.() -> Unit = {},
     ): T {
         val token =
@@ -336,55 +337,36 @@ object Spotify {
                 log("E", "REST $endpoint — no token")
             }
 
-        val blockedForMs = restBlockedUntilMs - System.currentTimeMillis()
-        if (blockedForMs > 0) {
-            log("W", "REST $endpoint — skipping, app-wide REST cooldown has ${blockedForMs / 1000}s left")
-            throw SpotifyException(429, "Rate limited", retryAfterSec = (blockedForMs + 999) / 1000)
+        val blockedSec = restCooldownSecondsRemaining()
+        if (blockedSec > 0) {
+            log("W", "REST $endpoint — skipping, app-wide REST cooldown has ${blockedSec}s left")
+            throw SpotifyException(429, "Rate limited", retryAfterSec = blockedSec)
         }
 
-        val maxRetries = if (failFastOn429) 1 else 3
-        val maxRetryDelaySec = 3L
-        for (attempt in 0 until maxRetries) {
-            log(
-                "D",
-                "REST GET $endpoint" +
-                    if (attempt > 0) " [retry $attempt]" else "",
-            )
-            val response =
-                restClient.get(endpoint) {
-                    header("Authorization", "Bearer $token")
-                    block()
-                }
-            log("D", "REST GET $endpoint -> ${response.status.value}")
+        log("D", "REST GET $endpoint")
+        val response =
+            restClient.get(endpoint) {
+                header("Authorization", "Bearer $token")
+                block()
+            }
+        log("D", "REST GET $endpoint -> ${response.status.value}")
 
-            if (response.status == HttpStatusCode.Unauthorized) {
-                throw SpotifyException(401, "Token expired or invalid")
-            }
-            if (response.status == HttpStatusCode.TooManyRequests) {
-                val retryAfter = response.headers["Retry-After"]?.toLongOrNull()
-                val cooldownMs = rateLimitCooldownMillis(retryAfter)
-                restBlockedUntilMs = maxOf(restBlockedUntilMs, System.currentTimeMillis() + cooldownMs)
-                val fallbackRetryAfter = retryAfter ?: (2L * (attempt + 1))
-                if (failFastOn429 || fallbackRetryAfter > maxRetryDelaySec) {
-                    log("W", "REST $endpoint -> 429, failing fast (retryAfter=${fallbackRetryAfter}s)")
-                    throw SpotifyException(429, "Rate limited", retryAfterSec = fallbackRetryAfter)
-                }
-                if (attempt < maxRetries - 1) {
-                    log("W", "REST $endpoint -> 429, waiting ${fallbackRetryAfter}s (attempt ${attempt + 1}/$maxRetries)")
-                    delay(fallbackRetryAfter * 1000)
-                    continue
-                }
-                throw SpotifyException(429, "Rate limited", retryAfterSec = fallbackRetryAfter)
-            }
-            if (response.status.value !in 200..299) {
-                val bodyText = response.bodyAsText()
-                log("E", "REST $endpoint FAILED: ${response.status.value} — ${bodyText.take(200)}")
-                throw SpotifyException(response.status.value, "Spotify API error ${response.status.value}: $bodyText")
-            }
-            return response.body()
+        if (response.status == HttpStatusCode.Unauthorized) {
+            throw SpotifyException(401, "Token expired or invalid")
         }
-
-        throw SpotifyException(429, "Rate limited after $maxRetries retries")
+        if (response.status == HttpStatusCode.TooManyRequests) {
+            val cooldownMs = rateLimitCooldownMillis(response.headers["Retry-After"]?.toLongOrNull())
+            restBlockedUntilMs = maxOf(restBlockedUntilMs, System.currentTimeMillis() + cooldownMs)
+            val remainingSec = restCooldownSecondsRemaining()
+            log("W", "REST $endpoint -> 429, every REST call is blocked for ${remainingSec}s")
+            throw SpotifyException(429, "Rate limited", retryAfterSec = remainingSec)
+        }
+        if (response.status.value !in 200..299) {
+            val bodyText = response.bodyAsText()
+            log("E", "REST $endpoint FAILED: ${response.status.value} — ${bodyText.take(200)}")
+            throw SpotifyException(response.status.value, "Spotify API error ${response.status.value}: $bodyText")
+        }
+        return response.body()
     }
 
     // ── GQL response converters ──────────────────────────────────────────
@@ -1202,7 +1184,7 @@ object Spotify {
         offset: Int = 0,
     ): Result<SpotifyPaging<SpotifyTrack>> =
         runCatching {
-            authenticatedGet("me/top/tracks", failFastOn429 = true) {
+            authenticatedGet("me/top/tracks") {
                 parameter("time_range", timeRange)
                 parameter("limit", limit)
                 parameter("offset", offset)
@@ -1212,26 +1194,22 @@ object Spotify {
     // ── Recently played (REST — no GQL equivalent) ──────────────────────
 
     /**
-     * The user's play history, most recent first. Spotify caps this at the last 50 plays and
-     * pages it by timestamp cursor rather than offset, so there is no `offset` here and no way to
-     * reach further back — the endpoint simply does not offer it.
+     * The user's play history, most recent first. Spotify caps this at the last
+     * [SPOTIFY_HISTORY_WINDOW] plays and pages it by timestamp cursor rather than offset, so there is
+     * no `offset` here and no way to reach further back — the endpoint simply does not offer it.
      *
      * [afterMillis] is that cursor: a Unix millisecond timestamp, exclusive. Passing the newest play
      * the caller already holds asks for the plays since it, which is what keeps a refresh from
-     * re-reading the whole window — and, since the endpoint's limit is tight and per-request, from
-     * tripping it. `after` and `before` are mutually exclusive server-side, which is why only one of
-     * them is ever sent.
-     *
-     * `failFastOn429` for the same reason [topTracks] uses it: the caller serves its cached window
-     * instead, and a rate-limited retry storm is what keeps the limit in force.
+     * re-reading the whole window. `after` and `before` are mutually exclusive server-side, which is
+     * why only one of them is ever sent.
      */
     suspend fun recentlyPlayed(
-        limit: Int = 50,
+        limit: Int = SPOTIFY_HISTORY_WINDOW,
         afterMillis: Long? = null,
     ): Result<SpotifyPaging<SpotifyPlayHistory>> =
         runCatching {
-            authenticatedGet("me/player/recently-played", failFastOn429 = true) {
-                parameter("limit", limit.coerceIn(1, 50))
+            authenticatedGet("me/player/recently-played") {
+                parameter("limit", limit.coerceIn(1, SPOTIFY_HISTORY_WINDOW))
                 afterMillis?.let { parameter("after", it) }
             }
         }
@@ -1244,7 +1222,7 @@ object Spotify {
         offset: Int = 0,
     ): Result<SpotifyPaging<SpotifyArtist>> =
         runCatching {
-            authenticatedGet("me/top/artists", failFastOn429 = true) {
+            authenticatedGet("me/top/artists") {
                 parameter("time_range", timeRange)
                 parameter("limit", limit)
                 parameter("offset", offset)
