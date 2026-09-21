@@ -947,4 +947,7 @@
     <string name="library_source_playlists_empty">No playlists on this source yet.</string>
     <string name="library_source_artists_empty">No artists on this source yet.</string>
     <string name="library_source_mixes_spotify">Mixes are built from your YouTube listening history, so Spotify has none to show.</string>
+    <string name="your_shows">Your shows</string>
+    <string name="browse_empty_description">There’s nothing to show here yet.</string>
+    <string name="browse_load_failed">Couldn’t load this page</string>
 </resources>
