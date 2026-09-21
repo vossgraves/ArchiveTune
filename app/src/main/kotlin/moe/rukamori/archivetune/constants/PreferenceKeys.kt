@@ -1439,6 +1439,16 @@ val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_play
 val SpotifyRecentlyPlayedCacheKey = stringPreferencesKey("spotify_recently_played_cache")
 
 /**
+ * When [SpotifyRecentlyPlayedCacheKey] was written, as epoch millis.
+ *
+ * Kept beside the list so the expiry survives a process restart. Without it a cold start has no way
+ * to tell a minute-old history from a month-old one, treats every cached history as stale, and
+ * re-reads the window — which is what keeps the endpoint's rate limit in force. Absent (an older
+ * install) reads as 0, i.e. stale, so the first refresh after upgrading is a delta read.
+ */
+val SpotifyRecentlyPlayedCacheFetchedAtKey = longPreferencesKey("spotify_recently_played_cache_fetched_at")
+
+/**
  * Set of item IDs (song/album/artist) that the user has hidden from the
  * "Keep Listening" section on the home page. When the user long-presses an
  * item in Keep Listening and selects "Hide from home," the item's ID is
