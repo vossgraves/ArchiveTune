@@ -296,12 +296,17 @@ private fun HomeContent(
                 val allRemoteSections = uiState.homePage?.sections.orEmpty()
                 val (livePerformanceSections, otherRemoteSections) =
                     remember(allRemoteSections) {
-                        val live = allRemoteSections.filter { section ->
-                            section.title.contains("Live performance", ignoreCase = true)
-                        }
-                        val other = allRemoteSections.filter { section ->
-                            !section.title.contains("Live performance", ignoreCase = true)
-                        }
+                        // YouTube returns sections that are sometimes empty. A heading with no
+                        // shelf under it is a heading with nothing to say, so they go here rather
+                        // than being filtered again in each branch below.
+                        val live =
+                            allRemoteSections
+                                .filter { section -> section.title.contains("Live performance", ignoreCase = true) }
+                                .filter { it.items.isNotEmpty() }
+                        val other =
+                            allRemoteSections
+                                .filter { section -> !section.title.contains("Live performance", ignoreCase = true) }
+                                .filter { it.items.isNotEmpty() }
                         live to other
                     }
 
