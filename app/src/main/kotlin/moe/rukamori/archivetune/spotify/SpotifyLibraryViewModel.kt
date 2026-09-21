@@ -102,19 +102,27 @@ class SpotifyLibraryViewModel
 
         fun loadAlbums(force: Boolean = false) = load(force, _albums) { repository.libraryAlbums() }
 
+        /**
+         * Loads the Spotify play history for the History (and Stats) source.
+         *
+         * Seeds the section from disk first so history renders offline and instantly, then lets the
+         * repository's expiry decide whether a read is owed: a restored-and-fresh cache is left
+         * alone, a restored-but-stale one is refreshed. The section loader would otherwise treat
+         * "rows exist" as "never fetch again" and keep a week-old history on screen for the life of
+         * the process. The read itself — its single-flight and its rate-limit gate — belongs to
+         * [SpotifyLibraryRepository.recentlyPlayed], which is why a stale refresh is safe to ask for.
+         */
         fun loadRecentlyPlayed(force: Boolean = false) {
             sectionScope.launch {
-                var restored = false
                 if (_recentlyPlayed.value.items == null) {
                     repository.restoreCachedRecentlyPlayed()?.let { cached ->
                         _recentlyPlayed.value = SpotifyLibrarySectionState(items = cached)
-                        restored = true
                     }
                 }
-                loadSpotifySection(
-                    target = _recentlyPlayed,
-                    force = force || restored,
-                ) { repository.recentlyPlayed(force = force || restored) }
+                val stale = _recentlyPlayed.value.items != null && !repository.recentlyPlayedIsFresh()
+                loadSpotifySection(target = _recentlyPlayed, force = force || stale) {
+                    repository.recentlyPlayed(force = force)
+                }
             }
         }
 

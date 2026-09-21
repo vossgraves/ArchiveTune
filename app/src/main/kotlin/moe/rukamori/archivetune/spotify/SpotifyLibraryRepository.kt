@@ -36,6 +36,7 @@ import moe.rukamori.archivetune.constants.SpotifyAccessTokenKey
 import moe.rukamori.archivetune.constants.SpotifyAccountAvatarUrlKey
 import moe.rukamori.archivetune.constants.SpotifyAccountNameKey
 import moe.rukamori.archivetune.constants.SpotifyLibraryPlaylistsCacheKey
+import moe.rukamori.archivetune.constants.SpotifyRecentlyPlayedCacheFetchedAtKey
 import moe.rukamori.archivetune.constants.SpotifyRecentlyPlayedCacheKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
@@ -87,7 +88,7 @@ class SpotifyLibraryRepository
 
         private data class CachedRecentlyPlayed(
             val items: List<SpotifyPlayHistory>,
-            val expiresAtMs: Long,
+            val fetchedAtMs: Long,
         )
 
         private val searchCache =
@@ -104,6 +105,28 @@ class SpotifyLibraryRepository
         @Volatile
         private var recentlyPlayedCache: CachedRecentlyPlayed? = null
 
+        /**
+         * Serialises history reads. The History screen and the Stats screen both load this, and
+         * they use separate view models, so without it a cold start fires two identical window
+         * reads within milliseconds of each other — the shape of request that gets a 429.
+         */
+        private val recentlyPlayedMutex = Mutex()
+
+        /**
+         * Wall-clock instant before which the history endpoint must not be called again, from the
+         * last 429. Persisted nowhere on purpose: it is only useful within the session that hit the
+         * limit, and a stored deadline would go wrong the moment the device clock moved.
+         */
+        @Volatile
+        private var recentlyPlayedBlockedUntilMs = 0L
+
+        /**
+         * When the history window was last read in full rather than as a delta, epoch millis. Drives
+         * [needsFullHistoryRead]; in memory only, because 0 means "never", and a cold start wanting
+         * one full read is the correct answer either way.
+         */
+        @Volatile
+        private var recentlyPlayedFullReadAtMs = 0L
 
         suspend fun restoreCachedPlaylists() {
             withContext(Dispatchers.IO) {
@@ -129,16 +152,35 @@ class SpotifyLibraryRepository
             }
         }
 
+        /**
+         * The last play history written to disk, newest first.
+         *
+         * Also seeds the in-memory snapshot, with the fetch time it was stored under, so the cache
+         * expiry covers data that came off disk. Without that seed a screen which restored from disk
+         * looked like a cache miss to [recentlyPlayed] and every cold start re-read the window —
+         * the request that keeps the endpoint's rate limit in force.
+         */
         suspend fun restoreCachedRecentlyPlayed(): List<SpotifyPlayHistory>? =
             withContext(Dispatchers.IO) {
-                val cached = context.dataStore.data.first()[SpotifyRecentlyPlayedCacheKey].orEmpty()
+                recentlyPlayedCache?.let { return@withContext it.items }
+                val prefs = context.dataStore.data.first()
+                val cached = prefs[SpotifyRecentlyPlayedCacheKey].orEmpty()
                 if (cached.isBlank()) return@withContext null
                 runCatching {
                     spotifyCacheJson.decodeFromString(
                         ListSerializer(SpotifyPlayHistory.serializer()),
                         cached,
                     )
-                }.onFailure(::reportException).getOrNull()
+                }.onSuccess { items ->
+                    recentlyPlayedCache =
+                        CachedRecentlyPlayed(
+                            items = items,
+                            fetchedAtMs = prefs[SpotifyRecentlyPlayedCacheFetchedAtKey] ?: 0L,
+                        )
+                }.onFailure { error ->
+                    reportException(error)
+                    context.dataStore.edit { it.remove(SpotifyRecentlyPlayedCacheKey) }
+                }.getOrNull()
             }
 
         suspend fun restoreSession(): SpotifyAccountSession =
@@ -190,9 +232,6 @@ class SpotifyLibraryRepository
                         prefs[SpotifySpDcKey] != spDc || prefs[SpotifySpKeyKey].orEmpty() != spKey
                     prefs[SpotifySpDcKey] = spDc
                     prefs.remove(SpotifyLibraryPlaylistsCacheKey)
-                    if (credentialsChanged) {
-                        prefs.remove(SpotifyRecentlyPlayedCacheKey)
-                    }
                     if (spKey.isNotBlank()) {
                         prefs[SpotifySpKeyKey] = spKey
                     } else {
@@ -206,7 +245,7 @@ class SpotifyLibraryRepository
                 if (credentialsChanged) {
                     Spotify.accessToken = null
                     clearCatalogCaches()
-                    recentlyPlayedCache = null
+                    clearRecentlyPlayed()
                 }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
@@ -229,13 +268,12 @@ class SpotifyLibraryRepository
                     prefs.remove(SpotifyAccountNameKey)
                     prefs.remove(SpotifyAccountAvatarUrlKey)
                     prefs.remove(SpotifyLibraryPlaylistsCacheKey)
-                    prefs.remove(SpotifyRecentlyPlayedCacheKey)
                 }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
                 Spotify.accessToken = null
                 clearCatalogCaches()
-                recentlyPlayedCache = null
+                clearRecentlyPlayed()
                 runCatching { clearWebAuthSession(context) }
                     .onFailure(::reportException)
             }
@@ -345,32 +383,130 @@ class SpotifyLibraryRepository
             }
 
         /**
-         * The user's play history, most recent first. Not paged: Spotify caps this endpoint at the
-         * last 50 plays and offers no way further back, so [collectPages] would spin on one page.
+         * The user's play history, most recent first — cached, delta-read and rate-limit aware.
+         *
+         * Three rules keep the endpoint's limit out of the way, and all three are needed because the
+         * limit is per app and per request:
+         *
+         *  - **One read per expiry.** Rows younger than [RECENTLY_PLAYED_CACHE_TTL_MS] are served
+         *    as-is, and callers that arrive together — the History screen and the Stats screen load
+         *    this independently — wait on a single in-flight read instead of each starting one.
+         *  - **Ask only for what changed.** A read carries `after` = the newest play already held, so
+         *    it fetches the plays since then and merges them into the window rather than re-reading
+         *    all 50. A full window read happens with nothing cached to anchor on, and at least every
+         *    [SPOTIFY_HISTORY_FULL_READ_INTERVAL_MS] besides — see [needsFullHistoryRead] for why a
+         *    delta alone would slowly lose plays.
+         *  - **Stale beats an error.** A failure with rows cached returns them, and a 429 records its
+         *    `Retry-After` so nothing can call again until Spotify's window has cleared. Only a
+         *    failure with an empty cache throws, and then the message says how long the wait is —
+         *    that is the one case where the limit is genuinely unavoidable.
+         *
+         * [force] (pull-to-refresh) skips the expiry, never the gate: refreshing into an active rate
+         * limit is what turns one 429 into a loop, so a forced read during a cooldown still returns
+         * the cached rows.
          */
         suspend fun recentlyPlayed(force: Boolean = false): List<SpotifyPlayHistory> =
             withContext(Dispatchers.IO) {
-                val now = System.currentTimeMillis()
-                recentlyPlayedCache
-                    ?.takeIf { !force && it.expiresAtMs > now }
-                    ?.let { return@withContext it.items }
-                ensureAuthenticated()
-                spotifyCallWithTokenRetry { Spotify.recentlyPlayed().getOrThrow() }.items
-                    .also { items ->
-                        recentlyPlayedCache =
-                            CachedRecentlyPlayed(
-                                items = items,
-                                expiresAtMs = System.currentTimeMillis() + RECENTLY_PLAYED_CACHE_TTL_MS,
-                            )
-                        context.dataStore.edit { prefs ->
-                            prefs[SpotifyRecentlyPlayedCacheKey] =
-                                spotifyCacheJson.encodeToString(
-                                    ListSerializer(SpotifyPlayHistory.serializer()),
-                                    items,
-                                )
-                        }
+                recentlyPlayedMutex.withLock {
+                    if (recentlyPlayedCache == null) restoreCachedRecentlyPlayed()
+                    val cached = recentlyPlayedCache
+                    val now = System.currentTimeMillis()
+                    if (!force && cached != null && now - cached.fetchedAtMs < RECENTLY_PLAYED_CACHE_TTL_MS) {
+                        return@withLock cached.items
                     }
+
+                    val blockedForMs = recentlyPlayedBlockedUntilMs - now
+                    if (blockedForMs > 0) {
+                        cached?.let { return@withLock it.items }
+                        throw rateLimitedException(blockedForMs)
+                    }
+
+                    ensureAuthenticated()
+                    val cursorMillis = cached?.items?.newestPlayedAtMillis()
+                    val fullRead = needsFullHistoryRead(cursorMillis, recentlyPlayedFullReadAtMs, now)
+                    val fetched =
+                        try {
+                            spotifyCallWithTokenRetry {
+                                Spotify
+                                    .recentlyPlayed(afterMillis = cursorMillis.takeUnless { fullRead })
+                                    .getOrThrow()
+                            }.items
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            if (isSpotifyRateLimitMessage(error.message)) {
+                                val retryAfterSec = (error as? Spotify.SpotifyException)?.retryAfterSec
+                                recentlyPlayedBlockedUntilMs =
+                                    System.currentTimeMillis() + rateLimitCooldownMillis(retryAfterSec)
+                            }
+                            cached?.let { return@withLock it.items }
+                            throw error
+                        }
+
+                    val merged =
+                        mergePlayHistory(
+                            newer = fetched,
+                            cached = cached?.items.orEmpty(),
+                        )
+                    val fetchedAtMs = System.currentTimeMillis()
+                    recentlyPlayedCache = CachedRecentlyPlayed(items = merged, fetchedAtMs = fetchedAtMs)
+                    if (fullRead) recentlyPlayedFullReadAtMs = fetchedAtMs
+                    recentlyPlayedBlockedUntilMs = 0L
+                    context.dataStore.edit { prefs ->
+                        prefs[SpotifyRecentlyPlayedCacheKey] =
+                            spotifyCacheJson.encodeToString(
+                                ListSerializer(SpotifyPlayHistory.serializer()),
+                                merged,
+                            )
+                        prefs[SpotifyRecentlyPlayedCacheFetchedAtKey] = fetchedAtMs
+                    }
+                    merged
+                }
             }
+
+        /**
+         * Whether the cached history is young enough that a screen visit need not read the endpoint.
+         *
+         * The section loader's own guard is "items exist, do not fetch again", which would leave a
+         * history from last week on screen for as long as the process lives. This is the repository's
+         * expiry, asked directly, so a stale window still refreshes — through [recentlyPlayed], which
+         * is where the single-flight and the rate-limit gate live.
+         */
+        suspend fun recentlyPlayedIsFresh(): Boolean =
+            withContext(Dispatchers.IO) {
+                if (recentlyPlayedCache == null) restoreCachedRecentlyPlayed()
+                val cached = recentlyPlayedCache ?: return@withContext false
+                System.currentTimeMillis() - cached.fetchedAtMs < RECENTLY_PLAYED_CACHE_TTL_MS
+            }
+
+        /**
+         * The exception thrown when the endpoint is rate limited and there is no cached history to
+         * show instead. Carries the remaining wait so callers can say something true about it.
+         */
+        private fun rateLimitedException(waitMs: Long): Spotify.SpotifyException {
+            val waitSec = (waitMs + 999L) / 1000L
+            return Spotify.SpotifyException(
+                statusCode = 429,
+                message = "Rate limited — Spotify asked to wait ${waitSec}s before the history endpoint may be called again",
+                retryAfterSec = waitSec,
+            )
+        }
+
+        /**
+         * Drops the history snapshot and its expiry, plus any in-flight rate-limit gate.
+         *
+         * Called when the account changes: the plays belong to the old account, and leaving the
+         * cooldown behind would delay the new account's first read for no reason.
+         */
+        private suspend fun clearRecentlyPlayed() {
+            recentlyPlayedCache = null
+            recentlyPlayedBlockedUntilMs = 0L
+            recentlyPlayedFullReadAtMs = 0L
+            context.dataStore.edit { prefs ->
+                prefs.remove(SpotifyRecentlyPlayedCacheKey)
+                prefs.remove(SpotifyRecentlyPlayedCacheFetchedAtKey)
+            }
+        }
 
         /** Every album the user has saved. Backs the Library's Albums section on the Spotify source. */
         suspend fun libraryAlbums(): List<SpotifyAlbum> =
