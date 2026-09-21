@@ -656,7 +656,7 @@ internal fun EmojiPickerSheet(
                 }
                 gridItems(
                     items = emojis.map(::emojiGlyph),
-                    key = { "$category$_" },
+                    key = { emoji -> "$category$emoji" },
                 ) { emoji ->
                     Box(
                         modifier =
