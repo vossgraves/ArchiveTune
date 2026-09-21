@@ -125,6 +125,7 @@ import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.isSpotifyRateLimitMessage
 import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
+import moe.rukamori.archivetune.spotify.playedAtMillis
 import moe.rukamori.archivetune.ui.component.ChoiceChipsRow
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
@@ -1164,7 +1165,7 @@ private fun List<SpotifyPlayHistory>.spotifyPlays(unknownArtistLabel: String): L
                         )
                     },
             durationMs = track.durationMs.toLong(),
-            playedAt = played.playedAt?.let { stamp -> runCatching { Instant.parse(stamp) }.getOrNull() },
+            playedAt = played.playedAtMillis()?.let(Instant::ofEpochMilli),
         )
     }
 

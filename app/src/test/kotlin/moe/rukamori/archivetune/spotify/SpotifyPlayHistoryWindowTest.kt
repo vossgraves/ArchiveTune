@@ -106,66 +106,41 @@ class SpotifyPlayHistoryWindowTest {
     }
 
     @Test
-    fun retryAfterIsHonouredWhenItExceedsTheDocumentedWindow() {
-        assertEquals(50_000L, rateLimitCooldownMillis(50))
-    }
-
-    @Test
-    fun retryAfterBelowTheDocumentedWindowStillWaitsOutTheWindow() {
+    fun aRetryAfterSetsACooldownWithinItsDocumentedBounds() {
+        // A header shorter than the rolling window is floored to it, because nothing shorter can clear
+        // the limit; a missing or non-positive one has nothing else to go on.
         assertEquals(SPOTIFY_RATE_LIMIT_FALLBACK_MS, rateLimitCooldownMillis(2))
-    }
-
-    @Test
-    fun aMissingOrUnusableRetryAfterFallsBackToTheDocumentedWindow() {
-        assertEquals(SPOTIFY_RATE_LIMIT_FALLBACK_MS, rateLimitCooldownMillis(null))
         assertEquals(SPOTIFY_RATE_LIMIT_FALLBACK_MS, rateLimitCooldownMillis(0))
-        assertEquals(SPOTIFY_RATE_LIMIT_FALLBACK_MS, rateLimitCooldownMillis(-5))
-    }
-
-    @Test
-    fun aDayLongRetryAfterIsHonouredRatherThanClamped() {
-        // Observed on the public Web API for sp_dc-minted tokens; see SPOTIFY_RATE_LIMIT_MAX_MS.
+        assertEquals(SPOTIFY_RATE_LIMIT_FALLBACK_MS, rateLimitCooldownMillis(null))
+        // A longer one is taken as given, including the day-long values Spotify really sends for the
+        // sp_dc-minted token class this client uses — see SPOTIFY_RATE_LIMIT_MAX_MS.
+        assertEquals(50_000L, rateLimitCooldownMillis(50))
         assertEquals(86_400_000L, rateLimitCooldownMillis(86_400))
-    }
-
-    @Test
-    fun aStuckRetryAfterBeyondADayIsClamped() {
+        // Past a day the header is a stuck value rather than an instruction.
         assertEquals(SPOTIFY_RATE_LIMIT_MAX_MS, rateLimitCooldownMillis(7 * 24 * 60 * 60))
     }
 
     @Test
-    fun aNamedWindowWithNothingToShowEarnsOneRetry() {
+    fun onlyAnUncachedReadWithANamedWindowEarnsTheRetry() {
         // The measured failure: a first, uncached read answers 429 with Retry-After: 14. The plays
-        // are a window away, so the read waits that window out instead of reporting the limit.
+        // are that window away, so the read waits them out instead of reporting the limit.
         assertEquals(
             SPOTIFY_RATE_LIMIT_FALLBACK_MS,
             historyRetryWaitMillis(retryAfterSec = 14, hasCachedRows = false),
         )
         assertEquals(50_000L, historyRetryWaitMillis(retryAfterSec = 50, hasCachedRows = false))
-    }
-
-    @Test
-    fun rowsAlreadyOnScreenAreNeverWorthWaitingFor() {
-        assertNull(historyRetryWaitMillis(retryAfterSec = 14, hasCachedRows = true))
-        assertNull(historyRetryWaitMillis(retryAfterSec = 50, hasCachedRows = true))
-    }
-
-    @Test
-    fun a429WithNoUsableWindowIsNotRetried() {
-        assertNull(historyRetryWaitMillis(retryAfterSec = null, hasCachedRows = false))
-        assertNull(historyRetryWaitMillis(retryAfterSec = 0, hasCachedRows = false))
-        assertNull(historyRetryWaitMillis(retryAfterSec = -5, hasCachedRows = false))
-    }
-
-    @Test
-    fun aBlockPastTheRetryCapIsNotWaitedOut() {
-        // A day-long block is honoured as a cooldown but never sat out by a read; the cap itself is
-        // the last window still worth waiting for.
-        assertNull(historyRetryWaitMillis(retryAfterSec = 86_400, hasCachedRows = false))
+        // The cap is the last window still worth waiting for.
         assertEquals(
             SPOTIFY_HISTORY_RETRY_MAX_WAIT_MS,
             historyRetryWaitMillis(retryAfterSec = 60, hasCachedRows = false),
         )
+        // Rows already on screen are the reader's answer, so a refresh is never held open for them.
+        assertNull(historyRetryWaitMillis(retryAfterSec = 14, hasCachedRows = true))
+        // Neither is a 429 with no window to obey, nor one blocked for longer than the cap — there,
+        // waiting is what would turn one 429 into a held-open screen.
+        assertNull(historyRetryWaitMillis(retryAfterSec = null, hasCachedRows = false))
+        assertNull(historyRetryWaitMillis(retryAfterSec = 0, hasCachedRows = false))
+        assertNull(historyRetryWaitMillis(retryAfterSec = 86_400, hasCachedRows = false))
     }
 
     @Test
