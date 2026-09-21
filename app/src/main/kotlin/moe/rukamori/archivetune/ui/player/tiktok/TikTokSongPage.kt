@@ -63,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -93,6 +94,7 @@ import coil3.request.crossfade
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.TikTokMainLyricsEnabledKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -100,6 +102,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.utils.rememberPreference
 
 /** The inactive gray the reference uses for everything unselected/secondary. */
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
@@ -356,6 +359,37 @@ internal fun TikTokSongPage(
                                             blendMode = BlendMode.DstIn,
                                         )
                                     },
+                        )
+                    }
+                }
+            }
+
+            // Reserve the karaoke-caption slot whenever the feature is on — on EVERY page, and
+            // whether or not the current song has synced lyrics (they also load asynchronously).
+            // The artwork box above therefore keeps a constant height and the artwork never
+            // shifts up or shrinks when lyrics load, appear, change between songs, or during
+            // swipes.
+            val mainLyricsEnabled by rememberPreference(TikTokMainLyricsEnabledKey, false)
+            if (!immersive && mainLyricsEnabled && !lyricsOpen) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(TikTokMainLyricsHeight)
+                            .clipToBounds(),
+                ) {
+                    if (isCurrentPage) {
+                        TikTokMainLyrics(
+                            sliderPositionProvider = sliderPositionProvider,
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    // Mirror the title/artist clearance: the right-side rail
+                                    // (~58dp of buttons, bottom-anchored and tall) must never
+                                    // overlap or cut the wrapped lyric rows.
+                                    .padding(start = 16.dp, end = TIKTOK_CAPTION_TEXT_CLEARANCE + 16.dp)
+                                    .padding(bottom = 4.dp),
                         )
                     }
                 }

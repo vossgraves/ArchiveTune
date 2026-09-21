@@ -747,6 +747,14 @@ private fun RoomStatusCard(
                 remember(serverUrl) {
                     ListenTogetherServers.findByUrl(serverUrl)?.protocol != ListenTogetherProtocol.PROTOBUF
                 }
+
+            // metroserver (The Meowery) has no chat relay at all — its protobuf
+            // protocol carries no chat message type — so the chat entry point is
+            // hidden entirely instead of leading to a dead composer.
+            val chatSupported =
+                remember(serverUrl) {
+                    ListenTogetherServers.findByUrl(serverUrl)?.protocol != ListenTogetherProtocol.PROTOBUF
+                }
             val inviteLink =
                 remember(roomCode, serverUrl) {
                     val host = ListenTogetherServers.findByUrl(serverUrl)?.url
@@ -762,40 +770,41 @@ private fun RoomStatusCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Chat Action
-                FilledTonalButton(
-                    onClick = { navController.navigate("listen_together/chat") },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
-                    modifier = modifier
-                ) {
-                    androidx.compose.material3.BadgedBox(
-                        badge = {
-                            if (unreadMessageCount > 0) {
-                                androidx.compose.material3.Badge {
-                                    Text(unreadMessageCount.toString())
+                if (chatSupported) {
+                    FilledTonalButton(
+                        onClick = { navController.navigate("listen_together/chat") },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
+                        modifier = modifier
+                    ) {
+                        androidx.compose.material3.BadgedBox(
+                            badge = {
+                                if (unreadMessageCount > 0) {
+                                    androidx.compose.material3.Badge {
+                                        Text(unreadMessageCount.toString())
+                                    }
                                 }
                             }
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.chat_msg),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.chat_msg),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.comments),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.comments),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
 
                 if (webInviteSupported) {

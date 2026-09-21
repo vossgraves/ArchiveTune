@@ -21,11 +21,15 @@
 package moe.rukamori.archivetune.listentogether
 
 import android.content.Context
+import androidx.datastore.preferences.core.edit
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.constants.ListenTogetherAvatarIndexKey
+import moe.rukamori.archivetune.constants.ListenTogetherChatHistoryKey
 import moe.rukamori.archivetune.constants.ListenTogetherSmartResyncKey
 import moe.rukamori.archivetune.constants.ListenTogetherSyncVolumeKey
 import moe.rukamori.archivetune.extensions.currentMetadata
@@ -51,6 +55,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -75,6 +80,15 @@ class ListenTogetherManager @Inject constructor(
         // Large position tolerance - only seek during playback if difference exceeds this
         // This prevents interrupting active playback for small drifts
         private const val PLAYBACK_POSITION_TOLERANCE_MS = 3000L
+
+        /** Typing indicators stay alive for this long after the last typing event. */
+        private const val TYPING_TTL_MS = 4500L
+
+        /** How often a typing client re-announces itself while composing. */
+        private const val TYPING_THROTTLE_MS = 2500L
+
+        /** Chat history persisted per local username (survives room switches). */
+        private const val MAX_PERSISTED_CHAT_MESSAGES = 150
     }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -90,7 +104,7 @@ class ListenTogetherManager @Inject constructor(
     private var volumeObserverJob: Job? = null
     private var playerListenerRegistered = false
 
-    private val syncHostVolumeEnabled = MutableStateFlow(true)
+    private val syncHostVolumeEnabled = MutableStateFlow(false)
     private val smartResyncEnabled = MutableStateFlow(true)
     private var lastSyncedVolume: Float? = null
 
@@ -145,6 +159,19 @@ class ListenTogetherManager @Inject constructor(
     // Chat state
     private val _chatMessages = MutableStateFlow<List<ChatMessagePayload>>(emptyList())
     val chatMessages = _chatMessages
+
+    /** Room members currently typing, freshest last; expires via [TYPING_TTL_MS]. */
+    private val _typingUsers = MutableStateFlow<List<TypingUser>>(emptyList())
+    val typingUsers: kotlinx.coroutines.flow.StateFlow<List<TypingUser>> = _typingUsers
+
+    private var chatPersistJob: Job? = null
+    private val chatHistoryJson = Json { ignoreUnknownKeys = true }
+    private var lastTypingSentAt = 0L
+
+    private fun hasOtherRoomMembers(): Boolean {
+        val myId = userId.value ?: return false
+        return (roomState.value?.users?.count { it.userId != myId } ?: 0) > 0
+    }
 
     private val _unreadMessageCount = MutableStateFlow(0)
     val unreadMessageCount: kotlinx.coroutines.flow.StateFlow<Int> = _unreadMessageCount
@@ -354,7 +381,7 @@ class ListenTogetherManager @Inject constructor(
     private fun observePreferences() {
         scope.launch {
             context.dataStore.data
-                .map { it[ListenTogetherSyncVolumeKey] ?: true }
+                .map { it[ListenTogetherSyncVolumeKey] ?: false }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     syncHostVolumeEnabled.value = enabled
@@ -382,6 +409,18 @@ class ListenTogetherManager @Inject constructor(
                     handleEvent(event)
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error handling event: $event")
+                }
+            }
+        }
+
+        // Expire stale typing indicators.
+        scope.launch {
+            while (true) {
+                delay(1000)
+                val now = System.currentTimeMillis()
+                val fresh = _typingUsers.value.filter { it.expiresAt > now }
+                if (fresh.size != _typingUsers.value.size) {
+                    _typingUsers.value = fresh
                 }
             }
         }
@@ -432,6 +471,24 @@ class ListenTogetherManager @Inject constructor(
                         stopQueueSyncObservation()
                         stopHeartbeat()
                         stopVolumeSyncObservation()
+                    }
+
+                    // Any in-room role needs the player listener: hosts broadcast
+                    // playback actions from it, guests turn their local song
+                    // changes into room-wide suggestions from it. It is attached
+                    // at join time too, but a host-transfer that lands the local
+                    // user in the GUEST role re-establishes it here.
+                    if (newRole != RoomRole.NONE && newRole != RoomRole.HOST && !playerListenerRegistered) {
+                        val connection = playerConnection
+                        if (connection != null) {
+                            try {
+                                connection.player.addListener(playerListener)
+                                playerListenerRegistered = true
+                                Timber.tag(TAG).d("Added player listener as guest on role change")
+                            } catch (e: Exception) {
+                                Timber.tag(TAG).e(e, "Failed to add player listener on role change")
+                            }
+                        }
                     }
                     updateGuestMuteState()
                 } catch (e: Exception) {
@@ -484,6 +541,10 @@ class ListenTogetherManager @Inject constructor(
                     startHeartbeat()
                     startVolumeSyncObservation()
                     broadcastCustomAvatar()
+                    // Deliberately NO chat-history restore here: the host is
+                    // alone in a freshly created room, and older chats must not
+                    // show while the room has a single member. They restore once
+                    // someone joins (UserJoined below).
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error handling RoomCreated event")
                 }
@@ -491,10 +552,30 @@ class ListenTogetherManager @Inject constructor(
 
             is ListenTogetherEvent.JoinApproved -> {
                 Timber.tag(TAG).d("Join approved for room: ${event.roomCode}")
-                // Save current mute state before joining as guest so we can restore it on leave
+
+                // Guests need the player listener too: their local song changes
+                // travel to the room as suggestions (suggestLocalTrackChange in
+                // onMediaItemTransition), which requires observing transitions.
+                // The listener is normally attached when the player connection
+                // is set — but that happens long before joining a room, so it
+                // must be attached here, mirroring the host's RoomCreated path.
+                runCatching {
+                    val connection = playerConnection
+                    if (connection != null && !playerListenerRegistered) {
+                        connection.player.addListener(playerListener)
+                        playerListenerRegistered = true
+                        Timber.tag(TAG).d("Added player listener as guest")
+                    }
+                }.onFailure {
+                    Timber.tag(TAG).e(it, "Failed to add player listener on join")
+                }
+
                 saveMuteStateOnJoin()
                 broadcastCustomAvatar()
-                // Apply the full initial state including queue
+                restorePersistedChatHistory(
+                    otherMembers = event.state.users.filterNot { it.userId == userId.value },
+                )
+
                 applyPlaybackState(
                     currentTrack = event.state.currentTrack,
                     isPlaying = event.state.isPlaying,
@@ -524,6 +605,16 @@ class ListenTogetherManager @Inject constructor(
 
                 // Re-share our custom avatar so the newcomer can see it too.
                 broadcastCustomAvatar()
+
+                // The newcomer's username is in roomState by the time the event
+                // is emitted, so the restore below only brings back the older
+                // chats with the people actually present — the newcomer's own
+                // history with the local user included.
+                restorePersistedChatHistory(
+                    otherMembers = (roomState.value?.users ?: emptyList())
+                        .filterNot { it.userId == userId.value },
+                )
+
                 if (isHost) {
                     try {
                         val connection = playerConnection
@@ -581,6 +672,9 @@ class ListenTogetherManager @Inject constructor(
 
             is ListenTogetherEvent.Reconnected -> {
                 Timber.tag(TAG).d("Reconnected to room: ${event.roomCode}, isHost: ${event.isHost}")
+                restorePersistedChatHistory(
+                    otherMembers = event.state.users.filterNot { it.userId == userId.value },
+                )
                 try {
                     // Re-register player listener
                     val connection = playerConnection
@@ -725,19 +819,7 @@ class ListenTogetherManager @Inject constructor(
             }
 
             is ListenTogetherEvent.LocalSuggestionApproved -> {
-                try {
-                    val mediaMetadata = event.payload.trackInfo.toMediaMetadata()
-                    val mediaItem = mediaMetadata.toMediaItem()
-                    playerConnection?.playNext(mediaItem)
-                    if (event.playImmediately) {
-                        // The suggesting guest has usually already moved on locally —
-                        // jump to the approved track so the room catches up with them.
-                        playerConnection?.player?.seekToNextMediaItem()
-                    }
-                    Timber.tag(TAG).d("Approved suggestion added to queue: ${mediaMetadata.title} (playImmediately=${event.playImmediately})")
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Error adding approved suggestion to queue")
-                }
+                applyApprovedSuggestion(event.payload.trackInfo, event.playImmediately)
             }
 
             is ListenTogetherEvent.ConnectionError -> {
@@ -748,16 +830,31 @@ class ListenTogetherManager @Inject constructor(
             is ListenTogetherEvent.ChatMessageReceived -> {
                 Timber.tag(TAG).d("Chat message received from ${event.payload.username}")
 
-                // Prevent duplicate keys causing LazyColumn crash
-                val exists = _chatMessages.value.any { it.timestamp == event.payload.timestamp && it.userId == event.payload.userId }
+                // The local user's own message that arrives while they are ALONE
+                // in the room is a chat with themselves — flagged on the payload so
+                // it never persists (the flag survives restore, unlike a volatile
+                // key set, so restored solo messages can never re-enter the store).
+                val payload =
+                    if (event.payload.userId == userId.value && !hasOtherRoomMembers()) {
+                        event.payload.copy(solo = true)
+                    } else {
+                        event.payload
+                    }
+
+                val exists = _chatMessages.value.any { it.timestamp == payload.timestamp && it.userId == payload.userId }
                 if (!exists) {
-                    _chatMessages.value = _chatMessages.value + event.payload
-                    if (event.payload.userId != userId.value) {
+                    _chatMessages.value = _chatMessages.value + payload
+                    if (payload.userId != userId.value) {
                         _unreadMessageCount.value++
                     }
+                    scheduleChatPersist()
                 } else {
-                    Timber.tag(TAG).w("Ignoring duplicate chat message from ${event.payload.username}")
+                    Timber.tag(TAG).w("Ignoring duplicate chat message from ${payload.username}")
                 }
+            }
+
+            is ListenTogetherEvent.ChatControlReceived -> {
+                applyChatControl(event.userId, event.username, event.event)
             }
 
             else -> { /* Other events handled by UI */ }
@@ -788,6 +885,7 @@ class ListenTogetherManager @Inject constructor(
         ++currentTrackGeneration  // Increment to invalidate any pending track-change coroutines
         _chatMessages.value = emptyList() // Clear chat on room leave
         _unreadMessageCount.value = 0
+        _typingUsers.value = emptyList()
     }
 
     // PORT-NOTE: vivi's PlayerConnection/MusicService carried a mute state
@@ -1751,12 +1849,35 @@ class ListenTogetherManager @Inject constructor(
      */
     fun clearLogs() = client.clearLogs()
 
+    /** The username this device joined/created the room with (chat bookkeeping). */
+    val currentUsername: String? get() = client.currentUsername
+
     // Suggestions API
 
     /**
      * Suggest the given track to the host (guest only)
      */
     fun suggestTrack(track: TrackInfo) = client.suggestTrack(track)
+
+    /**
+     * The track the local player is on right now (host-side source for sharing the current song
+     * into the chat when the room state's currentTrack is stale or absent).
+     */
+    fun currentLocalTrack(): TrackInfo? {
+        if (!isInRoom) return null
+        return try {
+            val player = playerConnection?.player ?: return null
+            val window =
+                player.currentTimeline.getWindow(
+                    player.currentMediaItemIndex,
+                    androidx.media3.common.Timeline.Window(),
+                )
+            window.toTrackInfo()
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Failed to read the current local track")
+            null
+        }
+    }
 
     /**
      * Approve a suggestion (host only)
@@ -1817,10 +1938,386 @@ class ListenTogetherManager @Inject constructor(
     }
 
     /**
-     * Send a chat message to the room
+     * Applies an approved suggestion (or a locally shared song on the host) through the full
+     * manual-skip path: playNext + prepareForManualSkip so an in-flight crossfade never keeps
+     * streaming the previous song.
      */
+    private fun applyApprovedSuggestion(trackInfo: TrackInfo, playImmediately: Boolean) {
+        try {
+            val connection = playerConnection
+            if (connection == null) {
+                Timber.tag(TAG).w("Cannot apply approved suggestion - no player connection")
+                return
+            }
+            val mediaMetadata = trackInfo.toMediaMetadata()
+            val mediaItem = mediaMetadata.toMediaItem()
+            connection.playNext(mediaItem)
+            if (playImmediately) {
+                val player = connection.player
+                val nextIndex = player.currentMediaItemIndex + 1
+                if (nextIndex < player.mediaItemCount &&
+                    player.getMediaItemAt(nextIndex).mediaId == mediaItem.mediaId
+                ) {
+                    // Full manual-skip semantics: an in-flight crossfade (or its
+                    // pauseAtEnd handoff) would otherwise keep the OLD song's
+                    // audio playing through the secondary player while the
+                    // queue already moved on, so cancel it first — exactly what
+                    // a tap on the skip button does.
+                    val wasPlaying = player.playWhenReady
+                    runCatching { connection.service.prepareForManualSkip() }
+                    player.seekToNext()
+                    player.prepare()
+                    player.playWhenReady = wasPlaying
+                } else {
+                    Timber.tag(TAG).w("Approved suggestion not adjacent after queue insert; leaving it queued")
+                }
+            }
+            Timber.tag(TAG).d("Approved suggestion applied: ${mediaMetadata.title} (playImmediately=$playImmediately)")
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error applying approved suggestion")
+        }
+    }
+
     fun sendChatMessage(message: String, replyTo: RepliedMessage? = null) {
         if (message.isBlank()) return
         client.sendChatMessage(message, replyTo)
+    }
+
+    /**
+     * Shares a song into the chat as a rich tappable card (sent as an [LTS:] envelope on the chat
+     * relay, optionally with a caption).
+     */
+    fun shareTrackToChat(track: TrackInfo, caption: String = "") {
+        client.sendChatMessage(caption.trim(), null, sharedTrack = track)
+    }
+
+    /**
+     * Plays a song shared in the chat: the host applies it directly through the
+     * approved-suggestion path; a guest suggests it (auto-approved by default) so the song starts
+     * in the room for everyone.
+     */
+    fun playSharedTrack(track: TrackInfo) {
+        if (!isInRoom) return
+        if (isHost) {
+            applyApprovedSuggestion(track, playImmediately = true)
+        } else {
+            suggestTrack(track)
+        }
+    }
+
+    /**
+     * Applies a reactions/edit/delete/pin/typing control event to the local chat
+     * state. All applications are idempotent, so the sender can apply locally and
+     * again through its own server echo without harm. Typing echoes from self are
+     * ignored so the composer never shows their own indicator.
+     */
+    private fun applyChatControl(fromUserId: String, fromUsername: String, control: ChatControlEvent) {
+        when (control.action) {
+            ChatControlEvent.ACTION_TYPING -> {
+                if (fromUserId == userId.value) return
+                val now = System.currentTimeMillis()
+                _typingUsers.value =
+                    _typingUsers.value.filter { it.userId != fromUserId } +
+                        TypingUser(userId = fromUserId, username = fromUsername, expiresAt = now + TYPING_TTL_MS)
+            }
+
+            ChatControlEvent.ACTION_REACT,
+            ChatControlEvent.ACTION_UNREACT -> {
+                val emoji = control.emoji ?: return
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    val current = message.reactions[emoji].orEmpty()
+                    val updated =
+                        if (control.action == ChatControlEvent.ACTION_REACT) {
+                            if (current.contains(fromUsername)) current else current + fromUsername
+                        } else {
+                            current - fromUsername
+                        }
+                    val newReactions =
+                        if (updated.isEmpty()) message.reactions - emoji
+                        else message.reactions + (emoji to updated)
+                    message.copy(reactions = newReactions)
+                }
+            }
+
+            ChatControlEvent.ACTION_EDIT -> {
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                if (targetUserId != fromUserId) return // only one's own messages
+                val newText = control.text?.trim()?.takeIf { it.isNotEmpty() } ?: return
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    message.copy(message = newText, edited = true)
+                }
+            }
+
+            ChatControlEvent.ACTION_DELETE -> {
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                // Authors delete their own messages; the room host may
+                // additionally delete anyone's (moderation).
+                val senderIsRoomHost = roomState.value?.hostId == fromUserId
+                if (targetUserId != fromUserId && !senderIsRoomHost) return
+                // Tombstone, not removal: everyone (and the persisted history)
+                // keeps seeing that a message existed and was deleted.
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    message.copy(deleted = true, message = "", sharedTrack = null)
+                }
+            }
+
+            ChatControlEvent.ACTION_PIN,
+            ChatControlEvent.ACTION_UNPIN -> {
+                val targetTimestamp = control.targetTimestamp ?: return
+                val targetUserId = control.targetUserId ?: return
+                val pinned = control.action == ChatControlEvent.ACTION_PIN
+                updateChatMessage(targetUserId, targetTimestamp) { message ->
+                    // The stamp orders the pinned carousel latest-pin-first;
+                    // it is reset to zero when unpinned.
+                    if (pinned) {
+                        message.copy(pinned = true, pinnedAt = System.currentTimeMillis())
+                    } else {
+                        message.copy(pinned = false, pinnedAt = 0L)
+                    }
+                }
+            }
+        }
+    }
+
+    private inline fun updateChatMessage(
+        targetUserId: String,
+        targetTimestamp: Long,
+        transform: (ChatMessagePayload) -> ChatMessagePayload,
+    ) {
+        val messages = _chatMessages.value
+        val index = messages.indexOfFirst { it.userId == targetUserId && it.timestamp == targetTimestamp }
+        if (index == -1) return
+        val updated = messages.toMutableList()
+        updated[index] = transform(updated[index])
+        _chatMessages.value = updated
+        scheduleChatPersist()
+    }
+
+    /** Toggles the local user's emoji reaction on a message, room-wide. */
+    fun toggleReaction(message: ChatMessagePayload, emoji: String) {
+        val me = client.currentUsername ?: return
+        val action =
+            if (message.reactions[emoji]?.contains(me) == true) ChatControlEvent.ACTION_UNREACT
+            else ChatControlEvent.ACTION_REACT
+        val control = ChatControlEvent(
+            action = action,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+            emoji = emoji,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", me, control)
+    }
+
+    /** Pins or unpins a message for everyone in the room. */
+    fun setPinned(message: ChatMessagePayload, pinned: Boolean) {
+        val control = ChatControlEvent(
+            action = if (pinned) ChatControlEvent.ACTION_PIN else ChatControlEvent.ACTION_UNPIN,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
+    }
+
+    /** Edits one of the local user's own messages, room-wide. */
+    fun editMessage(message: ChatMessagePayload, newText: String) {
+        if (newText.isBlank() || message.userId != userId.value) return
+        val control = ChatControlEvent(
+            action = ChatControlEvent.ACTION_EDIT,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+            text = newText,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
+    }
+
+    /** Deletes a message for everyone in the room. Members may delete their own
+     * messages; the host may additionally delete anyone's (moderation). */
+    fun deleteMessageForEveryone(message: ChatMessagePayload) {
+        if (message.userId != userId.value && !isHost) return
+        val control = ChatControlEvent(
+            action = ChatControlEvent.ACTION_DELETE,
+            targetTimestamp = message.timestamp,
+            targetUserId = message.userId,
+        )
+        client.sendChatControl(control)
+        applyChatControl(userId.value ?: "", client.currentUsername ?: "", control)
+    }
+
+    /** Hides a message from the local user's view only. Nothing is broadcast —
+     * other members keep seeing the message — and the persisted history is
+     * rewritten without it, so it does not come back on restore. */
+    fun deleteMessageForMe(message: ChatMessagePayload) {
+        val remaining =
+            _chatMessages.value.filterNot {
+                it.userId == message.userId && it.timestamp == message.timestamp
+            }
+        _chatMessages.value = remaining
+
+        // The post-removal snapshot is written directly rather than through
+        // the debounced persist: a delayed write would race the leave-room
+        // wipe of the live list (which must never erase the stored
+        // conversation). Removing the last kept message clears the store
+        // instead of silently leaving it stale.
+        chatPersistJob?.cancel()
+        scope.launch(Dispatchers.IO) {
+            val username = client.currentUsername ?: return@launch
+            val trimmed = remaining.takeLast(MAX_PERSISTED_CHAT_MESSAGES).filterNot { it.solo }
+            runCatching {
+                context.dataStore.edit { prefs ->
+                    if (trimmed.isEmpty()) {
+                        prefs.remove(ListenTogetherChatHistoryKey)
+                    } else {
+                        prefs[ListenTogetherChatHistoryKey] =
+                            chatHistoryJson.encodeToString(
+                                PersistedChatHistory.serializer(),
+                                PersistedChatHistory(username = username, messages = trimmed),
+                            )
+                    }
+                }
+            }.onFailure { Timber.tag(TAG).e(it, "Failed to persist chat history") }
+        }
+    }
+
+    /** Re-announces that the local user is composing, throttled to one frame per 2.5s. */
+    fun notifyTyping() {
+        if (!isInRoom) return
+        val now = System.currentTimeMillis()
+        if (now - lastTypingSentAt < TYPING_THROTTLE_MS) return
+        lastTypingSentAt = now
+        client.sendChatControl(ChatControlEvent(action = ChatControlEvent.ACTION_TYPING))
+    }
+
+    /** Debounced persistence of the chat list, keyed by the local username. Only
+     * messages exchanged with other members are written — messages flagged
+     * [ChatMessagePayload.solo] (the user talking to an empty room) are
+     * deliberately dropped. When nothing worth keeping remains, the stored
+     * history is CLEARED instead of silently left stale. */
+    private fun scheduleChatPersist() {
+        chatPersistJob?.cancel()
+        chatPersistJob = scope.launch(Dispatchers.IO) {
+            delay(600)
+            val username = client.currentUsername ?: return@launch
+            // Leaving the room wipes the live list before this debounced job
+            // runs — that must never erase a previously stored conversation.
+            if (_chatMessages.value.isEmpty()) return@launch
+            val trimmed =
+                _chatMessages.value
+                    .takeLast(MAX_PERSISTED_CHAT_MESSAGES)
+                    .filterNot { it.solo }
+            runCatching {
+                context.dataStore.edit { prefs ->
+                    if (trimmed.isEmpty()) {
+                        prefs.remove(ListenTogetherChatHistoryKey)
+                    } else {
+                        prefs[ListenTogetherChatHistoryKey] =
+                            chatHistoryJson.encodeToString(
+                                PersistedChatHistory.serializer(),
+                                PersistedChatHistory(username = username, messages = trimmed),
+                            )
+                    }
+                }
+            }.onFailure { Timber.tag(TAG).e(it, "Failed to persist chat history") }
+        }
+    }
+
+    /**
+     * Restores the per-username chat history, scoped to the members that are
+     * actually in the room right now:
+     *  - nothing restores while the local user is alone (an empty room has no
+     *    conversation to continue), and
+     *  - only messages between the local user and the given members come back —
+     *    history with people who are not present stays hidden until they join.
+     *
+     * Restored messages carry [ChatMessagePayload.restored] so the chat list can
+     * draw the "older messages" divider where history ends, and their user ids
+     * are remapped to the CURRENT session ids, so everything keyed by user id
+     * downstream — own-message alignment (right side), avatar lookup, reactions,
+     * pins, edits and deletes — works on them exactly as on live messages.
+     *
+     * Histories written by an older persistence scheme (before solo messages
+     * were flagged) are discarded once — they may contain the user's alone-room
+     * chatter, which must never come back.
+     */
+    private fun restorePersistedChatHistory(otherMembers: List<UserInfo>) {
+        if (otherMembers.isEmpty()) return
+        val username = client.currentUsername
+        if (username.isNullOrBlank()) return
+        val myId = userId.value
+        val memberIdByName = otherMembers.associate { it.username to it.userId }
+        scope.launch(Dispatchers.IO) {
+            val raw = runCatching { context.dataStore.data.first()[ListenTogetherChatHistoryKey] }.getOrNull()
+                ?: return@launch
+            val stored = runCatching {
+                chatHistoryJson.decodeFromString(PersistedChatHistory.serializer(), raw)
+            }.getOrNull() ?: return@launch
+            if (stored.username != username) return@launch
+            if (stored.version != PersistedChatHistory.CURRENT_VERSION) {
+                Timber.tag(TAG).d("Discarding chat history from an older persistence scheme")
+                runCatching {
+                    context.dataStore.edit { it.remove(ListenTogetherChatHistoryKey) }
+                }
+                return@launch
+            }
+
+            val memberNames = otherMembers.map { it.username }.toSet()
+            val restored = stored.messages
+                .filter { it.username == username || it.username in memberNames }
+                .map { message ->
+                    val currentId =
+                        if (message.username == username) myId
+                        else memberIdByName[message.username]
+                    if (currentId != null && currentId != message.userId) {
+                        message.copy(userId = currentId, restored = true)
+                    } else {
+                        message.copy(restored = true)
+                    }
+                }
+            if (restored.isEmpty()) return@launch
+
+            withContext(Dispatchers.Main) {
+                val existing = _chatMessages.value
+                val existingKeys = existing.map { it.username to it.timestamp }.toHashSet()
+                val fresh = restored.filterNot { (it.username to it.timestamp) in existingKeys }
+                if (fresh.isEmpty()) return@withContext
+                // Timestamp-ordered merge: restored history is older than the
+                // live session's messages, but a mid-session restore (someone
+                // joins after the local user already chatted) must still land in
+                // the right position, not blindly on top.
+                _chatMessages.value = (fresh + existing).sortedBy { it.timestamp }
+                Timber.tag(TAG)
+                    .d("Restored ${fresh.size} chat messages for $username with ${otherMembers.map { it.username }}")
+            }
+        }
+    }
+}
+
+/** A room member that is currently typing; expires after [ListenTogetherManager]'s typing TTL. */
+@kotlinx.serialization.Serializable
+data class TypingUser(
+    val userId: String,
+    val username: String,
+    val expiresAt: Long,
+)
+
+/** Locally persisted chat history, keyed by the username that produced it.
+ * [version] gates the persistence scheme: bump it whenever the message filter
+ * semantics change, so histories written by older builds (which may contain
+ * entries the new rules would never store) are discarded instead of restored. */
+@kotlinx.serialization.Serializable
+data class PersistedChatHistory(
+    val version: Int = CURRENT_VERSION,
+    val username: String,
+    val messages: List<ChatMessagePayload>,
+) {
+    companion object {
+        /** 1: unfiltered history. 2: solo messages never persisted. */
+        const val CURRENT_VERSION = 2
     }
 }

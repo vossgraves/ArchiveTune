@@ -148,6 +148,13 @@ sealed class ListenTogetherEvent {
     // Chat events
     data class ChatMessageReceived(val payload: ChatMessagePayload) : ListenTogetherEvent()
 
+    /** A reactions/edit/delete/pin/typing control event decoded from the chat relay. */
+    data class ChatControlReceived(
+        val userId: String,
+        val username: String,
+        val event: ChatControlEvent,
+    ) : ListenTogetherEvent()
+
     data class LocalSuggestionApproved(
         val payload: SuggestionReceivedPayload,
         val playImmediately: Boolean = false,
@@ -199,6 +206,61 @@ class ListenTogetherClient @Inject constructor(
 
         // Conversation depth kept for the MessagingStyle in the shade.
         private const val MAX_CHAT_NOTIFICATION_HISTORY = 25
+
+        // Wire envelope for chat control events (reactions/edits/deletes/pins/typing),
+        // mirroring the custom-avatar and reply-embed patterns.
+        const val ChatControlEnvelopePrefix = "\u200B[LTC:"
+        const val ChatControlEnvelopeSuffix = "]\u200B"
+
+        // Wire envelope for a song shared into the chat (an [LTS:base64 TrackInfo]
+        // prefix on the message text, mirroring LTC/LTA).
+        const val SharedTrackEnvelopePrefix = "\u200B[LTS:"
+        const val SharedTrackEnvelopeSuffix = "]\u200B"
+
+        private val chatControlJson = kotlinx.serialization.json.Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = false
+        }
+
+        private val sharedTrackJson = kotlinx.serialization.json.Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = false
+        }
+
+        fun decodeChatControl(message: String): ChatControlEvent? =
+            try {
+                if (!message.startsWith(ChatControlEnvelopePrefix)) return null
+                val endIdx = message.indexOf(ChatControlEnvelopeSuffix, ChatControlEnvelopePrefix.length)
+                if (endIdx <= ChatControlEnvelopePrefix.length) return null
+                val json = String(
+                    Base64.decode(
+                        message.substring(ChatControlEnvelopePrefix.length, endIdx),
+                        Base64.NO_WRAP,
+                    ),
+                )
+                chatControlJson.decodeFromString(ChatControlEvent.serializer(), json)
+            } catch (e: Exception) {
+                null
+            }
+
+        /** Splits a leading [LTS:base64] song-share envelope off a chat message.
+         * Returns null when the message carries no envelope. */
+        fun decodeSharedTrack(message: String): Pair<TrackInfo, String>? =
+            try {
+                if (!message.startsWith(SharedTrackEnvelopePrefix)) return null
+                val endIdx = message.indexOf(SharedTrackEnvelopeSuffix, SharedTrackEnvelopePrefix.length)
+                if (endIdx <= SharedTrackEnvelopePrefix.length) return null
+                val json = String(
+                    Base64.decode(
+                        message.substring(SharedTrackEnvelopePrefix.length, endIdx),
+                        Base64.NO_WRAP,
+                    ),
+                )
+                val track = sharedTrackJson.decodeFromString(TrackInfo.serializer(), json)
+                track to message.substring(endIdx + SharedTrackEnvelopeSuffix.length)
+            } catch (e: Exception) {
+                null
+            }
 
         @Volatile
         private var instance: ListenTogetherClient? = null
@@ -1332,7 +1394,7 @@ class ListenTogetherClient @Inject constructor(
 
                 MessageTypes.SUGGESTION_APPROVED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? SuggestionApprovedPayload ?: return
-                    log(LogLevel.INFO, "Suggestion approved", payload.trackInfo.title)
+                    log(LogLevel.INFO, "Suggestion approved", payload.trackInfo?.title ?: payload.suggestionId)
 
                     // Dismiss notification if it exists (for host who approved via another device/modal)
                     suggestionNotifications.remove(payload.suggestionId)?.let { notifId ->
@@ -1450,6 +1512,21 @@ class ListenTogetherClient @Inject constructor(
                         log(LogLevel.INFO, "Custom avatar received", "From: ${payload.username} (${avatarBytes.size} bytes)")
                         return
                     }
+
+                    // Reactions / edits / deletes / pins / typing indicators ride the
+                    // same relay with their own magic envelope; never chat bubbles.
+                    decodeChatControl(payload.message)?.let { control ->
+                        log(
+                            LogLevel.DEBUG,
+                            "Chat control received",
+                            "${control.action} from ${payload.username}",
+                        )
+                        scope.launch {
+                            _events.emit(ListenTogetherEvent.ChatControlReceived(payload.userId, payload.username, control))
+                        }
+                        return
+                    }
+
                     if (payload.message.startsWith("\u200B[RPLY:")) {
                         try {
                             val endIdx = payload.message.indexOf("]\u200B")
@@ -1466,6 +1543,12 @@ class ListenTogetherClient @Inject constructor(
                         } catch (e: Exception) {
                             log(LogLevel.WARNING, "Failed to decode embedded reply", e.message)
                         }
+                    }
+
+                    // A shared song rides in an [LTS:base64 TrackInfo] envelope in
+                    // front of the (possibly empty) message text.
+                    decodeSharedTrack(payload.message)?.let { (track, remainingText) ->
+                        payload = payload.copy(message = remainingText, sharedTrack = track)
                     }
 
                     log(LogLevel.INFO, "Chat message received", "From: ${payload.username}")
@@ -1666,28 +1749,49 @@ class ListenTogetherClient @Inject constructor(
     }
 
     /**
-     * Send a chat message to the room
+     * Send a chat message to the room, optionally carrying a shared track
      */
-    fun sendChatMessage(message: String, replyTo: RepliedMessage? = null) {
+    fun sendChatMessage(
+        message: String,
+        replyTo: RepliedMessage? = null,
+        sharedTrack: TrackInfo? = null,
+    ) {
+        if (message.isBlank() && sharedTrack == null) {
+            return
+        }
         if (!isInRoom) {
             log(LogLevel.ERROR, "Cannot send chat message", "Not in room")
             return
         }
 
         // metroserver (The Meowery) has no chat relay; its codec is protobuf-only
-        // and ChatPayload has no protobuf mapping, so say so instead of throwing.
+        // and ChatPayload has no protobuf mapping. Surfaces as a toast (never a
+        // silent drop) — though the chat entry point is hidden on such servers.
         if (codec.format == MessageFormat.PROTOBUF) {
             log(LogLevel.WARNING, "Chat is not supported by this server", null)
+            scope.launch(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.listen_together_chat_unsupported_server),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
             return
         }
 
-        // Universal Fix: Embed reply metadata into message string
-        val finalMessage = if (replyTo != null) {
+        var finalMessage = message
+        sharedTrack?.let { track ->
+            val encoded = sharedTrackJson.encodeToString(TrackInfo.serializer(), track)
+            finalMessage =
+                SharedTrackEnvelopePrefix +
+                    Base64.encodeToString(encoded.toByteArray(), Base64.NO_WRAP) +
+                    SharedTrackEnvelopeSuffix +
+                    finalMessage
+        }
+        if (replyTo != null) {
             val metadata = "${replyTo.username}|${replyTo.message}"
             val encoded = Base64.encodeToString(metadata.toByteArray(), Base64.NO_WRAP)
-            "\u200B[RPLY:$encoded]\u200B$message"
-        } else {
-            message
+            finalMessage = "\u200B[RPLY:$encoded]\u200B$finalMessage"
         }
 
         sendMessage(MessageTypes.CHAT, ChatPayload(finalMessage, replyTo))
@@ -1702,10 +1806,32 @@ class ListenTogetherClient @Inject constructor(
                 message = message,
                 timestamp = System.currentTimeMillis(),
                 replyTo = replyTo,
+                sharedTrack = sharedTrack,
             )
         )
         if (chatNotificationActive) postChatNotification(alert = false)
     }
+
+    /**
+     * Sends a reactions/edit/delete/pin/typing control event over the chat relay.
+     * Control frames never enter any local history — the sender applies the local
+     * effect itself (idempotently) and ignores its own server echo.
+     */
+    fun sendChatControl(event: ChatControlEvent) {
+        if (!isInRoom) return
+        if (codec.format == MessageFormat.PROTOBUF) {
+            log(LogLevel.WARNING, "Chat controls are not supported by this server", null)
+            return
+        }
+        val encoded = chatControlJson.encodeToString(ChatControlEvent.serializer(), event)
+        val wrapped = ChatControlEnvelopePrefix +
+            Base64.encodeToString(encoded.toByteArray(), Base64.NO_WRAP) +
+            ChatControlEnvelopeSuffix
+        sendMessage(MessageTypes.CHAT, ChatPayload(wrapped, null))
+    }
+
+    /** The username this client joined/created the room with, for chat-history bookkeeping. */
+    val currentUsername: String? get() = storedUsername
 
     private val _customAvatars = kotlinx.coroutines.flow.MutableStateFlow<Map<String, ByteArray>>(emptyMap())
 

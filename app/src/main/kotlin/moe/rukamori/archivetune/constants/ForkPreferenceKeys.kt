@@ -58,5 +58,11 @@ val ListenTogetherBlockedUsersKey = stringPreferencesKey("listenTogetherBlockedU
 // UI-side keys (T1-C): same names/types as vivi's PreferenceKeys.kt
 // (stringPreferencesKey "listenTogetherUsername", booleanPreferencesKey "listenTogetherInTopBar").
 val ListenTogetherChatNotificationsKey = booleanPreferencesKey("listenTogetherChatNotifications")
+val ListenTogetherChatHistoryKey = stringPreferencesKey("listenTogetherChatHistory")
+
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
 val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")
+
+// TikTok player: the karaoke caption strip under the artwork (ported from
+// 4nx3b/ArchiveTune). Off by default — it reserves 168dp of the page for the strip.
+val TikTokMainLyricsEnabledKey = booleanPreferencesKey("tiktokMainLyricsEnabled")

@@ -206,9 +206,6 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
-          TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
-          CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
-          EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
           START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
           # Public base URL of the community Source Pool site. Prefer the Actions variable
           # (non-sensitive), but fall back to the secret of the same name for forks that stored
