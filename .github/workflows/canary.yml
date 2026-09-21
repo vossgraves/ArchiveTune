@@ -43,7 +43,6 @@ jobs:
     outputs:
       should_build: ${{ steps.decide.outputs.should_build }}
       canary_tag: ${{ steps.decide.outputs.canary_tag }}
-      canary_name: ${{ steps.decide.outputs.canary_name }}
       version_name: ${{ steps.decide.outputs.version_name }}
       version_code: ${{ steps.decide.outputs.version_code }}
     steps:
@@ -63,19 +62,19 @@ jobs:
           # digits after the leading "C", so a lexical/numeric timestamp gives correct ordering.
           TS="$(date -u +'%Y%m%d%H%M')"
           CANARY_TAG="C${TS}"
-          BASE_VERSION="$(grep -oP 'baseVersionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo '0.0.0')"
-          MAJOR_MINOR="$(echo "$BASE_VERSION" | cut -d. -f1-2)"
-          SHORT_SHA="$(git rev-parse --short HEAD)"
           COMMIT_COUNT="$(git rev-list --count HEAD)"
 
-          # Canary builds all share the fixed display versionName from build.gradle.kts (e.g.
-          # "13.7.5"); they are told apart internally by the monotonic versionCode (the commit
-          # count). The in-app updater embeds that versionCode in the release notes ("at-build:<n>")
-          # and compares build numbers, so the fixed versionName never triggers a false "update
-          # available" while genuinely newer builds still do.
+          # The Canary display versionName is the release tag itself, so tag, release title and the
+          # version the app reports are one string — rukamori's naming for pre-release builds, where
+          # their Nightly workflow injects "N<yyyyMMdd>" as `nightlyVersionName` and titles the
+          # release with the same string. Ours carries the minute because this channel publishes
+          # several builds a day and the updater picks the release with the highest tag.
+          #
+          # The displayed string is not what decides "update available": the release notes carry the
+          # monotonic versionCode ("at-build:<n>") and the updater compares that against
+          # BuildConfig.VERSION_CODE, so a Canary build is offered exactly when it is genuinely newer.
           echo "canary_tag=${CANARY_TAG}" >> "$GITHUB_OUTPUT"
-          echo "canary_name=Canary ${MAJOR_MINOR}.${COMMIT_COUNT}-${SHORT_SHA} (${TS})" >> "$GITHUB_OUTPUT"
-          echo "version_name=${BASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${CANARY_TAG}" >> "$GITHUB_OUTPUT"
           echo "version_code=${COMMIT_COUNT}" >> "$GITHUB_OUTPUT"
 
           if [ "${FORCE:-false}" = "true" ]; then
@@ -405,7 +404,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
           CANARY_TAG: ${{ needs.check.outputs.canary_tag }}
-          CANARY_NAME: ${{ needs.check.outputs.canary_name }}
         run: |
           set -euo pipefail
           MOBILE_UNIVERSAL_APK="$(find downloaded_artifacts/app-gms-mobile-universal-canary -name '*.apk' | head -n 1)"
@@ -428,10 +426,14 @@ jobs:
             echo "Tag $CANARY_TAG is already published; trying the next minute."
           done
 
+          # Title is the tag, as in rukamori's Nightly releases (tag == name == versionName). It is
+          # the tag as finally published, not the queue-time one, so the releases list stays unique
+          # and sortable; the built APK carries the versionName it was compiled with, which is that
+          # same tag or one minute earlier, and the updater compares the "at-build:" marker anyway.
           gh release create "$CANARY_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ github.sha }}" \
-            --title "$CANARY_NAME" \
+            --title "$CANARY_TAG" \
             --notes-file canary_notes.md \
             --prerelease \
             "$MOBILE_UNIVERSAL_APK" \
