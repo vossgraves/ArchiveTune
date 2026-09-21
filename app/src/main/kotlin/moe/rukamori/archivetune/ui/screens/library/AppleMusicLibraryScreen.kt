@@ -84,10 +84,6 @@ private enum class AppleMusicLibrarySection(
     MIX(R.string.library_mix, R.drawable.music_note),
 }
 
-/** Mirrors AppleMusicPlaylistRow's private artwork column so the two lists line up when stacked. */
-private val AppleMusicSectionTileSize = 56.dp
-private val AppleMusicSectionTileCorner = 6.dp
-
 @Composable
 fun AppleMusicLibraryScreen(navController: NavController) {
     var section by rememberSaveable { mutableStateOf<AppleMusicLibrarySection?>(null) }
@@ -230,9 +226,9 @@ private fun AppleMusicLibrarySectionRow(
             // a tinted glyph tile: same size and corner as the playlists list, so the two read as
             // one column when the user moves between them.
             Surface(
-                shape = RoundedCornerShape(AppleMusicSectionTileCorner),
+                shape = RoundedCornerShape(AppleMusicListArtworkCorner),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(AppleMusicSectionTileSize),
+                modifier = Modifier.size(AppleMusicListArtworkSize),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
