@@ -332,6 +332,12 @@ data class ChatMessagePayload(
     // persist -> restore -> re-persist round trip (a volatile in-memory key set
     // was lost on restore and let old solo messages back into the store).
     val solo: Boolean = false,
+    // Set on messages injected from the persisted history at restore time. Never
+    // travels on the wire; the chat list draws the "older messages" divider at
+    // the boundary between flagged and live messages. Persisted with the local
+    // history and re-stamped true on every restore, so the boundary survives
+    // app restarts.
+    val restored: Boolean = false,
 )
 
 /**

@@ -36,7 +36,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -174,6 +173,17 @@ fun CommentTogetherScreen(navController: NavController) {
     // Host role from the live room state (recomposes on host transfer) — drives
     // the "delete for everyone" moderation action on other people's messages.
     val iAmHost = roomState?.hostId != null && roomState?.hostId == userId
+
+    // Own-message detection: session user id first, username as the fallback —
+    // restored history from a previous session carries the OLD session's user
+    // ids, and those messages must still land on the right side.
+    val myUsername = manager.currentUsername
+    fun isOwnMessage(message: ChatMessagePayload): Boolean =
+        message.userId == userId || (myUsername != null && message.username == myUsername)
+
+    // Where the restored (persisted) history ends — the divider between the
+    // older messages and this session's live conversation sits right after it.
+    val lastRestoredIndex = remember(messages) { messages.indexOfLast { it.restored } }
 
     fun sendMessage() {
         if (textInput.isBlank()) return
@@ -438,24 +448,28 @@ fun CommentTogetherScreen(navController: NavController) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(
-                        items = messages,
-                        key = { it.timestamp.toString() + it.userId }
-                    ) { message ->
-                        MessageItem(
-                            message = message,
-                            isMe = message.userId == userId,
-                            myUsername = manager.currentUsername,
-                            onReply = { replyingTo = it },
-                            onLongPress = { pressed, bounds ->
-                                actionTarget = MessageActionTarget(pressed, bounds, pressed.userId == userId, iAmHost)
-                            },
-                            onToggleReaction = { msg, emoji ->
-                                manager.toggleReaction(msg, emoji)
-                            },
-                            onPlayTrack = ::playSharedTrack,
-                            highlighted = jumpTargetKey == "${message.userId}:${message.timestamp}",
-                        )
+                    messages.forEachIndexed { index, message ->
+                        item(key = message.timestamp.toString() + message.userId) {
+                            MessageItem(
+                                message = message,
+                                isMe = isOwnMessage(message),
+                                myUsername = myUsername,
+                                onReply = { replyingTo = it },
+                                onLongPress = { pressed, bounds ->
+                                    actionTarget = MessageActionTarget(pressed, bounds, isOwnMessage(pressed), iAmHost)
+                                },
+                                onToggleReaction = { msg, emoji ->
+                                    manager.toggleReaction(msg, emoji)
+                                },
+                                onPlayTrack = ::playSharedTrack,
+                                highlighted = jumpTargetKey == "${message.userId}:${message.timestamp}",
+                            )
+                        }
+                        if (index == lastRestoredIndex) {
+                            item(key = "older_messages_divider") {
+                                OlderMessagesDivider()
+                            }
+                        }
                     }
                 }
             }

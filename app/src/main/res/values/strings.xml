@@ -1735,6 +1735,7 @@
     <string name="listen_together_chat_edit_message">Edit message</string>
     <string name="listen_together_chat_message_copied">Message copied</string>
     <string name="listen_together_chat_message_deleted">This message was deleted</string>
+    <string name="listen_together_chat_older_messages">Older messages</string>
     <string name="listen_together_chat_delete_for_everyone">Delete for everyone</string>
     <string name="listen_together_chat_share_song">Share the current song in the chat</string>
     <string name="listen_together_chat_play_song">Play song in the room</string>

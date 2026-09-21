@@ -62,6 +62,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -168,15 +169,29 @@ internal fun ChatAvatar(
     // custom picture to an index asset does too).
     val (selfAvatarPref) = rememberPreference(ListenTogetherAvatarIndexKey, 0)
 
+    // Restored history from a previous session carries that session's user
+    // ids, so identity falls back to the username: a message is "mine" when
+    // its username matches the local user's, and another member's avatar
+    // resolves through the room-state entry with their username.
+    val myUsername = manager?.currentUsername
+    val isSelf = userId == currentUserId || (myUsername != null && fallbackName == myUsername)
+
+    val user =
+        roomState?.users?.find { it.userId == userId }
+            ?: roomState?.users?.find { it.username == fallbackName }
+
     val bytes =
         if (manager == null) {
             null
-        } else if (userId == currentUserId) {
+        } else if (isSelf) {
             remember(manager, currentUserId, selfAvatarPref) {
                 manager.customAvatarFor(currentUserId)
             }
         } else {
-            customAvatars[userId]
+            // Direct hit first; when the message's user id is from an older
+            // session, route through the member's CURRENT id so the avatar
+            // broadcast they sent at join time still applies.
+            customAvatars[userId] ?: user?.let { customAvatars[it.userId] }
         }
     val bitmap: Bitmap? =
         produceState<Bitmap?>(initialValue = null, bytes) {
@@ -188,7 +203,6 @@ internal fun ChatAvatar(
                 }
         }.value
 
-    val user = roomState?.users?.find { it.userId == userId }
     val avatarIndex = user?.avatarIndex ?: 0
     val isHost = user?.isHost == true
     val initial = (user?.username?.takeIf { it.isNotBlank() } ?: fallbackName).take(1).uppercase()
@@ -201,7 +215,7 @@ internal fun ChatAvatar(
                 .background(
                     when {
                         isHost -> MaterialTheme.colorScheme.primary
-                        userId == currentUserId -> MaterialTheme.colorScheme.secondary
+                        isSelf -> MaterialTheme.colorScheme.secondary
                         else -> MaterialTheme.colorScheme.tertiaryContainer
                     }
                 )
@@ -235,7 +249,7 @@ internal fun ChatAvatar(
                     color =
                         when {
                             isHost -> MaterialTheme.colorScheme.onPrimary
-                            userId == currentUserId -> MaterialTheme.colorScheme.onSecondary
+                            isSelf -> MaterialTheme.colorScheme.onSecondary
                             else -> MaterialTheme.colorScheme.onTertiaryContainer
                         },
                 )
@@ -1103,6 +1117,42 @@ internal fun formatTrackDuration(durationMs: Long): String {
         "%d:%02d:%02d".format(Locale.ROOT, hours, minutes % 60L, seconds)
     } else {
         "%d:%02d".format(Locale.ROOT, minutes, seconds)
+    }
+}
+
+/**
+ * Marker drawn where the restored (persisted) history ends and the live
+ * conversation begins, so it is always clear which messages are older.
+ */
+@Composable
+internal fun OlderMessagesDivider(modifier: Modifier = Modifier) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+        )
+        Icon(
+            painter = painterResource(R.drawable.history),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = stringResource(R.string.listen_together_chat_older_messages),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+        )
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+        )
     }
 }
 

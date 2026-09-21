@@ -472,6 +472,24 @@ class ListenTogetherManager @Inject constructor(
                         stopHeartbeat()
                         stopVolumeSyncObservation()
                     }
+
+                    // Any in-room role needs the player listener: hosts broadcast
+                    // playback actions from it, guests turn their local song
+                    // changes into room-wide suggestions from it. It is attached
+                    // at join time too, but a host-transfer that lands the local
+                    // user in the GUEST role re-establishes it here.
+                    if (newRole != RoomRole.NONE && newRole != RoomRole.HOST && !playerListenerRegistered) {
+                        val connection = playerConnection
+                        if (connection != null) {
+                            try {
+                                connection.player.addListener(playerListener)
+                                playerListenerRegistered = true
+                                Timber.tag(TAG).d("Added player listener as guest on role change")
+                            } catch (e: Exception) {
+                                Timber.tag(TAG).e(e, "Failed to add player listener on role change")
+                            }
+                        }
+                    }
                     updateGuestMuteState()
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error in role change handler")
@@ -523,7 +541,10 @@ class ListenTogetherManager @Inject constructor(
                     startHeartbeat()
                     startVolumeSyncObservation()
                     broadcastCustomAvatar()
-                    loadPersistedChatHistory()
+                    // Deliberately NO chat-history restore here: the host is
+                    // alone in a freshly created room, and older chats must not
+                    // show while the room has a single member. They restore once
+                    // someone joins (UserJoined below).
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Error handling RoomCreated event")
                 }
@@ -531,11 +552,29 @@ class ListenTogetherManager @Inject constructor(
 
             is ListenTogetherEvent.JoinApproved -> {
                 Timber.tag(TAG).d("Join approved for room: ${event.roomCode}")
-                // Save current mute state before joining as guest so we can restore it on leave
+
+                // Guests need the player listener too: their local song changes
+                // travel to the room as suggestions (suggestLocalTrackChange in
+                // onMediaItemTransition), which requires observing transitions.
+                // The listener is normally attached when the player connection
+                // is set — but that happens long before joining a room, so it
+                // must be attached here, mirroring the host's RoomCreated path.
+                runCatching {
+                    val connection = playerConnection
+                    if (connection != null && !playerListenerRegistered) {
+                        connection.player.addListener(playerListener)
+                        playerListenerRegistered = true
+                        Timber.tag(TAG).d("Added player listener as guest")
+                    }
+                }.onFailure {
+                    Timber.tag(TAG).e(it, "Failed to add player listener on join")
+                }
+
                 saveMuteStateOnJoin()
                 broadcastCustomAvatar()
-                // Apply the full initial state including queue
-                loadPersistedChatHistory()
+                restorePersistedChatHistory(
+                    otherMembers = event.state.users.filterNot { it.userId == userId.value },
+                )
 
                 applyPlaybackState(
                     currentTrack = event.state.currentTrack,
@@ -566,6 +605,16 @@ class ListenTogetherManager @Inject constructor(
 
                 // Re-share our custom avatar so the newcomer can see it too.
                 broadcastCustomAvatar()
+
+                // The newcomer's username is in roomState by the time the event
+                // is emitted, so the restore below only brings back the older
+                // chats with the people actually present — the newcomer's own
+                // history with the local user included.
+                restorePersistedChatHistory(
+                    otherMembers = (roomState.value?.users ?: emptyList())
+                        .filterNot { it.userId == userId.value },
+                )
+
                 if (isHost) {
                     try {
                         val connection = playerConnection
@@ -623,7 +672,9 @@ class ListenTogetherManager @Inject constructor(
 
             is ListenTogetherEvent.Reconnected -> {
                 Timber.tag(TAG).d("Reconnected to room: ${event.roomCode}, isHost: ${event.isHost}")
-                loadPersistedChatHistory()
+                restorePersistedChatHistory(
+                    otherMembers = event.state.users.filterNot { it.userId == userId.value },
+                )
                 try {
                     // Re-register player listener
                     val connection = playerConnection
@@ -2176,13 +2227,30 @@ class ListenTogetherManager @Inject constructor(
         }
     }
 
-    /** Restores the per-username chat history after a join/create/reconnect.
+    /**
+     * Restores the per-username chat history, scoped to the members that are
+     * actually in the room right now:
+     *  - nothing restores while the local user is alone (an empty room has no
+     *    conversation to continue), and
+     *  - only messages between the local user and the given members come back —
+     *    history with people who are not present stays hidden until they join.
+     *
+     * Restored messages carry [ChatMessagePayload.restored] so the chat list can
+     * draw the "older messages" divider where history ends, and their user ids
+     * are remapped to the CURRENT session ids, so everything keyed by user id
+     * downstream — own-message alignment (right side), avatar lookup, reactions,
+     * pins, edits and deletes — works on them exactly as on live messages.
+     *
      * Histories written by an older persistence scheme (before solo messages
      * were flagged) are discarded once — they may contain the user's alone-room
-     * chatter, which must never come back. */
-    private fun loadPersistedChatHistory() {
+     * chatter, which must never come back.
+     */
+    private fun restorePersistedChatHistory(otherMembers: List<UserInfo>) {
+        if (otherMembers.isEmpty()) return
         val username = client.currentUsername
         if (username.isNullOrBlank()) return
+        val myId = userId.value
+        val memberIdByName = otherMembers.associate { it.username to it.userId }
         scope.launch(Dispatchers.IO) {
             val raw = runCatching { context.dataStore.data.first()[ListenTogetherChatHistoryKey] }.getOrNull()
                 ?: return@launch
@@ -2197,11 +2265,34 @@ class ListenTogetherManager @Inject constructor(
                 }
                 return@launch
             }
-            withContext(Dispatchers.Main) {
-                if (_chatMessages.value.isEmpty()) {
-                    _chatMessages.value = stored.messages
-                    Timber.tag(TAG).d("Restored ${stored.messages.size} persisted chat messages for $username")
+
+            val memberNames = otherMembers.map { it.username }.toSet()
+            val restored = stored.messages
+                .filter { it.username == username || it.username in memberNames }
+                .map { message ->
+                    val currentId =
+                        if (message.username == username) myId
+                        else memberIdByName[message.username]
+                    if (currentId != null && currentId != message.userId) {
+                        message.copy(userId = currentId, restored = true)
+                    } else {
+                        message.copy(restored = true)
+                    }
                 }
+            if (restored.isEmpty()) return@launch
+
+            withContext(Dispatchers.Main) {
+                val existing = _chatMessages.value
+                val existingKeys = existing.map { it.username to it.timestamp }.toHashSet()
+                val fresh = restored.filterNot { (it.username to it.timestamp) in existingKeys }
+                if (fresh.isEmpty()) return@withContext
+                // Timestamp-ordered merge: restored history is older than the
+                // live session's messages, but a mid-session restore (someone
+                // joins after the local user already chatted) must still land in
+                // the right position, not blindly on top.
+                _chatMessages.value = (fresh + existing).sortedBy { it.timestamp }
+                Timber.tag(TAG)
+                    .d("Restored ${fresh.size} chat messages for $username with ${otherMembers.map { it.username }}")
             }
         }
     }
