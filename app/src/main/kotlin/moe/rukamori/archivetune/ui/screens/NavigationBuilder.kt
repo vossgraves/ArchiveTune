@@ -61,6 +61,7 @@ import moe.rukamori.archivetune.ui.screens.search.SearchScreen
 import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
+import moe.rukamori.archivetune.ui.screens.settings.AndroidAutoSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
 import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
@@ -281,7 +282,6 @@ fun NavGraphBuilder.navigationBuilder(
         BrowseScreen(
             navController,
             scrollBehavior,
-            it.arguments?.getString("browseId"),
         )
     }
     composable(
@@ -593,6 +593,9 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         SourceSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable("settings/android_auto") {
+        AndroidAutoSettings(navController)
     }
     composable(
         route = "settings/storage?scrollTo={scrollTo}",

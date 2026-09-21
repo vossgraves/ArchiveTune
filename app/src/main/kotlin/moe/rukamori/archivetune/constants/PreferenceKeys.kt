@@ -77,6 +77,16 @@ val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
  * supplied rather than a shipped list.
  */
 val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
+
+/** Android Auto: content, metered-data and playback-control preferences shown while driving. */
+val AndroidAutoOnlineRecommendationsKey = booleanPreferencesKey("androidAutoOnlineRecommendations")
+val AndroidAutoOnlineVoiceSearchKey = booleanPreferencesKey("androidAutoOnlineVoiceSearch")
+val AndroidAutoLocalSongsKey = booleanPreferencesKey("androidAutoLocalSongs")
+val AndroidAutoMeteredPlaybackKey = booleanPreferencesKey("androidAutoMeteredPlayback")
+val AndroidAutoMeteredArtworkKey = booleanPreferencesKey("androidAutoMeteredArtwork")
+val AndroidAutoPrimaryActionKey = stringPreferencesKey("androidAutoPrimaryAction")
+val AndroidAutoSecondaryActionKey = stringPreferencesKey("androidAutoSecondaryAction")
+
 val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 
