@@ -299,24 +299,15 @@ private fun HomeContent(
                 // Partition remote sections into Live-performance and other.
                 // Hoisted outside the LazyColumn content lambda (which is NOT a
                 // @Composable scope) so `remember` is valid here. Without this,
-                // the two `.filter` calls would allocate fresh lists on every
-                // recomposition of HomeContent even when the sections hadn't
-                // changed — a measurable contributor to home-screen jank.
+                // the partition would allocate fresh lists on every recomposition
+                // of HomeContent even when the sections hadn't changed — a
+                // measurable contributor to home-screen jank.
                 val allRemoteSections = uiState.homePage?.sections.orEmpty()
                 val (livePerformanceSections, otherRemoteSections) =
                     remember(allRemoteSections) {
-                        // YouTube returns sections that are sometimes empty. A heading with no
-                        // shelf under it is a heading with nothing to say, so they go here rather
-                        // than being filtered again in each branch below.
-                        val live =
-                            allRemoteSections
-                                .filter { section -> section.title.contains("Live performance", ignoreCase = true) }
-                                .filter { it.items.isNotEmpty() }
-                        val other =
-                            allRemoteSections
-                                .filter { section -> !section.title.contains("Live performance", ignoreCase = true) }
-                                .filter { it.items.isNotEmpty() }
-                        live to other
+                        allRemoteSections.partition { section ->
+                            section.title.contains("Live performance", ignoreCase = true)
+                        }
                     }
 
                 LazyColumn(
