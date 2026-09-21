@@ -27,9 +27,7 @@ import timber.log.Timber
  * It deliberately keeps none of the native tier's machinery: no cookie login, no client-health
  * bookkeeping and no per-client login recovery. That is the point of a second tier — a track the
  * signed-in pipeline refuses (403, age gate, a client that demands auth) is often served to a plain
- * visitor, and a tier that reused the failing session would fail with it. Format selection is the
- * shared quality-aware [YTPlayerUtils.selectAudioFormatCandidates], so both tiers rank the same
- * candidates the same way.
+ * visitor, and a tier that reused the failing session would fail with it.
  */
 @Singleton
 class NewPipeStreamRepository
@@ -105,11 +103,7 @@ class NewPipeStreamRepository
                     requestHeaders = emptyMap(),
                     formatId = candidate.itag,
                     mimeType = candidate.mimeType.substringBefore(';'),
-                    codecs =
-                        candidate.mimeType
-                            .substringAfter("codecs=", "")
-                            .removeSurrounding("\"")
-                            .substringBefore("\""),
+                    codecs = candidate.mimeType.codecsFromMimeType(),
                     bitrate = candidate.bitrate,
                     sampleRate = candidate.audioSampleRate,
                     contentLength = candidate.contentLength ?: 0L,
@@ -133,9 +127,8 @@ class NewPipeStreamRepository
             const val TAG = "NewPipeStreamRepository"
 
             /**
-             * Visitor-capable clients only, most likely first. NewPipe's deobfuscation is what makes
-             * a cipher-only response usable here, so this favours clients that still hand back
-             * ciphered formats over the ones the native tier's login recovery needs.
+             * Visitor-capable clients only, most likely first: NewPipe's deobfuscation is what makes a
+             * cipher-only response usable here, so this avoids the ones that demand a login.
              */
             val ANONYMOUS_CLIENTS = listOf(ANDROID_MUSIC, IOS, WEB_REMIX)
 

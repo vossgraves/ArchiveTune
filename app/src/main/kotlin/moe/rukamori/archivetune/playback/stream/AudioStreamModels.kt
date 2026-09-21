@@ -59,3 +59,7 @@ data class ResolvedAudioStream(
     val perceptualLoudnessDb: Double? = null,
     val playbackTrackingUrl: String? = null,
 )
+
+/** The bare codec list of an RFC 6381 mime type such as `audio/webm; codecs="opus"`. */
+internal fun String.codecsFromMimeType(): String =
+    substringAfter("codecs=", "").removeSurrounding("\"").substringBefore("\"")
