@@ -15,8 +15,10 @@ The Spotify group contains account login/logout, playlist visibility, playlist r
 Shipped and driven by the experience switch: the Apple Music player (with its queue sheet, inline
 lyrics and mini header), the animated-artwork backdrop, the playlist hero, the sleep-timer sheet, the
 sliders, and the menu-header treatment. The switch forces the player style and the tab bar, and it
-keeps `LibraryStyleKey` in step — that coupling is deliberate: the switch is meant to turn the whole
-experience on, and the library-style row is the way to turn on the library half alone.
+keeps `LibraryStyleKey` in step — the switch is meant to turn the whole experience on, and it is the
+only control that moves more than one surface. The library-style row is the library half on its own:
+it writes `LibraryStyleKey` and nothing else, so it can restyle the Library tab without touching the
+player, the tab bar or the headers.
 
 Also shipped since this note was written:
 
