@@ -398,15 +398,10 @@ class DownloadUtil
                         ) {
                             if (finalException != null || download.state == Download.STATE_FAILED) {
                                 songUrlCache.keys.removeIf { it.startsWith("${download.request.id}:") }
-                                runCatching { downloadCache.removeResource(download.request.id) }
-                                // Also purge any partial bytes that may have been written to
-                                // playerCache during the prewarm (prewarmSongForDownload) or a
-                                // prior playback attempt.
-                                val mediaId = download.request.id
-                                runCatching { playerCache.removeResource(mediaId) }
-                                for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
-                                    runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
-                                }
+                                // Purge both the failed download's own bytes and any partial bytes
+                                // written to playerCache during the prewarm (prewarmSongForDownload)
+                                // or a prior playback attempt.
+                                purgeSongCacheEntries(download.request.id)
                             }
                             downloads.update { map ->
                                 map.toMutableMap().apply {
@@ -419,16 +414,12 @@ class DownloadUtil
                             downloadManager: DownloadManager,
                             download: Download,
                         ) {
-                            // Mirror the failure path: when a download is
-                            // removed (user-initiated delete), also purge
-                            // any related playerCache spans so stale partial
-                            // bytes don't cause parser errors on the next
-                            // playback attempt.
-                            val mediaId = download.request.id
-                            runCatching { playerCache.removeResource(mediaId) }
-                            for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
-                                runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
-                            }
+                            // Mirror the failure path: when a download is removed
+                            // (user-initiated delete), also purge the related cache
+                            // spans so the bytes are actually freed and stale partial
+                            // data can't cause parser errors on the next playback
+                            // attempt.
+                            purgeSongCacheEntries(download.request.id)
                             downloads.update { map -> map - download.request.id }
                         }
                     },
@@ -461,6 +452,29 @@ class DownloadUtil
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
 
         /**
+         * Frees every byte a song may occupy in both caches: its bare media id and each
+         * source-prefixed key. [resolvePreferredDownloadDataSpec] re-keys a lossless download to the
+         * source it resolved, so that copy lives under e.g. "qobuz:$mediaId" — and Media3's
+         * ProgressiveDownloader.remove() can only remove the download request's own key. Left alone,
+         * the prefixed copy survives the delete: real bytes under filesDir/download that nothing
+         * references and no evictor reclaims.
+         */
+        private fun purgeSongCacheEntries(mediaId: String) {
+            for (key in cacheKeysFor(mediaId)) {
+                runCatching { downloadCache.removeResource(key) }
+                runCatching { playerCache.removeResource(key) }
+            }
+        }
+
+        /**
+         * Every cache key a song's bytes may live under, most specific first. One definition so the
+         * pre-warm, the download resolver and the purge above cannot disagree about where a
+         * download's bytes are.
+         */
+        private fun cacheKeysFor(mediaId: String): List<String> =
+            DownloadSourceConfig.CACHE_KEY_PREFIXES.map { "$it$mediaId" } + mediaId
+
+        /**
          * Pre-warms the cache for [mediaId] by resolving the highest-quality stream available
          * (Qobuz → Tidal → Deezer → YouTube Music) and fetching the bytes into [playerCache] under
          * the source-prefixed key (e.g. "qobuz:$mediaId") BEFORE handing the download off to the
@@ -481,7 +495,7 @@ class DownloadUtil
 
             // Fast path: bytes already cached under any source-prefixed key — no work to do. The
             // DownloadManager will pick them up via the resolver in [youtubeDataSourceFactory].
-            for (key in DownloadSourceConfig.CACHE_KEY_PREFIXES.map { "$it$mediaId" } + mediaId) {
+            for (key in cacheKeysFor(mediaId)) {
                 val spans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (spans.isNotEmpty()) {
                     val expected = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L

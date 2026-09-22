@@ -50,6 +50,26 @@ class ArtworkResolver(
     private val keyMutexes = ConcurrentHashMap<ArtworkCacheKey, Mutex>()
 
     /**
+     * Records a negative result for [key]. Expired entries were previously only dropped when the
+     * same key was asked for again, so a long session that resolved thousands of tracks held every
+     * one of them for the life of the process; prune on write instead.
+     */
+    private fun rememberFailure(
+        key: ArtworkCacheKey,
+        ttlMs: Long,
+    ) {
+        synchronized(cacheLock) {
+            if (failureCache.size >= MAX_FAILURE_ENTRIES) {
+                val now = clock()
+                failureCache.entries.removeAll { expiry -> expiry.value <= now }
+                // Still full of live entries — drop them all rather than grow without bound.
+                if (failureCache.size >= MAX_FAILURE_ENTRIES) failureCache.clear()
+            }
+            failureCache[key] = clock() + ttlMs
+        }
+    }
+
+    /**
      * Marks [mediaId] as the current track and returns the new generation token.
      * Callers must verify [isCurrent] before committing any asynchronously resolved artwork.
      */
@@ -192,9 +212,7 @@ class ArtworkResolver(
                         throw error
                     } catch (error: Throwable) {
                         Timber.tag(TAG).w(error, "artwork tidal fetch failed mediaId=%s", request.mediaId)
-                        synchronized(cacheLock) {
-                            failureCache[key] = clock() + FAILURE_CACHE_MS
-                        }
+                        rememberFailure(key, FAILURE_CACHE_MS)
                         null
                     }
 
@@ -216,9 +234,7 @@ class ArtworkResolver(
                             match.matchMethod,
                             match.confidence,
                         )
-                        synchronized(cacheLock) {
-                            failureCache[key] = clock() + NO_MATCH_CACHE_MS
-                        }
+                        rememberFailure(key, NO_MATCH_CACHE_MS)
                     }
                     return@withLock noArtwork(
                         request,
@@ -281,6 +297,12 @@ class ArtworkResolver(
         const val MIN_TIDAL_CONFIDENCE = 0.45f
         const val TIDAL_ARTWORK_SIZE = 1080
         const val MAX_CACHE_ENTRIES = 128
+
+        /**
+         * Bound for the negative cache. Generous next to [MAX_CACHE_ENTRIES] because a failure
+         * entry holds a key and an expiry where a success entry holds a whole resolution.
+         */
+        const val MAX_FAILURE_ENTRIES = 512
 
         /** Transient network/provider failures: retried after a short window. */
         const val FAILURE_CACHE_MS = 60_000L
