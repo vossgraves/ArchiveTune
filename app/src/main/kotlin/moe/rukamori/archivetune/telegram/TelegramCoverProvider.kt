@@ -45,6 +45,14 @@ object TelegramCoverProvider {
     private val cache = ConcurrentHashMap<String, String>()
 
     /**
+     * Bound for [cache]. Nothing else evicts from it, and its keys are track metadata, so a long
+     * session across a large Telegram library would otherwise keep one entry per track ever seen
+     * for the life of the process. Crude like the AI romanisation cache, and enough: the cost of
+     * dropping an entry is one iTunes lookup.
+     */
+    private const val MAX_CACHE_ENTRIES = 512
+
+    /**
      * Returns a high-resolution cover URL for the given track metadata, or null if none is found.
      * Blocking network call — invoke from a background dispatcher.
      */
@@ -58,6 +66,7 @@ object TelegramCoverProvider {
         cache[key]?.let { return it.takeIf { c -> c != MISS } }
 
         val resolved = runCatching { lookup(cleanedTitle, artist) }.getOrNull()
+        if (cache.size >= MAX_CACHE_ENTRIES) cache.clear()
         cache[key] = resolved ?: MISS
         return resolved
     }
