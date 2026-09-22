@@ -345,7 +345,7 @@ class SpotifyLibraryRepository
                             ).getOrThrow()
                     }
                 val tracks = ArrayList<SpotifyTrack>(detail.tracks.items.size)
-                tracks += detail.tracks.items.playableTracks()
+                tracks += detail.tracks.items.playablePlaylistTracks()
                 tracks +=
                     drainSpotifyPages(detail.tracks) { offset ->
                         spotifyCallWithTokenRetry {
@@ -356,7 +356,7 @@ class SpotifyLibraryRepository
                                     offset = offset,
                                 ).getOrThrow()
                         }
-                    }.playableTracks()
+                    }.playablePlaylistTracks()
                 detail.playlist to tracks
             }
 
@@ -388,7 +388,7 @@ class SpotifyLibraryRepository
                                 offset = 0,
                             ).getOrThrow()
                     }
-                first.items.playableTracks() +
+                first.items.playablePlaylistTracks() +
                     drainSpotifyPages(first) { offset ->
                         spotifyCallWithTokenRetry {
                             Spotify
@@ -398,7 +398,7 @@ class SpotifyLibraryRepository
                                     offset = offset,
                                 ).getOrThrow()
                         }
-                    }.playableTracks()
+                    }.playablePlaylistTracks()
             }
 
         /**
@@ -603,12 +603,12 @@ class SpotifyLibraryRepository
                     spotifyCallWithTokenRetry {
                         Spotify.likedSongs(limit = TRACK_PAGE_SIZE, offset = 0).getOrThrow()
                     }
-                first.items.playableTracks() +
+                first.items.playableLikedTracks() +
                     drainSpotifyPages(first) { offset ->
                         spotifyCallWithTokenRetry {
                             Spotify.likedSongs(limit = TRACK_PAGE_SIZE, offset = offset).getOrThrow()
                         }
-                    }.playableTracks()
+                    }.playableLikedTracks()
             }
 
         /**
@@ -921,11 +921,11 @@ data class SpotifyAccountSession(
 )
 
 /** The playlist tracks of a page that Spotify can actually play — local files have no YouTube match. */
-private fun List<SpotifyPlaylistTrack>.playableTracks(): List<SpotifyTrack> =
+private fun List<SpotifyPlaylistTrack>.playablePlaylistTracks(): List<SpotifyTrack> =
     mapNotNull { item -> item.track?.takeUnless(SpotifyTrack::isLocal) }
 
 /** The liked songs of a page that Spotify can actually play. */
-private fun List<SpotifySavedTrack>.playableTracks(): List<SpotifyTrack> =
+private fun List<SpotifySavedTrack>.playableLikedTracks(): List<SpotifyTrack> =
     mapNotNull { item -> item.track.takeUnless(SpotifyTrack::isLocal) }
 
 /**
