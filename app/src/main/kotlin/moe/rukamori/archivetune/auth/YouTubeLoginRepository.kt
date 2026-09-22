@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AccountChannelHandleKey
 import moe.rukamori.archivetune.constants.AccountEmailKey
+import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
@@ -118,6 +119,16 @@ class YouTubeLoginRepository
                         preferences[AccountNameKey] = account.name
                         preferences[AccountEmailKey] = account.email
                         preferences[AccountChannelHandleKey] = account.channelHandle
+                        // A SavedAccount carries no avatar of its own, so the one still in
+                        // preferences belongs to the account being switched away from. Name,
+                        // email and handle are known here and overwritten above; the avatar is
+                        // not, and refreshAccountIdentity seeds the value from this key before
+                        // its live accountInfo() call — and keeps it when that call fails, on
+                        // purpose, because a failed refresh is not a logout. Left alone, the
+                        // previous account's picture would stand in for this one until a
+                        // refresh happened to succeed. Removing it makes the avatar unknown
+                        // rather than wrong; the next successful accountInfo fills it in.
+                        preferences.remove(AccountImageUrlKey)
                         preferences[YtmSyncKey] = account.ytmSync
                         preferences[SelectedYtmPlaylistsKey] = account.selectedYtmPlaylists
 

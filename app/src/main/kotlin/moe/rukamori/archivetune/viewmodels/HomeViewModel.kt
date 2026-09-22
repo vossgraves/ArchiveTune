@@ -819,7 +819,14 @@ class HomeViewModel
             // the session is intact.
             context.dataStore.data.first().let { prefs ->
                 prefs[AccountNameKey]?.takeIf { it.isNotBlank() }?.let { _accountName.value = it }
-                prefs[AccountImageUrlKey]?.takeIf { it.isNotBlank() }?.let { _accountImageUrl.value = it }
+                // The avatar, unlike the name, is assigned rather than merged. It is cleared
+                // whenever the account changes — switchSavedAccount removes the key, because a
+                // SavedAccount carries no picture of its own — so an absent key here means
+                // "this account's avatar is not known yet", never "keep the last one". Merging
+                // would leave the previous account's picture on screen after a switch, and if
+                // the live call below failed it would stay there for the rest of the session.
+                // The name is still kept, so a failed refresh still reports a connected account.
+                _accountImageUrl.value = prefs[AccountImageUrlKey]?.takeIf { it.isNotBlank() }
             }
             _accountChannelsState.value = AccountChannelsState.Loading
 
