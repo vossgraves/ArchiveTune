@@ -28,7 +28,7 @@ import moe.rukamori.archivetune.mediainfo.MediaInfoTab
 import moe.rukamori.archivetune.mediainfo.MediaInfoUiModel
 import moe.rukamori.archivetune.mediainfo.ObserveMediaInfoUseCase
 import moe.rukamori.archivetune.mediainfo.asMediaInfoError
-import moe.rukamori.archivetune.ui.utils.numberFormatter
+import moe.rukamori.archivetune.ui.utils.formatCompactCount
 
 @HiltViewModel
 class MediaInfoViewModel @Inject constructor(
@@ -159,9 +159,11 @@ class MediaInfoViewModel @Inject constructor(
             quickFacts = ImmutableList.copyOf(facts),
             metrics = ImmutableList.of(
                 MediaInfoMetric(R.string.subscribers, metadata?.subscribers),
-                MediaInfoMetric(R.string.views, statistics?.views?.let(::numberFormatter)),
-                MediaInfoMetric(R.string.likes, statistics?.likes?.let(::numberFormatter)),
-                MediaInfoMetric(R.string.dislikes, statistics?.dislikes?.let(::numberFormatter)),
+                // Compact K/M/B counts ("4.2M"): the grouped raw numbers this grid used to show
+                // ("4.234.688") are unreadable at a glance.
+                MediaInfoMetric(R.string.views, statistics?.views?.let { formatCompactCount(it.toLong()) }),
+                MediaInfoMetric(R.string.likes, statistics?.likes?.let { formatCompactCount(it.toLong()) }),
+                MediaInfoMetric(R.string.dislikes, statistics?.dislikes?.let { formatCompactCount(it.toLong()) }),
             ),
         )
     }
