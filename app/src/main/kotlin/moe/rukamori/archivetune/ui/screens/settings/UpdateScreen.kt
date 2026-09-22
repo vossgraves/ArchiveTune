@@ -98,6 +98,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.compose.AsyncImage
@@ -195,10 +196,10 @@ fun UpdateScreen(
     var updateCheckJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var showUpdateUpToDateDialog by remember { mutableStateOf(false) }
     var showUpdateErrorDialog by remember { mutableStateOf(false) }
-    var updateDownloadProgress by remember { mutableStateOf<Float?>(null) }
-    var updateDownloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var showUpdateDownloadDialog by remember { mutableStateOf(false) }
     val useInAppUpdateInstaller = BuildConfig.DISTRIBUTION == "gms"
+    // The download itself lives in AppUpdateInstaller; this screen only renders whichever state the
+    // process-scoped job is in, so a navigation away and back does not lose it.
+    val downloadState by AppUpdateInstaller.downloadState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val openUpdateUrl: (String) -> Unit = { url ->
@@ -211,27 +212,50 @@ fun UpdateScreen(
     val installUpdate: (String) -> Unit = { url ->
         if (!useInAppUpdateInstaller) {
             openUpdateUrl(url)
-        } else if (updateDownloadJob?.isActive != true) {
-            updateDownloadProgress = null
+        } else {
             updateSheetError = null
             showUpdateErrorDialog = false
-            showUpdateDownloadDialog = true
-            updateDownloadJob =
-                coroutineScope.launch {
-                    AppUpdateInstaller
-                        .downloadAndInstall(context, url) { progress ->
-                            updateDownloadProgress = progress.fraction
-                        }.onSuccess {
-                            showUpdateDownloadDialog = false
-                            snackbarHostState.showSnackbar(
-                                context.getString(R.string.download_complete),
-                            )
-                        }.onFailure { error ->
-                            showUpdateDownloadDialog = false
-                            updateSheetError = error.message ?: context.getString(R.string.error_unknown)
-                            showUpdateErrorDialog = true
+            // The download runs in AppUpdateInstaller's process-scoped job, so leaving this screen —
+            // or any recomposition that disposes it — no longer aborts it. The dialog below reads
+            // its state, so progress is still on screen when the reader comes back.
+            AppUpdateInstaller.startDownload(context, url)
+        }
+    }
+
+    // Terminal states are consumed exactly once. A download that finished while the reader was on
+    // another screen waits for them to return instead of raising the installer from the background,
+    // where Android is free to discard the activity launch.
+    val downloadOutcome =
+        downloadState.takeIf {
+            it is AppUpdateInstaller.DownloadState.ReadyToInstall ||
+                it is AppUpdateInstaller.DownloadState.Failed
+        }
+
+    LaunchedEffect(downloadOutcome) {
+        when (val outcome = downloadOutcome) {
+            is AppUpdateInstaller.DownloadState.ReadyToInstall -> {
+                AppUpdateInstaller.acknowledgeResult()
+                if (AppUpdateInstaller.installStagedUpdate(context)) {
+                    // A reused APK was already announced as downloaded when it first arrived.
+                    if (!outcome.reused) {
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.download_complete))
                         }
+                    }
+                } else {
+                    // The staged APK is gone (cache evicted while the reader was away) or unreadable.
+                    updateSheetError = context.getString(R.string.error_unknown)
+                    showUpdateErrorDialog = true
                 }
+            }
+
+            is AppUpdateInstaller.DownloadState.Failed -> {
+                updateSheetError = outcome.message ?: context.getString(R.string.error_unknown)
+                showUpdateErrorDialog = true
+                AppUpdateInstaller.acknowledgeResult()
+            }
+
+            else -> Unit
         }
     }
 
@@ -728,8 +752,11 @@ fun UpdateScreen(
         )
     }
 
-    if (showUpdateDownloadDialog) {
-        val progress = updateDownloadProgress
+    // No local "is the dialog open" flag: an in-flight download is exactly what the dialog shows, so
+    // returning to this screen mid-download puts the progress back on screen.
+    val inFlightDownload = downloadState as? AppUpdateInstaller.DownloadState.Downloading
+    if (inFlightDownload != null) {
+        val progress = inFlightDownload.fraction
         val animatedProgress by animateFloatAsState(
             targetValue = progress ?: 0f,
             animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
@@ -808,12 +835,7 @@ fun UpdateScreen(
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        updateDownloadJob?.cancel()
-                        updateDownloadJob = null
-                        updateDownloadProgress = null
-                        showUpdateDownloadDialog = false
-                    },
+                    onClick = { AppUpdateInstaller.cancelDownload() },
                 ) {
                     Text(text = stringResource(android.R.string.cancel))
                 }
