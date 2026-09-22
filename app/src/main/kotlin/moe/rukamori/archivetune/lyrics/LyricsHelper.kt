@@ -31,6 +31,7 @@ import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.utils.getAsync
 import moe.rukamori.archivetune.utils.reportException
 import javax.inject.Inject
 
@@ -67,6 +68,52 @@ class LyricsHelper
         private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
         private val singleLyricsCache = LruCache<String, LyricsResult>(MAX_CACHE_SIZE)
 
+        /**
+         * The stored row text an upgrade attempt has already been made against, keyed by media id.
+         *
+         * Both fetch gates ask [shouldAttemptWordSyncedUpgrade] before sweeping the providers, and
+         * without this memo the sweep would repeat on every play and every open of the lyrics panel
+         * for a track the providers simply have no word-synced copy of — the same expensive miss,
+         * over and over, on providers that rate-limit. Keyed by the stored text rather than the id
+         * alone so a row that changes underneath us (a manual refetch, a provider backfill) is
+         * eligible again.
+         */
+        private val wordSyncedUpgradeAttempts =
+            object : LinkedHashMap<String, String>(16, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean =
+                    size > MAX_WORD_SYNCED_UPGRADE_ATTEMPTS
+            }
+
+        /**
+         * True when the caller should refetch a track's lyrics purely because the word-synced
+         * toggle can still improve the stored row, and this process has not tried for this exact
+         * row yet.
+         *
+         * The gates own this decision rather than [getLyricsWithProvider] because they short-circuit
+         * on a stored row before the helper is ever asked; see [LyricsUtils.needsWordSyncedUpgrade].
+         * The caller must use the returned value to decide *what to write* as well: only a result
+         * that actually carries word-level timing may replace the stored row.
+         */
+        suspend fun shouldAttemptWordSyncedUpgrade(
+            mediaId: String,
+            storedLyrics: String?,
+        ): Boolean {
+            val stored = storedLyrics ?: return false
+            // getAsync, not the blocking get operator: that one answers with the fallback when the
+            // first DataStore snapshot has not landed and the caller is on the main thread, and this
+            // is reachable from the lyrics panel's composition effect.
+            val prioritizeWordSynced = context.dataStore.getAsync(PrioritizeWordSyncedLyricsKey) ?: false
+            if (!LyricsUtils.needsWordSyncedUpgrade(prioritizeWordSynced, stored)) return false
+            return synchronized(wordSyncedUpgradeAttempts) {
+                if (wordSyncedUpgradeAttempts[mediaId] == stored) {
+                    false
+                } else {
+                    wordSyncedUpgradeAttempts[mediaId] = stored
+                    true
+                }
+            }
+        }
+
         suspend fun getLyrics(
             mediaMetadata: MediaMetadata,
             preferredProviderOnly: Boolean = false,
@@ -91,7 +138,7 @@ class LyricsHelper
             // returning the old line-synced/plain result and the word-synced lookup
             // would never run.
             val prioritizeWordSynced =
-                !preferredProviderOnly && (context.dataStore[PrioritizeWordSyncedLyricsKey] ?: false)
+                !preferredProviderOnly && (context.dataStore.getAsync(PrioritizeWordSyncedLyricsKey) ?: false)
 
             if (forceRefresh) {
                 invalidateCache(cacheKey)
@@ -445,6 +492,11 @@ class LyricsHelper
 
         companion object {
             private const val MAX_CACHE_SIZE = 16
+
+            // One entry per track whose stored lyrics a word-synced upgrade has been attempted
+            // against, so a session that plays through a large library cannot grow this map
+            // without bound.
+            private const val MAX_WORD_SYNCED_UPGRADE_ATTEMPTS = 64
 
             // Per-provider hard timeout for the normal priority flow. Provider calls
             // that exceed this are cancelled and dropped from ranking. Tuned to be

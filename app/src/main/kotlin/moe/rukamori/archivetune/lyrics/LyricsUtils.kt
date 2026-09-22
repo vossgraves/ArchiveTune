@@ -674,6 +674,32 @@ object LyricsUtils {
         }
     }
 
+    /**
+     * True when a *stored* lyrics row is something the word-synced toggle can still improve:
+     * the reader asked for word-synced timing and the row holds real text without word-level
+     * timing.
+     *
+     * This exists because the two fetch gates cannot see the helper's decision. [LyricsHelper]
+     * already treats its own cached non-word-synced entry as stale under this toggle, but both
+     * callers short-circuit on a stored row *before* the helper is asked — MusicService's
+     * auto-fetch only for a null or LYRICS_NOT_FOUND row, LyricsScreen only for a row with no
+     * lyrics, no provider name or the sentinel. So a song that had been played once kept its
+     * line-synced text forever and turning the toggle on changed nothing for it, which is
+     * precisely the case the toggle is meant to serve.
+     *
+     * It deliberately excludes the sentinel and blanks, which the existing gates already retry,
+     * so the callers can treat it as the only new reason to fetch.
+     */
+    fun needsWordSyncedUpgrade(
+        prioritizeWordSynced: Boolean,
+        storedLyrics: String?,
+    ): Boolean =
+        prioritizeWordSynced &&
+            storedLyrics != null &&
+            storedLyrics != LyricsEntity.LYRICS_NOT_FOUND &&
+            storedLyrics.isNotBlank() &&
+            !hasWordSyncedLyrics(storedLyrics)
+
     fun parseTtml(
         lyrics: String,
         durationSeconds: Int? = null,
