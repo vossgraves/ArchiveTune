@@ -68,6 +68,9 @@ fun resetAuthWebViewSession(
 
     cookieManager.removeSessionCookies {
         cookieManager.removeAllCookies {
+            // The sheet can be dismissed while this wipe is in flight, so these calls may land on a
+            // WebView that onRelease already destroyed. WebView exposes no isDestroyed(), so a guard
+            // would need screen-held state; left as LoginScreen has always shipped it.
             cookieManager.flush()
             cookieManager.setAcceptCookie(true)
             cookieManager.setAcceptThirdPartyCookies(webView, true)
