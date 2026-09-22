@@ -829,6 +829,12 @@ class ListenTogetherManager @Inject constructor(
                 applyApprovedSuggestion(event.payload.trackInfo, event.playImmediately)
             }
 
+            is ListenTogetherEvent.SuggestionRejected -> {
+                // Drop the one-shot dedup so the same track can be suggested again: the previous
+                // attempt was explicitly turned down, not silently lost.
+                lastSuggestedTrackId = null
+            }
+
             is ListenTogetherEvent.ConnectionError -> {
                 Timber.tag(TAG).e("Connection error: ${event.error}")
                 cleanup()
@@ -884,6 +890,7 @@ class ListenTogetherManager @Inject constructor(
         // equivalent hook yet, so there is nothing to clear here.)
         lastSyncedIsPlaying = null
         lastSyncedTrackId = null
+        lastSuggestedTrackId = null
         bufferingTrackId = null
         isSyncing = false
         bufferCompleteReceivedForTrack = null
@@ -1124,6 +1131,10 @@ class ListenTogetherManager @Inject constructor(
 
                         // Reset sync debounce timer on track change - this is a fresh sync cycle
                         lastSyncActionTime = 0L
+                        // The room moved on from whatever we last suggested, so the local one-shot
+                        // dedup has to move on with it — otherwise picking the same song twice in a
+                        // row never re-suggests it.
+                        lastSuggestedTrackId = null
 
                         // If we have a queue, use it! This is the "smart" sync path.
                         if (action.queue != null && action.queue.isNotEmpty()) {
@@ -1970,11 +1981,16 @@ class ListenTogetherManager @Inject constructor(
                     // audio playing through the secondary player while the
                     // queue already moved on, so cancel it first — exactly what
                     // a tap on the skip button does.
-                    val wasPlaying = player.playWhenReady
+                    //
+                    // Force playback on: an auto-approved suggestion starts the
+                    // room's FIRST song while the host is still idle, so
+                    // restoring the pre-suggestion playWhenReady (false) left
+                    // the room paused until someone tapped play — and the
+                    // follow-up CHANGE_TRACK then paused the guests too.
                     runCatching { connection.service.prepareForManualSkip() }
                     player.seekToNext()
                     player.prepare()
-                    player.playWhenReady = wasPlaying
+                    player.playWhenReady = true
                 } else {
                     Timber.tag(TAG).w("Approved suggestion not adjacent after queue insert; leaving it queued")
                 }
