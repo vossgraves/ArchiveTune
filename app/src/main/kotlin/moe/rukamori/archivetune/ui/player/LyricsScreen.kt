@@ -834,9 +834,9 @@ private fun MovingBlurBackground(
                     // Vibrancy bump (was 0.42 / 0.34 / 0.54): pull these in line with the static
                     // AppleMusicBackground alphas (0.88 / 0.76 / 0.96) so the moving-blur lyrics
                     // page reads just as vivid as the player itself, not as a dimmed-afterthought.
-                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.85f),
-                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.75f),
-                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.95f),
+                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.55f),
+                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.42f),
+                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.62f),
                 ),
             )
         }
@@ -845,7 +845,7 @@ private fun MovingBlurBackground(
             Brush.verticalGradient(
                 listOf(
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.18f),
+                    Color.Black.copy(alpha = 0.10f),
                 ),
             )
         }
@@ -859,7 +859,7 @@ private fun MovingBlurBackground(
     // where α = 0.213 + 0.787*sat and β = 0.715 - 0.715*sat (Rec. 709 luma coefficients),
     // and the existing gamma is preserved (sat=1 → identity).
     val vibrancyColorFilter = remember {
-        val sat = 1.6f
+        val sat = 1.85f
         val alpha = 0.213f + 0.787f * sat
         val beta = 0.715f - 0.715f * sat
         val gamma = 0.072f - 0.072f * sat
