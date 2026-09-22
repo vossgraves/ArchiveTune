@@ -31,11 +31,13 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -71,12 +73,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -89,6 +94,8 @@ import androidx.navigation.NavController
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalListenTogetherManager
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -165,6 +172,35 @@ fun CommentTogetherScreen(navController: NavController) {
         manager.markChatAsRead()
         if (messages.isNotEmpty() && atBottom) {
             lazyListState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    // The chat must always OPEN on the most recent message: the animated
+    // auto-follow above raced the first layout pass and lost, so long
+    // histories started stuck at the top. Wait for the first real layout,
+    // give late-arriving persisted history one settle beat, then snap.
+    LaunchedEffect(Unit) {
+        snapshotFlow { lazyListState.layoutInfo.totalItemsCount }
+            .filter { it > 0 }
+            .first()
+        delay(150)
+        val total = lazyListState.layoutInfo.totalItemsCount
+        if (total > 0) {
+            lazyListState.scrollToItem(total - 1)
+        }
+    }
+
+    // The whole screen (message list included) now resizes with the keyboard
+    // via the Scaffold-level imePadding below. A top-anchored list would still
+    // leave the NEWEST messages clipped behind the IME, so capture the
+    // pre-resize "near bottom" state at focus time — the only moment it can
+    // be read reliably — and re-pin the list to the newest message as the
+    // keyboard opens.
+    var atBottomOnFocus by remember { mutableStateOf(true) }
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(imeBottom > 0) {
+        if (imeBottom > 0 && atBottomOnFocus && lazyListState.layoutInfo.totalItemsCount > 0) {
+            lazyListState.animateScrollToItem(lazyListState.layoutInfo.totalItemsCount - 1)
         }
     }
 
@@ -255,6 +291,13 @@ fun CommentTogetherScreen(navController: NavController) {
                     )
         ) {
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            // Resize the ENTIRE screen (message list included) with the
+            // keyboard, classic adjustResize behaviour — previously only the
+            // composer rode above the IME while the message list kept its full
+            // height, so the newest messages stayed hidden behind it.
+            .imePadding(),
         topBar = {
             TopAppBar(
                 title = {
@@ -288,9 +331,9 @@ fun CommentTogetherScreen(navController: NavController) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .imePadding()
                     // Keep the composer clear of both the gesture nav bar and the
                     // mini player, which draws over NavHost content otherwise.
+                    // (The IME itself is handled once, on the Scaffold above.)
                     .windowInsetsPadding(
                         windowInsets.only(
                             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
@@ -387,6 +430,7 @@ fun CommentTogetherScreen(navController: NavController) {
                         },
                         onSend = ::sendMessage,
                         onShareTrack = { showSongPicker = true },
+                        onFocusGained = { atBottomOnFocus = atBottom },
                     )
                 } else {
                     Surface(
@@ -554,6 +598,7 @@ private fun ChatInputArea(
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onShareTrack: () -> Unit,
+    onFocusGained: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -580,7 +625,8 @@ private fun ChatInputArea(
                 placeholder = { Text(stringResource(R.string.type_message)) },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 8.dp),
+                    .padding(end = 8.dp)
+                    .onFocusChanged { state -> if (state.isFocused) onFocusGained() },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
