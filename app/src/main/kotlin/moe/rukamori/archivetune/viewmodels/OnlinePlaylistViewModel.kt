@@ -30,6 +30,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -140,7 +141,12 @@ class OnlinePlaylistViewModel
          */
         private fun fetchPlaylistCanvas() {
             viewModelScope.launch(Dispatchers.IO) {
-                val firstSong = _playlistSongs.first { it.isNotEmpty() }.firstOrNull() ?: return@launch
+                // The wait is bounded: a playlist whose songs are all filtered out never becomes
+                // non-empty, and there is no canvas to resolve for it either way.
+                val firstSong =
+                    withTimeoutOrNull(PLAYLIST_CANVAS_LOOKUP_TIMEOUT_MS) {
+                        _playlistSongs.first { it.isNotEmpty() }
+                    }?.firstOrNull() ?: return@launch
                 _canvasArtwork.value =
                     fetchPlaylistCanvasArtwork(
                         context = context,
