@@ -140,6 +140,7 @@ import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
+import moe.rukamori.archivetune.ui.utils.popBackOrToLibrary
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -294,6 +295,8 @@ fun LocalPlaylistScreen(
         BackHandler {
             selection = false
         }
+    } else {
+        BackHandler { navController.popBackOrToLibrary() }
     }
 
     val downloadUtil = LocalDownloadUtil.current

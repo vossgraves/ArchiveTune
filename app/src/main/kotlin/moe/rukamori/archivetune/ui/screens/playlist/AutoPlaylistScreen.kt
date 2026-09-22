@@ -103,6 +103,7 @@ import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.ItemWrapper
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
+import moe.rukamori.archivetune.ui.utils.popBackOrToLibrary
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -182,6 +183,8 @@ fun AutoPlaylistScreen(
             selection = false
             wrappedSongs.forEach { it.isSelected = false }
         }
+    } else {
+        BackHandler { navController.popBackOrToLibrary() }
     }
 
     val (sortType, onSortTypeChange) =

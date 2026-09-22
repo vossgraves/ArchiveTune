@@ -112,6 +112,7 @@ import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
+import moe.rukamori.archivetune.ui.utils.popBackOrToLibrary
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
@@ -318,6 +319,8 @@ fun SpotifyPlaylistScreen(
             isSearching = false
             query = TextFieldValue()
         }
+    } else {
+        BackHandler { navController.popBackOrToLibrary() }
     }
 
     fun playPlaylist(
