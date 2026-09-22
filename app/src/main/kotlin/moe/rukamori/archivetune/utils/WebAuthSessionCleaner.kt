@@ -52,7 +52,11 @@ fun resetAuthWebViewSession(
     webView.stopLoading()
     webView.clearHistory()
     webView.clearFormData()
-    webView.clearCache(true)
+    // No clearCache(): it is not session state, and the WebView resource cache is per-application,
+    // so wiping it here throws away every provider's scripts and images and makes the next open of
+    // a bundle-heavy sign-in page (Apple's login document alone is ~1.8 MB) a full cold download.
+    // Cookies, DOM storage and the WebView database below are what actually carry a previous
+    // session, and they are still cleared.
     clearWebAuthStorage(context)
 
     val cookieManager = CookieManager.getInstance()
