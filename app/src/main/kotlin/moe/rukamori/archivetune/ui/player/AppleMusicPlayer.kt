@@ -427,9 +427,9 @@ fun AppleMusicPlayerContent(
         { sliderPositionState.value }
     }
 
-    // === Moving blur wander for the backdrop when lyrics is open === Mirrors the
-    // MovingBlurBackground from LyricsScreen: the blurred artwork wanders behind the lyrics.
-    val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive)
+    // The moving-blur wander is remembered inside the backdrop's BoxWithConstraints below, where the
+    // measured screen size is available: its amplitude is screen-proportional by design.
+
     // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
     // doesn't change per-frame so this is a one-time composition-phase read.
     val density = LocalDensity.current
@@ -664,6 +664,12 @@ fun AppleMusicPlayerContent(
             // Backdrop rendering — one blurred-artwork node for every state, plus (on canvas songs)
             // the live canvas video composited over it. • COVER / QUEUE state — the artwork sits at
             // [AmCoverBlurScale] with no drift.
+            //
+            // Same screen-scaled wander amplitude as every other player style (Apple Music
+            // lyrics-page behaviour): the colour mass traverses the whole display instead of
+            // orbiting near the centre.
+            val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+            val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive, maxDriftDp = wanderMaxDrift)
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
                 // Deferred state reads: draw phase only. See the comment on
                 // lyricsBackdropProgress for why this is a continuous ramp
@@ -746,6 +752,7 @@ fun AppleMusicPlayerContent(
                         height = maxHeight,
                         restScale = AmCoverBlurScale,
                         driftScale = AmLyricsBlurDriftScale,
+                        maxDriftDp = wanderMaxDrift,
                     )
                 }
             Box(

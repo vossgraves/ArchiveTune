@@ -880,7 +880,6 @@ private fun MovingBlurBackground(
     // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
     // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it once
     // with ImageBlurUtils, render via Image.
-    val blurWander = rememberBlurWanderDrift(active = !isPreS)
     BoxWithConstraints(
         modifier =
             modifier
@@ -888,12 +887,17 @@ private fun MovingBlurBackground(
                 .clipToBounds()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        // Screen-proportional wander amplitude, shared with every other player style so the moving
+        // blur feels identical everywhere: the colour mass traverses the whole display instead of
+        // orbiting a narrow ring around the centre. Hoisted here because the amplitude needs the
+        // measured size.
+        val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val preSDriftScale =
             if (isPreS) {
-                val driftMax = BlurWanderDrift.WanderRadiusDp.dp
                 val safetyMargin = 48.dp
-                val requiredScaleX = 1f + 2f * (driftMax.value + safetyMargin.value) / maxWidth.value
-                val requiredScaleY = 1f + 2f * (driftMax.value + safetyMargin.value) / maxHeight.value
+                val requiredScaleX = 1f + 2f * (wanderMaxDrift + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (wanderMaxDrift + safetyMargin.value) / maxHeight.value
                 maxOf(requiredScaleX, requiredScaleY, 1.4f)
             } else {
                 MovingBlurDriftScale
@@ -915,6 +919,7 @@ private fun MovingBlurBackground(
                     // sits at the drifting scale the whole time.
                     restScale = MovingBlurDriftScale,
                     driftScale = MovingBlurDriftScale,
+                    maxDriftDp = wanderMaxDrift,
                 )
             }
 
@@ -942,8 +947,13 @@ private fun MovingBlurBackground(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
+                                    // Translation only: the pre-S bitmap is screen-shaped, so
+                                    // rotating it would uncover the corners (the post-S path
+                                    // rotates a square footprint safely).
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
+                                    translationX = blurWander.xDp.floatValue.dp.toPx()
+                                    translationY = blurWander.yDp.floatValue.dp.toPx()
                                 }
                                 // No offset: the pre-S fallback pins its single pre-blurred
                                 // bitmap (see above), so there is nothing to animate here.
