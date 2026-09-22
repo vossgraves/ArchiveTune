@@ -101,7 +101,6 @@ import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.utils.ItemWrapper
 import moe.rukamori.archivetune.ui.utils.backToMain
-import moe.rukamori.archivetune.ui.utils.popBackOrToLibrary
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
@@ -253,8 +252,6 @@ fun CachePlaylistScreen(
         BackHandler {
             selection = false
         }
-    } else {
-        BackHandler { navController.popBackOrToLibrary() }
     }
 
     val filteredSongs =
