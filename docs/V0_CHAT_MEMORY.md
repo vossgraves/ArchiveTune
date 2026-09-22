@@ -105,6 +105,14 @@ future sessions (or contributors) can pick up with full context.
   shimmer was dropped).
 - Removed the broken splash/opening animation (dropped `installSplashScreen()`
   and core-splashscreen); adaptive window background prevents white flash.
+  **Re-added, on narrower terms** (`fix/splash-handoff`): the library and the
+  call return, but only as a 2 s-bounded hold on the launch window. The removed
+  attempt also carried `Theme.ArchiveTune.Splash` (parent `Theme.SplashScreen`,
+  `windowSplashScreenBackground`, `windowSplashScreenAnimatedIcon`,
+  `postSplashScreenTheme`) and held with no keep-condition at all; this one
+  keeps `Theme.ArchiveTune`, switches no theme, registers no exit listener, and
+  releases on readiness or after 2 s — so the failure the removal reverted (a
+  theme switch plus an unbounded hold) cannot come back with it.
 
 ## Lyrics
 

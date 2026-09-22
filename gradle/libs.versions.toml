@@ -23,6 +23,9 @@ coroutinesGuava = "1.11.0"
 materialiconsextended = "1.7.8"
 concurrentFutures = "1.3.0"
 activity = "1.13.0"
+# Same artifact and version YumaPlayer's launch hand-off uses. Nothing else wraps the
+# pre-draw hook that lets the system splash stay up past the first frame.
+coreSplashscreen = "1.0.1"
 navigation = "2.9.8"
 hiltNavigation = "1.4.0"
 datastore = "1.2.1"
@@ -111,6 +114,7 @@ concurrent-futures = { module = "androidx.concurrent:concurrent-futures-ktx", ve
 
 gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
 car-app = { module = "androidx.car.app:app", version.ref = "carApp" }
 navigation = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 hilt-navigation = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigation" }
