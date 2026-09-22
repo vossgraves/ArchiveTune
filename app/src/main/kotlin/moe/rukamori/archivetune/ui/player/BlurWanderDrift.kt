@@ -154,6 +154,15 @@ internal class BlurWanderDrift(
  * identically everywhere: the anchor may reach ~85% of the half-diagonal away from the centre in
  * any direction, letting colour features traverse the whole display and briefly cross its bounds
  * before the (always-covering) backdrop sweeps them back in.
+ *
+ * The amplitude is what the backdrop layer has to grow to cover (see [blurBackdropFootprint]), so it
+ * is a real GPU-memory cost. The standalone lyrics screen is the one that pays it: there the rest
+ * scale and the drift scale are both 2.4, so the covering footprint of its 64dp-blurred offscreen
+ * layer goes from ~527dp to ~787dp on a 411x914dp screen — an extra ~260dp square of ARGB_8888
+ * raster, on the order of 10MB. The Apple Music player and SpatialFlow keep their previous footprint
+ * because their resting scale term dominates that maths instead. Capping the amplitude (for example
+ * min(half-diagonal * 0.85, 240dp)) would buy the memory back, but it would also shorten the wander
+ * visibly on every normal phone, so the cost stands unless a low-RAM device shows jank here.
  */
 internal fun movingBlurWanderMaxDriftDp(
     width: Dp,
