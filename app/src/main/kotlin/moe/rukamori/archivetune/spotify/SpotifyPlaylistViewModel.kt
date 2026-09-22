@@ -101,7 +101,7 @@ class SpotifyPlaylistViewModel
                                     tracks = SpotifyPlaylistTracksRef(total = likedTracks.size),
                                 ) to likedTracks
                             } else {
-                                repository.playlist(playlistId) to repository.playlistTracks(playlistId)
+                                repository.playlistWithTracks(playlistId)
                             }
                         } ?: throw TimeoutException(context.getString(R.string.spotify_load_timeout))
                     _uiState.value =
