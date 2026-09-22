@@ -345,7 +345,7 @@ class SpotifyLibraryRepository
                             ).getOrThrow()
                     }
                 val tracks = ArrayList<SpotifyTrack>(detail.tracks.items.size)
-                tracks += detail.tracks.playableTracks()
+                tracks += detail.tracks.items.playableTracks()
                 tracks +=
                     drainSpotifyPages(detail.tracks) { offset ->
                         spotifyCallWithTokenRetry {
@@ -388,7 +388,7 @@ class SpotifyLibraryRepository
                                 offset = 0,
                             ).getOrThrow()
                     }
-                first.playableTracks() +
+                first.items.playableTracks() +
                     drainSpotifyPages(first) { offset ->
                         spotifyCallWithTokenRetry {
                             Spotify
@@ -603,7 +603,7 @@ class SpotifyLibraryRepository
                     spotifyCallWithTokenRetry {
                         Spotify.likedSongs(limit = TRACK_PAGE_SIZE, offset = 0).getOrThrow()
                     }
-                first.playableTracks() +
+                first.items.playableTracks() +
                     drainSpotifyPages(first) { offset ->
                         spotifyCallWithTokenRetry {
                             Spotify.likedSongs(limit = TRACK_PAGE_SIZE, offset = offset).getOrThrow()
