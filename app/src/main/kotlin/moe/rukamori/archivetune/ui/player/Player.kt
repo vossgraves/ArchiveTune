@@ -162,7 +162,6 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.materialkolor.ktx.toColor
 import com.materialkolor.ktx.toHct
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -235,6 +234,7 @@ import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.utils.defaultStorefront
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -1370,11 +1370,7 @@ fun BottomSheetPlayer(
                 }
             }
 
-        val storefront =
-            remember {
-                val country = Locale.getDefault().country
-                if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
-            }
+        val storefront = remember { defaultStorefront() }
         val shouldUseV7Canvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
                 playerDesignStyle == PlayerDesignStyle.V7 &&

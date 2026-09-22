@@ -54,11 +54,11 @@ import moe.rukamori.archivetune.ui.player.refetchCanvasArtworkForPlayback
 import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.telegram.TelegramMediaId
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
+import moe.rukamori.archivetune.utils.defaultStorefront
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.utils.reportException
-import java.util.Locale
 
 internal data class CanvasArtworkUpdate(
     val mediaId: String,
@@ -412,8 +412,7 @@ class PlayerConnection(
 
         _isCanvasArtworkRefetching.value = true
         return try {
-            val country = Locale.getDefault().country
-            val storefront = if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
+            val storefront = defaultStorefront()
             val artwork =
                 refetchCanvasArtworkForPlayback(
                     mediaId = metadata.id,

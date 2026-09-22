@@ -130,6 +130,7 @@ import moe.rukamori.archivetune.ui.player.rememberDeviceMusicVolumeController
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
+import moe.rukamori.archivetune.utils.defaultStorefront
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.isLocalMediaId
@@ -540,10 +541,7 @@ fun PlayerMenu(
             songTitle = mediaMetadata.title,
             artistName = mediaMetadata.artists.joinToString(separator = ", ") { it.name },
             albumTitle = mediaMetadata.album?.title,
-            storefront = remember {
-                val country = java.util.Locale.getDefault().country
-                if (country.length == 2) country.lowercase(java.util.Locale.ROOT) else "us"
-            },
+            storefront = remember { defaultStorefront() },
             onDismiss = { showSaveCanvasDialog = false },
         )
     }
