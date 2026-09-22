@@ -23,6 +23,7 @@ import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.innertube.YouTube
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,17 +45,29 @@ class PlaylistCoverRepository
             playlist: PlaylistEntity,
             uri: Uri,
         ) = withContext(Dispatchers.IO) {
-            persistReadPermission(uri)
-            try {
-                val previous = updateThumbnail(playlist.id, uri.toString())
-                previous.thumbnailUrl
-                    ?.takeIf { it != uri.toString() }
-                    ?.let(Uri::parse)
-                    ?.takeIf { it.scheme == "content" }
-                    ?.let(::releaseReadPermission)
-            } catch (throwable: Throwable) {
+            // Copy the picked image into app storage rather than holding a permission on wherever
+            // the user picked it from. A persisted `content://` grant survives reboots but not the
+            // picker's provider being cleared, uninstalled or moved, and the cover then renders as
+            // a blank square with no way to tell why — a copy cannot be revoked out from under us.
+            // The permission route stays as the fallback for an image too large or too odd to copy.
+            val copiedCoverUri = runCatching { copyCoverIntoAppStorage(playlist.id, uri) }.getOrNull()
+            if (copiedCoverUri != null) {
                 releaseReadPermission(uri)
-                throw throwable
+                val previous = updateThumbnail(playlist.id, copiedCoverUri.toString())
+                releasePreviousCoverResources(previous)
+            } else {
+                persistReadPermission(uri)
+                try {
+                    val previous = updateThumbnail(playlist.id, uri.toString())
+                    // Re-picking the same image would otherwise tear down the grant this call just
+                    // took, leaving the cover unreadable the next time the page opens.
+                    if (previous.thumbnailUrl != uri.toString()) {
+                        releasePreviousCoverResources(previous)
+                    }
+                } catch (throwable: Throwable) {
+                    releaseReadPermission(uri)
+                    throw throwable
+                }
             }
         }
 
@@ -72,10 +85,7 @@ class PlaylistCoverRepository
                             image = image,
                         ).getOrThrow()
                 val previous = updateThumbnail(playlist.id, remoteCoverUrl)
-                previous.thumbnailUrl
-                    ?.let(Uri::parse)
-                    ?.takeIf { it.scheme == "content" }
-                    ?.let(::releaseReadPermission)
+                releasePreviousCoverResources(previous)
             } finally {
                 releaseReadPermission(uri)
             }
@@ -84,10 +94,7 @@ class PlaylistCoverRepository
         suspend fun removeLocalCover(playlist: PlaylistEntity) =
             withContext(Dispatchers.IO) {
                 val previous = updateThumbnail(playlist.id, null)
-                previous.thumbnailUrl
-                    ?.let(Uri::parse)
-                    ?.takeIf { it.scheme == "content" }
-                    ?.let(::releaseReadPermission)
+                releasePreviousCoverResources(previous)
             }
 
         suspend fun removeRemoteCover(playlist: PlaylistEntity) =
@@ -97,10 +104,7 @@ class PlaylistCoverRepository
                         .removeCustomPlaylistCover(requireNotNull(playlist.browseId))
                         .getOrThrow()
                 val previous = updateThumbnail(playlist.id, remoteCoverUrl)
-                previous.thumbnailUrl
-                    ?.let(Uri::parse)
-                    ?.takeIf { it.scheme == "content" }
-                    ?.let(::releaseReadPermission)
+                releasePreviousCoverResources(previous)
             }
 
         private suspend fun updateThumbnail(
@@ -120,6 +124,55 @@ class PlaylistCoverRepository
                 )
             }
             return current
+        }
+
+        /**
+         * Hands back whatever the cover being replaced was holding: a persisted read grant for the
+         * `content://` image it pointed at, and the copy this repository made of it. Both are
+         * per-playlist and never shared, so a cover replaced or removed is the last user of them.
+         */
+        private fun releasePreviousCoverResources(previous: PlaylistEntity) {
+            previous.thumbnailUrl
+                ?.let(Uri::parse)
+                ?.let { previousUri ->
+                    if (previousUri.scheme == "content") {
+                        releaseReadPermission(previousUri)
+                    }
+                    deleteManagedCoverFile(previousUri)
+                }
+        }
+
+        /**
+         * Decodes the picked image the way an upload would and writes it under [MANAGED_COVER_DIR],
+         * returning the `file://` uri to store as the playlist's thumbnail. Decoding first means an
+         * unreadable pick fails here, before the playlist row has been pointed at a file that was
+         * never written.
+         */
+        private fun copyCoverIntoAppStorage(
+            playlistId: String,
+            uri: Uri,
+        ): Uri {
+            val bytes = decodeUploadImage(uri)
+            val dir = File(context.filesDir, MANAGED_COVER_DIR)
+            dir.mkdirs()
+            val fileName = playlistId.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".jpg"
+            val target = File(dir, fileName)
+            target.writeBytes(bytes)
+            return Uri.fromFile(target)
+        }
+
+        /**
+         * Deletes a cover copy this repository wrote, and nothing else: the canonical-path check
+         * keeps a `file://` thumbnail from anywhere else — a user's own pick, a migrated row — out
+         * of reach of a cleanup pass.
+         */
+        private fun deleteManagedCoverFile(uri: Uri) {
+            if (uri.scheme != "file") return
+            val path = uri.path ?: return
+            val file = File(path)
+            val managedDir = File(context.filesDir, MANAGED_COVER_DIR)
+            if (!file.canonicalPath.startsWith(managedDir.canonicalPath + File.separator)) return
+            runCatching { file.delete() }
         }
 
         private fun persistReadPermission(uri: Uri) {
@@ -237,6 +290,8 @@ class PlaylistCoverRepository
         }
 
         private companion object {
+            /** Where local cover copies live under `filesDir`, and nowhere else may be deleted. */
+            const val MANAGED_COVER_DIR = "playlist_covers"
             const val UPLOAD_DIMENSION_PX = 1080
             const val MAX_UPLOAD_BYTES = 2 * 1024 * 1024
             const val MAX_DECODE_PIXELS = 8_000_000L
