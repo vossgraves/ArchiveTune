@@ -18,9 +18,17 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.contentLength
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
 import okhttp3.ConnectionPool
@@ -30,17 +38,37 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
 
+/**
+ * Downloads an update APK into `cache/app_update` and hands the staged file to the system
+ * installer.
+ *
+ * The download belongs to this process-scoped object, not to the screen that starts it: leaving the
+ * update page (or any recomposition that disposes it) used to cancel the coroutine mid-stream and
+ * throw away every byte fetched so far. The screen observes [downloadState] instead, so progress
+ * survives navigation and a completed download waits for the reader to come back rather than
+ * launching the installer from a background process.
+ *
+ * Nothing here resumes across process death. A half-streamed APK cannot be validated — the file is
+ * a bare fragment with no central directory to check — so an interrupted attempt is deleted and the
+ * next one starts from byte zero.
+ */
 object AppUpdateInstaller {
-    data class Progress(
-        val downloadedBytes: Long,
-        val totalBytes: Long,
-    ) {
-        val fraction: Float?
-            get() =
-                totalBytes
-                    .takeIf { it > 0L }
-                    ?.let { downloadedBytes.toFloat() / it.toFloat() }
-                    ?.coerceIn(0f, 1f)
+    sealed interface DownloadState {
+        /** Nothing staged and nothing in flight. */
+        object Idle : DownloadState
+
+        /** Bytes are being streamed into the staging file. [fraction] is null until the length is known. */
+        data class Downloading(
+            val fraction: Float?,
+        ) : DownloadState
+
+        /** The APK is staged and validated; [installStagedUpdate] will hand it to the installer. */
+        object ReadyToInstall : DownloadState
+
+        /** The attempt failed before anything could be installed. [message] is safe to display. */
+        data class Failed(
+            val message: String?,
+        ) : DownloadState
     }
 
     private val client by lazy {
@@ -57,27 +85,87 @@ object AppUpdateInstaller {
         }
     }
 
-    suspend fun downloadAndInstall(
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var downloadJob: Job? = null
+
+    private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
+    val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
+
+    /**
+     * Starts a download unless one is already running. Two taps must not race each other: both would
+     * stream into the same staging file and the loser's bytes would corrupt the winner's APK.
+     */
+    fun startDownload(
         context: Context,
         url: String,
-        onProgress: (Progress) -> Unit,
+    ) {
+        if (downloadJob?.isActive == true) return
+        val appContext = context.applicationContext
+        _downloadState.value = DownloadState.Downloading(null)
+        downloadJob =
+            scope.launch {
+                val result = download(appContext, url)
+                _downloadState.value =
+                    result.fold(
+                        onSuccess = { DownloadState.ReadyToInstall },
+                        onFailure = { DownloadState.Failed(it.message) },
+                    )
+            }
+    }
+
+    fun cancelDownload() {
+        downloadJob?.cancel()
+        downloadJob = null
+        _downloadState.value = DownloadState.Idle
+    }
+
+    /** Clears a terminal state the caller has already acted on, so a returning screen does not repeat it. */
+    fun acknowledgeResult() {
+        if (_downloadState.value is DownloadState.Downloading) return
+        _downloadState.value = DownloadState.Idle
+    }
+
+    /**
+     * Hands the staged APK to the system installer. Returns false when there is nothing installable
+     * left to hand over — the reader may have swiped the app away long enough for the cache to be
+     * evicted, and re-downloading is the only honest answer at that point.
+     */
+    fun installStagedUpdate(context: Context): Boolean {
+        val stagedFile = File(updateDirectory(context), ApkFileName)
+        if (!stagedFile.isFile || !stagedFile.containsApkManifest()) return false
+        installApk(context, stagedFile)
+        return true
+    }
+
+    /**
+     * Deletes everything under `cache/app_update`: the staged APK whose bytes the installer has
+     * already copied into its own staging area, and the fragment left by a cancelled or killed
+     * download. Nothing in there is resumable, so a process start is the safe moment to drop it —
+     * which is also what stops a previous version's APK from being installed after several releases.
+     */
+    fun clearStagedUpdate(context: Context) {
+        updateDirectory(context).deleteRecursively()
+    }
+
+    private suspend fun download(
+        context: Context,
+        url: String,
     ): Result<Unit> {
         if (BuildConfig.DISTRIBUTION != "gms") {
             return Result.failure(IllegalStateException("In-app updates are only available for GMS builds"))
         }
 
         return try {
-            val apkFile =
-                withContext(Dispatchers.IO) {
-                    downloadApk(context.applicationContext, url, onProgress)
-                }
-            withContext(Dispatchers.Main) {
-                installApk(context, apkFile)
-            }
+            withContext(Dispatchers.IO) { downloadApk(context, url) }
             Result.success(Unit)
         } catch (e: CancellationException) {
+            // Half a file is worse than none: it cannot be validated or installed, and it would sit
+            // in the cache until some later attempt wiped the directory. Cleanup has to outlive the
+            // cancellation that got us here.
+            withContext(NonCancellable + Dispatchers.IO) { clearStagedUpdate(context) }
             throw e
         } catch (e: Throwable) {
+            withContext(Dispatchers.IO) { clearStagedUpdate(context) }
             Result.failure(e)
         }
     }
@@ -85,17 +173,21 @@ object AppUpdateInstaller {
     private suspend fun downloadApk(
         context: Context,
         url: String,
-        onProgress: (Progress) -> Unit,
     ): File {
         if (url.isBlank()) {
             throw IOException("Update download URL is empty")
         }
 
-        val updateDir = File(context.cacheDir, UpdateDirectoryName)
+        val updateDir = updateDirectory(context)
         updateDir.mkdirs()
+        // Wipe first, so nothing left by an earlier attempt can be mistaken for this attempt's
+        // result. Downloads here always start from byte zero.
         updateDir.listFiles()?.forEach { file -> file.deleteRecursively() }
 
         val downloadedFile = File(updateDir, DownloadFileName)
+
+        var expectedBytes = -1L
+        var receivedBytes = 0L
 
         client.prepareGet(url).execute { response ->
             val responseCode = response.status.value
@@ -103,7 +195,7 @@ object AppUpdateInstaller {
                 throw IOException("Update download failed: HTTP $responseCode")
             }
 
-            val totalBytes = response.contentLength() ?: -1L
+            expectedBytes = response.contentLength() ?: -1L
             val channel = response.bodyAsChannel()
             downloadedFile.outputStream().use { output ->
                 val buffer = ByteArray(STREAM_BUFFER_SIZE)
@@ -117,35 +209,55 @@ object AppUpdateInstaller {
                     downloadedBytes += read.toLong()
                     val now = System.currentTimeMillis()
                     if (now - lastUpdateMs >= PROGRESS_UPDATE_INTERVAL_MS) {
-                        emitProgress(downloadedBytes, totalBytes, onProgress)
+                        emitProgress(downloadedBytes, expectedBytes)
                         lastUpdateMs = now
                     }
                 }
-                emitProgress(downloadedBytes, totalBytes, onProgress)
+                receivedBytes = downloadedBytes
+                emitProgress(downloadedBytes, expectedBytes)
             }
         }
 
-        return if (url.lowercase(Locale.US).substringBefore('?').endsWith(".apk")) {
-            downloadedFile.renameAsApk()
-        } else {
-            extractGmsApk(downloadedFile, File(updateDir, ApkFileName))
-                ?: if (downloadedFile.containsApkManifest()) {
-                    downloadedFile.renameAsApk()
-                } else {
-                    throw IOException("No GMS APK found in update artifact")
-                }
+        // A truncated body reaches here when the server closes a chunked response early, or when a
+        // captive portal answers the asset URL with a 200 and an HTML page. Either way the file is
+        // not an APK, and handing it to the installer only produces "package appears to be invalid".
+        if (expectedBytes > 0L && receivedBytes != expectedBytes) {
+            throw IOException("Update download was truncated: got $receivedBytes of $expectedBytes bytes")
         }
+
+        val apkFile =
+            if (url.lowercase(Locale.US).substringBefore('?').endsWith(".apk")) {
+                downloadedFile.renameAsApk()
+            } else {
+                extractGmsApk(downloadedFile, File(updateDir, ApkFileName))
+                    ?: if (downloadedFile.containsApkManifest()) {
+                        downloadedFile.renameAsApk()
+                    } else {
+                        throw IOException("No GMS APK found in update artifact")
+                    }
+            }
+
+        if (!apkFile.containsApkManifest()) {
+            throw IOException("Downloaded update is not a valid APK")
+        }
+
+        return apkFile
     }
 
-    private suspend fun emitProgress(
+    private fun emitProgress(
         downloadedBytes: Long,
         totalBytes: Long,
-        onProgress: (Progress) -> Unit,
     ) {
-        withContext(Dispatchers.Main.immediate) {
-            onProgress(Progress(downloadedBytes, totalBytes))
-        }
+        _downloadState.value = DownloadState.Downloading(fractionOrNull(downloadedBytes, totalBytes))
     }
+
+    private fun fractionOrNull(
+        downloadedBytes: Long,
+        totalBytes: Long,
+    ): Float? =
+        totalBytes
+            .takeIf { it > 0L }
+            ?.let { total -> (downloadedBytes.toFloat() / total.toFloat()).coerceIn(0f, 1f) }
 
     private fun extractGmsApk(
         sourceFile: File,
@@ -217,6 +329,8 @@ object AppUpdateInstaller {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
     }
+
+    private fun updateDirectory(context: Context): File = File(context.cacheDir, UpdateDirectoryName)
 
     private const val UpdateDirectoryName = "app_update"
     private const val DownloadFileName = "archive-tune-update.download"
