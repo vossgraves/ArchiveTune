@@ -34,19 +34,19 @@ jobs:
             exit 1
           fi
 
-          # Base major.minor comes from the committed versionName (bump it manually for a big
-          # release, e.g. 13.7.x -> 14.0.x). The patch and versionCode are derived from the git
-          # commit count so every push to main yields a strictly-increasing, installable release
-          # with no commit-back loop.
+          # The version name is the committed base value, used verbatim — the way rukamori names
+          # his releases (15.0.0, 14.1.0, 14.0.0). Bump it by hand before dispatching this
+          # workflow; re-running it unchanged is already a no-op, because the tag below exists.
+          # The versionCode still comes from the commit count, so it stays strictly increasing
+          # (which is what the updater compares) with no commit-back loop.
           BASE_VERSION="$(grep -oP 'baseVersionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo '')"
           if [ -z "$BASE_VERSION" ]; then
             echo "Error: Could not find baseVersionName in app/build.gradle.kts"
             exit 1
           fi
-          MAJOR_MINOR="$(echo "$BASE_VERSION" | cut -d. -f1-2)"
 
           COMMIT_COUNT="$(git rev-list --count HEAD)"
-          NEW_VERSION="${MAJOR_MINOR}.${COMMIT_COUNT}"
+          NEW_VERSION="$BASE_VERSION"
           VERSION_CODE="$COMMIT_COUNT"
 
           echo "Base version: $BASE_VERSION -> new version: $NEW_VERSION (code $VERSION_CODE)"

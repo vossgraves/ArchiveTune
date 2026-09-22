@@ -35,17 +35,25 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-// Base version. Bump these manually for a big release (e.g. 13.7.x -> 14.0.x). The release workflow
-// greps the base value and derives the per-commit patch and the monotonic versionCode (the git commit
-// count) from it, injecting both via VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE. Keep each on a
-// single line so that grep stays reliable.
+// Base version for a stable release. The release workflow uses this value verbatim as the version
+// name and takes the monotonic versionCode from the git commit count, injecting both via
+// VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE. Keep each on a single line so that grep stays
+// reliable.
+//
+// Bump the name by hand before each stable release, the way rukamori names his (15.0.0, 14.1.0,
+// 14.0.0 — a plain three-part version). It is deliberately NOT derived from the commit count any
+// more: a fork that published 14.0.5336 as a version name was describing its own build counter
+// rather than a version, and nobody reads that as a release. Dispatching the workflow twice with
+// the same name is a no-op, because the tag already exists.
+//
+// The versionCode still comes from the commit count, so it stays strictly increasing — that is
+// what the updater compares, and it keeps working with no commit-back loop.
 //
 // A pre-release build is named after its release tag instead — "C<yyyyMMddHHmm>" for Canary,
-// "N<yyyyMMddHHmm>" for Nightly, the way rukamori names their nightlies "N<yyyyMMdd>" — so the tag,
-// the release title and the version the app reports are all one string. The versionCode stays the
-// commit count, which is what the updater compares.
-val baseVersionName = "14.0.0"
-val baseVersionCode = 1400
+// "N<yyyyMMddHHmm>" for Nightly, the way rukamori names his nightlies "N<yyyyMMdd>" — so the tag,
+// the release title and the version the app reports are all one string.
+val baseVersionName = "14.5.0"
+val baseVersionCode = 1450
 
 val discordApplicationId =
     (

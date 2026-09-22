@@ -249,7 +249,7 @@ class BuildOnboardingUiStateUseCase
                         titleResId = R.string.about_content_desc_donate,
                         descriptionResId = R.string.onboarding_community_donate_desc,
                         iconResId = R.drawable.coffee,
-                        url = "https://github.com/4nx3b/ArchiveTune",
+                        url = "https://github.com/vossgraves/ArchiveTune",
                     ),
                 )
         }
