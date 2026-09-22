@@ -48,6 +48,8 @@ import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTracksRef
+import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTrack
+import moe.rukamori.archivetune.spotify.models.SpotifySavedTrack
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.spotify.models.SpotifySearchResult
@@ -321,12 +323,41 @@ class SpotifyLibraryRepository
             }
         }
 
-        suspend fun playlist(playlistId: String): SpotifyPlaylist =
+        /**
+         * The playlist's header fields and its tracks, read as one playlist instead of two.
+         *
+         * The header and the first page come out of a single `fetchPlaylist` response, so opening a
+         * tile costs one round trip for both instead of one per reader. The pages after the first
+         * are then read with bounded concurrency — see [drainSpotifyPages] for why that is still the
+         * same list, in the same order, and why a large playlist no longer waits out one round trip
+         * per fifty tracks.
+         */
+        suspend fun playlistWithTracks(playlistId: String): Pair<SpotifyPlaylist, List<SpotifyTrack>> =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()
-                spotifyCallWithTokenRetry {
-                    Spotify.playlist(playlistId).getOrThrow()
-                }
+                val detail =
+                    spotifyCallWithTokenRetry {
+                        Spotify
+                            .playlistDetail(
+                                playlistId = playlistId,
+                                limit = TRACK_PAGE_SIZE,
+                                offset = 0,
+                            ).getOrThrow()
+                    }
+                val tracks = ArrayList<SpotifyTrack>(detail.tracks.items.size)
+                tracks += detail.tracks.playableTracks()
+                tracks +=
+                    drainSpotifyPages(detail.tracks) { offset ->
+                        spotifyCallWithTokenRetry {
+                            Spotify
+                                .playlistTracks(
+                                    playlistId = playlistId,
+                                    limit = TRACK_PAGE_SIZE,
+                                    offset = offset,
+                                ).getOrThrow()
+                        }
+                    }.playableTracks()
+                detail.playlist to tracks
             }
 
         suspend fun album(albumId: String): SpotifyAlbum =
@@ -348,26 +379,26 @@ class SpotifyLibraryRepository
         suspend fun playlistTracks(playlistId: String): List<SpotifyTrack> =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()
-                val tracks = ArrayList<SpotifyTrack>()
-                var offset = 0
-                val limit = 50
-
-                while (true) {
-                    val page =
+                val first =
+                    spotifyCallWithTokenRetry {
+                        Spotify
+                            .playlistTracks(
+                                playlistId = playlistId,
+                                limit = TRACK_PAGE_SIZE,
+                                offset = 0,
+                            ).getOrThrow()
+                    }
+                first.playableTracks() +
+                    drainSpotifyPages(first) { offset ->
                         spotifyCallWithTokenRetry {
                             Spotify
                                 .playlistTracks(
                                     playlistId = playlistId,
-                                    limit = limit,
+                                    limit = TRACK_PAGE_SIZE,
                                     offset = offset,
                                 ).getOrThrow()
                         }
-                    currentCoroutineContext().ensureActive()
-                    tracks += page.items.mapNotNull { it.track?.takeUnless(SpotifyTrack::isLocal) }
-                    offset = page.nextOffset?.takeIf { it > offset } ?: break
-                }
-
-                tracks
+                    }.playableTracks()
             }
 
         /**
@@ -568,21 +599,16 @@ class SpotifyLibraryRepository
         suspend fun likedSongs(): List<SpotifyTrack> =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()
-                val tracks = ArrayList<SpotifyTrack>()
-                var offset = 0
-                val limit = 50
-
-                while (true) {
-                    val page =
+                val first =
+                    spotifyCallWithTokenRetry {
+                        Spotify.likedSongs(limit = TRACK_PAGE_SIZE, offset = 0).getOrThrow()
+                    }
+                first.playableTracks() +
+                    drainSpotifyPages(first) { offset ->
                         spotifyCallWithTokenRetry {
-                            Spotify.likedSongs(limit = limit, offset = offset).getOrThrow()
+                            Spotify.likedSongs(limit = TRACK_PAGE_SIZE, offset = offset).getOrThrow()
                         }
-                    currentCoroutineContext().ensureActive()
-                    tracks += page.items.mapNotNull { it.track.takeUnless(SpotifyTrack::isLocal) }
-                    offset = page.nextOffset?.takeIf { it > offset } ?: break
-                }
-
-                tracks
+                    }.playableTracks()
             }
 
         /**
@@ -869,6 +895,13 @@ class SpotifyLibraryRepository
             private const val METADATA_MATCH_THRESHOLD = 0.58
 
             /**
+             * Tracks asked for per `fetchPlaylist` page. Fifty matches the page the list endpoints
+             * here already return — the drain is what removes the round-trip chain, so this stays a
+             * response-size trade rather than a latency one.
+             */
+            private const val TRACK_PAGE_SIZE = 50
+
+            /**
              * In-flight parallel track-count fetches in [fetchAllPlaylists]. 8 keeps the burst
              * under Spotify's 429 threshold while cutting the wall time ~8x vs sequential.
              */
@@ -886,3 +919,81 @@ data class SpotifyAccountSession(
     val accountName: String = "",
     val accountAvatarUrl: String? = null,
 )
+
+/** The playlist tracks of a page that Spotify can actually play — local files have no YouTube match. */
+private fun List<SpotifyPlaylistTrack>.playableTracks(): List<SpotifyTrack> =
+    mapNotNull { item -> item.track?.takeUnless(SpotifyTrack::isLocal) }
+
+/** The liked songs of a page that Spotify can actually play. */
+private fun List<SpotifySavedTrack>.playableTracks(): List<SpotifyTrack> =
+    mapNotNull { item -> item.track.takeUnless(SpotifyTrack::isLocal) }
+
+/**
+ * In-flight page reads while draining a Spotify list. The track-count cap's reasoning applies here:
+ * 8 keeps the burst under the 429 threshold the rest of this class waits out, and a burst past it
+ * buys back its request count in `Retry-After` seconds instead of wall time.
+ */
+internal const val SPOTIFY_PAGE_CONCURRENCY = 8
+
+/**
+ * Reads the pages of a Spotify list that follow [firstPage], in reading order.
+ *
+ * A full page advances the offset by exactly its own length, so once the first page and the list's
+ * total are known the remaining offsets are arithmetic and the reads do not depend on each other —
+ * which is what lets them overlap instead of costing one round trip apiece. Two rules keep the
+ * result identical to the page-by-page drain this replaces:
+ *
+ *  - The drain *ends* where the serial reader ended: at the first page reporting no successor. Any
+ *    pages read past it are dropped, so a list that shrinks under us, or an endpoint that answers
+ *    with a different page size than it was asked for, cannot contribute tracks the serial reader
+ *    would never have seen.
+ *  - Offsets are only planned when the total is known and a page is as long as the limit asked for.
+ *    Otherwise the pages are followed through each page's successor, one at a time, exactly as the
+ *    serial reader did — the endpoint is the authority on where its own list continues.
+ */
+internal suspend fun <T> drainSpotifyPages(
+    firstPage: SpotifyPaging<T>,
+    concurrency: Int = SPOTIFY_PAGE_CONCURRENCY,
+    fetchPage: suspend (offset: Int) -> SpotifyPaging<T>,
+): List<T> {
+    val step = firstPage.nextOffset ?: return emptyList()
+    if (firstPage.total <= 0 || step != firstPage.limit) return drainSpotifyPagesSerially(step, fetchPage)
+
+    val offsets =
+        buildList {
+            var offset = step
+            while (offset < firstPage.total) {
+                add(offset)
+                offset += step
+            }
+        }
+    val pages =
+        coroutineScope {
+            val permits = Semaphore(concurrency)
+            offsets
+                .map { offset ->
+                    async { permits.withPermit { fetchPage(offset) } }
+                }.awaitAll()
+        }
+
+    val items = ArrayList<T>()
+    for (page in pages) {
+        items += page.items
+        if (page.nextOffset == null) break
+    }
+    return items
+}
+
+/** [drainSpotifyPages] with no plan to work from: each page names the offset of the next. */
+private suspend fun <T> drainSpotifyPagesSerially(
+    from: Int,
+    fetchPage: suspend (offset: Int) -> SpotifyPaging<T>,
+): List<T> {
+    val items = ArrayList<T>()
+    var offset = from
+    while (true) {
+        val page = fetchPage(offset)
+        items += page.items
+        offset = page.nextOffset ?: return items
+    }
+}
