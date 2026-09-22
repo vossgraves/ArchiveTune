@@ -157,6 +157,8 @@ fun DeezerLoginScreen(navController: NavController) {
  * Both navigation callbacks are hooked, then a bounded retry runs, because the page carrying the
  * cookie can finish loading before the cookie is in the jar — and nothing follows after that unless
  * the user navigates again, which is the wait this removes.
+ *
+ * Mirrors LoginScreen's bounded-retry client; a shared base is not worth extracting for two callers.
  */
 private class DeezerArlWebViewClient(
     private val onArl: (String) -> Unit,
