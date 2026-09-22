@@ -285,7 +285,7 @@ fun LyricsScreen(
             snapshot == null ||
                 snapshot.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
                 snapshot.providerName.isBlank() ||
-                LyricsUtils.needsWordSyncedUpgrade(prioritizeWordSynced, snapshot.lyrics)
+                LyricsUtils.needsWordSyncedUpgrade(prioritizeWordSynced, snapshot)
         if (!needsFetch) return@LaunchedEffect
         try {
             val existingLyrics =
@@ -297,15 +297,13 @@ fun LyricsScreen(
                 existingLyrics != null &&
                     existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
             // Turning "Prioritise word synced lyrics" on has to be able to *replace* a row stored
-            // before it was on, not merely fill an empty one: otherwise the toggle did nothing for
-            // any song already played once, which is every song the reader would try it on. The
-            // attempt is made once per stored row so a song no provider has word timings for is not
-            // re-swept on every visit.
-            val storedLyrics = existingLyrics?.lyrics
+            // before it was on, not merely fill an empty one; see LyricsUtils.needsWordSyncedUpgrade
+            // for which rows are eligible and LyricsHelper for why only a settled sweep consumes
+            // the attempt, so a song no provider has word timings for is not re-swept on every visit.
             val upgradeToWordSynced =
                 lyricsHelper.shouldAttemptWordSyncedUpgrade(
                     mediaId = mediaMetadata.id,
-                    storedLyrics = storedLyrics,
+                    stored = existingLyrics,
                 )
             if (!upgradeToWordSynced &&
                 existingLyrics != null &&
@@ -322,14 +320,15 @@ fun LyricsScreen(
             withContext(Dispatchers.IO) {
                 database.query {
                     if (upgradeToWordSynced &&
-                        storedLyrics != null &&
+                        existingLyrics != null &&
                         LyricsUtils.hasWordSyncedLyrics(lyricsResult.lyrics)
                     ) {
                         // Replace only the row that was inspected: a better result written while
                         // the providers were being queried must survive.
                         upgradeLyricsIfUnchanged(
                             id = mediaMetadata.id,
-                            expectedLyrics = storedLyrics,
+                            expectedLyrics = existingLyrics.lyrics,
+                            expectedSource = existingLyrics.source,
                             lyrics = lyricsResult.lyrics,
                             providerName = lyricsResult.providerName,
                         )
@@ -346,6 +345,12 @@ fun LyricsScreen(
                         )
                     }
                 }
+            }
+            if (upgradeToWordSynced &&
+                existingLyrics != null &&
+                lyricsResult.lyrics != LyricsEntity.LYRICS_NOT_FOUND
+            ) {
+                lyricsHelper.noteWordSyncedUpgradeSettled(mediaMetadata.id, existingLyrics.lyrics)
             }
         } catch (e: CancellationException) {
             throw e
