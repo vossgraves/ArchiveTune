@@ -174,11 +174,11 @@ private val AppleMusicFallbackGradient =
 
 private val LyricsSwipeStartRegion = 144.dp
 
-// Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus the
-// 64dp blur — and, because the walk rotates, must do so out to the container's furthest corner
-// rather than its nearest edge. Kept in sync with AmLyricsBlurDriftScale in AppleMusicPlayer.kt.
-// Was 1.9x, which was sized for an older, smaller drift and let the blur sample transparent pixels
-// at full offset — a dark band along the trailing edge.
+// Scale of the blurred backdrop. Must cover the screen-proportional wander amplitude
+// (movingBlurWanderMaxDriftDp — 0.85 of the half-diagonal, so the drift grows with the screen)
+// plus the 64dp blur, and, because the walk rotates, must do so out to the container's furthest
+// corner rather than its nearest edge. Kept in sync with AmLyricsBlurDriftScale in
+// AppleMusicPlayer.kt.
 //
 // Scaling alone does NOT make the rotation safe: the layer Modifier.blur produces is clipped to the
 // composable's bounds, so a rotated *screen-shaped* rectangle only covers a circle of
@@ -831,9 +831,10 @@ private fun MovingBlurBackground(
         remember(colors) {
             Brush.verticalGradient(
                 listOf(
-                    // Vibrancy bump (was 0.42 / 0.34 / 0.54): pull these in line with the static
-                    // AppleMusicBackground alphas (0.88 / 0.76 / 0.96) so the moving-blur lyrics
-                    // page reads just as vivid as the player itself, not as a dimmed-afterthought.
+                    // Veil over the blurred artwork, kept well below the static
+                    // AppleMusicBackground's alphas (0.88 / 0.76 / 0.96): at that strength the
+                    // colour mass behind these lyrics flattened into a near-solid block instead of
+                    // reading as artwork, so the page looked dimmer than the player it sits in.
                     colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.55f),
                     colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.42f),
                     colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.62f),

@@ -842,9 +842,10 @@ fun AppleMusicPlayerContent(
                 )
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
-            // Brightened scrim — matches ViviMusic's brighter aesthetic.
-            // Previous alphas (0.42/0.60/0.82) were too dark; reduced to
-            // 0.25/0.40/0.65 so the blurred artwork's color shows through.
+            // Brightened scrim — matches ViviMusic's brighter aesthetic. Kept deliberately light
+            // over the blurred artwork (0.15/0.28/0.50 on the canvas path, 0.28/0.42/0.60 over the
+            // pre-S bitmap) so its colour shows through; only the un-blurred placeholder while the
+            // bitmap loads stays dark enough to hide the bare artwork.
             Box(
                 modifier =
                     Modifier
