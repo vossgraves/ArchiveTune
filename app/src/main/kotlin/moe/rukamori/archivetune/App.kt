@@ -62,6 +62,7 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
+import moe.rukamori.archivetune.utils.AppUpdateInstaller
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.PreferenceStore
@@ -295,6 +296,13 @@ class App :
         // Registers the recurring source refresh. KEEP, so this is a no-op once scheduled rather
         // than pushing the next run further out on every launch.
         moe.rukamori.archivetune.utils.SourceRefreshWorker.schedule(this)
+
+        // A partial download is never resumable and never installable, so a process start is when it
+        // goes. A staged APK survives only while it is still newer than the running build: once the
+        // install has landed, the next launch is what removes the APK the update was carried in.
+        applicationScope.launch(Dispatchers.IO) {
+            AppUpdateInstaller.pruneStagedUpdate(this@App)
+        }
 
         applicationScope.launch(Dispatchers.IO) {
             try {

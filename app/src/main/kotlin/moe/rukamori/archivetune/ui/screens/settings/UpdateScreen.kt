@@ -236,8 +236,11 @@ fun UpdateScreen(
             is AppUpdateInstaller.DownloadState.ReadyToInstall -> {
                 AppUpdateInstaller.acknowledgeResult()
                 if (AppUpdateInstaller.installStagedUpdate(context)) {
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar(context.getString(R.string.download_complete))
+                    // A reused APK was already announced as downloaded when it first arrived.
+                    if (!outcome.reused) {
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.download_complete))
+                        }
                     }
                 } else {
                     // The staged APK is gone (cache evicted while the reader was away) or unreadable.

@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.utils
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.content.FileProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -48,9 +49,9 @@ import java.util.zip.ZipFile
  * survives navigation and a completed download waits for the reader to come back rather than
  * launching the installer from a background process.
  *
- * Nothing here resumes across process death. A half-streamed APK cannot be validated — the file is
- * a bare fragment with no central directory to check — so an interrupted attempt is deleted and the
- * next one starts from byte zero.
+ * Nothing here resumes a *partial* file: a half-streamed APK has no central directory to validate,
+ * so an interrupted attempt is deleted and the next one starts from byte zero. A *completed*
+ * download is a different matter and is kept — see [startDownload].
  */
 object AppUpdateInstaller {
     sealed interface DownloadState {
@@ -62,8 +63,13 @@ object AppUpdateInstaller {
             val fraction: Float?,
         ) : DownloadState
 
-        /** The APK is staged and validated; [installStagedUpdate] will hand it to the installer. */
-        object ReadyToInstall : DownloadState
+        /**
+         * The APK is staged and validated; [installStagedUpdate] hands it to the installer.
+         * [reused] marks a staged file from an earlier attempt rather than a fresh download.
+         */
+        data class ReadyToInstall(
+            val reused: Boolean,
+        ) : DownloadState
 
         /** The attempt failed before anything could be installed. [message] is safe to display. */
         data class Failed(
@@ -92,8 +98,12 @@ object AppUpdateInstaller {
     val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
 
     /**
-     * Starts a download unless one is already running. Two taps must not race each other: both would
-     * stream into the same staging file and the loser's bytes would corrupt the winner's APK.
+     * Runs the update the reader asked for, unless one is already running — two taps must not race
+     * each other into the same staging file.
+     *
+     * An APK already staged for this exact release is installed as-is: re-fetching it would throw
+     * away a finished download, which is what "tap Update, dismiss the system installer, tap Update
+     * again" used to do, and what reopening the app after a download used to do.
      */
     fun startDownload(
         context: Context,
@@ -107,7 +117,7 @@ object AppUpdateInstaller {
                 val result = download(appContext, url)
                 _downloadState.value =
                     result.fold(
-                        onSuccess = { DownloadState.ReadyToInstall },
+                        onSuccess = { reused -> DownloadState.ReadyToInstall(reused) },
                         onFailure = { DownloadState.Failed(it.message) },
                     )
             }
@@ -138,29 +148,45 @@ object AppUpdateInstaller {
     }
 
     /**
-     * Deletes everything under `cache/app_update`: the staged APK whose bytes the installer has
-     * already copied into its own staging area, and the fragment left by a cancelled or killed
-     * download. Nothing in there is resumable, so a process start is the safe moment to drop it —
-     * which is also what stops a previous version's APK from being installed after several releases.
+     * Sweeps the staging directory at process start.
+     *
+     * A partial file is debris by definition. A staged APK is debris once the running build has
+     * reached it — that is the update having installed, or an artifact older than what is already
+     * here — and dropping it then is what stops a previous version's APK outliving its install.
+     * One that is still newer is kept, so a completed download survives closing the app and can be
+     * installed later without fetching it again.
      */
-    fun clearStagedUpdate(context: Context) {
-        updateDirectory(context).deleteRecursively()
+    fun pruneStagedUpdate(context: Context) {
+        val updateDir = updateDirectory(context)
+        File(updateDir, DownloadFileName).delete()
+
+        val apkFile = File(updateDir, ApkFileName)
+        val sourceFile = File(updateDir, SourceFileName)
+        val pendingUpgrade =
+            apkFile.isFile &&
+                sourceFile.isFile &&
+                (stagedVersionCode(context, apkFile) ?: 0L) > BuildConfig.VERSION_CODE.toLong()
+        if (pendingUpgrade) return
+
+        apkFile.delete()
+        sourceFile.delete()
     }
 
     private suspend fun download(
         context: Context,
         url: String,
-    ): Result<Unit> {
+    ): Result<Boolean> {
         if (BuildConfig.DISTRIBUTION != "gms") {
             return Result.failure(IllegalStateException("In-app updates are only available for GMS builds"))
         }
 
         return try {
-            withContext(Dispatchers.IO) { downloadApk(context, url) }
-            Result.success(Unit)
+            val reused = withContext(Dispatchers.IO) { reuseStagedUpdate(context, url) }
+            if (!reused) withContext(Dispatchers.IO) { downloadApk(context, url) }
+            Result.success(reused)
         } catch (e: CancellationException) {
             // Half a file is worse than none: it cannot be validated or installed, and it would sit
-            // in the cache until some later attempt wiped the directory. Cleanup has to outlive the
+            // in the cache until some later attempt happened to wipe it. Cleanup has to outlive the
             // cancellation that got us here.
             withContext(NonCancellable + Dispatchers.IO) { clearStagedUpdate(context) }
             throw e
@@ -168,6 +194,34 @@ object AppUpdateInstaller {
             withContext(Dispatchers.IO) { clearStagedUpdate(context) }
             Result.failure(e)
         }
+    }
+
+    /**
+     * True when the staged APK is already the artifact this URL serves. The record of where it came
+     * from is a sidecar file next to it rather than a preference, so cache eviction can only ever
+     * take both or neither; the build number comes from the APK itself, so a file that is somehow
+     * the version already running is never handed back to the installer.
+     */
+    private fun reuseStagedUpdate(
+        context: Context,
+        url: String,
+    ): Boolean {
+        val updateDir = updateDirectory(context)
+        val apkFile = File(updateDir, ApkFileName)
+        if (!apkFile.isFile) return false
+
+        val sourceFile = File(updateDir, SourceFileName)
+        val sourceUrl =
+            sourceFile
+                .takeIf { it.isFile }
+                ?.let { file -> runCatching { file.readText().trim() }.getOrNull() }
+        if (sourceUrl != url) return false
+
+        return (stagedVersionCode(context, apkFile) ?: 0L) > BuildConfig.VERSION_CODE.toLong()
+    }
+
+    private suspend fun clearStagedUpdate(context: Context) {
+        updateDirectory(context).deleteRecursively()
     }
 
     private suspend fun downloadApk(
@@ -180,8 +234,8 @@ object AppUpdateInstaller {
 
         val updateDir = updateDirectory(context)
         updateDir.mkdirs()
-        // Wipe first, so nothing left by an earlier attempt can be mistaken for this attempt's
-        // result. Downloads here always start from byte zero.
+        // Wipe first, so nothing left by an earlier attempt — including the sidecar that would let
+        // it be reused — can be mistaken for this attempt's result. Downloads start from byte zero.
         updateDir.listFiles()?.forEach { file -> file.deleteRecursively() }
 
         val downloadedFile = File(updateDir, DownloadFileName)
@@ -241,6 +295,10 @@ object AppUpdateInstaller {
             throw IOException("Downloaded update is not a valid APK")
         }
 
+        // Written last, so a killed download can never leave a staged APK that claims to be a
+        // completed one.
+        File(updateDir, SourceFileName).writeText(url)
+
         return apkFile
     }
 
@@ -258,6 +316,21 @@ object AppUpdateInstaller {
         totalBytes
             .takeIf { it > 0L }
             ?.let { total -> (downloadedBytes.toFloat() / total.toFloat()).coerceIn(0f, 1f) }
+
+    /** The versionCode the staged APK declares, or null when it cannot be read as a package. */
+    @Suppress("DEPRECATION")
+    private fun stagedVersionCode(
+        context: Context,
+        apkFile: File,
+    ): Long? =
+        runCatching {
+            val info = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info?.longVersionCode
+            } else {
+                info?.versionCode?.toLong()
+            }
+        }.getOrNull()
 
     private fun extractGmsApk(
         sourceFile: File,
@@ -335,6 +408,7 @@ object AppUpdateInstaller {
     private const val UpdateDirectoryName = "app_update"
     private const val DownloadFileName = "archive-tune-update.download"
     private const val ApkFileName = "archive-tune-update.apk"
+    private const val SourceFileName = "archive-tune-update.source"
     private const val ApkMimeType = "application/vnd.android.package-archive"
     private const val STREAM_BUFFER_SIZE = 256 * 1024
     private const val PROGRESS_UPDATE_INTERVAL_MS = 200L
