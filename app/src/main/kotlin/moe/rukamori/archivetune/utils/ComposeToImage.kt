@@ -31,7 +31,7 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.withClip
 import androidx.core.graphics.withTranslation
 import androidx.core.view.drawToBitmap
-import coil3.ImageLoader
+import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
@@ -225,7 +225,10 @@ object ComposeToImage {
             var coverArtBitmap: Bitmap? = null
             if (coverArtUrl != null) {
                 try {
-                    val imageLoader = ImageLoader(context)
+                    // The process-wide loader, not a fresh ImageLoader(context): a new instance
+                    // carries its own empty memory cache and no disk cache, so every share of the
+                    // same song re-downloaded the cover art.
+                    val imageLoader = SingletonImageLoader.get(context)
                     val request =
                         ImageRequest
                             .Builder(context)
@@ -782,7 +785,7 @@ object ComposeToImage {
             var coverArtBitmap: Bitmap? = null
             if (coverArtUrl != null) {
                 runCatching {
-                    val imageLoader = ImageLoader(context)
+                    val imageLoader = SingletonImageLoader.get(context)
                     val request = ImageRequest.Builder(context)
                         .data(coverArtUrl)
                         .size(canvasSize / 2)
@@ -1025,7 +1028,7 @@ suspend fun saveCoverArtworkFromUrl(
     if (thumbnailUrl.isNullOrBlank()) return null
     return withContext(Dispatchers.IO) {
         runCatching {
-            val loader = coil3.SingletonImageLoader.get(context)
+            val loader = SingletonImageLoader.get(context)
             val request =
                 ImageRequest
                     .Builder(context)
