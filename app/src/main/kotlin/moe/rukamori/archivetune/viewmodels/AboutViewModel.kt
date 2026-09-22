@@ -422,7 +422,7 @@ class AboutViewModel
                             id = "website",
                             iconResId = R.drawable.website,
                             labelResId = R.string.about_content_desc_website,
-                            url = "https://github.com/4nx3b/ArchiveTune",
+                            url = "https://github.com/vossgraves/ArchiveTune",
                         ),
                         AboutLinkUiModel(
                             id = "telegram",
@@ -434,7 +434,7 @@ class AboutViewModel
                             id = "donate",
                             iconResId = R.drawable.coffee,
                             labelResId = R.string.about_content_desc_donate,
-                            url = "https://github.com/4nx3b/ArchiveTune",
+                            url = "https://github.com/vossgraves/ArchiveTune",
                         ),
                         AboutLinkUiModel(
                             id = "discord",
@@ -446,7 +446,7 @@ class AboutViewModel
                             id = "privacy_policy",
                             iconResId = R.drawable.lock,
                             labelResId = R.string.privacy,
-                            url = "https://github.com/4nx3b/ArchiveTune",
+                            url = "https://github.com/vossgraves/ArchiveTune",
                         ),
                     ),
                 leadDevelopers =
@@ -468,7 +468,7 @@ class AboutViewModel
                                         id = "website",
                                         iconResId = R.drawable.website,
                                         labelResId = R.string.about_content_desc_website,
-                                        url = "https://github.com/4nx3b/ArchiveTune",
+                                        url = "https://github.com/rukamori/ArchiveTune",
                                     ),
                                     AboutLinkUiModel(
                                         id = "discord",

@@ -100,7 +100,7 @@ object OpenRouterService {
                             .url(endpoint)
                             .addHeader("Authorization", "Bearer ${apiKey.trim()}")
                             .addHeader("Content-Type", "application/json")
-                            .addHeader("HTTP-Referer", "https://github.com/4nx3b/ArchiveTune")
+                            .addHeader("HTTP-Referer", "https://github.com/vossgraves/ArchiveTune")
                             .addHeader("X-Title", "ArchiveTune")
                             .post(jsonBody.toString().toRequestBody(JSON))
                             .build()
