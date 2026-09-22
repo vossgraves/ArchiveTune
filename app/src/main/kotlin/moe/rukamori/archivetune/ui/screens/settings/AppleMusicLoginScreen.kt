@@ -31,6 +31,7 @@ import moe.rukamori.archivetune.constants.AppleMusicDevTokenKey
 import moe.rukamori.archivetune.constants.AppleMusicMediaUserTokenKey
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -50,9 +51,12 @@ private const val LOGIN_URL = "https://music.apple.com/login"
  * Polls because MusicKit initialises asynchronously and the user token only appears after the
  * Apple ID flow completes — there is no event to hook. Gives up after ~2 minutes so a page that
  * never signs in does not poll for the lifetime of the screen.
+ *
+ * Evaluated through evaluateJavascript(): a "javascript:" URL is a document-load API, so the poll
+ * would not start until the page had arrived, and it re-enters onPageFinished.
  */
 private const val APPLE_HOOK_JS = """
-javascript:(function () {
+(function () {
   if (window.__atAppleHook) return;
   window.__atAppleHook = true;
   var tries = 0;
@@ -101,6 +105,10 @@ fun AppleMusicLoginScreen(navController: NavController) {
         navController = navController,
         title = stringResource(R.string.applemusic_login),
         subtitle = stringResource(R.string.applemusic_login_subtitle),
+        // The injected poll is a live 500 ms timer, and it would otherwise keep running — with the
+        // renderer, the MusicKit instance and the JavaScript interface behind it — for up to two
+        // minutes after the user has closed the sheet. Releasing the WebView tears all of it down.
+        onRelease = { it.releaseAuthWebView("AppleAuth") },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =
@@ -110,7 +118,7 @@ fun AppleMusicLoginScreen(navController: NavController) {
                             url: String?,
                         ) {
                             if (url?.contains("music.apple.com", ignoreCase = true) == true) {
-                                view.loadUrl(APPLE_HOOK_JS)
+                                view.evaluateJavascript(APPLE_HOOK_JS, null)
                             }
                         }
                     }

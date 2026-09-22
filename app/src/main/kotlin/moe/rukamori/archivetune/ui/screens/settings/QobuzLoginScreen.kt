@@ -42,6 +42,7 @@ import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -58,10 +59,13 @@ private val AppSecret = Regex("^[a-f0-9]{32}$")
  * It reports every candidate rather than picking one, because the bundle is full of 32-character hex
  * strings that look exactly like the secret. `keyed:` marks one found next to the app id, which is
  * worth trying first; `legacy:` carries an older bundle's split secret for the app to reassemble.
+ *
+ * Evaluated through evaluateJavascript(): a "javascript:" URL is a document-load API, and this scan
+ * re-fetches every bundle script, so attaching it later than the document finishing costs that wait.
  */
 private val QOBUZ_HOOK_JS =
     """
-    javascript:(function(){
+    (function(){
       if(window.__atQobuzHook)return;window.__atQobuzHook=1;
       var tok=null,app=null;
       function pushCreds(){try{if(tok&&app){QobuzAuth.onCredentials(tok,app);}}catch(e){}}
@@ -199,16 +203,24 @@ fun QobuzLoginScreen(navController: NavController) {
         navController = navController,
         title = stringResource(R.string.qobuz_login),
         subtitle = stringResource(R.string.auth_webview_qobuz_subtitle),
+        // A leaked WebView keeps its in-flight bundle re-fetches alive for the rest of the process,
+        // which is part of why the second visit felt slower than the first.
+        onRelease = { it.releaseAuthWebView("QobuzAuth") },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =
                     object : WebViewClient() {
+                        // onPageFinished and nothing earlier, unlike the YouTube screen's extra
+                        // doUpdateVisitedHistory hook: the scan enumerates script[src] once and then
+                        // latches window.__atQobuzHook, so injecting at commit time would enumerate a
+                        // half-built document and lock out the complete list — fewer secret
+                        // candidates, and a login that fails with nothing to show for it.
                         override fun onPageFinished(
                             view: WebView,
                             url: String?,
                         ) {
                             if (url?.contains("qobuz.com", ignoreCase = true) == true) {
-                                view.loadUrl(QOBUZ_HOOK_JS)
+                                view.evaluateJavascript(QOBUZ_HOOK_JS, null)
                             }
                         }
                     }

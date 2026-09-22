@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -54,9 +55,10 @@ private const val WEB_PLAYER_URL = "https://listen.tidal.com"
 
 // Injected into the web player to forward the live "Authorization: Bearer <token>" header (used on
 // requests to the Tidal API) back to the app. Hooks both fetch() and XMLHttpRequest, once.
+// Evaluated through evaluateJavascript(): a "javascript:" URL is a document-load API, so the hook attaches late.
 private val BEARER_HOOK_JS =
     """
-    javascript:(function(){
+    (function(){
       if(window.__atTidalHook)return;window.__atTidalHook=1;
       function send(h){try{if(!h)return;var m=/Bearer\s+([A-Za-z0-9._\-]+)/i.exec(h);if(m&&m[1]&&m[1].length>20){TidalAuth.onBearer(m[1]);}}catch(e){}}
       try{
@@ -132,6 +134,20 @@ fun TidalLoginScreen(navController: NavController) {
         view.loadUrl(WEB_PLAYER_URL)
     }
 
+    // The web player is a single-page app: signing in can be a route push rather than a document
+    // load, and neither shouldOverrideUrlLoading nor onPageFinished sees every one of those. Hooking
+    // doUpdateVisitedHistory as well is what the YouTube screen does; the script's own
+    // window.__atTidalHook guard makes a repeat injection free, and injecting early only installs the
+    // fetch/XHR wrappers sooner, which is what we want.
+    fun injectBearerHook(
+        view: WebView,
+        url: String?,
+    ) {
+        if (url?.contains("tidal.com", ignoreCase = true) != true) return
+        if (!url.contains("listen", ignoreCase = true)) return
+        view.evaluateJavascript(BEARER_HOOK_JS, null)
+    }
+
     // Handles the PKCE redirect. Returns true if the URL was the redirect and was consumed.
     fun handleRedirect(
         view: WebView,
@@ -169,6 +185,7 @@ fun TidalLoginScreen(navController: NavController) {
         navController = navController,
         title = stringResource(R.string.tidal_login),
         subtitle = stringResource(R.string.auth_webview_tidal_subtitle),
+        onRelease = { it.releaseAuthWebView("TidalAuth") },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =
@@ -192,11 +209,16 @@ fun TidalLoginScreen(navController: NavController) {
                             url: String?,
                         ) {
                             // Only the web-player fallback needs the header hook injected.
-                            if (url?.contains("tidal.com", ignoreCase = true) == true &&
-                                url.contains("listen", ignoreCase = true)
-                            ) {
-                                view.loadUrl(BEARER_HOOK_JS)
-                            }
+                            injectBearerHook(view, url)
+                        }
+
+                        override fun doUpdateVisitedHistory(
+                            view: WebView,
+                            url: String?,
+                            isReload: Boolean,
+                        ) {
+                            super.doUpdateVisitedHistory(view, url, isReload)
+                            injectBearerHook(view, url)
                         }
                     }
                 settings.apply {

@@ -546,7 +546,11 @@ private fun readSpotifyCookies(
         )
     currentUrl?.toSpotifyCookieOrigin()?.let(urls::add)
     val cookies = linkedMapOf<String, String>()
-    cookieManager.flush()
+    // No flush() here. This is a probe: it runs from onPageStarted, onPageFinished and both
+    // shouldOverrideUrlLoading overloads, i.e. several times per navigation, and flush() "will block
+    // the caller until it is done and may perform I/O" — on the UI thread, inside the navigation
+    // path. It also cannot help, because flush() only writes out cookies that getCookie already
+    // returns. The one flush that matters is after a capture, below, so the session survives.
     urls.forEach { url ->
         cookieManager
             .getCookie(url)

@@ -52,7 +52,10 @@ fun resetAuthWebViewSession(
     webView.stopLoading()
     webView.clearHistory()
     webView.clearFormData()
-    webView.clearCache(true)
+    // No clearCache(): the resource cache holds no credential the sign-in can reuse — cookies and
+    // DOM storage do, and they are still cleared below. It is also per-application, so wiping it
+    // here throws away every provider's scripts and images and makes the next open of a
+    // bundle-heavy sign-in page (Apple's login document alone is ~1.8 MB) a full cold download.
     clearWebAuthStorage(context)
 
     val cookieManager = CookieManager.getInstance()
@@ -65,12 +68,35 @@ fun resetAuthWebViewSession(
 
     cookieManager.removeSessionCookies {
         cookieManager.removeAllCookies {
+            // The sheet can be dismissed while this wipe is in flight, so these calls may land on a
+            // WebView that onRelease already destroyed. WebView exposes no isDestroyed(), so a guard
+            // would need screen-held state; left as LoginScreen has always shipped it.
             cookieManager.flush()
             cookieManager.setAcceptCookie(true)
             cookieManager.setAcceptThirdPartyCookies(webView, true)
             onReady()
         }
     }
+}
+
+/**
+ * Tears down a sign-in WebView whose sheet has left the composition.
+ *
+ * A leaked WebView keeps its renderer, its connection pool and any in-flight navigation alive for
+ * the rest of the process, so every visit to a login screen would leave one more of them competing
+ * with the next. [beforeDestroy] runs first so a client can cancel what it posted to the view, then
+ * the bridge is detached, the load stopped and the WebView destroyed.
+ */
+fun WebView.releaseAuthWebView(
+    javascriptInterface: String? = null,
+    beforeDestroy: ((WebView) -> Unit)? = null,
+) {
+    beforeDestroy?.invoke(this)
+    if (javascriptInterface != null) {
+        removeJavascriptInterface(javascriptInterface)
+    }
+    stopLoading()
+    destroy()
 }
 
 private fun clearWebAuthStorage(context: Context) {
