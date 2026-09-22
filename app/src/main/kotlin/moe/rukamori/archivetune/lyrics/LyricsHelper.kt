@@ -23,6 +23,7 @@ import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
@@ -86,32 +87,48 @@ class LyricsHelper
 
         /**
          * True when the caller should refetch a track's lyrics purely because the word-synced
-         * toggle can still improve the stored row, and this process has not tried for this exact
-         * row yet.
+         * toggle can still improve the stored row, and this process has not already settled an
+         * attempt for this exact row.
          *
          * The gates own this decision rather than [getLyricsWithProvider] because they short-circuit
          * on a stored row before the helper is ever asked; see [LyricsUtils.needsWordSyncedUpgrade].
          * The caller must use the returned value to decide *what to write* as well: only a result
-         * that actually carries word-level timing may replace the stored row.
+         * that actually carries word-level timing may replace the stored row, and only the row that
+         * was inspected — see [noteWordSyncedUpgradeSettled].
+         *
+         * Asking does not consume the attempt. See [noteWordSyncedUpgradeSettled] for why the
+         * verdict, not the question, is what gets remembered.
          */
         suspend fun shouldAttemptWordSyncedUpgrade(
             mediaId: String,
-            storedLyrics: String?,
+            stored: LyricsEntity?,
         ): Boolean {
-            val stored = storedLyrics ?: return false
             // getAsync, not the blocking get operator: that one answers with the fallback when the
             // first DataStore snapshot has not landed and the caller is on the main thread, and this
             // is reachable from the lyrics panel's composition effect.
             val prioritizeWordSynced = context.dataStore.getAsync(PrioritizeWordSyncedLyricsKey) ?: false
             if (!LyricsUtils.needsWordSyncedUpgrade(prioritizeWordSynced, stored)) return false
-            return synchronized(wordSyncedUpgradeAttempts) {
-                if (wordSyncedUpgradeAttempts[mediaId] == stored) {
-                    false
-                } else {
-                    wordSyncedUpgradeAttempts[mediaId] = stored
-                    true
-                }
-            }
+            val storedLyrics = stored?.lyrics ?: return false
+            return synchronized(wordSyncedUpgradeAttempts) { wordSyncedUpgradeAttempts[mediaId] != storedLyrics }
+        }
+
+        /**
+         * Records that the upgrade sweep for [mediaId] reached a verdict, so the next gate pass
+         * does not sweep the providers again for the same stored row.
+         *
+         * Deliberately called *after* the fetch rather than when the attempt is granted. A sweep
+         * that never returned — no network, so the helper handed back the sentinel; or the track
+         * was skipped, so the coroutine was cancelled — has learned nothing, and the row is still
+         * worth upgrading. Consuming the attempt there would drop the upgrade for the rest of the
+         * process, and it is MusicService's gate that usually asks first, at track start, which is
+         * exactly when the network and the metadata are least settled. This mirrors the existing
+         * rule that a sentinel row is retried on every play.
+         */
+        fun noteWordSyncedUpgradeSettled(
+            mediaId: String,
+            storedLyrics: String,
+        ) {
+            synchronized(wordSyncedUpgradeAttempts) { wordSyncedUpgradeAttempts[mediaId] = storedLyrics }
         }
 
         suspend fun getLyrics(

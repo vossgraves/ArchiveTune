@@ -1241,18 +1241,18 @@ class MusicService :
             // We also retry a stored LYRICS_NOT_FOUND on every play, because early
             // plays can fail while metadata/network are still settling.
             val stored = database.lyrics(mediaMetadata.id).first()
-            val storedLyrics = stored?.lyrics
             // The word-synced toggle has to be able to *replace* a stored row, not merely fill an
-            // empty one. A track played before the toggle was turned on already holds line-synced
-            // lyrics, and both this gate and the lyrics panel short-circuit on that row, so without
-            // this the toggle did nothing at all for a song that had been played once.
+            // empty one; see LyricsUtils.needsWordSyncedUpgrade for which rows are eligible and
+            // LyricsHelper for why only a settled sweep consumes the attempt.
             val upgradeToWordSynced =
                 lyricsHelper.shouldAttemptWordSyncedUpgrade(
                     mediaId = mediaMetadata.id,
-                    storedLyrics = storedLyrics,
+                    stored = stored,
                 )
             val shouldFetch =
-                stored == null || storedLyrics == LyricsEntity.LYRICS_NOT_FOUND || upgradeToWordSynced
+                stored == null ||
+                    stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
+                    upgradeToWordSynced
             if (shouldFetch) {
                 // getLyricsWithProvider (not getLyrics) preserves the providerName — with the
                 // plain getter the auto-fetched lyrics were stored with a blank attribution
@@ -1261,14 +1261,15 @@ class MusicService :
                 val lyricsResult = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
                     if (upgradeToWordSynced &&
-                        storedLyrics != null &&
+                        stored != null &&
                         LyricsUtils.hasWordSyncedLyrics(lyricsResult.lyrics)
                     ) {
                         // Replace the row that was inspected, not whatever sits there now: a better
                         // result written while the providers were being queried must survive.
                         upgradeLyricsIfUnchanged(
                             id = mediaMetadata.id,
-                            expectedLyrics = storedLyrics,
+                            expectedLyrics = stored.lyrics,
+                            expectedSource = stored.source,
                             lyrics = lyricsResult.lyrics,
                             providerName = lyricsResult.providerName,
                         )
@@ -1279,6 +1280,12 @@ class MusicService :
                             providerName = lyricsResult.providerName,
                         )
                     }
+                }
+                if (upgradeToWordSynced &&
+                    stored != null &&
+                    lyricsResult.lyrics != LyricsEntity.LYRICS_NOT_FOUND
+                ) {
+                    lyricsHelper.noteWordSyncedUpgradeSettled(mediaMetadata.id, stored.lyrics)
                 }
             }
         }

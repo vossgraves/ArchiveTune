@@ -1807,16 +1807,27 @@ interface DatabaseDao {
         notFoundLyrics: String,
     ): Int
 
+    /**
+     * Replaces a lyrics row only if it is still exactly the one a caller decided to improve.
+     *
+     * Both the text and the source are part of the match. SQLite has no row version here, and the
+     * full text stands in for one: any writer that changes the lyrics invalidates the update. The
+     * source is checked separately because it can change without the text changing — a translation
+     * of the same text, say — and because the statement re-stamps `source` unconditionally, so a
+     * row that has since become a hand edit, a hand-picked result or a translation must not be
+     * rewritten as if it came from a provider.
+     */
     @Query(
         """
         UPDATE lyrics
         SET lyrics = :lyrics, source = :source, providerName = :providerName, updatedAt = :updatedAt
-        WHERE id = :id AND lyrics = :expectedLyrics
+        WHERE id = :id AND lyrics = :expectedLyrics AND source = :expectedSource
         """,
     )
     fun upgradeLyricsIfUnchanged(
         id: String,
         expectedLyrics: String,
+        expectedSource: String,
         lyrics: String,
         source: String = LyricsEntity.Source.REMOTE.value,
         providerName: String = "",

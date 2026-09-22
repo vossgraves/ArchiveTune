@@ -687,18 +687,25 @@ object LyricsUtils {
      * line-synced text forever and turning the toggle on changed nothing for it, which is
      * precisely the case the toggle is meant to serve.
      *
-     * It deliberately excludes the sentinel and blanks, which the existing gates already retry,
-     * so the callers can treat it as the only new reason to fetch.
+     * Only a row this app fetched for itself is eligible. A USER_EDIT is the reader's own
+     * text, an AI_TRANSLATION is one they spent a request on, and a USER_SELECTION is a result
+     * they picked by hand — the toggle asks for better automatic lyrics, not permission to
+     * discard any of those, and the table's other writers preserve them deliberately. EMBEDDED
+     * is left out because the local scanner owns re-reading a file's own tags, not a provider.
+     *
+     * The sentinel and blanks are excluded rather than merely handled here: both gates already
+     * retry them, so this need only be the *new* reason to fetch.
      */
     fun needsWordSyncedUpgrade(
         prioritizeWordSynced: Boolean,
-        storedLyrics: String?,
+        stored: LyricsEntity?,
     ): Boolean =
         prioritizeWordSynced &&
-            storedLyrics != null &&
-            storedLyrics != LyricsEntity.LYRICS_NOT_FOUND &&
-            storedLyrics.isNotBlank() &&
-            !hasWordSyncedLyrics(storedLyrics)
+            stored != null &&
+            stored.source == LyricsEntity.Source.REMOTE.value &&
+            stored.lyrics != LyricsEntity.LYRICS_NOT_FOUND &&
+            stored.lyrics.isNotBlank() &&
+            !hasWordSyncedLyrics(stored.lyrics)
 
     fun parseTtml(
         lyrics: String,
