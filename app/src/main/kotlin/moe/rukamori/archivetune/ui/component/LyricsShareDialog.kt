@@ -87,7 +87,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.palette.graphics.Palette
 import androidx.window.core.layout.WindowSizeClass
-import coil3.ImageLoader
+import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
@@ -171,7 +171,9 @@ fun LyricsShareImageDialog(
         val extractedStyle =
             withContext(Dispatchers.IO) {
                 runCatching {
-                    val loader = ImageLoader(context)
+                    // Shared loader, so the cover comes from Coil's caches instead of a private
+                    // ImageLoader that re-downloads it every time the dialog opens.
+                    val loader = SingletonImageLoader.get(context)
                     val request =
                         ImageRequest
                             .Builder(context)
