@@ -639,6 +639,8 @@ class LibraryMixViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     syncUtils.performFullSync()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     timber.log.Timber.e(e, "Error during manual sync")
                     reportException(e)
