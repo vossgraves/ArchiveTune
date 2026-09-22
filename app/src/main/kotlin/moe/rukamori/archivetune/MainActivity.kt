@@ -661,9 +661,13 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Must run before super.onCreate, and before any content is set: the launcher icon then
-        // stays on @color/splash_window_background while the app prepares, so the first thing the
-        // reader sees after it is this launch's opening animation rather than a bare window.
+        // Must run before super.onCreate, and before any content is set: on API 31+ the launcher
+        // icon then stays on @color/splash_window_background while the app prepares, and below 31
+        // the launch window's adaptive colour is held instead, so the first thing the reader sees
+        // after it is this launch's opening animation rather than a bare window. This is the
+        // library db79d42ac dropped as broken: it returns because that attempt's theme switch and
+        // unbounded hold are both gone — the base theme is kept, no exit listener is registered,
+        // and the hold is capped at two seconds by the release effect inside setContent.
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         splashScreen.setKeepOnScreenCondition { !isReady }
@@ -1125,13 +1129,18 @@ class MainActivity : ComponentActivity() {
                     }
 
                 // Let the system splash go only when this launch knows what it is about to draw:
-                // onboarding out of Loading, and the preference store's first read back, since
-                // the opening animation latches its toggle from there. It sits above the branch
-                // below so a first run — which shows onboarding rather than the animation —
-                // releases the splash too. The wait is bounded because this is now the only thing
-                // between the splash screen and the app: a launch that never reports its state
-                // must still not be able to strand the reader, the same reason the overlay caps
-                // itself. Two seconds is far beyond an honest settle (both reads are local).
+                // onboarding out of Loading and the preference store's first disk read landed, so
+                // the curtain cannot lift on values the store has yet to load. It sits above the
+                // branch below so a first run — which shows onboarding rather than the animation
+                // — releases the splash too. The wait is bounded because this is now the only
+                // thing between the splash screen and the app: a launch that never reports its
+                // state must still not be able to strand the reader, the same reason the overlay
+                // caps itself. Two seconds is far beyond an honest settle (both reads are local),
+                // and the read's runCatching absorbs the cancellation this file would normally
+                // rethrow — the release below is unconditional, so either path still runs it and
+                // neither mechanism may be dropped as redundant. The hold vetoes drawing, not
+                // composition, so this launch's opening animation is already burning its timers
+                // while held: only its tail is guaranteed on screen once the curtain lifts.
                 LaunchedEffect(Unit) {
                     withTimeoutOrNull(2_000L) {
                         snapshotFlow { onboardingState != OnboardingScreenState.Loading }.first { it }
