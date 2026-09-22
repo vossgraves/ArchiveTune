@@ -16,6 +16,7 @@ import moe.rukamori.archivetune.betterlyrics.QRCParser
 import moe.rukamori.archivetune.betterlyrics.TTMLParser
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import java.lang.Character.UnicodeScript
+import kotlin.math.roundToLong
 
 data class LyricsRomanizationPreferences(
     val romanizeJapanese: Boolean,
@@ -752,11 +753,15 @@ object LyricsUtils {
      * [ENHANCED_LRC_LAST_WORD_DEFAULT_DURATION_MS] guess, which can run past the line it belongs to and keep
      * the karaoke highlight on a word while the next line is already singing. The final line has no
      * following stamp to clamp against, so it keeps a generous fixed tail.
+     *
+     * Only guessed tails are touched. A word end from any other producer is real, and a line
+     * legitimately runs past the next one there (duets, instrumental tails), so clamping those would
+     * cut a line short; [hasGuessedLastWordEnd] is what tells the two apart.
      */
     private fun clampEnhancedLrcLastWordEnds(entries: List<LyricsEntry>): List<LyricsEntry> =
         entries.mapIndexed { index, entry ->
             val words = entry.words ?: return@mapIndexed entry
-            if (words.isEmpty()) return@mapIndexed entry
+            if (words.isEmpty() || !hasGuessedLastWordEnd(words)) return@mapIndexed entry
             val nextStartMs =
                 entries
                     .getOrNull(index + 1)
@@ -771,6 +776,19 @@ object LyricsUtils {
                 entry
             }
         }
+
+    /**
+     * True when [words] ends in the tail [extractEnhancedLrcWordTimestamps] invents for a last word.
+     * That is the extractor's signature — the duration is not read from anywhere — so it doubles as
+     * the provenance check that keeps the clamp off real word timings.
+     */
+    private fun hasGuessedLastWordEnd(words: List<WordTimestamp>): Boolean {
+        val lastWord = words.last()
+        val startMs = (lastWord.startTime * 1000.0).roundToLong()
+        val guessedDurationMs =
+            ENHANCED_LRC_LAST_WORD_DEFAULT_DURATION_MS.coerceAtLeast(MIN_WORD_DURATION_MS)
+        return (lastWord.endTime * 1000.0).roundToLong() - startMs == guessedDurationMs
+    }
 
     private fun extractQrcTranslations(lyrics: String): Map<Long, String> {
         val wordTimedStartMs = mutableSetOf<Long>()
