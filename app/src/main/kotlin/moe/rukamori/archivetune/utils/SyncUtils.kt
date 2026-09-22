@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.utils
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -114,6 +115,8 @@ class SyncUtils
                             syncAutoSyncPlaylists()
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.e(e, "Error during full sync")
                 } finally {
@@ -144,6 +147,8 @@ class SyncUtils
                             }
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.e(e, "Error cleaning up duplicate playlists")
                 }
@@ -258,6 +263,7 @@ class SyncUtils
                                     YouTube
                                         .likeVideo(song.id, song.liked)
                                         .onFailure { error ->
+                                            if (error is CancellationException) throw error
                                             Timber.w(error, "likeSongs: Failed to sync like for ${song.id}")
                                         }
                                 }
@@ -333,6 +339,7 @@ class SyncUtils
                             }
                         }
                     }.onFailure { e ->
+                        if (e is CancellationException) throw e
                         Timber.e(e, "syncLikedSongs: Failed to sync liked songs")
                     }
             }
@@ -399,6 +406,7 @@ class SyncUtils
                             }
                         }
                     }.onFailure { e ->
+                        if (e is CancellationException) throw e
                         Timber.e(e, "syncLibrarySongs: Failed to sync library songs")
                     }
             }
@@ -462,6 +470,8 @@ class SyncUtils
                                                     database.album(album.id).firstOrNull()?.let { newDbAlbum ->
                                                         database.update(newDbAlbum.album.localToggleLike())
                                                     }
+                                                } catch (e: CancellationException) {
+                                                    throw e
                                                 } catch (e: Exception) {
                                                     Timber.w("syncLikedAlbums: Failed to insert album ${album.id}", e)
                                                 }
@@ -469,12 +479,14 @@ class SyncUtils
                                                 database.update(dbAlbum.album.localToggleLike())
                                             }
                                         }.onFailure { e ->
+                                            if (e is CancellationException) throw e
                                             Timber.w("syncLikedAlbums: Failed to fetch album ${album.id}", e)
                                         }
                                 }
                             }
                         }
                     }.onFailure { e ->
+                        if (e is CancellationException) throw e
                         Timber.e(e, "syncLikedAlbums: Failed to sync liked albums")
                     }
             }
@@ -564,6 +576,7 @@ class SyncUtils
                             }
                         }
                     }.onFailure { e ->
+                        if (e is CancellationException) throw e
                         Timber.e(e, "syncArtistsSubscriptions: Failed to sync artist subscriptions")
                     }
             }
@@ -665,6 +678,8 @@ class SyncUtils
                                     localPlaylistIdByBrowseId[playlist.id] = likedEntity.id
                                     Timber.d("syncSavedPlaylists: Updated existing playlist ${playlist.title} (${playlist.id})")
                                 }
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 Timber.e(e, "syncSavedPlaylists: Failed to upsert playlist ${playlist.title}")
                             }
@@ -694,11 +709,14 @@ class SyncUtils
                                     playlistId = playlistId,
                                     authoritative = authoritative,
                                 )
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 Timber.e(e, "Failed to sync playlist ${playlist.title}")
                             }
                         }
                     }.onFailure { e ->
+                        if (e is CancellationException) throw e
                         Timber.e(e, "syncSavedPlaylists: Failed to fetch playlists from YouTube")
                     }
             }
@@ -725,6 +743,8 @@ class SyncUtils
                                 .first()
                                 .filter { it.playlist.isAutoSync && it.playlist.browseId != null },
                         )
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Timber.e(e, "syncAutoSyncPlaylists: Failed to fetch auto-sync playlists")
                         return@coroutineScope
@@ -745,6 +765,8 @@ class SyncUtils
                                     }
                                 syncPlaylist(browseId, playlist.playlist.id)
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             Timber.e(e, "Failed to sync playlist ${playlist.playlist.name}")
                         }
@@ -783,6 +805,7 @@ class SyncUtils
 
             val page =
                 YouTube.playlist(browseId).completed().getOrElse { e ->
+                    if (e is CancellationException) throw e
                     Timber.e(e, "syncPlaylist: Failed to fetch playlist from YouTube")
                     if (propagateFailures) {
                         throw e
@@ -821,6 +844,8 @@ class SyncUtils
                         .first()
                         .sortedBy { it.map.position }
                         .map { it.song.id }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.w("syncPlaylist: Failed to fetch local songs", e)
                     emptyList()
@@ -872,6 +897,8 @@ class SyncUtils
                     }
                 }
                 Timber.d("syncPlaylist: Successfully synced playlist")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "syncPlaylist: Error during database transaction")
                 if (propagateFailures) {
