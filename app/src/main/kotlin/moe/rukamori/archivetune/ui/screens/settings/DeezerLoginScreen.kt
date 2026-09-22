@@ -46,6 +46,30 @@ private const val LOGIN_URL = "https://www.deezer.com/login"
 /** Cookies are read for this origin; the `arl` cookie is scoped to `.deezer.com`. */
 private const val COOKIE_ORIGIN = "https://www.deezer.com"
 
+// The cookie can land after the page that carries it has finished loading, and nothing follows until
+// the user navigates again. Same bounded retry as the YouTube screen's extraction.
+private const val ARL_RETRY_DELAY_MS = 1_000L
+private const val ARL_EXTRACTION_ATTEMPTS = 10
+
+/**
+ * Pulls `arl` out of the cookie jar. Read through [CookieManager] rather than `document.cookie`
+ * because the cookie is HttpOnly and therefore invisible to JavaScript.
+ *
+ * No `CookieManager.flush()` first: per the platform docs flush only "ensures all cookies currently
+ * accessible through the getCookie API are written to persistent storage", so it cannot reveal a
+ * cookie that getCookie does not already return — and it blocks the calling thread while doing I/O,
+ * which is the UI thread on every retry tick.
+ */
+private fun readDeezerArl(): String? =
+    CookieManager
+        .getInstance()
+        .getCookie(COOKIE_ORIGIN)
+        ?.split(';')
+        ?.firstNotNullOfOrNull { part ->
+            val (name, value) = part.split('=', limit = 2).takeIf { it.size == 2 } ?: return@firstNotNullOfOrNull null
+            value.trim().takeIf { name.trim().equals("arl", ignoreCase = true) && it.isNotEmpty() }
+        }
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun DeezerLoginScreen(navController: NavController) {
@@ -59,20 +83,6 @@ fun DeezerLoginScreen(navController: NavController) {
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
-
-    /**
-     * Pulls `arl` out of the cookie jar. Read through [CookieManager] rather than `document.cookie`
-     * because the cookie is HttpOnly and therefore invisible to JavaScript.
-     */
-    fun readArl(): String? =
-        CookieManager
-            .getInstance()
-            .getCookie(COOKIE_ORIGIN)
-            ?.split(';')
-            ?.firstNotNullOfOrNull { part ->
-                val (name, value) = part.split('=', limit = 2).takeIf { it.size == 2 } ?: return@firstNotNullOfOrNull null
-                value.trim().takeIf { name.trim().equals("arl", ignoreCase = true) && it.isNotEmpty() }
-            }
 
     fun finishLogin(arl: String) {
         scope.launch {
@@ -106,19 +116,20 @@ fun DeezerLoginScreen(navController: NavController) {
         navController = navController,
         title = stringResource(R.string.deezer_login),
         subtitle = stringResource(R.string.auth_webview_deezer_subtitle),
+        // Stops the pending retry when the sheet closes, the way the YouTube screen stops its own
+        // extraction runnable, so a dismissed Deezer sheet leaves nothing posting to a dead WebView.
+        onRelease = { releasedWebView ->
+            (releasedWebView.webViewClient as? DeezerArlWebViewClient)?.release(releasedWebView)
+            releasedWebView.stopLoading()
+            releasedWebView.destroy()
+        },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =
-                    object : WebViewClient() {
-                        override fun onPageFinished(
-                            view: WebView,
-                            url: String?,
-                        ) {
-                            // Checked on every completed navigation rather than on a single redirect
-                            // URL: Deezer has no post-login redirect we control, and the cookie can
-                            // land on any of several pages depending on how the account signs in.
-                            val arl = readArl() ?: return
-                            if (!handled.compareAndSet(false, true)) return
+                    DeezerArlWebViewClient { arl ->
+                        // The retry stops at the first cookie it sees, but a later navigation starts a
+                        // new one; only the first attempt across both may save and navigate.
+                        if (handled.compareAndSet(false, true)) {
                             finishLogin(arl)
                         }
                     }
@@ -139,4 +150,65 @@ fun DeezerLoginScreen(navController: NavController) {
             }
         },
     )
+}
+
+/**
+ * Watches for the `arl` cookie across the sign-in navigations.
+ *
+ * Checked on every navigation rather than on a single redirect URL: Deezer has no post-login redirect
+ * we control, and the cookie can land on any of several pages depending on how the account signs in.
+ * Both navigation callbacks are hooked, then a bounded retry runs, because the page carrying the
+ * cookie can finish loading before the cookie is in the jar — and nothing follows after that unless
+ * the user navigates again, which is the wait this removes.
+ */
+private class DeezerArlWebViewClient(
+    private val onArl: (String) -> Unit,
+) : WebViewClient() {
+    private var extractionRunnable: Runnable? = null
+
+    override fun onPageFinished(
+        view: WebView,
+        url: String?,
+    ) {
+        super.onPageFinished(view, url)
+        scheduleArlExtraction(view)
+    }
+
+    override fun doUpdateVisitedHistory(
+        view: WebView,
+        url: String?,
+        isReload: Boolean,
+    ) {
+        super.doUpdateVisitedHistory(view, url, isReload)
+        scheduleArlExtraction(view)
+    }
+
+    fun release(view: WebView) {
+        extractionRunnable?.let(view::removeCallbacks)
+        extractionRunnable = null
+    }
+
+    private fun scheduleArlExtraction(view: WebView) {
+        extractionRunnable?.let(view::removeCallbacks)
+        extractionRunnable = null
+
+        var remainingAttempts = ARL_EXTRACTION_ATTEMPTS
+        val runnable =
+            object : Runnable {
+                override fun run() {
+                    val arl = readDeezerArl()
+                    if (arl != null) {
+                        onArl(arl)
+                        return
+                    }
+
+                    remainingAttempts -= 1
+                    if (remainingAttempts > 0) {
+                        view.postDelayed(this, ARL_RETRY_DELAY_MS)
+                    }
+                }
+            }
+        extractionRunnable = runnable
+        view.post(runnable)
+    }
 }
