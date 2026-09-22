@@ -31,6 +31,7 @@ import moe.rukamori.archivetune.constants.AppleMusicDevTokenKey
 import moe.rukamori.archivetune.constants.AppleMusicMediaUserTokenKey
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -108,12 +109,7 @@ fun AppleMusicLoginScreen(navController: NavController) {
         // The injected poll is a live 500 ms timer, and it would otherwise keep running — with the
         // renderer, the MusicKit instance and the JavaScript interface behind it — for up to two
         // minutes after the user has closed the sheet. Releasing the WebView tears all of it down.
-        // The YouTube screen releases its WebView the same way.
-        onRelease = { releasedWebView ->
-            releasedWebView.removeJavascriptInterface("AppleAuth")
-            releasedWebView.stopLoading()
-            releasedWebView.destroy()
-        },
+        onRelease = { it.releaseAuthWebView("AppleAuth") },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =

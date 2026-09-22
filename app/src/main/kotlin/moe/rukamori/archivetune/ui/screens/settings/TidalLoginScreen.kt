@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -186,14 +187,7 @@ fun TidalLoginScreen(navController: NavController) {
         navController = navController,
         title = stringResource(R.string.tidal_login),
         subtitle = stringResource(R.string.auth_webview_tidal_subtitle),
-        // Without this the WebView outlives the sheet: it keeps its renderer, its connection pool
-        // and any in-flight navigation alive, so every visit to this screen leaks one more live
-        // WebView competing with the next one. The YouTube screen releases its WebView the same way.
-        onRelease = { releasedWebView ->
-            releasedWebView.removeJavascriptInterface("TidalAuth")
-            releasedWebView.stopLoading()
-            releasedWebView.destroy()
-        },
+        onRelease = { it.releaseAuthWebView("TidalAuth") },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =

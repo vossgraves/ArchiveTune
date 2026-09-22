@@ -36,6 +36,7 @@ import moe.rukamori.archivetune.constants.DeezerEnabledKey
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -116,13 +117,9 @@ fun DeezerLoginScreen(navController: NavController) {
         navController = navController,
         title = stringResource(R.string.deezer_login),
         subtitle = stringResource(R.string.auth_webview_deezer_subtitle),
-        // Stops the pending retry when the sheet closes, the way the YouTube screen stops its own
-        // extraction runnable, so a dismissed Deezer sheet leaves nothing posting to a dead WebView.
-        onRelease = { releasedWebView ->
-            (releasedWebView.webViewClient as? DeezerArlWebViewClient)?.release(releasedWebView)
-            releasedWebView.stopLoading()
-            releasedWebView.destroy()
-        },
+        // Stops the pending retry when the sheet closes, so a dismissed Deezer sheet leaves nothing
+        // posting to a dead WebView.
+        onRelease = { it.releaseAuthWebView(beforeDestroy = ::stopDeezerArlExtraction) },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =
@@ -211,4 +208,9 @@ private class DeezerArlWebViewClient(
         extractionRunnable = runnable
         view.post(runnable)
     }
+}
+
+/** Cancels the extraction runnable the Deezer client posted, before the WebView is destroyed. */
+private fun stopDeezerArlExtraction(view: WebView) {
+    (view.webViewClient as? DeezerArlWebViewClient)?.release(view)
 }

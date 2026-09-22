@@ -42,6 +42,7 @@ import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -203,15 +204,9 @@ fun QobuzLoginScreen(navController: NavController) {
         navController = navController,
         title = stringResource(R.string.qobuz_login),
         subtitle = stringResource(R.string.auth_webview_qobuz_subtitle),
-        // The WebView is not left to the garbage collector: a leaked one keeps its renderer, its
-        // in-flight bundle re-fetches and the JavaScript interface bridge alive for the rest of the
-        // process, which is part of why the second visit felt slower than the first. The YouTube
-        // screen releases its WebView the same way.
-        onRelease = { releasedWebView ->
-            releasedWebView.removeJavascriptInterface("QobuzAuth")
-            releasedWebView.stopLoading()
-            releasedWebView.destroy()
-        },
+        // A leaked WebView keeps its in-flight bundle re-fetches alive for the rest of the process,
+        // which is part of why the second visit felt slower than the first.
+        onRelease = { it.releaseAuthWebView("QobuzAuth") },
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =

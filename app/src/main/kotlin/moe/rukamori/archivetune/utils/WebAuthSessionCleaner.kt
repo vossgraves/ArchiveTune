@@ -76,6 +76,26 @@ fun resetAuthWebViewSession(
     }
 }
 
+/**
+ * Tears down a sign-in WebView whose sheet has left the composition.
+ *
+ * A leaked WebView keeps its renderer, its connection pool and any in-flight navigation alive for
+ * the rest of the process, so every visit to a login screen would leave one more of them competing
+ * with the next. [beforeDestroy] runs first so a client can cancel what it posted to the view, then
+ * the bridge is detached, the load stopped and the WebView destroyed.
+ */
+fun WebView.releaseAuthWebView(
+    javascriptInterface: String? = null,
+    beforeDestroy: ((WebView) -> Unit)? = null,
+) {
+    beforeDestroy?.invoke(this)
+    if (javascriptInterface != null) {
+        removeJavascriptInterface(javascriptInterface)
+    }
+    stopLoading()
+    destroy()
+}
+
 private fun clearWebAuthStorage(context: Context) {
     val appContext = context.applicationContext
     WebStorage.getInstance().deleteAllData()

@@ -27,6 +27,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
+import moe.rukamori.archivetune.utils.releaseAuthWebView
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import moe.rukamori.archivetune.viewmodels.LoginScreenState
 import moe.rukamori.archivetune.viewmodels.LoginViewModel
@@ -82,12 +83,7 @@ fun LoginScreen(
         navController = navController,
         title = stringResource(R.string.login),
         subtitle = stringResource(R.string.auth_webview_youtube_subtitle),
-        onRelease = { releasedWebView ->
-            (releasedWebView.webViewClient as? YouTubeLoginWebViewClient)?.release(releasedWebView)
-            releasedWebView.removeJavascriptInterface("Android")
-            releasedWebView.stopLoading()
-            releasedWebView.destroy()
-        },
+        onRelease = { it.releaseAuthWebView("Android", ::stopYouTubeLoginExtraction) },
         factory = { context ->
             WebView(context).apply {
                 val cookieManager = CookieManager.getInstance()
@@ -209,6 +205,14 @@ private class YouTubeLoginWebViewClient(
         lastCapturedCookie = mergedCookie
         onCookiesCaptured(mergedCookie)
     }
+}
+
+/**
+ * Cancels the extraction runnable the YouTube client posted, so a released sheet stops posting
+ * against a WebView that is about to be destroyed.
+ */
+private fun stopYouTubeLoginExtraction(view: WebView) {
+    (view.webViewClient as? YouTubeLoginWebViewClient)?.release(view)
 }
 
 private fun String?.isYouTubeUrl(): Boolean {
