@@ -29,6 +29,7 @@ import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.listentogether.ListenTogetherClient
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
+import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import java.io.File
@@ -173,6 +174,14 @@ object AppModule {
         databaseProvider: DatabaseProvider,
     ): Cache =
         LazyCache {
+            // The evictor's budget cannot be changed after construction (SimpleCache has no
+            // setEvictor), so this one reading decides the bound for the whole process. Reading it
+            // before the first DataStore snapshot lands — which is what `dataStore.get` does on the
+            // main thread, where the first cache touch can happen (onPlayerError walks the cache) —
+            // would silently pin a reader's chosen size to the 1024 MB fallback until the app is
+            // killed. Same failure, same guard as Coil's loader in App.newImageLoader.
+            PreferenceStore.blockUntilLoaded()
+
             val cacheSize = context.dataStore.get(MaxSongCacheSizeKey, 1024)
             val evictor =
                 when (cacheSize) {
