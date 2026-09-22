@@ -60,9 +60,8 @@ private val AppSecret = Regex("^[a-f0-9]{32}$")
  * strings that look exactly like the secret. `keyed:` marks one found next to the app id, which is
  * worth trying first; `legacy:` carries an older bundle's split secret for the app to reassemble.
  *
- * Evaluated through evaluateJavascript() rather than loaded as a "javascript:" URL: the latter is a
- * document-load API that queues behind pending resource loads, and this scan re-fetches every
- * bundle script, so attaching it any later than the document finishing costs the user that wait.
+ * Evaluated through evaluateJavascript(): a "javascript:" URL is a document-load API, and this scan
+ * re-fetches every bundle script, so attaching it later than the document finishing costs that wait.
  */
 private val QOBUZ_HOOK_JS =
     """

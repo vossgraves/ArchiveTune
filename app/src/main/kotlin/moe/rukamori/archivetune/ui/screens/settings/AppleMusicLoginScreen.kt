@@ -52,9 +52,8 @@ private const val LOGIN_URL = "https://music.apple.com/login"
  * Apple ID flow completes — there is no event to hook. Gives up after ~2 minutes so a page that
  * never signs in does not poll for the lifetime of the screen.
  *
- * Evaluated through evaluateJavascript() rather than loaded as a "javascript:" URL: the latter is a
- * document-load API that queues behind pending resource loads, so the poll would not start until
- * after the page had already finished arriving, and it re-enters onPageFinished.
+ * Evaluated through evaluateJavascript(): a "javascript:" URL is a document-load API, so the poll
+ * would not start until the page had arrived, and it re-enters onPageFinished.
  */
 private const val APPLE_HOOK_JS = """
 (function () {

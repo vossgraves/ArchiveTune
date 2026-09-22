@@ -55,9 +55,7 @@ private const val WEB_PLAYER_URL = "https://listen.tidal.com"
 
 // Injected into the web player to forward the live "Authorization: Bearer <token>" header (used on
 // requests to the Tidal API) back to the app. Hooks both fetch() and XMLHttpRequest, once.
-// Evaluated through evaluateJavascript() rather than loaded as a "javascript:" URL, which is a
-// document-load API: it queues behind pending resource loads and cannot run while the page is
-// still arriving, so the hook would attach late.
+// Evaluated through evaluateJavascript(): a "javascript:" URL is a document-load API, so the hook attaches late.
 private val BEARER_HOOK_JS =
     """
     (function(){
