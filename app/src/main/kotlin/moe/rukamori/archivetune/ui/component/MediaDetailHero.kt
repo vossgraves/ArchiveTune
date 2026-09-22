@@ -408,6 +408,9 @@ public fun MediaDetailPrimaryActions(
         ) {
             MediaDetailBalancedActionLayout(
                 actionRowScope = this,
+                // The horizontal scroll below measures this layout with an unbounded max width, so
+                // this min — the viewport itself — is the only honest width it is handed. The pill
+                // cap in MediaDetailBalancedActionLayout depends on it.
                 modifier = Modifier.widthIn(min = actionViewportWidth),
             ) {
                 onShuffle?.let { shuffle ->
@@ -515,12 +518,15 @@ private fun MediaDetailBalancedActionLayout(
         val playActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.Play }
         val toggleAddActionIndex = measurables.indexOfFirst { it.layoutId == MediaDetailActionLayoutId.ToggleAdd }
         val actionConstraints = constraints.copy(minWidth = 0, minHeight = 0)
-        // Satellites are measured before the play pill so the pill can be handed the width that is
-        // really left next to them. Without that cap a long translation ("Reproducir", "Wiedergabe")
-        // made the cluster wider than the viewport, and centring the pill alone then ran one side of
-        // the row into the edge while the other kept a big gap — the lopsided action row. Picking the
-        // pill's constraint up front also keeps this to ONE measure per child, as Compose requires:
-        // re-measuring it afterwards would throw at runtime.
+        // The action Row scrolls horizontally, so this layout is measured with an unbounded max
+        // width: minWidth, pinned to the viewport by `Modifier.widthIn(min = actionViewportWidth)`,
+        // is the only width worth capping the pill against. Satellites are measured before the play
+        // pill so it can be handed the width that is really left next to them. Without that cap a
+        // long translation ("Reproducir", "Wiedergabe") made the cluster wider than the viewport,
+        // and centring the pill alone then ran one side of the row into the edge while the other
+        // kept a big gap — the lopsided action row. Choosing the pill's constraint up front also
+        // keeps this to ONE measure per child, as Compose requires: re-measuring it afterwards
+        // would throw at runtime.
         val satellitePlaceables =
             measurables.mapIndexed { index, measurable ->
                 if (index == playActionIndex) null else measurable.measure(actionConstraints)
@@ -557,14 +563,13 @@ private fun MediaDetailBalancedActionLayout(
             rightActions.sumOf { it.width } +
                 actionSpacing * (rightActions.size - 1).coerceAtLeast(0)
         val sideSpacing = if (leftActions.isEmpty() && rightActions.isEmpty()) 0 else actionSpacing
+        // When the satellites alone leave no room for the pill, leave it unconstrained and let the
+        // row scroll, as it did before the cap existed.
+        val remainingPlayWidth = constraints.minWidth - leftActionsWidth - rightActionsWidth - 2 * sideSpacing
         val playAction =
             measurables.getOrNull(playActionIndex)?.measure(
-                if (constraints.hasBoundedWidth) {
-                    actionConstraints.copy(
-                        maxWidth =
-                            (constraints.maxWidth - leftActionsWidth - rightActionsWidth - 2 * sideSpacing)
-                                .coerceAtLeast(0),
-                    )
+                if (remainingPlayWidth > 0) {
+                    actionConstraints.copy(maxWidth = remainingPlayWidth)
                 } else {
                     actionConstraints
                 },
@@ -587,6 +592,12 @@ private fun MediaDetailBalancedActionLayout(
                 centeredContentWidth
             } else {
                 playAction.width + 2 * (maxOf(leftActionsWidth, rightActionsWidth) + sideSpacing)
+            }
+        val clusterWidth =
+            if (playAction == null) {
+                centeredContentWidth
+            } else {
+                leftActionsWidth + rightActionsWidth + playAction.width + 2 * sideSpacing
             }
 
         val layoutWidth =
@@ -617,7 +628,16 @@ private fun MediaDetailBalancedActionLayout(
                 return@layout
             }
 
-            val playActionX = (layoutWidth - playAction.width) / 2
+            // Centre the whole cluster, not the pill: with an asymmetric action set (shuffle/radio
+            // on the left, + on the right) pill centring leaves the row's two end margins unequal by
+            // exactly the difference in satellite widths. The pill is centred only when the cluster
+            // cannot fit, where the margin question is moot.
+            val playActionX =
+                if (clusterWidth <= layoutWidth) {
+                    (layoutWidth - clusterWidth) / 2 + leftActionsWidth + sideSpacing
+                } else {
+                    (layoutWidth - playAction.width) / 2
+                }
             var leftActionX = playActionX - actionSpacing - leftActionsWidth
             var rightActionX = playActionX + playAction.width + actionSpacing
 
