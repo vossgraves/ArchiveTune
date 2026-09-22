@@ -50,11 +50,19 @@ class PlaylistCoverRepository
             // picker's provider being cleared, uninstalled or moved, and the cover then renders as
             // a blank square with no way to tell why — a copy cannot be revoked out from under us.
             // The permission route stays as the fallback for an image too large or too odd to copy.
+            // No grant is taken for the picked image on this route, and none is dropped either: a
+            // grant is per-URI rather than per-playlist, so releasing it here would strip the
+            // permission a legacy row still pointing at the same image needs. A grant this row did
+            // hold goes with the rest of its resources below.
             val copiedCoverUri = runCatching { copyCoverIntoAppStorage(playlist.id, uri) }.getOrNull()
             if (copiedCoverUri != null) {
-                releaseReadPermission(uri)
                 val previous = updateThumbnail(playlist.id, copiedCoverUri.toString())
-                releasePreviousCoverResources(previous)
+                // The copy is named from the playlist id alone, so re-picking overwrites the file
+                // the row already pointed at: releasing it here would delete the bytes just written
+                // and leave the cover blank. The fallback route guards the same case.
+                if (previous.thumbnailUrl != copiedCoverUri.toString()) {
+                    releasePreviousCoverResources(previous)
+                }
             } else {
                 persistReadPermission(uri)
                 try {
@@ -105,6 +113,19 @@ class PlaylistCoverRepository
                         .getOrThrow()
                 val previous = updateThumbnail(playlist.id, remoteCoverUrl)
                 releasePreviousCoverResources(previous)
+            }
+
+        /**
+         * Releases what the cover of [playlist] holds once its row is gone: the copy this repository
+         * wrote under [MANAGED_COVER_DIR], and a persisted read grant on the `content://` image it
+         * held if it was on the permission fallback. Deleting a playlist is the one other way the
+         * two stop being reachable — the row that named them goes with them — so the delete path
+         * calls here; without it every deleted copy would sit in `filesDir` for the life of the
+         * install, up to 2 MB at a time.
+         */
+        suspend fun releasePlaylistCoverResources(playlist: PlaylistEntity) =
+            withContext(Dispatchers.IO) {
+                releasePreviousCoverResources(playlist)
             }
 
         private suspend fun updateThumbnail(
@@ -171,7 +192,14 @@ class PlaylistCoverRepository
             val path = uri.path ?: return
             val file = File(path)
             val managedDir = File(context.filesDir, MANAGED_COVER_DIR)
-            if (!file.canonicalPath.startsWith(managedDir.canonicalPath + File.separator)) return
+            // The whole predicate is guarded, not just the delete: `canonicalPath` walks the
+            // filesystem and throws on a path it cannot resolve, which would otherwise escape a
+            // cover change and fail the update it is only cleaning up after.
+            val isManaged =
+                runCatching {
+                    file.canonicalPath.startsWith(managedDir.canonicalPath + File.separator)
+                }.getOrDefault(false)
+            if (!isManaged) return
             runCatching { file.delete() }
         }
 

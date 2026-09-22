@@ -57,6 +57,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadService
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,6 +73,7 @@ import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.di.PlaylistCoverEntryPoint
 import moe.rukamori.archivetune.extensions.isSyncEnabled
 import moe.rukamori.archivetune.extensions.isUserLoggedIn
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -136,6 +138,14 @@ public fun PlaylistMenu(
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current
+    // The menu is not Hilt-injected, so the repository comes from the application component: it
+    // owns the cover copy the deleted playlist leaves behind, which nothing else can reach.
+    val coverRepository =
+        remember(context) {
+            EntryPointAccessors
+                .fromApplication(context.applicationContext, PlaylistCoverEntryPoint::class.java)
+                .playlistCoverRepository()
+        }
     val downloadUtil = LocalDownloadUtil.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val syncUtils = LocalSyncUtils.current
@@ -467,6 +477,7 @@ public fun PlaylistMenu(
                         }
 
                         coroutineScope.launch(Dispatchers.IO) {
+                            coverRepository.releasePlaylistCoverResources(playlist.playlist)
                             playlist.playlist.browseId?.let { YouTube.deletePlaylist(it) }
                         }
                     },
