@@ -361,7 +361,10 @@ fun SpotifyPlaylistScreen(
     val artworkBackdrop = rememberBackdrop(Color.Black)
 
     ExpressivePullToRefreshBox(
-        isRefreshing = state.isLoading,
+        // Only a reload has anything to refresh. On the first load the list is empty and the
+        // placeholder below already says so, so the indicator would be a second spinner over the
+        // same wait.
+        isRefreshing = state.isLoading && tracks.isNotEmpty(),
         onRefresh = viewModel::reload,
         modifier =
             Modifier

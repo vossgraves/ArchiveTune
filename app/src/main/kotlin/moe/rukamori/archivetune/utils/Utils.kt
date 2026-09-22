@@ -25,6 +25,17 @@ fun reportException(throwable: Throwable) {
     Log.w("ArchiveTune", "reportException", throwable)
 }
 
+/**
+ * The storefront to ask Apple Music or Spotify with when no account-bound one is known: the device
+ * locale's two-letter region, lowercased, falling back to `us` for a language-only locale or one the
+ * catalogue has no entry for. Apple Music takes it as a catalogue path segment, so it has to be a
+ * bare region code rather than a full locale tag.
+ */
+fun defaultStorefront(): String {
+    val country = Locale.getDefault().country
+    return if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
+}
+
 @Suppress("DEPRECATION")
 fun setAppLocale(
     context: Context,

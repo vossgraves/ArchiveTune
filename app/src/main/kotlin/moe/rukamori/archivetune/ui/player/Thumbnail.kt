@@ -109,12 +109,12 @@ import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.ui.utils.highRes
+import moe.rukamori.archivetune.utils.defaultStorefront
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
-import java.util.Locale
 import kotlin.math.abs
 
 private data class ThumbnailPage(
@@ -385,11 +385,7 @@ fun Thumbnail(
                         var skipMultiplier by remember { mutableStateOf(1) }
                         var lastTapTime by remember { mutableLongStateOf(0L) }
                         val itemMetadata = remember(item) { item.metadata }
-                        val storefront =
-                            remember {
-                                val country = Locale.getDefault().country
-                                if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
-                            }
+                        val storefront = remember { defaultStorefront() }
                         val shouldUseCanvas =
                             archiveTuneCanvasEnabled &&
                                 playerDesignStyle != PlayerDesignStyle.V7 &&

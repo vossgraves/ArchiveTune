@@ -20,7 +20,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -28,6 +30,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
@@ -80,6 +84,9 @@ class OnlinePlaylistViewModel
         private val _viewCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
         val viewCounts = _viewCounts.asStateFlow()
 
+        private val _canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
+        val canvasArtwork: StateFlow<CanvasArtwork?> = _canvasArtwork.asStateFlow()
+
         private val viewCountsMutex = Mutex()
         private val viewCountsInFlight = mutableSetOf<String>()
         private val viewCountsSemaphore = Semaphore(permits = 4)
@@ -89,6 +96,7 @@ class OnlinePlaylistViewModel
 
         init {
             load(initial = true)
+            fetchPlaylistCanvas()
         }
 
         fun refresh() {
@@ -124,6 +132,29 @@ class OnlinePlaylistViewModel
 
         fun retry() {
             load(initial = true)
+        }
+
+        /**
+         * Waits for the first page to land, then resolves the canvas its header loops. Loading the
+         * playlist is what names the song the lookup is keyed on, so this is deliberately a second
+         * pass rather than part of [load] — a canvas is decoration and must never hold up the list.
+         */
+        private fun fetchPlaylistCanvas() {
+            viewModelScope.launch(Dispatchers.IO) {
+                // The wait is bounded: a playlist whose songs are all filtered out never becomes
+                // non-empty, and there is no canvas to resolve for it either way.
+                val firstSong =
+                    withTimeoutOrNull(PLAYLIST_CANVAS_LOOKUP_TIMEOUT_MS) {
+                        _playlistSongs.first { it.isNotEmpty() }
+                    }?.firstOrNull() ?: return@launch
+                _canvasArtwork.value =
+                    fetchPlaylistCanvasArtwork(
+                        context = context,
+                        firstSongId = firstSong.id,
+                        firstSongTitle = firstSong.title,
+                        firstSongArtist = firstSong.artists.firstOrNull()?.name,
+                    )
+            }
         }
 
         private fun load(initial: Boolean) {
