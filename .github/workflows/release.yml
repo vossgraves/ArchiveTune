@@ -607,6 +607,32 @@ jobs:
             } > release_notes.md
           fi
 
+          # GitHub rejects a release body over 125,000 bytes with HTTP 422 "body is too long",
+          # and that is how the first v14.5.0 attempt lost a run whose seven APKs had all built
+          # and been signed: `build_changelog` walks the range from the previous tag to this one,
+          # and after the history rewrite that range covered thousands of commits. Cap the body
+          # and say so, instead of failing the whole release over its notes.
+          #
+          # Truncation is line-based so it can never cut a multi-byte character in half, which
+          # would be rejected as invalid UTF-8; the loop re-cuts with half the budget if an
+          # unusually wide range still exceeds the limit in bytes.
+          if [ "$(wc -c < release_notes.md)" -gt 120000 ]; then
+            budget=115000
+            for _ in 1 2 3; do
+              awk -v limit="$budget" 'BEGIN { n = 0 } { n += length($0) + 1; if (n > limit) exit; print }' \
+                release_notes.md > release_notes.capped.md
+              if [ "$(wc -c < release_notes.capped.md)" -le 125000 ]; then break; fi
+              budget=$((budget / 2))
+            done
+            {
+              echo
+              echo "---"
+              echo
+              echo "_Changelog truncated: this range covers more commits than a release body can hold._"
+            } >> release_notes.capped.md
+            mv release_notes.capped.md release_notes.md
+          fi
+
           gh release create "v${{ needs.check-version.outputs.new_version }}" \
             --target "${{ github.sha }}" \
             --title "${{ needs.check-version.outputs.new_version }}" \
