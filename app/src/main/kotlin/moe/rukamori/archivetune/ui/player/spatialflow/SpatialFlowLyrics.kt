@@ -136,6 +136,7 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.player.blurBackdropFootprint
+import moe.rukamori.archivetune.ui.player.movingBlurWanderMaxDriftDp
 import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
@@ -688,10 +689,16 @@ private fun wordSpansFor(
     val spans = mutableListOf<WordCharSpan>()
     var cursor = 0
     for (word in words) {
-        val idx = text.indexOf(word.text, cursor)
+        // Word text may carry a trailing separator space (the parsers preserve it so verbatim
+        // renderers keep inter-word gaps) while the line text is trimmed at its end — aligning on
+        // the raw token would stop matching at the final word of a line. Match the trimmed core
+        // instead; the separator itself stays outside the karaoke span.
+        val core = word.text.trim()
+        if (core.isEmpty()) continue
+        val idx = text.indexOf(core, cursor)
         if (idx >= 0) {
-            spans += WordCharSpan(idx, idx + word.text.length, word)
-            cursor = idx + word.text.length
+            spans += WordCharSpan(idx, idx + core.length, word)
+            cursor = idx + core.length
         }
     }
     return spans
@@ -992,7 +999,6 @@ private fun SpatialFlowLyricsMovingBlur(
     modifier: Modifier = Modifier,
 ) {
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-    val blurWander = rememberBlurWanderDrift(active = !isPreS)
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     // AM's lyricsBackdropProgress equivalent: 0 → 1 as the overlay appears,
@@ -1011,6 +1017,11 @@ private fun SpatialFlowLyricsMovingBlur(
                 .fillMaxSize()
                 .clipToBounds(),
     ) {
+        // Same screen-scaled wander amplitude as every other player style, so the moving blur
+        // feels identical everywhere: the colour mass traverses the whole display instead of
+        // orbiting near the centre.
+        val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val driftFootprint =
             remember(maxWidth, maxHeight) {
                 blurBackdropFootprint(
@@ -1018,6 +1029,7 @@ private fun SpatialFlowLyricsMovingBlur(
                     height = maxHeight,
                     restScale = SfLyricsBlurRestScale,
                     driftScale = SfLyricsBlurDriftScale,
+                    maxDriftDp = wanderMaxDrift,
                 )
             }
 

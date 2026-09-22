@@ -147,6 +147,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.media3.common.Player.STATE_BUFFERING
 import androidx.media3.common.Player.STATE_READY
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -517,7 +518,19 @@ fun BottomSheetPlayer(
     }
 
     var position by rememberSaveable(mediaMetadata?.id) {
-        mutableLongStateOf(playerConnection.player.currentPosition)
+        // Seed from the live position ONLY when the player already holds this very item and is
+        // ready to play it: otherwise the outgoing song's position (20-30 s in) leaked into the
+        // fresh song's seekbar until the first poll tick caught up.
+        val player = playerConnection.player
+        val seededPosition =
+            if (player.playbackState == Player.STATE_READY &&
+                player.currentMediaItem?.mediaId == mediaMetadata?.id
+            ) {
+                player.currentPosition.coerceAtLeast(0L)
+            } else {
+                0L
+            }
+        mutableLongStateOf(seededPosition)
     }
     // Wrap `position` in a stable provider so AppleMusicPlayerContent does NOT
     // recompose on every 100ms poll tick. The provider lambda is remembered
@@ -964,8 +977,10 @@ fun BottomSheetPlayer(
                 val metaDuration = it.duration.toLong() * 1000
                 duration = if (metaDuration > 0) metaDuration else 0L
             }
-            val currentPlayerPosition = playerConnection.player.currentPosition
-            if (sliderPosition == null && currentPlayerPosition > 0L) {
+            val player = playerConnection.player
+            val playerMatchesMetadata = player.currentMediaItem?.mediaId == mediaMetadata?.id
+            val currentPlayerPosition = player.currentPosition
+            if (sliderPosition == null && playerMatchesMetadata && currentPlayerPosition > 0L) {
                 position = currentPlayerPosition
             }
         }

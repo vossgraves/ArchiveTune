@@ -166,6 +166,13 @@ sealed class ListenTogetherEvent {
         val payload: SuggestionReceivedPayload,
         val playImmediately: Boolean = false,
     ) : ListenTogetherEvent()
+
+    /** The host turned the local user's suggestion down, so the manager can drop its one-shot
+     *  dedup and let the same song be suggested again. */
+    data class SuggestionRejected(
+        val suggestionId: String,
+        val reason: String? = null,
+    ) : ListenTogetherEvent()
 }
 
 /**
@@ -1420,7 +1427,11 @@ class ListenTogetherClient @Inject constructor(
                         NotificationManagerCompat.from(context).cancel(notifId)
                     }
 
-                    // For guests, optionally notify via events
+                    // Let the manager retry the same song later: the local one-shot dedup would
+                    // otherwise swallow every further suggestion of a track the host refused.
+                    scope.launch {
+                        _events.emit(ListenTogetherEvent.SuggestionRejected(payload.suggestionId, payload.reason))
+                    }
                 }
 
                 MessageTypes.ERROR -> {

@@ -43,11 +43,6 @@ fun formatFileSize(sizeBytes: Long): String {
     }
 }
 
-fun numberFormatter(n: Int) =
-    DecimalFormat("#,###")
-        .format(n)
-        .replace(",", ".")
-
 fun formatCompactCount(count: Long): String {
     val abs = count.absoluteValue
     val prefix = if (count < 0) "-" else ""

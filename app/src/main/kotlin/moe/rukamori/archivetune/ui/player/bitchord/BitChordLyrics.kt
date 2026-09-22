@@ -285,11 +285,15 @@ internal fun List<LyricsEntry>.toBitChordLyrics(): List<LyricLine> =
         val lead = mutableListOf<LyricWord>()
         val backing = mutableListOf<LyricWord>()
         entry.words.orEmpty().forEach { word ->
+            // BitChord aligns each word against the (space-carrying) line text via indexOf and
+            // derives its own gaps from that text, so drop the edge separator space the parsers now
+            // preserve on word text — otherwise the last word of a line stops matching the trimmed
+            // line text.
             val w =
                 LyricWord(
                     startMs = (word.startTime * 1000.0).toLong(),
                     endMs = (word.endTime * 1000.0).toLong(),
-                    text = word.text,
+                    text = word.text.trim(),
                 )
             if (word.isBackground) backing += w else lead += w
         }

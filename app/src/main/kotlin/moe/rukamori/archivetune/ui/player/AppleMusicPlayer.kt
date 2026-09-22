@@ -427,9 +427,9 @@ fun AppleMusicPlayerContent(
         { sliderPositionState.value }
     }
 
-    // === Moving blur wander for the backdrop when lyrics is open === Mirrors the
-    // MovingBlurBackground from LyricsScreen: the blurred artwork wanders behind the lyrics.
-    val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive)
+    // The moving-blur wander is remembered inside the backdrop's BoxWithConstraints below, where the
+    // measured screen size is available: its amplitude is screen-proportional by design.
+
     // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
     // doesn't change per-frame so this is a one-time composition-phase read.
     val density = LocalDensity.current
@@ -664,6 +664,12 @@ fun AppleMusicPlayerContent(
             // Backdrop rendering — one blurred-artwork node for every state, plus (on canvas songs)
             // the live canvas video composited over it. • COVER / QUEUE state — the artwork sits at
             // [AmCoverBlurScale] with no drift.
+            //
+            // Same screen-scaled wander amplitude as every other player style (Apple Music
+            // lyrics-page behaviour): the colour mass traverses the whole display instead of
+            // orbiting near the centre.
+            val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+            val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive, maxDriftDp = wanderMaxDrift)
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
                 // Deferred state reads: draw phase only. See the comment on
                 // lyricsBackdropProgress for why this is a continuous ramp
@@ -746,6 +752,7 @@ fun AppleMusicPlayerContent(
                         height = maxHeight,
                         restScale = AmCoverBlurScale,
                         driftScale = AmLyricsBlurDriftScale,
+                        maxDriftDp = wanderMaxDrift,
                     )
                 }
             Box(
@@ -835,18 +842,19 @@ fun AppleMusicPlayerContent(
                 )
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
-            // Brightened scrim — matches ViviMusic's brighter aesthetic.
-            // Previous alphas (0.42/0.60/0.82) were too dark; reduced to
-            // 0.25/0.40/0.65 so the blurred artwork's color shows through.
+            // Brightened scrim — matches ViviMusic's brighter aesthetic. Kept deliberately light
+            // over the blurred artwork (0.15/0.28/0.50 on the canvas path, 0.28/0.42/0.60 over the
+            // pre-S bitmap) so its colour shows through; only the un-blurred placeholder while the
+            // bitmap loads stays dark enough to hide the bare artwork.
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
                         .background(
                             Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.25f else if (preBlurLoading) 0.55f else 0.40f),
-                                0.5f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.40f else if (preBlurLoading) 0.65f else 0.55f),
-                                1f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.65f else if (preBlurLoading) 0.85f else 0.75f),
+                                0f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.15f else if (preBlurLoading) 0.55f else 0.28f),
+                                0.5f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.28f else if (preBlurLoading) 0.65f else 0.42f),
+                                1f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.50f else if (preBlurLoading) 0.85f else 0.60f),
                             ),
                         ),
             )

@@ -6752,6 +6752,19 @@ class MusicService :
         }
     }
 
+    /** True when [mediaId] is a music video (OMV/UGC) rather than an audio-only track: the queued
+     *  metadata carries the flag straight from the search result, and the DB row covers items
+     *  restored from a saved queue. */
+    private fun isMusicVideoPlayback(mediaId: String): Boolean {
+        val queuedMetadata =
+            currentMediaMetadata.value?.takeIf { it.id == mediaId }
+                ?: queuedMetadataByMediaId[mediaId]
+        if (queuedMetadata?.isMusicVideo == true) return true
+        // A direct blocking read on purpose: the Flow variant spins up a Room observer only to take
+        // its first emission, and every caller of this gate is already off the main thread.
+        return runCatching { database.getSongByIdBlocking(mediaId) }.getOrNull()?.song?.isMusicVideo == true
+    }
+
     /**
      * Attempts to resolve the current media item through the configured audio sources, in the
      * user's chosen priority order. Returns a [DataSpec] pointing at the first source that
@@ -6768,6 +6781,13 @@ class MusicService :
     ): DataSpec? {
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) {
             Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
+            return null
+        }
+        // A music video must stream its audio from the very same YouTube video it plays the video
+        // layer of: every alternative source (Qobuz, JioSaavn, Tidal…) resolves a DIFFERENT master
+        // of the song, which drifts out of sync with the video. Pin videos to YouTube outright.
+        if (isMusicVideoPlayback(mediaId)) {
+            Timber.tag("MusicService").d("Multi-source skip: %s is a music video — audio pinned to YouTube", mediaId)
             return null
         }
         // Direct Qobuz track playback: when the user picks a specific Qobuz

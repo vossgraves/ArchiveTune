@@ -174,11 +174,11 @@ private val AppleMusicFallbackGradient =
 
 private val LyricsSwipeStartRegion = 144.dp
 
-// Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus the
-// 64dp blur — and, because the walk rotates, must do so out to the container's furthest corner
-// rather than its nearest edge. Kept in sync with AmLyricsBlurDriftScale in AppleMusicPlayer.kt.
-// Was 1.9x, which was sized for an older, smaller drift and let the blur sample transparent pixels
-// at full offset — a dark band along the trailing edge.
+// Scale of the blurred backdrop. Must cover the screen-proportional wander amplitude
+// (movingBlurWanderMaxDriftDp — 0.85 of the half-diagonal, so the drift grows with the screen)
+// plus the 64dp blur, and, because the walk rotates, must do so out to the container's furthest
+// corner rather than its nearest edge. Kept in sync with AmLyricsBlurDriftScale in
+// AppleMusicPlayer.kt.
 //
 // Scaling alone does NOT make the rotation safe: the layer Modifier.blur produces is clipped to the
 // composable's bounds, so a rotated *screen-shaped* rectangle only covers a circle of
@@ -831,12 +831,13 @@ private fun MovingBlurBackground(
         remember(colors) {
             Brush.verticalGradient(
                 listOf(
-                    // Vibrancy bump (was 0.42 / 0.34 / 0.54): pull these in line with the static
-                    // AppleMusicBackground alphas (0.88 / 0.76 / 0.96) so the moving-blur lyrics
-                    // page reads just as vivid as the player itself, not as a dimmed-afterthought.
-                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.85f),
-                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.75f),
-                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.95f),
+                    // Veil over the blurred artwork, kept well below the static
+                    // AppleMusicBackground's alphas (0.88 / 0.76 / 0.96): at that strength the
+                    // colour mass behind these lyrics flattened into a near-solid block instead of
+                    // reading as artwork, so the page looked dimmer than the player it sits in.
+                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.55f),
+                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.42f),
+                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.62f),
                 ),
             )
         }
@@ -845,7 +846,7 @@ private fun MovingBlurBackground(
             Brush.verticalGradient(
                 listOf(
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.18f),
+                    Color.Black.copy(alpha = 0.10f),
                 ),
             )
         }
@@ -859,7 +860,7 @@ private fun MovingBlurBackground(
     // where α = 0.213 + 0.787*sat and β = 0.715 - 0.715*sat (Rec. 709 luma coefficients),
     // and the existing gamma is preserved (sat=1 → identity).
     val vibrancyColorFilter = remember {
-        val sat = 1.6f
+        val sat = 1.85f
         val alpha = 0.213f + 0.787f * sat
         val beta = 0.715f - 0.715f * sat
         val gamma = 0.072f - 0.072f * sat
@@ -880,7 +881,6 @@ private fun MovingBlurBackground(
     // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
     // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it once
     // with ImageBlurUtils, render via Image.
-    val blurWander = rememberBlurWanderDrift(active = !isPreS)
     BoxWithConstraints(
         modifier =
             modifier
@@ -888,12 +888,17 @@ private fun MovingBlurBackground(
                 .clipToBounds()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        // Screen-proportional wander amplitude, shared with every other player style so the moving
+        // blur feels identical everywhere: the colour mass traverses the whole display instead of
+        // orbiting a narrow ring around the centre. Hoisted here because the amplitude needs the
+        // measured size.
+        val wanderMaxDrift = movingBlurWanderMaxDriftDp(maxWidth, maxHeight)
+        val blurWander = rememberBlurWanderDrift(active = true, maxDriftDp = wanderMaxDrift)
         val preSDriftScale =
             if (isPreS) {
-                val driftMax = BlurWanderDrift.WanderRadiusDp.dp
                 val safetyMargin = 48.dp
-                val requiredScaleX = 1f + 2f * (driftMax.value + safetyMargin.value) / maxWidth.value
-                val requiredScaleY = 1f + 2f * (driftMax.value + safetyMargin.value) / maxHeight.value
+                val requiredScaleX = 1f + 2f * (wanderMaxDrift + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (wanderMaxDrift + safetyMargin.value) / maxHeight.value
                 maxOf(requiredScaleX, requiredScaleY, 1.4f)
             } else {
                 MovingBlurDriftScale
@@ -915,6 +920,7 @@ private fun MovingBlurBackground(
                     // sits at the drifting scale the whole time.
                     restScale = MovingBlurDriftScale,
                     driftScale = MovingBlurDriftScale,
+                    maxDriftDp = wanderMaxDrift,
                 )
             }
 
@@ -942,8 +948,13 @@ private fun MovingBlurBackground(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
+                                    // Translation only: the pre-S bitmap is screen-shaped, so
+                                    // rotating it would uncover the corners (the post-S path
+                                    // rotates a square footprint safely).
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
+                                    translationX = blurWander.xDp.floatValue.dp.toPx()
+                                    translationY = blurWander.yDp.floatValue.dp.toPx()
                                 }
                                 // No offset: the pre-S fallback pins its single pre-blurred
                                 // bitmap (see above), so there is nothing to animate here.

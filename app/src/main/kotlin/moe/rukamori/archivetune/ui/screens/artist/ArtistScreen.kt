@@ -92,7 +92,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.fastForEachIndexed
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -850,10 +850,13 @@ fun ArtistScreen(
                     }
                 } else {
                     // YouTube/Remote content sections
-                    orderedRemoteSections.fastForEach { section ->
+                    // Section-index-prefixed keys: a locale-specific response can repeat a song
+                    // across sections, or repeat a section title, which used to crash the
+                    // LazyColumn with a duplicate key.
+                    orderedRemoteSections.fastForEachIndexed { sectionIndex, section ->
                         if (section.items.isNotEmpty()) {
                             item(
-                                key = "youtube_section_header_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
+                                key = "youtube_section_header_${sectionIndex}_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
                                 contentType = CONTENT_TYPE_HEADER,
                             ) {
                                 NavigationTitle(
@@ -871,7 +874,7 @@ fun ArtistScreen(
                         if (section.layout == ArtistSectionLayout.LIST && section.items.all { it is SongItem }) {
                             items(
                                 items = section.items.distinctBy { it.id },
-                                key = { "youtube_song_${it.id}" },
+                                key = { "youtube_song_${sectionIndex}_${it.id}" },
                                 contentType = { CONTENT_TYPE_SONG },
                             ) { song ->
                                 YouTubeListItem(
@@ -927,7 +930,7 @@ fun ArtistScreen(
                             }
                         } else {
                             item(
-                                key = "youtube_section_grid_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
+                                key = "youtube_section_grid_${sectionIndex}_${section.title}_${section.items.firstOrNull()?.id.orEmpty()}_${section.moreEndpoint?.browseId.orEmpty()}",
                                 contentType = CONTENT_TYPE_LIST,
                             ) {
                                 LazyRow(
@@ -945,7 +948,7 @@ fun ArtistScreen(
                                                     is PlaylistItem -> "playlist"
                                                     else -> "item"
                                                 }
-                                            "youtube_${type}_${it.id}"
+                                            "youtube_${type}_${sectionIndex}_${it.id}"
                                         },
                                         contentType = {
                                             when (it) {
@@ -1528,14 +1531,16 @@ private fun compactCountText(
     return if (hasMore) "$value+" else value
 }
 
-private val CompactArtistCountPattern = Regex("""\d+(?:[.,]\d+)?\s*[KMB]""", RegexOption.IGNORE_CASE)
+// YouTube groups the number in Spanish (and other locales) with NBSP-family separators —
+// "53,2\u00A0M" — which the old pattern did not see, so the page showed "532" instead of "53.2M".
+private val CompactArtistCountPattern = Regex("""\d+(?:[.,]\d+)?[\s\u00A0\u202F\u2007]*[KMB]""", RegexOption.IGNORE_CASE)
 private val ArtistCountPattern = Regex("""\d+(?:[.,]\d+)*""")
 
 private fun String.toArtistCompactCountText(): String? {
     val compactText = CompactArtistCountPattern.find(this)?.value
     if (compactText != null) {
         return compactText
-            .filterNot { it.isWhitespace() }
+            .filterNot { it.isWhitespace() || it == '\u00A0' || it == '\u202F' || it == '\u2007' }
             .replace(',', '.')
             .uppercase(Locale.US)
     }
