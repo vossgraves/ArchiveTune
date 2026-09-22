@@ -99,8 +99,8 @@ import moe.rukamori.archivetune.ui.component.pressScaleClickable
 import moe.rukamori.archivetune.utils.joinByBullet
 
 /**
- * The Spotify home's geometry: the removed DEFAULT preset's own dp, held over as the single set —
- * one row of track tiles per carousel, 12dp gutters, 128dp cards.
+ * The Spotify home's geometry: YumaPlayer's own numbers — two rows of track tiles per carousel,
+ * 16dp gutters, 150dp cards.
  *
  * Holding them as one value rather than repeating the dp inside each row keeps the four section rows
  * to a single implementation apiece; copies of each would drift the first time one is touched.
@@ -108,7 +108,7 @@ import moe.rukamori.archivetune.utils.joinByBullet
 @androidx.compose.runtime.Immutable
 private data class SpotifyHomeMetrics(
     val trackItemWidth: Dp,
-    /** Height of the track row; the grid is always one row deep. */
+    /** Height of one track row; the grid is two rows deep. */
     val trackRowHeight: Dp,
     /** Width of an album/playlist card. */
     val cardWidth: Dp,
@@ -119,12 +119,12 @@ private data class SpotifyHomeMetrics(
 
 private val spotifyHomeMetrics =
     SpotifyHomeMetrics(
-        trackItemWidth = 300.dp,
-        trackRowHeight = 72.dp,
-        cardWidth = 128.dp,
-        artistSize = 128.dp,
-        contentPadding = 12.dp,
-        itemSpacing = 8.dp,
+        trackItemWidth = 240.dp,
+        trackRowHeight = 128.dp,
+        cardWidth = 150.dp,
+        artistSize = 140.dp,
+        contentPadding = 16.dp,
+        itemSpacing = 12.dp,
     )
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
@@ -407,11 +407,11 @@ private fun SpotifyTrackSectionRow(
     if (tracks.isEmpty()) return
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
-        rows = GridCells.Fixed(1),
+        rows = GridCells.Fixed(2),
         contentPadding = PaddingValues(horizontal = spotifyHomeMetrics.contentPadding),
         modifier = modifier
             .fillMaxWidth()
-            .height(spotifyHomeMetrics.trackRowHeight),
+            .height(spotifyHomeMetrics.trackRowHeight * 2),
     ) {
         itemsIndexed(
             items = tracks,
