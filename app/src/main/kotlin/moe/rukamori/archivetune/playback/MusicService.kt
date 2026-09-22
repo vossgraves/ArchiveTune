@@ -317,6 +317,7 @@ import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.lyrics.LyricsPreloadManager
+import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.PersistPlayerState
 import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
@@ -1240,8 +1241,18 @@ class MusicService :
             // We also retry a stored LYRICS_NOT_FOUND on every play, because early
             // plays can fail while metadata/network are still settling.
             val stored = database.lyrics(mediaMetadata.id).first()
+            val storedLyrics = stored?.lyrics
+            // The word-synced toggle has to be able to *replace* a stored row, not merely fill an
+            // empty one. A track played before the toggle was turned on already holds line-synced
+            // lyrics, and both this gate and the lyrics panel short-circuit on that row, so without
+            // this the toggle did nothing at all for a song that had been played once.
+            val upgradeToWordSynced =
+                lyricsHelper.shouldAttemptWordSyncedUpgrade(
+                    mediaId = mediaMetadata.id,
+                    storedLyrics = storedLyrics,
+                )
             val shouldFetch =
-                stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
+                stored == null || storedLyrics == LyricsEntity.LYRICS_NOT_FOUND || upgradeToWordSynced
             if (shouldFetch) {
                 // getLyricsWithProvider (not getLyrics) preserves the providerName — with the
                 // plain getter the auto-fetched lyrics were stored with a blank attribution
@@ -1249,11 +1260,25 @@ class MusicService :
                 // re-fetch from the lyrics search popup (4nx3b fix).
                 val lyricsResult = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
-                    replaceLyricsIfAbsentOrNotFound(
-                        id = mediaMetadata.id,
-                        lyrics = lyricsResult.lyrics,
-                        providerName = lyricsResult.providerName,
-                    )
+                    if (upgradeToWordSynced &&
+                        storedLyrics != null &&
+                        LyricsUtils.hasWordSyncedLyrics(lyricsResult.lyrics)
+                    ) {
+                        // Replace the row that was inspected, not whatever sits there now: a better
+                        // result written while the providers were being queried must survive.
+                        upgradeLyricsIfUnchanged(
+                            id = mediaMetadata.id,
+                            expectedLyrics = storedLyrics,
+                            lyrics = lyricsResult.lyrics,
+                            providerName = lyricsResult.providerName,
+                        )
+                    } else {
+                        replaceLyricsIfAbsentOrNotFound(
+                            id = mediaMetadata.id,
+                            lyrics = lyricsResult.lyrics,
+                            providerName = lyricsResult.providerName,
+                        )
+                    }
                 }
             }
         }

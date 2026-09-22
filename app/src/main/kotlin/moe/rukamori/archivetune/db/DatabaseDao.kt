@@ -1810,6 +1810,22 @@ interface DatabaseDao {
     @Query(
         """
         UPDATE lyrics
+        SET lyrics = :lyrics, source = :source, providerName = :providerName, updatedAt = :updatedAt
+        WHERE id = :id AND lyrics = :expectedLyrics
+        """,
+    )
+    fun upgradeLyricsIfUnchanged(
+        id: String,
+        expectedLyrics: String,
+        lyrics: String,
+        source: String = LyricsEntity.Source.REMOTE.value,
+        providerName: String = "",
+        updatedAt: Long = System.currentTimeMillis(),
+    ): Int
+
+    @Query(
+        """
+        UPDATE lyrics
         SET providerName = :providerName, updatedAt = :updatedAt
         WHERE id = :id AND (providerName IS NULL OR providerName = '') AND :providerName != ''
         """,

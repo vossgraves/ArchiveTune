@@ -137,6 +137,7 @@ import moe.rukamori.archivetune.constants.PlayerCustomBlurKey
 import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
+import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
@@ -266,12 +267,25 @@ fun LyricsScreen(
                 ).lyricsHelper()
         }
 
-    LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics, currentLyrics?.providerName) {
+    // Read through the preference rather than inside the effect so that flipping the toggle while
+    // the panel is open re-runs the fetch instead of leaving the stored lyrics untouched.
+    val (prioritizeWordSynced) = rememberPreference(PrioritizeWordSyncedLyricsKey, defaultValue = false)
+
+    LaunchedEffect(
+        mediaMetadata.id,
+        currentLyrics?.lyrics,
+        currentLyrics?.providerName,
+        prioritizeWordSynced,
+    ) {
         val snapshot = currentLyrics
+        // A stored row that the word-synced toggle can still improve is a reason to fetch, not only
+        // a missing one. Without this the gate returns before LyricsHelper is asked and turning the
+        // toggle on changed nothing for any song that already had line-synced lyrics stored.
         val needsFetch =
             snapshot == null ||
                 snapshot.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
-                snapshot.providerName.isBlank()
+                snapshot.providerName.isBlank() ||
+                LyricsUtils.needsWordSyncedUpgrade(prioritizeWordSynced, snapshot.lyrics)
         if (!needsFetch) return@LaunchedEffect
         try {
             val existingLyrics =
@@ -282,7 +296,22 @@ fun LyricsScreen(
             val hasValidLyrics =
                 existingLyrics != null &&
                     existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
-            if (hasValidLyrics && existingLyrics != null && existingLyrics.providerName.isNotBlank()) {
+            // Turning "Prioritise word synced lyrics" on has to be able to *replace* a row stored
+            // before it was on, not merely fill an empty one: otherwise the toggle did nothing for
+            // any song already played once, which is every song the reader would try it on. The
+            // attempt is made once per stored row so a song no provider has word timings for is not
+            // re-swept on every visit.
+            val storedLyrics = existingLyrics?.lyrics
+            val upgradeToWordSynced =
+                lyricsHelper.shouldAttemptWordSyncedUpgrade(
+                    mediaId = mediaMetadata.id,
+                    storedLyrics = storedLyrics,
+                )
+            if (!upgradeToWordSynced &&
+                existingLyrics != null &&
+                hasValidLyrics &&
+                existingLyrics.providerName.isNotBlank()
+            ) {
                 return@LaunchedEffect
             }
 
@@ -292,7 +321,19 @@ fun LyricsScreen(
                 }
             withContext(Dispatchers.IO) {
                 database.query {
-                    if (hasValidLyrics) {
+                    if (upgradeToWordSynced &&
+                        storedLyrics != null &&
+                        LyricsUtils.hasWordSyncedLyrics(lyricsResult.lyrics)
+                    ) {
+                        // Replace only the row that was inspected: a better result written while
+                        // the providers were being queried must survive.
+                        upgradeLyricsIfUnchanged(
+                            id = mediaMetadata.id,
+                            expectedLyrics = storedLyrics,
+                            lyrics = lyricsResult.lyrics,
+                            providerName = lyricsResult.providerName,
+                        )
+                    } else if (hasValidLyrics) {
                         backfillLyricsProviderName(
                             id = mediaMetadata.id,
                             providerName = lyricsResult.providerName,
