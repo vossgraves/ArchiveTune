@@ -49,6 +49,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlin.math.roundToInt
 import moe.rukamori.archivetune.LocalDatabase
@@ -68,12 +70,19 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.viewmodels.ResetListeningStatsState
+import moe.rukamori.archivetune.viewmodels.ResetListeningStatsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
+fun PrivacySettings(
+    navController: NavController,
+    scrollTo: String? = null,
+    viewModel: ResetListeningStatsViewModel = hiltViewModel(),
+) {
     val database = LocalDatabase.current
     val context = LocalContext.current
+    val resetState by viewModel.state.collectAsStateWithLifecycle()
     var musicHapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
     var musicHapticsStrength by remember { mutableIntStateOf(MusicHapticsSettings.strengthPercent(context)) }
     val isAndroid12OrLater = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
@@ -147,6 +156,51 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
 
     var showClearSearchHistoryDialog by remember {
         mutableStateOf(false)
+    }
+
+    val resetConfirmation = resetState as? ResetListeningStatsState.Success
+    if (resetConfirmation?.showConfirmation == true) {
+        DefaultDialog(
+            onDismiss = viewModel::dismissDialog,
+            content = {
+                Text(
+                    text = stringResource(R.string.reset_listening_stats_confirm),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                )
+            },
+            buttons = {
+                TextButton(
+                    onClick = viewModel::dismissDialog,
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+
+                TextButton(
+                    onClick = viewModel::confirmReset,
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(text = stringResource(android.R.string.ok))
+                }
+            },
+        )
+    }
+
+    // The reset runs off-screen in the view model, so its outcome is surfaced here: errors
+    // must not look like a silent success.
+    LaunchedEffect(resetState) {
+        when (val state = resetState) {
+            is ResetListeningStatsState.Success ->
+                if (!state.showConfirmation) {
+                    Toast.makeText(context, R.string.reset_listening_stats_success, Toast.LENGTH_SHORT).show()
+                }
+
+            is ResetListeningStatsState.Error ->
+                Toast.makeText(context, state.messageRes, Toast.LENGTH_SHORT).show()
+
+            else -> Unit
+        }
     }
 
     if (showClearSearchHistoryDialog) {
@@ -240,6 +294,16 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                         title = { Text(stringResource(R.string.clear_listen_history)) },
                         icon = { Icon(painterResource(R.drawable.delete_history), null) },
                         onClick = { showClearListenHistoryDialog = true },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("reset_listening_stats"),
+                        title = { Text(stringResource(R.string.reset_listening_stats)) },
+                        icon = { Icon(painterResource(R.drawable.clear_all), null) },
+                        isEnabled = resetState !is ResetListeningStatsState.Loading,
+                        onClick = viewModel::requestReset,
                     )
                 }
             }

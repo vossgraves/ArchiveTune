@@ -116,6 +116,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
+    // snapshot paints the stored value on the first frame instead of a default flash.
     val (persistentQueue, onPersistentQueueChange) =
         rememberPreference(
             PersistentQueueKey,
@@ -128,11 +129,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (sponsorBlockEnabled, onSponsorBlockEnabledChange) =
         rememberPreference(SponsorBlockEnabledKey, defaultValue = false)
-    val (sponsorBlockCategories, onSponsorBlockCategoriesChange) =
+    val (sponsorBlockCategories, onSponsorBlockCategoriesRawChange) =
         rememberPreference(
             SponsorBlockCategoriesKey,
             defaultValue = SponsorBlockCategory.Defaults.map { it.apiName }.toSet(),
         )
+    // Same scope-death fix as above, with the apiName round-trip kept: parse
+    // synchronously, write the re-encoded set through the preference helper.
+    val onSponsorBlockCategoriesChange: (Set<String>) -> Unit =
+        remember(onSponsorBlockCategoriesRawChange) { { categories ->
+            val parsed = categories.mapNotNull(SponsorBlockCategory::fromApiName).toSet()
+            onSponsorBlockCategoriesRawChange(parsed.map { it.apiName }.toSet())
+        } }
     val (skipSilence, onSkipSilenceChange) =
         rememberPreference(
             SkipSilenceKey,

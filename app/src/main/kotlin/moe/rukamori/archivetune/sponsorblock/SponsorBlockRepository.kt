@@ -28,7 +28,9 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.first
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.constants.SponsorBlockApiUrlKey
 import moe.rukamori.archivetune.constants.SponsorBlockCategoriesKey
 import moe.rukamori.archivetune.constants.SponsorBlockEnabledKey
@@ -79,6 +81,27 @@ class SponsorBlockRepository
                 apiUrl = normalizeSponsorBlockApiUrl(preferences[SponsorBlockApiUrlKey]) ?: SPONSORBLOCK_DEFAULT_API_URL,
             )
         }
+
+        /**
+         * Settings as a flow, so screens observe instead of re-reading: the
+         * mapping lives here once, next to [settings], instead of being
+         * duplicated at every call site.
+         */
+        fun observeSettings(): Flow<SponsorBlockSettings> =
+            context.dataStore.data
+                .map { preferences ->
+                    SponsorBlockSettings(
+                        enabled = preferences[SponsorBlockEnabledKey] ?: false,
+                        categories =
+                            preferences[SponsorBlockCategoriesKey]
+                                ?.mapNotNull(SponsorBlockCategory::fromApiName)
+                                ?.toSet()
+                                ?: SponsorBlockCategory.Defaults,
+                        apiUrl =
+                            normalizeSponsorBlockApiUrl(preferences[SponsorBlockApiUrlKey])
+                                ?: SPONSORBLOCK_DEFAULT_API_URL,
+                    )
+                }.distinctUntilChanged()
 
         /**
          * Segments for [videoId], or an empty list when the feature is off, the id is not a YouTube

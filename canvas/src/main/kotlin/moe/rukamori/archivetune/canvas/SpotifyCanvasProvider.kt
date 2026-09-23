@@ -142,6 +142,9 @@ object SpotifyCanvasProvider {
         songTitle: String? = null,
         artistName: String? = null,
     ): CanvasArtwork? {
+        // Policy gate first: wifi-only / low-data / source selection must stop
+        // new lookups before any cache read or network call.
+        CanvasRequestPolicy.check(CanvasSource.SPOTIFY)
         if (videoId.isBlank()) return null
 
         cache[videoId]?.let { entry ->
@@ -215,6 +218,23 @@ object SpotifyCanvasProvider {
         }
         return null
     }
+
+    /**
+     * Liveness probe for the Canvas settings health row.
+     *
+     * Spotify Canvas needs a usable session and nothing else, so this only asks the host
+     * app's token provider. Note the provider may mint a fresh token over the network
+     * when the stored one is stale — the probe itself issues no HTTP, but treat the
+     * result as session state, not as a network-free check.
+     */
+    suspend fun isHealthy(): Boolean =
+        try {
+            tokenProvider?.invoke()?.isNotBlank() == true
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            log("Spotify Canvas health check failed: ${throwable.message}")
+            false
+        }
 
     /**
      * Asks Spotify directly for the canvas of the current song.

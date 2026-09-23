@@ -52,6 +52,13 @@ class SponsorBlockPlaybackController
                     mediaItem: MediaItem?,
                     reason: Int,
                 ) {
+                    // Podcast episodes have no segments; skip the lookup entirely.
+                    val tag = mediaItem?.localConfiguration?.tag
+                    if ((tag as? moe.rukamori.archivetune.models.MediaMetadata)?.isPodcast == true) {
+                        segments = emptyList()
+                        skippedEndsMs.clear()
+                        return
+                    }
                     reload(mediaItem?.mediaId)
                 }
             }

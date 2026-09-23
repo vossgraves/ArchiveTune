@@ -11,6 +11,7 @@ package moe.rukamori.archivetune.models
 import androidx.compose.runtime.Immutable
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.db.entities.SongEntity
+import moe.rukamori.archivetune.innertube.models.EpisodeItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_UGC
@@ -34,6 +35,10 @@ data class MediaMetadata(
     val likedDate: LocalDateTime? = null,
     val inLibrary: LocalDateTime? = null,
     val isMusicVideo: Boolean = false,
+    // Podcast-episode marker (upstream 15.0.0 parity): episodes share the song
+    // shape but must skip lyrics, SponsorBlock, stats and crossfade paths.
+    // Default false keeps every existing constructor and copy() call intact.
+    val isPodcast: Boolean = false,
     /** ISRC of the recording this item represents, when the source catalogue supplied one. */
     val isrc: String? = null,
     // PORT-NOTE: Listen Together attribution — ported from vivi-music's MediaMetadata
@@ -109,6 +114,42 @@ fun Song.toMediaMetadata() =
             },
         explicit = song.explicit,
         isMusicVideo = song.isMusicVideo,
+    )
+
+fun EpisodeItem.toMediaMetadata() =
+    MediaMetadata(
+        id = id,
+        title = title,
+        artists =
+            podcast?.let {
+                listOf(
+                    MediaMetadata.Artist(
+                        id = it.id,
+                        name = it.name,
+                        thumbnailUrl = null,
+                    ),
+                )
+            }.orEmpty(),
+        // Podcasts have no meaningful length until the episode is resolved; -1 keeps the
+        // queue from drawing a progress bar for a duration we do not know.
+        duration = duration ?: -1,
+        thumbnailUrl =
+            thumbnail.resize(
+                width = 1080,
+                height = 1080,
+                ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
+            ),
+        album =
+            podcast?.let { show ->
+                show.id?.let { showId ->
+                    MediaMetadata.Album(
+                        id = showId,
+                        title = show.name,
+                    )
+                }
+            },
+        setVideoId = endpoint.playlistSetVideoId,
+        isPodcast = true,
     )
 
 fun SongItem.toMediaMetadata() =

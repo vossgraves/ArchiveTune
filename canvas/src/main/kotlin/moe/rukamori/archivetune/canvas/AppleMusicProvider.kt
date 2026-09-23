@@ -272,6 +272,33 @@ object AppleMusicProvider {
         return root["data"]?.jsonArray?.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
     }
 
+    /**
+     * Liveness probe for the Canvas settings health row: one cheap catalog request that
+     * reports whether this device can reach AMP with the token the provider holds.
+     */
+    suspend fun isHealthy(): Boolean {
+        CanvasRequestPolicy.check(CanvasSource.APPLE_MUSIC)
+        val token = ensureTokenFresh() ?: return false
+        return try {
+            val response =
+                client.get("$AMP_BASE_URL/v1/catalog/us/charts") {
+                    header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
+                    header("Origin", "https://music.apple.com")
+                    header("Referer", "https://music.apple.com/")
+                    header("User-Agent", APPLE_MUSIC_WEB_UA)
+                    parameter("types", "albums")
+                    parameter("limit", "1")
+                }
+            response.status == HttpStatusCode.OK
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(error, "Apple Music health check failed")
+            false
+        }
+    }
+
     /** Clears cached storefront so the next lookup re-resolves (call after token change). */
     fun clearStorefrontCache() {
         cachedStorefront = null
@@ -373,6 +400,7 @@ object AppleMusicProvider {
         artist: String,
         storefront: String = "us",
     ): CanvasArtwork? {
+        CanvasRequestPolicy.check(CanvasSource.APPLE_MUSIC)
         Log.d("getByAlbumArtist: album='$album', artist='$artist'")
         val key = cacheKey("sa", album, artist, storefront)
         cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
@@ -386,8 +414,8 @@ object AppleMusicProvider {
         artist: String,
         album: String? = null,
         storefront: String = "us",
-        forceRefresh: Boolean = false,
     ): CanvasArtwork? {
+        CanvasRequestPolicy.check(CanvasSource.APPLE_MUSIC)
         val key = cacheKey("song", song, artist, album ?: "", storefront)
         if (forceRefresh) {
             cache.remove(key)
@@ -401,8 +429,8 @@ object AppleMusicProvider {
 
     suspend fun getByAlbumId(
         albumId: String,
-        storefront: String = "us",
     ): CanvasArtwork? {
+        CanvasRequestPolicy.check(CanvasSource.APPLE_MUSIC)
         val key = cacheKey("id", albumId, storefront)
         cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value }
         val result = fetchMotionArtwork(albumId, storefront, null)

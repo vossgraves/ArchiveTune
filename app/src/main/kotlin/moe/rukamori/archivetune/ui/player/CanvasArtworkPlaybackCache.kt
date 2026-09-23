@@ -63,6 +63,10 @@ object CanvasArtworkPlaybackCache {
 
     @Volatile private var maxSizeBytes = DEFAULT_MAX_SIZE_MEGABYTES.toLong() * CACHE_SIZE_BYTES_PER_MEGABYTE
 
+    // Set once loadFromDisk finishes: trims before this point would see an empty
+    // map and delete files that are actually indexed on disk.
+    @Volatile private var indexRestored = false
+
     @Volatile private var cacheDirectory: File? = null
 
     @Volatile private var cacheFile: File? = null
@@ -450,7 +454,12 @@ object CanvasArtworkPlaybackCache {
             return
         }
         if (directory != null) {
-            trimLocked(directory)
+            // Never trim against an unrestored index: before loadFromDisk runs the
+            // map is empty and every on-disk mp4 looks orphaned, so a trim here
+            // would delete the entire cache on every cold start that wins this race.
+            if (indexRestored) {
+                trimLocked(directory)
+            }
         }
         schedulePersist()
     }
@@ -466,8 +475,8 @@ object CanvasArtworkPlaybackCache {
             restored
                 .filter { entry -> entry.mediaId.isNotBlank() }
                 .forEach { entry -> map.putIfAbsent(entry.mediaId, entry) }
+            indexRestored = true
             cacheDirectory?.let(::trimLocked)
-            Timber.d("Canvas cache restored: ${map.size} entries from disk")
         } catch (error: Exception) {
             Timber.e(error, "Failed to restore canvas cache from disk")
             runCatching { file.delete() }

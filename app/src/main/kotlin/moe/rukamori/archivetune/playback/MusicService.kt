@@ -1234,6 +1234,9 @@ class MusicService :
             mediaMetadata
         }.collectLatest(ioScope) { mediaMetadata ->
             if (mediaMetadata == null) return@collectLatest
+            // Podcast episodes carry no lyrics catalogue entries; fetching would burn
+            // provider calls for rows that can never resolve.
+            if (mediaMetadata.isPodcast) return@collectLatest
             // Always attempt to fetch lyrics when a new song starts playing so the
             // lyrics panel is ready by the time the user opens it, instead of requiring
             // the user to manually open the panel and search to trigger a fetch.
