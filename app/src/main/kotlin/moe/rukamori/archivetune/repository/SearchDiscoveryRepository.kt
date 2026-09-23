@@ -14,6 +14,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.Artist
@@ -167,12 +168,15 @@ class SearchDiscoveryRepository
                 val blockedSongIds = database.getBlockedSongIds().toHashSet()
 
                 seedSongs
-                    .map { song ->
-                        async {
-                            loadRelatedSongs(song)
-                                .ifEmpty { searchRelatedSongs(song) }
-                        }
-                    }.awaitAll()
+                    .chunked(ConcurrentRequestBatchSize)
+                    .flatMap { batch ->
+                        batch.map { song ->
+                            async {
+                                loadRelatedSongs(song)
+                                    .ifEmpty { searchRelatedSongs(song) }
+                            }
+                        }.awaitAll().also { yield() }
+                    }
                     .flatten()
                     .filterNot { song -> song.id in seedSongIds }
                     .filterNot { song -> song.id in blockedSongIds }
@@ -224,12 +228,15 @@ class SearchDiscoveryRepository
                 val seedArtistIds = seedArtists.mapTo(HashSet()) { artist -> artist.id }
 
                 seedArtists
-                    .map { artist ->
-                        async {
-                            loadRelatedArtists(artist)
-                                .ifEmpty { searchRelatedArtists(artist) }
-                        }
-                    }.awaitAll()
+                    .chunked(ConcurrentRequestBatchSize)
+                    .flatMap { batch ->
+                        batch.map { artist ->
+                            async {
+                                loadRelatedArtists(artist)
+                                    .ifEmpty { searchRelatedArtists(artist) }
+                            }
+                        }.awaitAll().also { yield() }
+                    }
                     .flatten()
                     .filterNot { artist -> artist.id in seedArtistIds }
                     .distinctBy { artist -> artist.id }
@@ -266,6 +273,10 @@ class SearchDiscoveryRepository
             const val MaxSuggestionSeedItems = 3
             const val MaxSuggestedItems = 12
             const val TopAlbumsQuery = "top albums"
+            // Below the seed cap on purpose: with 3 seeds this yields a 2+1 batch
+            // split, so at most 2 concurrent next()/related() fan-outs run at once.
+            // At 3 the chunked() call was a no-op (exactly one batch every time).
+            const val ConcurrentRequestBatchSize = 2
 
             const val CacheKey = "default"
             // 5-minute TTL: long enough that re-entering the Search tab a few times in a

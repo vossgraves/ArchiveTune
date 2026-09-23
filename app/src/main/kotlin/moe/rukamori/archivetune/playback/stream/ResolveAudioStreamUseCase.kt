@@ -8,6 +8,7 @@
 
 package moe.rukamori.archivetune.playback.stream
 
+import android.content.ComponentCallbacks2
 import android.os.Looper
 import androidx.annotation.WorkerThread
 import kotlinx.coroutines.CancellationException
@@ -73,6 +74,20 @@ class ResolveAudioStreamUseCase
             return active.await()
         }
 
+        /**
+         * Best-effort warm of the cache for an upcoming track (see NextStreamPreloader).
+         * Failures are swallowed — a preload must never surface an error for a song the
+         * user may never hear; the foreground resolve will retry and report properly.
+         */
+        suspend fun preload(request: AudioStreamRequest) {
+            try {
+                invoke(request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+            }
+        }
+
         @WorkerThread
         fun resolveBlocking(request: AudioStreamRequest): ResolvedAudioStream {
             check(Looper.myLooper() != Looper.getMainLooper())
@@ -121,9 +136,35 @@ class ResolveAudioStreamUseCase
         }
 
         fun clear() {
-            cache.clear()
+            clearCache()
             inFlight.values.forEach { it.cancel() }
             inFlight.clear()
+        }
+
+        /**
+         * Cache-only clear: entries go, in-flight resolutions are left alone.
+         * Cancelling an in-flight foreground resolve hands the player a
+         * CancellationException, so session invalidation (fingerprint rotation,
+         * logout) must never take the resolving jobs down with the entries.
+         */
+        fun clearCache() {
+            cache.clear()
+        }
+
+        /**
+         * Background trim hook. A music player lives backgrounded — that is its
+         * normal state, not memory pressure — so the gate sits at BACKGROUND
+         * (40), not UI_HIDDEN (20): below that the preloaded next stream and
+         * the current queue's resolved URLs must survive, or every background
+         * advance forces a full InnerTube/BotGuard re-resolution. Upstream
+         * trimmed heavyweight QuickJS runtimes at these levels; the fork's URL
+         * cache is cheap by comparison, so it is dropped only under real
+         * pressure, never for merely leaving the screen.
+         */
+        fun trimMemory(level: Int) {
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+                clearCache()
+            }
         }
 
     // Hybrid resolver: InnerTube (native, BotGuard/QuickJS) first — fast, ~30 MB, no Python — then
