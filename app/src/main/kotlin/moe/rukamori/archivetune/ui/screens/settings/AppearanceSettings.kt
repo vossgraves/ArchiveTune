@@ -97,7 +97,14 @@ import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.SplashOverlayEnabledKey
+import moe.rukamori.archivetune.constants.DefaultLibraryFilterOrderPreference
+import moe.rukamori.archivetune.constants.LibraryChipOrderKey
 import moe.rukamori.archivetune.constants.LibraryFilter
+import moe.rukamori.archivetune.constants.PlaylistTagOrderKey
+import moe.rukamori.archivetune.constants.toLibraryFilterOrder
+import moe.rukamori.archivetune.constants.toPlaylistTagPreference
+import moe.rukamori.archivetune.constants.toPlaylistTagOrder
+import moe.rukamori.archivetune.constants.toLibraryFilterPreference
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
@@ -133,7 +140,9 @@ import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LibraryChipOrderDialog
 import moe.rukamori.archivetune.ui.component.ListPreference
+import moe.rukamori.archivetune.ui.component.PlaylistTagOrderDialog
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.preferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -141,10 +150,15 @@ import moe.rukamori.archivetune.ui.component.ThumbnailCornerRadiusSelectorButton
 import moe.rukamori.archivetune.ui.player.StyledPlaybackSlider
 import moe.rukamori.archivetune.ui.theme.CustomFontLoader
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.viewmodels.PlaylistTagUiModel
+import moe.rukamori.archivetune.viewmodels.PlaylistTagsScreenState
+import moe.rukamori.archivetune.viewmodels.PlaylistTagsViewModel
 import moe.rukamori.archivetune.utils.isLowRamDevice
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.asPaddingValues
 
 /** The three pages Appearance is split across. */
@@ -476,6 +490,58 @@ fun AppearanceSectionSettings(
             key = ChipSortTypeKey,
             defaultValue = LibraryFilter.LIBRARY,
         )
+    val (libraryChipOrderPreference, onLibraryChipOrderChange) =
+        rememberPreference(
+            LibraryChipOrderKey,
+            defaultValue = DefaultLibraryFilterOrderPreference,
+        )
+    val libraryChipOrder =
+        remember(libraryChipOrderPreference) {
+            libraryChipOrderPreference.toLibraryFilterOrder()
+        }
+    val (playlistTagOrderPreference, onPlaylistTagOrderChange) =
+        rememberPreference(
+            PlaylistTagOrderKey,
+            defaultValue = "",
+        )
+    val playlistTagsViewModel: PlaylistTagsViewModel = hiltViewModel()
+    var showPlaylistTagOrderDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    // The tags query + full editable-playlist mapping run only while the dialog
+    // is open: collecting unconditionally costs a full playlist query on every
+    // Appearance visit for a dialog opened rarely (low-end: large libraries).
+    val playlistTagsState by
+        if (showPlaylistTagOrderDialog) {
+            playlistTagsViewModel.screenState.collectAsStateWithLifecycle()
+        } else {
+            remember { mutableStateOf(PlaylistTagsScreenState.Loading) }
+        }
+
+    if (showLibraryChipOrderDialog) {
+        LibraryChipOrderDialog(
+            initialOrder = libraryChipOrder,
+            onDismiss = { showLibraryChipOrderDialog = false },
+            onConfirm = { newOrder ->
+                onLibraryChipOrderChange(newOrder.toLibraryFilterPreference())
+                showLibraryChipOrderDialog = false
+            },
+        )
+    }
+
+    if (showPlaylistTagOrderDialog) {
+        PlaylistTagOrderDialog(
+            state = playlistTagsState,
+            initialOrder = playlistTagOrder,
+            onDismiss = { showPlaylistTagOrderDialog = false },
+            onConfirm = { newOrder ->
+                onPlaylistTagOrderChange(
+                    newOrder.map(PlaylistTagUiModel::id).toPlaylistTagPreference(),
+                )
+                showPlaylistTagOrderDialog = false
+            },
+        )
+    }
     val supportedHighestFps = rememberSupportedHighestFps()
     val isHighRefreshRateSupported = supportedHighestFps > HIGH_REFRESH_RATE_THRESHOLD_FPS
 
@@ -1459,6 +1525,24 @@ fun AppearanceSectionSettings(
                             }
                         },
                         onValueSelected = onDefaultChipChange,
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.arrange_library_chips)) },
+                        description = stringResource(R.string.arrange_library_chips_desc),
+                        icon = { Icon(painterResource(R.drawable.tab), null) },
+                        onClick = { showLibraryChipOrderDialog = true },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.arrange_playlist_tags)) },
+                        description = stringResource(R.string.arrange_playlist_tags_desc),
+                        icon = { Icon(painterResource(R.drawable.style), null) },
+                        onClick = { showPlaylistTagOrderDialog = true },
                     )
                 }
                 }

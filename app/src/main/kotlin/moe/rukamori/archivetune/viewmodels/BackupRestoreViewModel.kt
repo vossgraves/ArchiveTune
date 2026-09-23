@@ -43,6 +43,7 @@ import moe.rukamori.archivetune.backup.BackupArchiveCategory
 import moe.rukamori.archivetune.backup.BackupArchiveRepository
 import moe.rukamori.archivetune.backup.BackupArchiveStep
 import moe.rukamori.archivetune.backup.CreateBackupUseCase
+import moe.rukamori.archivetune.backup.BackupOperationCoordinator
 import moe.rukamori.archivetune.backup.ObserveScheduledBackupSettingsUseCase
 import moe.rukamori.archivetune.backup.ScheduledBackupFrequency
 import moe.rukamori.archivetune.backup.ScheduledBackupSettings
@@ -278,6 +279,7 @@ class BackupRestoreViewModel
     constructor(
         val database: MusicDatabase,
         private val createBackupUseCase: CreateBackupUseCase,
+        private val backupOperationCoordinator: BackupOperationCoordinator,
         observeScheduledBackupSettings: ObserveScheduledBackupSettingsUseCase,
         private val updateScheduledBackup: UpdateScheduledBackupUseCase,
         observeGoogleDriveSyncSettings: ObserveGoogleDriveSyncSettingsUseCase,
@@ -799,6 +801,9 @@ class BackupRestoreViewModel
             categories: Set<BackupCategory>,
         ) {
             viewModelScope.launch(Dispatchers.IO) {
+                // A restore swaps the database files out from under the app; it must
+                // never run while a backup is zipping those same files.
+                backupOperationCoordinator.withLock {
                 val title = context.getString(R.string.restore_in_progress)
                 try {
                     val includeSettings = BackupCategory.SETTINGS in categories
@@ -949,6 +954,7 @@ class BackupRestoreViewModel
                     }
                 } finally {
                     _backupRestoreProgress.value = null
+                }
                 }
             }
         }

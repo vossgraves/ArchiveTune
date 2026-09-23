@@ -13,8 +13,6 @@ import android.net.Uri
 import androidx.datastore.preferences.core.Preferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import moe.rukamori.archivetune.db.InternalDatabase
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.zipOutputStream
@@ -46,14 +44,14 @@ class BackupArchiveRepository
     constructor(
         @ApplicationContext private val context: Context,
         private val database: MusicDatabase,
+        private val operationCoordinator: BackupOperationCoordinator,
     ) {
-        private val backupMutex = Mutex()
 
         suspend fun createBackup(
             uri: Uri,
             categories: Set<BackupArchiveCategory>,
             onProgress: (BackupArchiveProgress) -> Unit = {},
-        ) = backupMutex.withLock {
+        ) = operationCoordinator.withLock {
             require(categories.isNotEmpty()) { "At least one backup category is required" }
 
             val includeSettings = BackupArchiveCategory.SETTINGS in categories

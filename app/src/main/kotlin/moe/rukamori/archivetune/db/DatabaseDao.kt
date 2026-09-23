@@ -84,6 +84,9 @@ private fun <T> List<T>.sortedByCollated(keySelector: (T) -> String): List<T> {
 
 @Dao
 interface DatabaseDao {
+    @Query("SELECT id FROM song WHERE inLibrary IS NOT NULL")
+    suspend fun librarySongIds(): List<String>
+
     @Transaction
     @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY rowId")
     fun songsByRowIdAsc(): Flow<List<Song>>
@@ -1403,6 +1406,12 @@ interface DatabaseDao {
     @Transaction
     @Query("DELETE FROM event")
     fun clearListenHistory()
+
+    @Query("UPDATE song SET totalPlayTime = 0 WHERE totalPlayTime != 0")
+    suspend fun resetTotalPlayTime()
+
+    @Query("DELETE FROM playCount")
+    suspend fun clearPlayCounts()
 
     @Transaction
     @Query("DELETE FROM event WHERE id IN (:eventIds)")

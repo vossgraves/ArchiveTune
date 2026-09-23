@@ -73,3 +73,10 @@ val ListenTogetherInTopBarKey = booleanPreferencesKey("listenTogetherInTopBar")
 // TikTok player: the karaoke caption strip under the artwork (ported from
 // 4nx3b/ArchiveTune). Off by default — it reserves 168dp of the page for the strip.
 val TikTokMainLyricsEnabledKey = booleanPreferencesKey("tiktokMainLyricsEnabled")
+
+// Manual ordering for the Library's section chips and its playlist-tag filter row.
+// Both store a comma-separated list of names/ids; see constants/LibraryFilter.kt and
+// constants/PlaylistTagOrder.kt for the readers. LibraryChipOrderKey defaults to the
+// built-in order; PlaylistTagOrderKey defaults empty = unknown/never arranged.
+val LibraryChipOrderKey = stringPreferencesKey("libraryChipOrder")
+val PlaylistTagOrderKey = stringPreferencesKey("playlistTagOrder")

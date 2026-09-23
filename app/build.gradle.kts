@@ -508,6 +508,9 @@ dependencies {
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
+    // Drive backup authorization (gms source set only): Identity/AuthorizationClient
+    // for com.google.android.gms.auth.api.identity.* in the gms Drive stack.
+    add("gmsImplementation", "com.google.android.gms:play-services-auth:22.0.0")
     implementation(libs.squigglyslider)
 
     // The Telegram engine has no Maven artifact: org.drinkless.tdlib Client/TdApi is vendored

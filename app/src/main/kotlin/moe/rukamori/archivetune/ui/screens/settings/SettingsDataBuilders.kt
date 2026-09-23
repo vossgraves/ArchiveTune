@@ -381,6 +381,16 @@ fun buildSettingsGroups(
                 SettingsChild("yt-dlp runtime", "ytdlp", listOf("yt-dlp", "ytdlp", "youtube-dl", "extractor", "downloader runtime", "yt dlp version")),
             ),
         )
+    val canvas =
+        SettingsItem(
+            key = "canvas",
+            icon = painterResource(R.drawable.motion_photos_on),
+            title = stringResource(R.string.archivetune_canvas),
+            subtitle = stringResource(R.string.canvas_settings_subtitle),
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("canvas", "animated artwork", "motion artwork", "live artwork", "video artwork", "wifi", "metered", "cache"),
+            onClick = { navController.navigate("settings/canvas") },
+        )
     // Sources → JioSaavn sub-page.
     val jioSaavn =
         SettingsItem(
@@ -1090,6 +1100,7 @@ fun buildSettingsGroups(
                     navigationBar,
                     lyricsAnimations,
                     playback,
+                    canvas,
                     sources,
                     jioSaavn,
                     amazon,

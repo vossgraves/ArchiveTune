@@ -73,9 +73,14 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
+import moe.rukamori.archivetune.constants.DefaultLibraryFilterOrderPreference
 import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.constants.LibraryChipOrderKey
 import moe.rukamori.archivetune.constants.LibraryFilter
+import moe.rukamori.archivetune.constants.PlaylistTagOrderKey
 import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
+import moe.rukamori.archivetune.constants.toLibraryFilterOrder
+import moe.rukamori.archivetune.constants.toPlaylistTagOrder
 import moe.rukamori.archivetune.db.entities.TagEntity
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -92,15 +97,30 @@ fun LibraryScreen(navController: NavController) {
     val allTags by database.allTags().collectAsStateWithLifecycle(initialValue = emptyList())
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, defaultValue = true)
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
+    val (libraryChipOrderPreference) =
+        rememberPreference(
+            LibraryChipOrderKey,
+            defaultValue = DefaultLibraryFilterOrderPreference,
+        )
+    val (playlistTagOrderPreference) = rememberPreference(PlaylistTagOrderKey, defaultValue = "")
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
+    // Tags are shown in the order the user arranged them (Settings → Appearance), with any tag
+    // created since that arrangement appended in the database's own order.
+    val orderedTags =
+        remember(allTags, playlistTagOrderPreference) {
+            val tagsById = allTags.associateBy(TagEntity::id)
+            playlistTagOrderPreference
+                .toPlaylistTagOrder(allTags.map(TagEntity::id))
+                .mapNotNull { tagId -> tagsById[tagId] }
+        }
     // Both the Library and Playlists sections take the same filter row, so it is built once: the
     // tag chips are the same list either way, and two lambdas could drift.
     val playlistTagFilterContent: (@Composable () -> Unit)? =
         if (showTagsInLibrary) {
             {
                 PlaylistTagFilterRow(
-                    tags = allTags,
+                    tags = orderedTags,
                     selectedTagIds = selectedTagIds,
                     onSelectedTagIdsChange = onSelectedTagIdsChange,
                     onManageTagsClick = { showTagsManagementDialog = true },
@@ -120,14 +140,8 @@ fun LibraryScreen(navController: NavController) {
     val librarySource = rememberLibrarySource()
     val librarySourcePreference = rememberLibrarySourcePreference()
     val libraryFilters =
-        remember {
-            listOf(
-                LibraryFilter.LIBRARY,
-                LibraryFilter.PLAYLISTS,
-                LibraryFilter.SONGS,
-                LibraryFilter.ARTISTS,
-                LibraryFilter.ALBUMS,
-            )
+        remember(libraryChipOrderPreference) {
+            libraryChipOrderPreference.toLibraryFilterOrder()
         }
 
     if (showTagsManagementDialog) {
