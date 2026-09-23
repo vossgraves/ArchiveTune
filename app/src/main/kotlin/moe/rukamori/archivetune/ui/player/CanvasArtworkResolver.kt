@@ -125,17 +125,21 @@ internal suspend fun fetchCanvasArtworkForPlayback(
         }
 
     return candidates.firstNotNullOfOrNull { (song, artist) ->
-        AppleMusicProvider
-            .getBySongArtist(
-                song = song,
-                artist = artist,
-                storefront = storefront,
-                forceRefresh = forceRefresh,
-                album = albumTitle,
-            )?.takeIf { artwork ->
-                artwork.matchesIdentity(songTitleRaw, artistNameRaw, strictIdentity) &&
-                    artwork.hasRequiredCanvasVariant(requireVertical)
-            }
+        // A policy denial (source deselected, wifi-only/low-data block) throws;
+        // resolve it to null like the Spotify branch so the chain continues.
+        runCatching {
+            AppleMusicProvider
+                .getBySongArtist(
+                    song = song,
+                    artist = artist,
+                    storefront = storefront,
+                    forceRefresh = forceRefresh,
+                    album = albumTitle,
+                )
+        }.getOrNull()?.takeIf { artwork ->
+            artwork.matchesIdentity(songTitleRaw, artistNameRaw, strictIdentity) &&
+                artwork.hasRequiredCanvasVariant(requireVertical)
+        }
     }
 }
 

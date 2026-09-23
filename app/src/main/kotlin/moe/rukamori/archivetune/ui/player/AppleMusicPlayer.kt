@@ -518,7 +518,7 @@ fun AppleMusicPlayerContent(
         // previous attempt no-op'd — the AI returned the same text, a common
         // failure mode for CJK lyrics. Without this, those songs would be blocked
         // from retrying forever.
-        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+        if (snapshot.source in setOf(LyricsEntity.Source.AI_TRANSLATION.value, LyricsEntity.Source.TRANSLATION.value) &&
             LyricsUtils.hasTranslation(text)
         ) return@LaunchedEffect
 

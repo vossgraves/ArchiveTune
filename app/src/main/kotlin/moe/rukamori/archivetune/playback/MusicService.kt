@@ -2635,7 +2635,11 @@ class MusicService :
 
         val currentItem = player.getMediaItemAt(currentIndex)
         val targetItem = player.getMediaItemAt(targetIndex)
-        if (!repeatCurrent && crossfadeGapless && isGaplessAlbumTransition(currentItem, targetItem)) return null
+        // Episodes report duration -1 until resolved: fading against an
+        // unknown-length track schedules against fiction. Skip both directions.
+        val currentMeta = currentItem.localConfiguration?.tag as? moe.rukamori.archivetune.models.MediaMetadata
+        val targetMeta = targetItem.localConfiguration?.tag as? moe.rukamori.archivetune.models.MediaMetadata
+        if (currentMeta?.isPodcast == true || targetMeta?.isPodcast == true) return null
 
         return CrossfadeTarget(
             index = targetIndex,
@@ -4868,6 +4872,9 @@ class MusicService :
         val mediaId = currentHistoryMediaId ?: return
         if (currentHistorySessionQueued) return
         if (dataStore.get(PauseListenHistoryKey, false)) return
+        // Episodes are not songs: recording them would insert podcast rows into the
+        // song table (losing the marker on read-back) and pollute listening stats.
+        if (player.currentMetadata?.takeIf { it.id == mediaId }?.isPodcast == true) return
 
         val thresholdMs = historyThresholdMs()
         val playedMs = currentHistoryPlayedMs()
@@ -8973,7 +8980,9 @@ class MusicService :
     ) {
         val mediaItem = eventTime.timeline.getWindow(eventTime.windowIndex, Timeline.Window()).mediaItem
         val mediaId = mediaItem.mediaId
-        val thresholdMs = historyThresholdMs()
+        // Episodes must not feed song stats: no history event, play-time, count,
+        // or remote registration. Matches the maybeRecord guard above.
+        if ((mediaItem.localConfiguration?.tag as? moe.rukamori.archivetune.models.MediaMetadata)?.isPodcast == true) return
         val pendingSession = popPendingHistoryFinalization(mediaId)
         val alreadyPersistedForSession = pendingSession?.eventId != null || pendingSession?.remoteRegistered == true
         val reachedHistoryThreshold =

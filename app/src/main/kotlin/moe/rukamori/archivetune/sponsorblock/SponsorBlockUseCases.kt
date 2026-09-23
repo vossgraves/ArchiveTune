@@ -44,6 +44,32 @@ class ObserveSponsorBlockSettingsUseCase
         operator fun invoke(): Flow<SponsorBlockSettings> = repository.observeSettings()
     }
 
+/**
+ * Segments to skip for [videoId], honouring the settings passed in.
+ *
+ * Deliberately delegates to [SponsorBlockRepository.segments]: that call already validates the
+ * id, respects the enabled flag and the selected categories, merges overlaps, and answers an
+ * empty list — never a failure — when the service is unreachable, so playback never blocks on it.
+ * Kept for future playback wiring; the settings screen writes keys directly.
+ */
+@Singleton
+class GetSponsorBlockSegmentsUseCase
+    @Inject
+    constructor(
+        private val repository: SponsorBlockRepository,
+    ) {
+        suspend operator fun invoke(
+            videoId: String,
+            settings: SponsorBlockSettings? = null,
+        ): List<SponsorBlockSegment> {
+            val resolved = settings ?: repository.settings()
+            return if (!resolved.enabled || resolved.categories.isEmpty()) {
+                emptyList()
+            } else {
+                repository.segments(videoId)
+            }
+        }
+    }
 class SetSponsorBlockEnabledUseCase
     @Inject
     constructor(

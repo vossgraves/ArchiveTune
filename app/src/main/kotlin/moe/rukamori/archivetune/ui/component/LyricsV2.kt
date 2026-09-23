@@ -290,7 +290,7 @@ fun LyricsV2(
     val lyrics = currentLyrics?.lyrics
     val showTranslations =
         remember(currentLyrics?.source) {
-            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+            currentLyrics?.source in setOf(LyricsEntity.Source.AI_TRANSLATION.value, LyricsEntity.Source.TRANSLATION.value)
         }
 
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }

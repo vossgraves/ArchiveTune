@@ -353,7 +353,7 @@ fun LyricsEnhanced(
         }
     val showTranslations =
         remember(currentLyrics?.source) {
-            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+            currentLyrics?.source in setOf(LyricsEntity.Source.AI_TRANSLATION.value, LyricsEntity.Source.TRANSLATION.value)
         }
 
     // Restart tick: bumps when the SAME song restarts (auto-repeat, manual replay, seek-to-zero)

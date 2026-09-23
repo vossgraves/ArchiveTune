@@ -209,7 +209,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
         val text = snapshot.lyrics ?: return@LaunchedEffect
         if (text.isBlank() || text == LYRICS_NOT_FOUND) return@LaunchedEffect
 
-        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+        if (snapshot.source in setOf(LyricsEntity.Source.AI_TRANSLATION.value, LyricsEntity.Source.TRANSLATION.value) &&
             LyricsUtils.hasTranslation(text)
         ) return@LaunchedEffect
 

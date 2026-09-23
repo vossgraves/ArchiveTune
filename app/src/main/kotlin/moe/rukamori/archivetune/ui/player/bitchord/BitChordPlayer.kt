@@ -537,7 +537,7 @@ fun BitChordPlayerContent(
         val text = snapshot.lyrics
         if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
         // Already AI-translated with real translation content — don't re-bill.
-        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+        if (snapshot.source in setOf(LyricsEntity.Source.AI_TRANSLATION.value, LyricsEntity.Source.TRANSLATION.value) &&
             LyricsUtils.hasTranslation(text)
         ) {
             return@LaunchedEffect

@@ -599,11 +599,13 @@ enum class LastFmProvider {
 val AudioQualityKey = stringPreferencesKey("audioQuality")
 
 val NetworkMeteredKey = booleanPreferencesKey("networkMetered")
-// Preload's own data-saver flag. It was briefly aliased to NetworkMeteredKey
-// (upstream 15.0.0 shares the key), but the fork shows the two as separate
-// toggles with opposite defaults (Low data mode defaults on, Network metered
-// defaults off) — one key cannot serve both. Everything UI-facing keeps reading
-// LowDataModeKey; only the preload settings repo reads/writes this one.
+// The fork's UI flag has always been this alias (stored under "networkMetered"):
+// Low data mode ON means "treat networks as metered". The opposite defaults the
+// review flagged (UI on vs metered off) are two toggles over one persisted bit,
+// pre-existing fork semantics — not something this port may redefine.
+val LowDataModeKey = NetworkMeteredKey
+// Preload's own data-saver flag. The preload settings repo reads/writes only
+// this key, so enabling preload never flips the player-wide metered flag.
 val PreloadLowDataModeKey = booleanPreferencesKey("preloadLowDataMode")
 val PreloadNextSongKey = booleanPreferencesKey("preloadNextSong")
 

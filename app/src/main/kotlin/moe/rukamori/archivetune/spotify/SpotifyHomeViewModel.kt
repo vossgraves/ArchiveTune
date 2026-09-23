@@ -114,7 +114,7 @@ class SpotifyHomeViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    private val _navigationEvents = MutableSharedFlow<SpotifyHomeNavigationEvent>()
+    private val _navigationEvents = MutableSharedFlow<SpotifyHomeNavigationEvent>(extraBufferCapacity = 1)
     val navigationEvents: SharedFlow<SpotifyHomeNavigationEvent> = _navigationEvents.asSharedFlow()
 
     private val _resolvingItemKey = MutableStateFlow<String?>(null)
@@ -123,12 +123,22 @@ class SpotifyHomeViewModel @Inject constructor(
     private var loadJob: Job? = null
 
     init {
+        // accountChanges replays the current spDc on collect: the first emission
+        // is "same account as launch", not a change. Wiping the snapshot there
+        // deletes the very cache instant-home needs, so skip emission one and
+        // only wipe on genuine changes; the initial load() paints from cache.
+        var firstEmission = true
         viewModelScope.launch {
             repository.accountChanges.collect {
-                // A changed account must never see the previous account's home:
-                // wipe the snapshot, then load fresh.
-                profileCache.clearCache()
-                load()
+                if (firstEmission) {
+                    firstEmission = false
+                    load()
+                } else {
+                    // A changed account must never see the previous account's home:
+                    // wipe the snapshot, then load fresh.
+                    profileCache.clearCache()
+                    load()
+                }
             }
         }
     }
@@ -136,7 +146,7 @@ class SpotifyHomeViewModel @Inject constructor(
 
     fun onAction(action: SpotifyHomeAction) {
         when (action) {
-            SpotifyHomeAction.Refresh -> load()
+            SpotifyHomeAction.Refresh -> load(force = true)
             is SpotifyHomeAction.TrackClick -> resolveSelection(
                 key = "track:${action.track.id}",
                 unavailableMessageResId = R.string.spotify_track_unavailable,
@@ -196,7 +206,9 @@ class SpotifyHomeViewModel @Inject constructor(
                 reportException(error)
                 _navigationEvents.emit(SpotifyHomeNavigationEvent.ShowMessage(unavailableMessageResId))
             } finally {
-                if (currentCoroutineContext().isActive) _resolvingItemKey.value = null
+                // Unconditional: the buffered navigation flow can't strand the
+                // emit, so a cancelled tap must not leave the tile spinning.
+                _resolvingItemKey.value = null
             }
         }
     }
@@ -222,7 +234,8 @@ class SpotifyHomeViewModel @Inject constructor(
         if (!force) {
             _screenState.value = SpotifyHomeScreenState.Loading
         }
-        loadJob = viewModelScope.launch(Dispatchers.IO) {
+        val thisJob = viewModelScope.launch(Dispatchers.IO) {
+            loadJob = thisJob
             // Instant home: paint the last good snapshot first so a cold start or
             // an account switch never flashes a bare spinner, then replace it
             // when the network answers below. Bounded to three small lists, so
@@ -374,9 +387,12 @@ class SpotifyHomeViewModel @Inject constructor(
                         frequentArtists = frequentArtists,
                     )
                 }
-                _isRefreshing.value = false
+                if (loadJob === thisJob) _isRefreshing.value = false
 
             } catch (error: CancellationException) {
+                // A superseding load already set the flag for itself; only clear
+                // when this cancelled job is still the current one.
+                if (loadJob === thisJob) _isRefreshing.value = false
                 throw error
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
@@ -385,7 +401,7 @@ class SpotifyHomeViewModel @Inject constructor(
                 } else {
                     _screenState.update { SpotifyHomeScreenState.Error(R.string.error_unknown) }
                 }
-                _isRefreshing.value = false
+                if (loadJob === thisJob) _isRefreshing.value = false
             }
         }
     }
