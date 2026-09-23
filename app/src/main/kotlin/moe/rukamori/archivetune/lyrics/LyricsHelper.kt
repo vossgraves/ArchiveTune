@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
@@ -270,8 +272,10 @@ class LyricsHelper
                         .map { provider ->
                             async(Dispatchers.IO) {
                                 val lyrics =
-                                    withTimeoutOrNull(WORD_SYNC_PROVIDER_TIMEOUT_MS) {
-                                        fetchProviderLyrics(provider, mediaMetadata, artist)
+                                    providerPermits.withPermit {
+                                        withTimeoutOrNull(WORD_SYNC_PROVIDER_TIMEOUT_MS) {
+                                            fetchProviderLyrics(provider, mediaMetadata, artist)
+                                        }
                                     }
                                 if (lyrics == null) {
                                     GlobalLog.append(
@@ -350,15 +354,17 @@ class LyricsHelper
                     providers.map { provider ->
                         async {
                             try {
-                                withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
-                                    provider.getAllLyrics(mediaId, songTitle, songArtists, songAlbum, duration) lyricsCallback@{ lyrics ->
-                                        val normalizedLyrics = LyricsUtils.lyricsOrNotFound(lyrics)
-                                        if (normalizedLyrics == LYRICS_NOT_FOUND) return@lyricsCallback
-                                        val result = LyricsResult(provider.name, normalizedLyrics)
-                                        synchronized(allResult) {
-                                            allResult += result
+                                providerPermits.withPermit {
+                                    withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                                        provider.getAllLyrics(mediaId, songTitle, songArtists, songAlbum, duration) lyricsCallback@{ lyrics ->
+                                            val normalizedLyrics = LyricsUtils.lyricsOrNotFound(lyrics)
+                                            if (normalizedLyrics == LYRICS_NOT_FOUND) return@lyricsCallback
+                                            val result = LyricsResult(provider.name, normalizedLyrics)
+                                            synchronized(allResult) {
+                                                allResult += result
+                                            }
+                                            callback(result)
                                         }
-                                        callback(result)
                                     }
                                 }
                             } catch (e: CancellationException) {
@@ -390,8 +396,10 @@ class LyricsHelper
                         .map { provider ->
                             async(Dispatchers.IO) {
                                 val lyrics =
-                                    withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
-                                        fetchProviderLyrics(provider, mediaMetadata, artist)
+                                    providerPermits.withPermit {
+                                        withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                                            fetchProviderLyrics(provider, mediaMetadata, artist)
+                                        }
                                     }
                                 if (lyrics == null) null else provider.name to lyrics
                             }
@@ -506,8 +514,19 @@ class LyricsHelper
             title: String,
             artists: String,
         ): String = "$artists-$title".replace(" ", "")
+        // Bounds provider fan-out across the three parallel fetch paths so a burst of
+        // provider HTTP calls cannot exhaust sockets/threads on low-end devices.
 
         companion object {
+            // Process-wide cap on concurrent provider fetches, shared by the three
+            // parallel fetch paths AND every LyricsHelper instance (MusicService,
+            // menu, preload all inject their own). Per-instance caps summed past
+            // the socket budget on low-end devices; one shared semaphore holds.
+            private val providerPermits = Semaphore(MAX_CONCURRENT_PROVIDERS)
+
+            // Cap on concurrent provider fetches, shared by all three parallel fetch
+            // paths via [providerPermits].
+            private const val MAX_CONCURRENT_PROVIDERS = 6
             private const val MAX_CACHE_SIZE = 16
 
             // One entry per track whose stored lyrics a word-synced upgrade has been attempted

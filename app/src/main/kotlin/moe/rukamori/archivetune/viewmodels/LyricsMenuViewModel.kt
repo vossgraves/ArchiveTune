@@ -236,7 +236,7 @@ class LyricsMenuViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 // When AI_TRANSLATION is saved without an explicit providerName (e.g.
                 val effectiveProviderName =
-                    if (source == LyricsEntity.Source.AI_TRANSLATION && providerName.isBlank()) {
+                    if ((source == LyricsEntity.Source.AI_TRANSLATION || source == LyricsEntity.Source.TRANSLATION) && providerName.isBlank()) {
                         captureLyricsBeforeTranslation(mediaMetadata.id)
                         _translationDismissedMediaIds.value =
                             _translationDismissedMediaIds.value - mediaMetadata.id
@@ -266,8 +266,9 @@ class LyricsMenuViewModel
                         LyricsEntity.Source.USER_EDIT,
                         -> lyrics
 
-                        LyricsEntity.Source.AI_TRANSLATION ->
-                            usableTranslatedLyrics(lyrics) ?: return@launch
+                        LyricsEntity.Source.AI_TRANSLATION,
+                        LyricsEntity.Source.TRANSLATION,
+                        -> usableTranslatedLyrics(lyrics) ?: return@launch
                     }
                 database.query {
                     replaceLyrics(
@@ -405,6 +406,7 @@ class LyricsMenuViewModel
             if (_translationUndo.value?.mediaId == mediaId) return
             val existing = database.withTransaction { getLyricsById(mediaId) } ?: return
             if (existing.source == LyricsEntity.Source.AI_TRANSLATION.value) return
+            if (existing.source == LyricsEntity.Source.TRANSLATION.value) return
             _translationUndo.value =
                 LyricsTranslationUndoSnapshot(
                     mediaId = existing.id,
