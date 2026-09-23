@@ -763,6 +763,14 @@ fun SimilarRecommendationsSection(
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
+                onPlayEpisode = { episode ->
+                    playerConnection.playQueue(
+                        ListQueue(
+                            title = episode.podcast?.name ?: episode.title,
+                            items = listOf(episode.toMediaItem()),
+                        ),
+                    )
+                },
             )
         }
     }
@@ -809,6 +817,14 @@ fun HomePageSectionContent(
                 haptic = haptic,
                 scope = scope,
                 onPlaySongFromSection = { playerConnection.playShelfFrom(shelfSongs, it, shelfTitle) },
+                onPlayEpisode = { episode ->
+                    playerConnection.playQueue(
+                        ListQueue(
+                            title = episode.podcast?.name ?: episode.title,
+                            items = listOf(episode.toMediaItem()),
+                        ),
+                    )
+                },
             )
         }
     }

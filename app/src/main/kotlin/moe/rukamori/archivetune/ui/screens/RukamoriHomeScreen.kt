@@ -1319,6 +1319,14 @@ private fun SimilarDiscoveryDeck(
                             haptic = haptic,
                             scope = scope,
                             onPlaySongFromSection = { playerConnection.playShelfFrom(deckSongs, it, source.title) },
+                            onPlayEpisode = { episode ->
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = episode.podcast?.name ?: episode.title,
+                                        items = listOf(episode.toMediaItem()),
+                                    ),
+                                )
+                            },
                             modifier = Modifier.weight(1f),
                             isPlaying = isPlaying,
                         )

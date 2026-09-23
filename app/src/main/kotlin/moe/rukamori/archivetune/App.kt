@@ -48,6 +48,8 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.lyrics.PaxsenixAppleMusicToken
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
+import moe.rukamori.archivetune.canvas.StartCanvasPolicyUseCase
+import moe.rukamori.archivetune.playback.stream.YoutubeiStreamRepository
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
@@ -101,6 +103,16 @@ class App :
     @Inject
     lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
 
+    // Starts the Canvas network policy (wifi-only, low-data, cache budget) and the cache init,
+    // so the Canvas settings actually gate resolution from the first launch.
+    @Inject
+    lateinit var startCanvasPolicy: StartCanvasPolicyUseCase
+
+    // Resolver session invalidation on memory pressure (upstream 15.0.0 `adb071ae8`).
+    // Field injection keeps this additive: no constructor or init-order changes.
+    @Inject
+    lateinit var youtubeiStreamRepository: YoutubeiStreamRepository
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
@@ -126,6 +138,7 @@ class App :
     @OptIn(DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
+        startCanvasPolicy.start(applicationScope)
         instance = this
         if (currentProcessName()?.endsWith(":crash") == true) {
             Timber.plant(Timber.DebugTree())
@@ -150,7 +163,9 @@ class App :
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        // WebView cleanup happens automatically on process death
+        // Direct call like upstream: the body is map ops that cannot throw, and a
+        // silent catch here would hide exactly the injection failure that matters.
+        youtubeiStreamRepository.trimMemory(level)
     }
 
     private fun initializeCriticalSync() {

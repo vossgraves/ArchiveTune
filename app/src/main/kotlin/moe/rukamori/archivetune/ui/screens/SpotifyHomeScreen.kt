@@ -171,6 +171,7 @@ fun SpotifyHomeScreen(
     val context = LocalContext.current
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val resolvingItemKey by viewModel.resolvingItemKey.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val onSwitchToYoutube = rememberSwitchToYouTube()
@@ -237,7 +238,7 @@ fun SpotifyHomeScreen(
             }
             is SpotifyHomeScreenState.Success -> {
                 ExpressivePullToRefreshBox(
-                    isRefreshing = false,
+                    isRefreshing = isRefreshing,
                     onRefresh = { viewModel.onAction(SpotifyHomeAction.Refresh) },
                     modifier = Modifier.fillMaxSize(),
                 ) {

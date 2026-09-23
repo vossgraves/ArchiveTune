@@ -67,6 +67,12 @@ val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
 val SpotifyCanvasKey = booleanPreferencesKey("spotifyCanvas")
 
+/** Which provider the Canvas playback layer resolves artwork from. */
+val CanvasSourceKey = stringPreferencesKey("canvasSource")
+
+/** Whether Canvas lookups and downloads wait for an unmetered Wi-Fi connection. */
+val CanvasWifiOnlyKey = booleanPreferencesKey("canvasWifiOnly")
+
 /** Whether an album page plays the album's looping motion artwork behind its header. */
 val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
 
@@ -593,7 +599,13 @@ enum class LastFmProvider {
 val AudioQualityKey = stringPreferencesKey("audioQuality")
 
 val NetworkMeteredKey = booleanPreferencesKey("networkMetered")
-val LowDataModeKey = NetworkMeteredKey
+// Preload's own data-saver flag. It was briefly aliased to NetworkMeteredKey
+// (upstream 15.0.0 shares the key), but the fork shows the two as separate
+// toggles with opposite defaults (Low data mode defaults on, Network metered
+// defaults off) — one key cannot serve both. Everything UI-facing keeps reading
+// LowDataModeKey; only the preload settings repo reads/writes this one.
+val PreloadLowDataModeKey = booleanPreferencesKey("preloadLowDataMode")
+val PreloadNextSongKey = booleanPreferencesKey("preloadNextSong")
 
 enum class AudioQuality {
     AUTO,

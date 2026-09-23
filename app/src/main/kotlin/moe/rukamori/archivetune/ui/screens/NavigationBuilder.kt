@@ -52,6 +52,8 @@ import moe.rukamori.archivetune.ui.screens.playlist.LocalPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.OnlinePlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.SpotifyPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.TopPlaylistScreen
+import moe.rukamori.archivetune.ui.screens.podcast.PodcastRoute
+import moe.rukamori.archivetune.ui.screens.podcast.PodcastScreen
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResult
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultArgument
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchProviderArgument
@@ -69,6 +71,7 @@ import moe.rukamori.archivetune.ui.screens.settings.AppearanceSection
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSectionSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
+import moe.rukamori.archivetune.ui.screens.settings.CanvasSettings
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
 import moe.rukamori.archivetune.ui.screens.settings.ContentSettings
 import moe.rukamori.archivetune.ui.screens.settings.CustomizeBackground
@@ -346,6 +349,17 @@ fun NavGraphBuilder.navigationBuilder(
         AlbumScreen(navController, scrollBehavior)
     }
     composable(
+        route = PodcastRoute,
+        arguments =
+            listOf(
+                navArgument("browseId") {
+                    type = NavType.StringType
+                },
+            ),
+    ) {
+        PodcastScreen(navController)
+    }
+    composable(
         route = "artist/{artistId}",
         arguments =
             listOf(
@@ -587,6 +601,9 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         PlayerSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable("settings/canvas") {
+        CanvasSettings(navController)
     }
     composable(
         route = "settings/sources?scrollTo={scrollTo}",

@@ -40,6 +40,7 @@ import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
+import kotlinx.serialization.Serializable
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
@@ -51,17 +52,20 @@ import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistOwner
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTracksRef
 import javax.inject.Inject
 
+@Serializable
 sealed interface SpotifyRecentItem {
     val id: String
     val name: String
     val imageUrl: String?
 
+    @Serializable
     data class Playlist(
         override val id: String,
         override val name: String,
         override val imageUrl: String?
     ) : SpotifyRecentItem
 
+    @Serializable
     data class Album(
         override val id: String,
         override val name: String,
@@ -98,17 +102,17 @@ sealed interface SpotifyHomeAction {
     // Identity plus the words the catalogue search needs, rather than a whole Spotify model. The
     // callers hold four different shapes for the same album (feed item, recent item, search
     // result), and every one of them was rebuilding a SpotifyAlbum just to be taken apart again.
-    data class AlbumClick(val id: String, val name: String, val artist: String?) : SpotifyHomeAction
-    data class ArtistClick(val id: String, val name: String) : SpotifyHomeAction
-}
-
 @HiltViewModel
 class SpotifyHomeViewModel @Inject constructor(
     private val repository: SpotifyLibraryRepository,
+    private val profileCache: SpotifyProfileCache,
 ) : ViewModel() {
 
     private val _screenState = MutableStateFlow<SpotifyHomeScreenState>(SpotifyHomeScreenState.Loading)
     val screenState: StateFlow<SpotifyHomeScreenState> = _screenState.asStateFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _navigationEvents = MutableSharedFlow<SpotifyHomeNavigationEvent>()
     val navigationEvents: SharedFlow<SpotifyHomeNavigationEvent> = _navigationEvents.asSharedFlow()
@@ -120,9 +124,15 @@ class SpotifyHomeViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            repository.accountChanges.collect { load() }
+            repository.accountChanges.collect {
+                // A changed account must never see the previous account's home:
+                // wipe the snapshot, then load fresh.
+                profileCache.clearCache()
+                load()
+            }
         }
     }
+
 
     fun onAction(action: SpotifyHomeAction) {
         when (action) {
@@ -203,16 +213,46 @@ class SpotifyHomeViewModel @Inject constructor(
         return fallback.getOrThrow().items.filterIsInstance<T>().firstOrNull()
     }
 
-    private fun load() {
+    private fun load(force: Boolean = false) {
         loadJob?.cancel()
         cancelSelection()
-        _screenState.value = SpotifyHomeScreenState.Loading
+        // Sync the spinner to this load's intent first: a cancelled forced load
+        // never reaches its reset, so without this a stale true would stick.
+        _isRefreshing.value = force
+        if (!force) {
+            _screenState.value = SpotifyHomeScreenState.Loading
+        }
         loadJob = viewModelScope.launch(Dispatchers.IO) {
+            // Instant home: paint the last good snapshot first so a cold start or
+            // an account switch never flashes a bare spinner, then replace it
+            // when the network answers below. Bounded to three small lists, so
+            // restore is one DataStore read and no image work.
+            val cached = profileCache.restoreFromDataStore()
+            if (cached.recentItems.isNotEmpty() ||
+                cached.topTracks.isNotEmpty() ||
+                cached.frequentArtists.isNotEmpty()
+            ) {
+                _screenState.update {
+                    SpotifyHomeScreenState.Success(
+                        sections = cached.topTracks.takeIf { it.isNotEmpty() }?.let { tracks ->
+                            listOf(
+                                SpotifyHomeSection.Tracks(
+                                    title = "spotify_top_tracks",
+                                    tracks = tracks,
+                                ),
+                            )
+                        }.orEmpty(),
+                        recentItems = cached.recentItems,
+                        frequentArtists = cached.frequentArtists,
+                    )
+                }
+            }
 
             try {
                 val session = repository.restoreSession()
                 if (!session.isAuthenticated) {
                     _screenState.update { SpotifyHomeScreenState.Error(R.string.spotify_not_connected, notAuthenticated = true) }
+                    _isRefreshing.value = false
                     return@launch
                 }
 
@@ -230,8 +270,10 @@ class SpotifyHomeViewModel @Inject constructor(
                 val topArtistsResult = topArtistsDeferred.await()
                 currentCoroutineContext().ensureActive()
 
+                var topTracksList = emptyList<SpotifyTrack>()
                 topTracksResult.onSuccess { topTracks ->
                     if (topTracks.items.isNotEmpty()) {
+                        topTracksList = topTracks.items
                         sections.add(
                             SpotifyHomeSection.Tracks(
                                 title = "spotify_top_tracks",
@@ -239,6 +281,16 @@ class SpotifyHomeViewModel @Inject constructor(
                             )
                         )
                     }
+                }
+                // Network top-tracks missing but a snapshot exists: keep the shelf
+                // populated rather than dropping it for one failed call.
+                if (topTracksList.isEmpty() && cached.topTracks.isNotEmpty()) {
+                    sections.add(
+                        SpotifyHomeSection.Tracks(
+                            title = "spotify_top_tracks",
+                            tracks = cached.topTracks,
+                        )
+                    )
                 }
 
                 newReleasesResult.onSuccess { newReleases ->
@@ -264,6 +316,9 @@ class SpotifyHomeViewModel @Inject constructor(
 
                 topArtistsResult.onSuccess { topArtists ->
                     frequentArtists = topArtists.items
+                }
+                if (frequentArtists.isEmpty()) {
+                    frequentArtists = cached.frequentArtists
                 }
 
                 var recentItems = emptyList<SpotifyRecentItem>()
@@ -311,7 +366,15 @@ class SpotifyHomeViewModel @Inject constructor(
                             frequentArtists = frequentArtists,
                         )
                     }
+                    // Snapshot the network win so the next cold start paints
+                    // instantly; cheap single DataStore edit off the UI thread.
+                    profileCache.persistToDataStore(
+                        recentItems = recentItems,
+                        topTracks = topTracksList,
+                        frequentArtists = frequentArtists,
+                    )
                 }
+                _isRefreshing.value = false
 
             } catch (error: CancellationException) {
                 throw error
@@ -322,6 +385,7 @@ class SpotifyHomeViewModel @Inject constructor(
                 } else {
                     _screenState.update { SpotifyHomeScreenState.Error(R.string.error_unknown) }
                 }
+                _isRefreshing.value = false
             }
         }
     }

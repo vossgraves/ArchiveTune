@@ -14,6 +14,7 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.LinearEasing
@@ -640,6 +641,7 @@ fun HomeFeedYTItemCard(
     haptic: HapticFeedback,
     scope: CoroutineScope,
     onPlaySongFromSection: (String) -> Unit = {},
+    onPlayEpisode: ((EpisodeItem) -> Unit)? = null,
     modifier: Modifier = Modifier,
     isPlaying: Boolean = false,
 ) {
@@ -709,7 +711,8 @@ fun HomeFeedYTItemCard(
                 is AlbumItem -> navController.navigate("album/${item.id}")
                 is ArtistItem -> navController.navigate("artist/${item.id}")
                 is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
-                is PodcastItem, is EpisodeItem -> Unit
+                is PodcastItem -> navController.navigate("podcast/${Uri.encode(item.browseId)}")
+                is EpisodeItem -> onPlayEpisode?.invoke(item)
             }
         },
         onLongClick = longClickHandler,
