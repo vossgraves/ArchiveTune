@@ -513,9 +513,6 @@
     <string name="custom_value">Custom value</string>
     <string name="archivetune_canvas">ArchiveTune Canvas</string>
     <string name="archivetune_canvas_desc">Animate album artwork while playing (Powered by BetterLyrics)</string>
-    <string name="cancel">Cancel</string>
-    <string name="disable">Disable</string>
-    <string name="canvas_cache">Canvas Cache</string>
     <string name="canvas_cache_desc">Videos play offline. Oldest videos are removed when the cache is full.</string>
     <string name="canvas_enable">Use canvas</string>
     <string name="canvas_health_available">Available</string>
@@ -541,8 +538,6 @@
     <string name="canvas_source_all_desc">Try BetterLyrics, Apple Music, TIDAL, then Spotify</string>
     <string name="canvas_wifi_only">Use Wi-Fi only</string>
     <string name="canvas_wifi_only_desc">Turn off to allow mobile data. Downloaded canvases remain available offline.</string>
-    <string name="clear_canvas_cache">Clear canvas cache</string>
-    <string name="clear_canvas_cache_dialog">Are you sure you want to clear all cached canvas?</string>
     <string name="podcast">Podcast</string>
     <string name="episodes">Episodes</string>
     <string name="podcast_has_no_episodes">This podcast has no available episodes.</string>

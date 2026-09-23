@@ -414,6 +414,7 @@ object AppleMusicProvider {
         artist: String,
         album: String? = null,
         storefront: String = "us",
+        forceRefresh: Boolean = false,
     ): CanvasArtwork? {
         CanvasRequestPolicy.check(CanvasSource.APPLE_MUSIC)
         val key = cacheKey("song", song, artist, album ?: "", storefront)
@@ -429,6 +430,7 @@ object AppleMusicProvider {
 
     suspend fun getByAlbumId(
         albumId: String,
+        storefront: String = "us",
     ): CanvasArtwork? {
         CanvasRequestPolicy.check(CanvasSource.APPLE_MUSIC)
         val key = cacheKey("id", albumId, storefront)

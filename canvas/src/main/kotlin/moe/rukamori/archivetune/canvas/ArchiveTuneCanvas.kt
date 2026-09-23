@@ -61,7 +61,7 @@ object ArchiveTuneCanvas {
                 ?.let { return it }
         }
         return if (source.accepts(CanvasSource.APPLE_MUSIC)) {
-            AppleMusicProvider.getBySongArtist(song, artist, null, storefront, forceRefresh)
+            AppleMusicProvider.getBySongArtist(song, artist, storefront = storefront, forceRefresh = forceRefresh)
                 ?.takeIf { it.matches() }
                 ?.copy(source = CanvasSource.APPLE_MUSIC)
         } else {
