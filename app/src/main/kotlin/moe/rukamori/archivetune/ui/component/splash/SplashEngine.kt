@@ -68,10 +68,13 @@ class SplashEngine {
         }
 
     var shape: String = SplashSlots.SHAPE_LOGO
-    var width: Float = 0f
-    var height: Float = 0f
-    var density: Float = 1f
-
+    /**
+     * Particle budget for this launch. Full 64 on capable devices; the overlay
+     * drops it to 24 on low-end hardware where 64 sprites + links + shockwave
+     * per frame competes with first composition and DB/IO init. Set before
+     * init(); the gather phase spreads whatever budget exists over the slots.
+     */
+    var memberBudget: Int = MAX_MEMBERS
     var formStrength: Float = 0f
     var globalOpacity: Float = 0f
     var isShort: Boolean = false
@@ -103,7 +106,7 @@ class SplashEngine {
         rebuildSlots()
 
         val center = SplashSlots.center(w, h)
-        val activeMembers = SplashConfig.getSlotCount(shape).coerceIn(12, MAX_MEMBERS)
+        val activeMembers = SplashConfig.getSlotCount(shape).coerceIn(12, minOf(memberBudget, MAX_MEMBERS))
 
         for (i in 0 until activeMembers) {
             val r = SplashConfig.Spawn.RING_INNER + Random.nextFloat() * SplashConfig.Spawn.RING_WIDTH

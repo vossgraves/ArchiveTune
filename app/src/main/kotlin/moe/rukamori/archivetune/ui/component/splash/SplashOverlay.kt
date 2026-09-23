@@ -39,7 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalContext
+import moe.rukamori.archivetune.utils.isLowEndDevice
 import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.constants.SplashOverlayEnabledKey
@@ -83,7 +84,16 @@ fun SplashOverlay(
         }
 
         val density = LocalDensity.current.density
-        val engine = remember { SplashEngine() }
+        val context = LocalContext.current
+        // Low-end budget, set synchronously: onSizeChanged can fire init() before
+        // any LaunchedEffect runs, so the budget must exist at remember time.
+        // 64 -> 24 particles where per-frame Canvas work would fight first
+        // composition + DB/IO init. Same animation and timing, fewer sprites.
+        val engine = remember {
+            SplashEngine().apply {
+                if (context.isLowEndDevice()) memberBudget = SplashEngine.MEMBER_COUNT
+            }
+        }
         val renderer = remember { SplashRenderer() }
         var frameTick by remember { mutableLongStateOf(0L) }
 
