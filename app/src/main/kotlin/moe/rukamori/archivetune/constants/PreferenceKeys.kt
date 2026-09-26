@@ -1557,12 +1557,13 @@ val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
 
 
 // ---------------------------------------------------------------------------
-// Experimental: manual source sign-in
+// Source Pool integration
 // ---------------------------------------------------------------------------
-// When OFF (default) the app relies solely on the community Source Pool: users never see the
-// manual Tidal/Qobuz instance & account sign-in fields. Flipping this ON in Experimental Settings
-// re-exposes the manual sign-in UI for power users who want to add their own private sources.
-val ManualSourceLoginEnabledKey = booleanPreferencesKey("dev_manual_source_login")
+// When ON (default), the app uses shared accounts from the community Source Pool for Tidal, Qobuz,
+// Deezer, and Apple Music playback. When OFF, only manually-added accounts are used. The manual
+// sign-in UI is always visible regardless of this toggle, so users can add their own accounts
+// whether or not they use the pool.
+val UsePoolAccountsKey = booleanPreferencesKey("use_pool_accounts")
 
 // The last Qobuz track id that resolved successfully, used as a health "probe" track so we can tell
 // a fully-working instance from a reachable-but-preview-only one.

@@ -37,6 +37,19 @@ import java.util.concurrent.TimeUnit
  * `/api/sources` endpoint and caches their credentials for the Tidal/Qobuz resolvers.
  */
 object PoolAccountManager {
+    /**
+     * True when the user has enabled pool account usage (default ON). When OFF, all account getters
+     * return empty lists so playback falls through to manually-added accounts or YouTube. Checked
+     * synchronously via a volatile flag that App.kt updates on every preference change.
+     */
+    @Volatile
+    private var poolAccountsEnabled: Boolean = true
+
+    /** Called by App.kt whenever UsePoolAccountsKey changes. Thread-safe: volatile write. */
+    fun setPoolAccountsEnabled(enabled: Boolean) {
+        poolAccountsEnabled = enabled
+    }
+
     private const val TAG = "PoolAccounts"
     // Pool credentials change slowly (submissions + hourly health sweeps on the server). Fetching
     // more than once a day mostly re-reads the same bytes, so 24h keeps the pool's database from
@@ -267,18 +280,19 @@ object PoolAccountManager {
     ): List<T> = accounts.sortedWith(compareBy({ isCoolingDown(service, idOf(it)) }, { !premiumOf(it) }))
 
     fun tidalAccounts(): List<TidalPoolAccount> =
-        ordered("tidal", tidalCache, { it.id }, { it.premium })
+        if (poolAccountsEnabled) ordered("tidal", tidalCache, { it.id }, { it.premium }) else emptyList()
 
     fun qobuzAccounts(): List<QobuzPoolAccount> =
-        ordered("qobuz", qobuzCache, { it.id }, { it.premium })
+        if (poolAccountsEnabled) ordered("qobuz", qobuzCache, { it.id }, { it.premium }) else emptyList()
 
     fun deezerAccounts(): List<DeezerPoolAccount> =
-        ordered("deezer", deezerCache, { it.id }, { it.premium })
+        if (poolAccountsEnabled) ordered("deezer", deezerCache, { it.id }, { it.premium }) else emptyList()
 
-    fun appleMusicAccounts(): List<AppleMusicPoolAccount> = appleMusicCache.sortedByDescending { it.premium }
+    fun appleMusicAccounts(): List<AppleMusicPoolAccount> =
+        if (poolAccountsEnabled) appleMusicCache.sortedByDescending { it.premium } else emptyList()
 
     fun amazonAccounts(): List<AmazonPoolAccount> =
-        ordered("amazon-music", amazonCache, { it.id }, { it.premium })
+        if (poolAccountsEnabled) ordered("amazon-music", amazonCache, { it.id }, { it.premium }) else emptyList()
 
     /**
      * The pooled instances the Amazon provider can play through: entries that name a host and carry
@@ -287,17 +301,21 @@ object PoolAccountManager {
      * [AmazonInstances.merge], which owns that rule.
      */
     fun amazonInstances(): List<AmazonInstance> =
-        ordered("amazon-music", amazonCache, { it.id }, { it.premium })
-            .mapNotNull { account ->
-                val baseUrl = account.baseUrl ?: return@mapNotNull null
-                AmazonInstance(
-                    baseUrl = baseUrl,
-                    bypassToken = account.bypassToken,
-                    turnstileJwt = account.turnstileJwt,
-                    turnstileJwtExpiresAtMs = account.turnstileJwtExpiresAtMs,
-                    fromPool = true,
-                )
-            }
+        if (!poolAccountsEnabled) {
+            emptyList()
+        } else {
+            ordered("amazon-music", amazonCache, { it.id }, { it.premium })
+                .mapNotNull { account ->
+                    val baseUrl = account.baseUrl ?: return@mapNotNull null
+                    AmazonInstance(
+                        baseUrl = baseUrl,
+                        bypassToken = account.bypassToken,
+                        turnstileJwt = account.turnstileJwt,
+                        turnstileJwtExpiresAtMs = account.turnstileJwtExpiresAtMs,
+                        fromPool = true,
+                    )
+                }
+        }
 
     fun hasAccounts(): Boolean =
         tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty() ||

@@ -81,7 +81,6 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.constants.ShowCodecOnPlayerKey
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -132,11 +131,6 @@ fun DebugSettings(navController: NavController) {
             defaultValue = true,
         )
 
-    val (manualSourceLogin, onManualSourceLoginChange) =
-        rememberPreference(
-            key = ManualSourceLoginEnabledKey,
-            defaultValue = false,
-        )
 
     val playerConnection = LocalPlayerConnection.current
 
@@ -211,15 +205,6 @@ fun DebugSettings(navController: NavController) {
                     )
                 }
 
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.manual_source_login)) },
-                        description = stringResource(R.string.description_manual_source_login),
-                        icon = { Icon(painterResource(R.drawable.login), null) },
-                        checked = manualSourceLogin,
-                        onCheckedChange = onManualSourceLoginChange,
-                    )
-                }
 
                 item {
                     PreferenceEntry(

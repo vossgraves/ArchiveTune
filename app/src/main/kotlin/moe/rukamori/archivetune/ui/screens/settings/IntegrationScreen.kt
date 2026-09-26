@@ -40,7 +40,6 @@ import moe.rukamori.archivetune.constants.AmazonEnabledKey
 import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
-import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.SpotifyHistorySyncEnabledKey
@@ -66,23 +65,21 @@ fun IntegrationScreen(
 ) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
-    // Manual Tidal/Qobuz instance & account management is an advanced flow gated behind the
-    // "Manual source sign-in" experimental toggle. Off by default: the app auto-uses the community
-    // source pool, so most users never need to see raw instance/token fields.
-    val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
-    // …but a source the user has *already* signed into must stay reachable regardless, otherwise
-    // turning the toggle back off strands the account with no way to view or sign out of it, and
-    // settings-search anchors would scroll to a row that is never rendered.
+    // Manual Tidal/Qobuz/Deezer sign-in UI is always visible now; the UsePoolAccountsKey toggle
+    // (in Internet Settings) controls whether the pool is consulted, but the manual rows are no
+    // longer gated. A source the user has already signed into must stay reachable regardless.
     val (deezerArl, _) = rememberPreference(DeezerArlKey, "")
     val (tidalAccessToken, _) = rememberPreference(TidalAccessTokenKey, "")
     val (qobuzTokens, _) = rememberPreference(QobuzTokensKey, "")
     // Amazon's row is gated on the source being enabled rather than a signed-in account: the
     // instance-based source has no account, only instances + a Turnstile JWT (see AmazonSettings).
     val (amazonSourceEnabled, _) = rememberPreference(AmazonEnabledKey, false)
-    val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
-    val showAmazonRow = manualSourceLogin || amazonSourceEnabled
-    val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
-    val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
+    // All manual sign-in rows are always visible, regardless of whether an account is signed in.
+    // The pool toggle (UsePoolAccountsKey in Internet Settings) controls pool usage separately.
+    val showDeezerRow = true
+    val showAmazonRow = true
+    val showTidalRow = true
+    val showQobuzRow = true
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)

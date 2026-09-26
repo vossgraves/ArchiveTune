@@ -156,7 +156,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val (dnsOverHttpsEnabled, onDnsOverHttpsEnabledChange) = rememberPreference(key = EnableDnsOverHttpsKey, defaultValue = false)
+    val (usePoolAccounts, onUsePoolAccountsChange) = rememberPreference(key = UsePoolAccountsKey, defaultValue = true)
     val (dnsProvider, onDnsProviderChange) = rememberPreference(key = DnsOverHttpsProviderKey, defaultValue = "Cloudflare")
     val (customDnsUrl, onCustomDnsUrlChange) = rememberPreference(key = stringPreferencesKey("customDnsUrl"), defaultValue = "https://")
     val (proxyEnabled, onProxyEnabledChange) = rememberPreference(key = ProxyEnabledKey, defaultValue = false)
@@ -229,6 +229,21 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             InternetWarningBox()
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("use_pool_accounts"),
+                title = stringResource(R.string.source_pool),
+            ) {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.use_pool_accounts)) },
+                        description = stringResource(R.string.use_pool_accounts_desc),
+                        icon = { Icon(painterResource(R.drawable.database), null) },
+                        checked = usePoolAccounts,
+                        onCheckedChange = onUsePoolAccountsChange,
+                    )
+                }
+            }
 
             PreferenceGroup(
                 modifier = positions.modifierFor("yt_music_region"),

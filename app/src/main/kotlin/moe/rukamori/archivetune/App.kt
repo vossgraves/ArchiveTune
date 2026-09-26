@@ -488,6 +488,17 @@ class App :
                 }
         }
 
+        // Observe UsePoolAccountsKey and update PoolAccountManager so it returns empty lists when OFF.
+        // Default ON: the pool is enabled by default and the toggle exists to turn it off, not to opt in.
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[UsePoolAccountsKey] ?: true }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    PoolAccountManager.setPoolAccountsEnabled(enabled)
+                }
+        }
+
         // Observe the user-configured Paxsenix API key + endpoint and apply
         // them to PaxsenixLyrics. When the user changes the key in Settings
         // → Lyrics → Providers → Paxsenix API key, this collector fires and
