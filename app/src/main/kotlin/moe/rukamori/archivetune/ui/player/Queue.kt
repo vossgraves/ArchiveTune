@@ -378,7 +378,7 @@ fun Queue(
     val (showCodecOnPlayer) =
         rememberPreference(
             key = ShowCodecOnPlayerKey,
-            defaultValue = false,
+            defaultValue = true,
         )
 
     LaunchedEffect(sleepTimerEnabled) {
